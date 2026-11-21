@@ -21,7 +21,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 
 /**
- * The system share target: "分享 → eNote" from any app.
+ * The system share target: "分享 → 懒得记" from any app.
  *
  * text/plain  -> handed to Go as-is
  * image/*     -> copied into the app's files dir, read by the local OCR engine, and only
@@ -242,7 +242,7 @@ public class ShareActivity extends Activity {
                 try {
                     startActivity(i);
                 } catch (Throwable t) {
-                    Toast.makeText(ShareActivity.this, "已加入 eNote", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(ShareActivity.this, "已加入 懒得记", Toast.LENGTH_SHORT).show();
                 }
                 finish();
             }

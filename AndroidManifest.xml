@@ -16,8 +16,9 @@
 
     <application
         android:name=".EnoteApp"
-        android:label="eNote"
+        android:label="懒得记"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:extractNativeLibs="true"
         android:usesCleartextTraffic="true"
@@ -37,10 +38,10 @@
             </intent-filter>
         </activity>
 
-        <!-- the share target: 分享 -> eNote -->
+        <!-- the share target: 分享 -> 懒得记 -->
         <activity
             android:name=".ShareActivity"
-            android:label="eNote"
+            android:label="懒得记"
             android:exported="true"
             android:excludeFromRecents="true"
             android:noHistory="true"
@@ -52,7 +53,7 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
             <!-- wider text sharing + PDF: stored as an attachment, not parsed (R4). Deliberately
-                 no "*/*": eNote should not show up in every share menu. -->
+                 no "*/*": 懒得记 should not show up in every share menu. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

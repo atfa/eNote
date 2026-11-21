@@ -81,16 +81,20 @@ func guard(env *C.JNIEnv, what string, f func() C.jstring) (out C.jstring) {
 // JNI exports (class dev.xduo.enote.Bridge)
 // ===========================================================================
 
-// nativeInit(filesDir) - called from Application.onCreate. Loads config, opens the store,
-// starts the ingest worker. Returns a status JSON.
+// nativeInit(filesDir, tzOffsetSec, tzId) - called from Application.onCreate. Pins the Go
+// clock to the device's wall clock (the Android Go runtime has no tzdata, so time.Now()
+// would report UTC and every "overdue" / day-bucket comparison would drift), then loads
+// config, opens the store and starts the ingest worker. Returns a status JSON.
 //
 //export Java_dev_xduo_enote_Bridge_nativeInit
-func Java_dev_xduo_enote_Bridge_nativeInit(env *C.JNIEnv, cls C.jclass, jdir C.jstring) C.jstring {
+func Java_dev_xduo_enote_Bridge_nativeInit(env *C.JNIEnv, cls C.jclass, jdir C.jstring,
+	offSec C.jint, jtz C.jstring) C.jstring {
 	return guard(env, "nativeInit", func() C.jstring {
 		dir := j2s(env, jdir)
 		if dir == "" {
 			return s2j(env, `{"ok":false,"error":"empty filesDir"}`)
 		}
+		applyTZ(int(offSec), j2s(env, jtz))
 		return js2j(env, appInit(dir))
 	})
 }

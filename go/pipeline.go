@@ -261,7 +261,8 @@ func appInit(dir string) map[string]any {
 	startWorker()
 	bootStats = map[string]any{"ok": true, "dir": dir, "notes": len(store.snapshot()),
 		"go": goVersion()}
-	logf("appInit dir=%s notes=%d model=%s", dir, len(store.snapshot()), config.get().Model)
+	logf("appInit dir=%s notes=%d model=%s tz=%s now=%s", dir, len(store.snapshot()),
+		config.get().Model, tzInfo(), nowStamp())
 	return bootStats
 }
 
@@ -276,6 +277,7 @@ func appInfo() map[string]any {
 		"overdue":  0,
 		"server":   srvURL,
 		"go":       goVersion(),
+		"tz":       tzInfo(),
 		"ocrReady": ocrReady,
 	}
 	if store != nil {

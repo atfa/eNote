@@ -17,6 +17,9 @@ import (
 //go:embed ui.html
 var uiFS embed.FS
 
+//go:embed icon.png
+var iconPNG []byte
+
 var (
 	srvOnce sync.Once
 	srvURL  string
@@ -63,6 +66,9 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/prefs", handlePrefs)
 	m.HandleFunc("/api/attachments", handleAttachments)
 	m.HandleFunc("/api/attach/delete", handleAttachDelete)
+	m.HandleFunc("/api/stats", handleStats)
+	m.HandleFunc("/api/import", handleImport)
+	m.HandleFunc("/api/clear", handleClear)
 	m.HandleFunc("/api/llm/test", handleLLMTest)
 	m.HandleFunc("/api/llmlog", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, map[string]any{"ok": true, "calls": llmHistory()})
@@ -79,6 +85,11 @@ func apiMux() *http.ServeMux {
 		b, _ := json.MarshalIndent(store.snapshot(), "", "  ")
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Write(b)
+	})
+	m.HandleFunc("/icon.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(iconPNG)
 	})
 	m.HandleFunc("/img", handleImg)
 	m.HandleFunc("/file", handleFile)
@@ -118,6 +129,11 @@ func readBody(r *http.Request, v any) error {
 		return nil
 	}
 	return json.Unmarshal(b, v)
+}
+
+// readAll is readBody for endpoints that take a raw body (importing a JSON backup).
+func readAll(r *http.Request, max int64) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(r.Body, max))
 }
 
 func handleNote(w http.ResponseWriter, r *http.Request) {

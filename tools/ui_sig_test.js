@@ -115,12 +115,12 @@ console.log((heroPlain ? '  ok   ' : '  FAIL ') + '我的页没有装饰性入�
 if (!heroPlain) bad++;
 
 // 页面内容左右留白（卡片不贴屏幕边）
-const pad = /main#view\{padding:0 14px\}/.test(src);
+const pad = /main#view\{padding:0 14px 104px\}/.test(src);
 console.log((pad ? '  ok   ' : '  FAIL ') + '页面左右有留白');
 if (!pad) bad++;
 
 // 主题开关只在设置面板里，“我的”页不重复列一项
-const oneTheme = !/themeSheet\(\)/.test(code) && /外观[\s\S]{0,200}setTheme/.test(src);
+const oneTheme = !/themeSheet\(\)/.test(code) && /外观[\s\S]{0,400}setTheme/.test(src);
 console.log((oneTheme ? '  ok   ' : '  FAIL ') + '主题入口只保留设置面板里那一个');
 if (!oneTheme) bad++;
 
@@ -130,5 +130,99 @@ const ripOk = ripSel.length > 0 && !/\.li\b/.test(ripSel)
   && /\.tabbar \.fab\{[^}]*position:relative/.test(src) && /\.seg button\{[^}]*overflow:hidden/.test(src);
 console.log((ripOk ? '  ok   ' : '  FAIL ') + '涟漪不会溢出按钮（不闪屏）');
 if (!ripOk) bad++;
+
+// ---------- R11 到期倒计时 ----------
+// 每个未完成待办都要有倒计时徽标，并且是就地改写文本（整页重绘会闪）
+const cd = /function cdText\(due\)/.test(src) && /data-due="/.test(src)
+  && /setInterval\(tickCD, \d+\)/.test(src) && /function tickCD\(\)/.test(src);
+console.log((cd ? '  ok   ' : '  FAIL ') + '待办显示到期倒计时，且按秒级定时就地更新');
+if (!cd) bad++;
+const cdWords = /不足/.test(src) && /逾期/.test(src) && /天'/.test(src) && /小时'/.test(src) && /分钟'/.test(src);
+console.log((cdWords ? '  ok   ' : '  FAIL ') + '倒计时文案：不足N天/小时/分钟、逾期N…');
+if (!cdWords) bad++;
+// 笔记页与待办页都要挂上
+const cdBoth = (src.match(/cdChip\(/g) || []).length >= 2;
+console.log((cdBoth ? '  ok   ' : '  FAIL ') + '笔记页与待办页都显示倒计时');
+if (!cdBoth) bad++;
+
+// ---------- 勾选完成的动画反馈 ----------
+const anim = /\.todo\.justdone \.ttx::after,[^{]*\{[\s\S]*?animation:strike/.test(src)
+  && /\.todo\.leaving\{/.test(src) && /\.todo\.enter\{animation:todoenter/.test(src)
+  && /row\.classList\.add\('leaving'\)/.test(src);
+console.log((anim ? '  ok   ' : '  FAIL ') + '勾选 → 划线动画 → 原位淡出 → 新位置高亮入场');
+if (!anim) bad++;
+// 动画期间不能被轮询重绘打断
+const lock = /if\(Date\.now\(\) < animLock\)\{ paintStatus\(\); return \}/.test(src);
+console.log((lock ? '  ok   ' : '  FAIL ') + '动画期间轮询不重绘（不打断划线动画）');
+if (!lock) bad++;
+
+// ---------- R5 我的页统计 + 全屏设置面板 ----------
+const stats = /api\/stats/.test(src) && /function statsNow\(\)/.test(src)
+  && /function chartHTML\(days\)/.test(src) && /^\.chart\{/m.test(src);
+console.log((stats ? '  ok   ' : '  FAIL ') + '我的页统计来自 /api/stats，近 7 天为纯 CSS 柱状图');
+if (!stats) bad++;
+const go = fs.readFileSync(path.join(root, 'go/stats.go'), 'utf8');
+const goweb = fs.readFileSync(path.join(root, 'go/web.go'), 'utf8');
+const goRoutes = /m\.HandleFunc\("\/api\/stats", handleStats\)/.test(fs.readFileSync(path.join(root, 'go/web.go'), 'utf8'))
+  && /func stats\(\) statsRes/.test(go) && /func handleImport/.test(fs.readFileSync(path.join(root, 'go/backup.go'), 'utf8'));
+console.log((goRoutes ? '  ok   ' : '  FAIL ') + 'Go 侧 /api/stats + /api/import + /api/clear 已注册');
+if (!goRoutes) bad++;
+const panel = /function pageSheet\(title, html\)/.test(src) && /\.panel\.page\{/.test(src)
+  && /settingsSheet\(\)\{ pageSheet\('设置'/.test(src);
+console.log((panel ? '  ok   ' : '  FAIL ') + '设置是全屏面板（顶栏固定 + 分组）');
+if (!panel) bad++;
+const secs = ['外观', 'AI 模型', '采集', '本地 OCR', '数据', '运行状态']
+  .every(function (t) { return src.indexOf(t) > 0 });
+console.log((secs ? '  ok   ' : '  FAIL ') + '设置面板分组齐全（外观/AI/采集/OCR/数据/状态）');
+if (!secs) bad++;
+const data = /function importJSON\(\)/.test(src) && /function clearAllNotes\(\)/.test(src)
+  && /Android\.pickJSON\(\)/.test(src) && /REQ_IMPORT/.test(java) && /api\/import/.test(java);
+console.log((data ? '  ok   ' : '  FAIL ') + '导出 / 导入（选文件→POST /api/import）/ 清空 全通');
+if (!data) bad++;
+
+// ---------- 时区：Go 用 UTC 会算错「逾期」 ----------
+const tz = /nativeInit\(String filesDir, int tzOffsetSec, String tzId\)/.test(
+    fs.readFileSync(path.join(root, 'src/dev/xduo/enote/Bridge.java'), 'utf8'))
+  && /func applyTZ\(offSec int, id string\)/.test(fs.readFileSync(path.join(root, 'go/app.go'), 'utf8'))
+  && /time\.Local = time\.FixedZone/.test(fs.readFileSync(path.join(root, 'go/app.go'), 'utf8'));
+console.log((tz ? '  ok   ' : '  FAIL ') + 'Java 把时区传给 Go，逾期/按天统计不再差 8 小时');
+if (!tz) bad++;
+
+// ---------- 改名 + 竖琴图标 ----------
+const man = fs.readFileSync(path.join(root, 'AndroidManifest.xml'), 'utf8');
+const named = /android:label="懒得记"/.test(man) && !/android:label="eNote"/.test(man)
+  && /<title>懒得记<\/title>/.test(src);
+console.log((named ? '  ok   ' : '  FAIL ') + '应用名改为「懒得记」');
+if (!named) bad++;
+// 图标换成用户提供的稿子：各尺寸方形 + 自适应图层 + app 内 logo
+const icon = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']
+    .every(d => fs.existsSync(path.join(root, 'res/mipmap-' + d + '/ic_launcher.png'))
+      && fs.existsSync(path.join(root, 'res/drawable-' + d + '/ic_launcher_foreground.png'))
+      && fs.existsSync(path.join(root, 'res/drawable-' + d + '/ic_launcher_background.png')))
+  && fs.existsSync(path.join(root, 'res/mipmap-anydpi-v26/ic_launcher.xml'))
+  && !fs.existsSync(path.join(root, 'res/mipmap-anydpi-v26/ic_launcher_round.xml'))
+  && /android:roundIcon="@mipmap\/ic_launcher"/.test(man)
+  && fs.existsSync(path.join(root, 'go/icon.png'))
+  && /\/icon\.png/.test(goweb) && /src="\/icon\.png"/.test(src);
+console.log((icon ? '  ok   ' : '  FAIL ') + '启动图标：各尺寸 + 自适应图层 + app 内 logo');
+if (!icon) bad++;
+
+// 「重要」标签不能比时间标签高出一截：两者都要 inline-block + 固定行高
+// 三种小标签（.chip 重要 / .due 到期 / .cd 倒计时）盒模型必须完全一致，容器 flex 居中
+function ruleBody(cls) {
+  const m = src.match(new RegExp('^\\.' + cls + '\\{([^}]*)\\}', 'm'));
+  return m ? m[1] : '';
+}
+const NEED = ['display:inline-flex', 'align-items:center', 'font-size:10.5px',
+  'line-height:1.4', 'padding:1px 7px', 'border:1px solid'];
+const chipH = ['chip', 'due', 'cd'].every(c => NEED.every(k => ruleBody(c).indexOf(k) >= 0))
+  && /^\.tx small\{display:flex;flex-wrap:wrap;align-items:center;gap:4px/m.test(src);
+console.log((chipH ? '  ok   ' : '  FAIL ') + '「重要」与时间标签同高（统一盒模型 + flex 居中）');
+if (!chipH) bad++;
+
+// 导出 JSON 是整页跳转，返回键得先回退网页历史，不然回不到 app
+const backHist = /if \(w\.canGoBack\(\)\) \{ w\.goBack\(\); return; \}/.test(java);
+console.log((backHist ? '  ok   ' : '  FAIL ') + '返回键先回退网页历史（导出页能退出）');
+if (!backHist) bad++;
 
 process.exit(bad ? 1 : 0);

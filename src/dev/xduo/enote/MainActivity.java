@@ -31,6 +31,7 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     static final int REQ_IMG = 7;
     static final int REQ_FILE = 8;
+    static final int REQ_IMPORT = 9;
     WebView web;
     /** A native alert/confirm forwarded to the page; resolved by Bridge.dialogResult. */
     static JsResult pendingJs;
@@ -173,6 +174,7 @@ public class MainActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (res != RESULT_OK || data == null || data.getData() == null) return;
         if (req == REQ_FILE) { pickDocument(data.getData()); return; }
+        if (req == REQ_IMPORT) { importJSON(data.getData()); return; }
         if (req != REQ_IMG) return;
         final Uri uri = data.getData();
         new Thread(new Runnable() {
@@ -247,6 +249,93 @@ public class MainActivity extends Activity {
         } catch (Throwable ignored) {
         }
         return fallback;
+    }
+
+    /** Called from JS: window.Android.pickJSON() - restore a JSON export (设置 → 数据). */
+    public void pickJSON() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.setType("*/*");
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.putExtra(Intent.EXTRA_MIME_TYPES,
+                new String[]{"application/json", "text/plain", "application/octet-stream"});
+        try {
+            startActivityForResult(Intent.createChooser(i, "选择导出的 JSON"), REQ_IMPORT);
+        } catch (Throwable t) {
+            note("pickJSON failed: " + t);
+        }
+    }
+
+    /**
+     * Reads a JSON export and POSTs it to the Go server (/api/import). No JNI symbol is
+     * needed: the Go HTTP API is loopback, so plain HttpURLConnection is the cheapest seam.
+     */
+    void importJSON(final Uri uri) {
+        new Thread(new Runnable() {
+            public void run() {
+                final String msg;
+                try {
+                    String url = Bridge.serverUrl;
+                    if (url == null || url.isEmpty()) url = Bridge.startServer();
+                    if (url == null || url.isEmpty()) throw new IllegalStateException("Go 服务未启动");
+                    byte[] body = readAll(getContentResolver().openInputStream(uri), 64 << 20);
+                    String res = post(url + "api/import", body);
+                    note("import -> " + res);
+                    org.json.JSONObject o = new org.json.JSONObject(res);
+                    msg = o.optBoolean("ok")
+                            ? ("导入完成：新增 " + o.optInt("imported") + " 条，跳过 "
+                               + o.optInt("skipped") + " 条已存在")
+                            : ("导入失败：" + o.optString("error"));
+                } catch (Throwable t) {
+                    note("import failed: " + t);
+                    toast("导入失败：" + t);
+                    return;
+                }
+                toast(msg);
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        if (web != null) web.evaluateJavascript("ST=null;refresh();statsNow();", null);
+                    }
+                });
+            }
+        }).start();
+    }
+
+    void toast(final String msg) {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    static byte[] readAll(java.io.InputStream in, int max) throws Exception {
+        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[65536];
+        int n, total = 0;
+        try {
+            while ((n = in.read(buf)) > 0) {
+                total += n;
+                if (total > max) throw new IllegalArgumentException("文件超过 64 MB");
+                bo.write(buf, 0, n);
+            }
+        } finally {
+            try { in.close(); } catch (Throwable ignored) { }
+        }
+        return bo.toByteArray();
+    }
+
+    static String post(String url, byte[] body) throws Exception {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        c.setConnectTimeout(5000);
+        c.setReadTimeout(120000);
+        c.setRequestMethod("POST");
+        c.setDoOutput(true);
+        c.setRequestProperty("Content-Type", "application/json");
+        java.io.OutputStream os = c.getOutputStream();
+        os.write(body);
+        os.close();
+        java.io.InputStream in = c.getResponseCode() < 400 ? c.getInputStream() : c.getErrorStream();
+        return new String(readAll(in, 1 << 20), "UTF-8");
     }
 
     File copyIn(Uri uri) throws Exception {
@@ -343,6 +432,8 @@ public class MainActivity extends Activity {
         if (backInFlight) return;   // 同一次返回可能被按键和手势各派发一次
         final WebView w = web;
         if (w == null) { finish(); return; }
+        // 导出 JSON 这类整页跳转：返回键先回退网页历史，否则会被困在 JSON 页里出不去
+        if (w.canGoBack()) { w.goBack(); return; }
         backInFlight = true;
         w.postDelayed(backReset, 800);
         w.evaluateJavascript("window.uiBack ? uiBack() : 0", new ValueCallback<String>() {
@@ -353,7 +444,7 @@ public class MainActivity extends Activity {
                 long now = System.currentTimeMillis();
                 if (now - lastBackAt < 2200) { finish(); return; }
                 lastBackAt = now;
-                Toast.makeText(MainActivity.this, "再返回一次退出 eNote", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "再返回一次退出 懒得记", Toast.LENGTH_SHORT).show();
             }
         });
     }

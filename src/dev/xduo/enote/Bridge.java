@@ -26,7 +26,7 @@ public class Bridge {
     static volatile String serverUrl = "";
     static volatile String loadError = "";
 
-    static native String nativeInit(String filesDir);
+    static native String nativeInit(String filesDir, int tzOffsetSec, String tzId);
     static native String nativeStartServer();
     static native String nativeEnqueue(String payloadJson);
     static native String nativeStatus();
@@ -44,8 +44,10 @@ public class Bridge {
             Log.e(TAG, "loadLibrary(enote) failed", t);
             return;
         }
-        initResult = nativeInit(c.getFilesDir().getAbsolutePath());
-        Log.i(TAG, "nativeInit -> " + initResult);
+        java.util.TimeZone tz = java.util.TimeZone.getDefault();
+        int off = tz.getOffset(System.currentTimeMillis()) / 1000;
+        initResult = nativeInit(c.getFilesDir().getAbsolutePath(), off, tz.getID());
+        Log.i(TAG, "nativeInit -> " + initResult + " tz=" + tz.getID() + " off=" + off);
     }
 
     static String startServer() {
@@ -121,6 +123,14 @@ public class Bridge {
         MainActivity a = current.get();
         Log.i(TAG, "js pickFile");
         if (a != null) a.pickFile();
+    }
+
+    /** window.Android.pickJSON(): pick a JSON export and POST it to /api/import. */
+    @JavascriptInterface
+    public void pickJSON() {
+        MainActivity a = current.get();
+        Log.i(TAG, "js pickJSON");
+        if (a != null) a.pickJSON();
     }
 
     /** window.Android.reocr(id): re-run the local OCR on a note's stored image. */

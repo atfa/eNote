@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#0b0f14">
-<title>eNote</title>
+<title>懒得记</title>
 <style>
 /* ============ 设计 token：亮色为默认，html[data-theme=dark] 覆盖 ============ */
 :root{
@@ -41,9 +41,12 @@ html[data-theme=dark]{
 html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
   font:15px/1.55 -apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
   transition:background var(--d2) var(--ease),color var(--d2) var(--ease)}
+/* 关掉 Chromium 的“文字自动放大”：它按整块文字宽度放大字号，
+   结果「重要」这种两字标签比旁边的时间标签大一圈，行高全乱 */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{padding-bottom:calc(96px + env(safe-area-inset-bottom));overscroll-behavior:none}
 /* 页面内容左右留白：卡片不贴屏幕边（顶栏/底栏是通栏条，不归它们管）*/
-main#view{padding:0 14px}
+main#view{padding:0 14px 104px}
 a{color:var(--acc)}
 .sec{margin:14px 2px 8px;font-size:12px;font-weight:700;color:var(--dim);letter-spacing:1px;
   display:flex;align-items:center;gap:8px}
@@ -56,8 +59,9 @@ a{color:var(--acc)}
 .meta{font-size:11px;color:var(--dim2);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .body{font-size:14px;color:var(--dim);white-space:pre-wrap;word-break:break-word;margin-top:6px}
 .body.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.chip{font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);
-  color:var(--dim);background:var(--card2);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;font-size:10.5px;line-height:1.4;padding:1px 7px;border-radius:999px;
+  border:1px solid var(--line);color:var(--dim);background:var(--card2);white-space:nowrap;
+  vertical-align:middle}
 .chip.ai{color:var(--acc);border-color:var(--acc);background:var(--acc-s)}
 .chip.img{color:var(--acc2);border-color:var(--acc2);background:var(--acc2-s)}
 .chip.pend{color:var(--warn);border-color:var(--warn);background:var(--warn-s)}
@@ -85,22 +89,55 @@ a{color:var(--acc)}
 .amiss{font-size:10.5px;color:var(--bad)}
 .arow{display:flex;gap:6px;margin-top:2px}
 .arow .btn{flex:1}
-.err{margin-top:8px;font-size:12px;color:var(--bad);background:var(--bad-s);
+/* 错误提示框：类名不能叫 .err，否则和 .chip.err（「重要」小标签）撞车，
+   小标签会被套上 12px 字号 + 7px 内边距，比旁边的时间标签大一圈 */
+.errbox{margin-top:8px;font-size:12px;color:var(--bad);background:var(--bad-s);
   border:1px solid var(--bad);border-radius:10px;padding:7px 9px}
-.todo{display:flex;align-items:flex-start;gap:10px;padding:9px 2px;border-top:1px solid var(--line)}
+.todo{display:flex;align-items:flex-start;gap:10px;padding:9px 2px;border-top:1px solid var(--line);
+  max-height:260px;overflow:hidden;
+  transition:opacity var(--d3) var(--ease),transform var(--d3) var(--ease),
+             max-height var(--d3) var(--ease),padding var(--d3) var(--ease),
+             border-color var(--d3) var(--ease)}
 .todo:first-child{border-top:0}
 .cb{flex:0 0 22px;height:22px;margin-top:1px;border-radius:7px;border:1.6px solid var(--dim2);
   background:transparent;display:flex;align-items:center;justify-content:center;
   font-size:14px;color:transparent;transition:all var(--d1) var(--ease);cursor:pointer}
-.cb.on{background:var(--acc2);border-color:var(--acc2);color:var(--on-grad)}
+.cb.on{background:var(--acc2);border-color:var(--acc2);color:var(--on-grad);
+  animation:cbpop var(--d2) var(--ease)}
+@keyframes cbpop{0%{transform:scale(1)}45%{transform:scale(1.34)}100%{transform:scale(1)}}
 .tx{flex:1;font-size:14.5px}
-.tx small{display:block;color:var(--dim2);font-size:11px;margin-top:2px}
+/* 勾选完成动画（R10）：划线 → 原位淡出 → 新位置高亮入场 */
+.ttx{position:relative;display:inline-block;max-width:100%}
+.todo.done .ttx{text-decoration:line-through}
+.todo.justdone .ttx{text-decoration:none}
+.todo.justdone .ttx::after,.todo.leaving .ttx::after{content:'';position:absolute;left:-2px;
+  right:-2px;top:52%;height:1.6px;background:currentColor;border-radius:2px;
+  transform-origin:left center;animation:strike var(--d3) var(--ease) both}
+@keyframes strike{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.todo.leaving{opacity:0;transform:translateX(-34px) scale(.98);max-height:0;padding-top:0;
+  padding-bottom:0;border-top-color:transparent}
+.todo.enter{animation:todoenter var(--d3) var(--ease)}
+@keyframes todoenter{0%{background:var(--acc2-s);transform:translateY(-10px);opacity:.15}
+  55%{background:var(--acc2-s)}100%{background:transparent;transform:none;opacity:1}}
+.todo.undone{animation:undone var(--d3) var(--ease)}
+@keyframes undone{0%{background:var(--acc-s);transform:translateY(8px);opacity:.3}
+  100%{background:transparent;transform:none;opacity:1}}
+.tx small{display:flex;flex-wrap:wrap;align-items:center;gap:4px;color:var(--dim2);font-size:11px;margin-top:2px;line-height:1.5}
+.tx small>*{vertical-align:middle}
 .todo.done .tx{color:var(--dim2);text-decoration:line-through}
 .pri-high{border-left:3px solid var(--bad);padding-left:8px}
 .pri-low{opacity:.85}
-.due{font-size:11px;padding:1px 6px;border-radius:6px;background:var(--acc-s);color:var(--acc)}
+.due{display:inline-flex;align-items:center;font-size:10.5px;line-height:1.4;padding:1px 7px;border-radius:6px;
+  border:1px solid transparent;background:var(--acc-s);color:var(--acc);vertical-align:middle}
 .due.over{background:var(--bad-s);color:var(--bad)}
 .due.today{background:var(--acc2-s);color:var(--acc2)}
+/* 到期倒计时（R11）：就地更新，不重建 DOM */
+.cd{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;line-height:1.4;padding:1px 7px;
+    border-radius:6px;background:var(--card2);color:var(--dim);border:1px solid var(--line);
+    vertical-align:middle;font-variant-numeric:tabular-nums}
+.cd.soon{color:var(--warn);border-color:var(--warn);background:var(--warn-s)}
+.cd.over{color:var(--bad);border-color:var(--bad);background:var(--bad-s)}
+.cd.done{color:var(--dim2);font-weight:500;opacity:.8}
 .thumb{width:100%;max-height:230px;object-fit:contain;border-radius:12px;margin-top:8px;
   border:1px solid var(--line);background:var(--thumb-bg)}
 .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
@@ -169,6 +206,7 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
   display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--fg);position:relative;
   box-shadow:var(--sh);overflow:hidden;
   transition:transform var(--d1) var(--ease),background var(--d1) var(--ease)}
+.iconbtn img.brand{width:100%;height:100%;object-fit:cover;border-radius:11px;display:block}
 .iconbtn:active{transform:scale(.9)}
 .iconbtn .dot{position:absolute;right:5px;top:5px;width:7px;height:7px;border-radius:50%;background:var(--ok)}
 .iconbtn .dot.bad{background:var(--bad)}
@@ -282,6 +320,28 @@ main.enter{animation:fadein var(--d2) var(--ease)}
 .stat b{display:block;font-size:20px;background:var(--grad-text);-webkit-background-clip:text;
   background-clip:text;color:transparent;font-weight:800}
 .stat span{font-size:11px;color:var(--dim)}
+/* 我的页（R5）：近 7 天活动柱状图（纯 CSS，无图表库） */
+.chart{display:flex;align-items:flex-end;gap:5px;margin-top:14px}
+.chart .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px}
+.chart .bars{display:flex;gap:3px;align-items:flex-end;height:76px}
+.chart .bar{width:9px;border-radius:3px 3px 1px 1px;min-height:2px;transform-origin:bottom;
+  animation:grow var(--d3) var(--ease) both}
+.chart .bar.n{background:var(--acc)}
+.chart .bar.d{background:var(--acc2)}
+.chart .lb{font-size:9.5px;color:var(--dim2);white-space:nowrap}
+@keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--dim2);margin-top:10px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.tagrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+/* 全屏设置面板（R5） */
+.panel.page{top:0;height:100%;max-height:100%;border-radius:0;padding:0}
+.phead{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:8px;padding:14px 12px 10px;
+  background:var(--header-bg);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);
+  font-size:16.5px;font-weight:700}
+.pbody{padding:12px 14px 44px}
+.pgroup{font-size:12px;font-weight:700;color:var(--dim2);margin:18px 2px 8px;letter-spacing:.5px}
+.pgroup:first-child{margin-top:2px}
+.sw.dis{opacity:.45}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -289,7 +349,7 @@ main.enter{animation:fadein var(--d2) var(--ease)}
 <body>
 <!-- 顶栏：笔记 / 待办 / 附件 共用（R3、R6）；我的页用自己的 hero 头部 -->
 <header class="topbar" id="topbar">
-  <button class="iconbtn" id="brandBtn" aria-label="我的"><span>🎼</span><span class="dot" id="dot"></span></button>
+  <button class="iconbtn" id="brandBtn" aria-label="我的"><img class="brand" src="/icon.png" alt=""><span class="dot" id="dot"></span></button>
   <div class="search" id="searchBox">
     <span class="sico">🔍</span>
     <input id="q" type="search" placeholder="搜索笔记与待办" autocomplete="off">
@@ -427,20 +487,57 @@ function statusChip(n){
   if(n.status==='error') return '<span class="chip err">失败</span>';
   return '';
 }
+/* ---------- 到期倒计时（R11）----------
+   每个未完成待办显示距截止的剩余时间：不足2天 / 不足3小时 / 不足15分钟，过期则「逾期N…」。
+   文本由 tickCD() 每 20 秒就地改写 textContent，不重建 DOM（整页重绘会闪）。 */
+function dueMs(due){
+  var m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(due||'');
+  if(!m) return 0;
+  return new Date(+m[1], +m[2]-1, +m[3], +(m[4]||0), +(m[5]||0)).getTime();
+}
+function spanText(m){
+  m = Math.max(1, m);
+  if(m >= 1440) return Math.ceil(m/1440)+'天';
+  if(m >= 60) return Math.ceil(m/60)+'小时';
+  return m+'分钟';
+}
+function cdText(due){
+  var t = dueMs(due);
+  if(!t) return '';
+  var m = Math.ceil((t - Date.now())/60000);
+  return (m <= 0 ? '逾期' : '不足') + spanText(m <= 0 ? -m : m);
+}
+function cdCls(due){
+  var ms = dueMs(due) - Date.now();
+  return 'cd' + (ms <= 0 ? ' over' : (ms <= 3600e3 ? ' soon' : ''));
+}
+function cdChip(t){
+  if(!t.due || t.done) return '';
+  return '<span class="'+cdCls(t.due)+'" data-due="'+esc(t.due)+'">'+cdText(t.due)+'</span>';
+}
+function tickCD(){
+  var list = document.querySelectorAll('.cd[data-due]');
+  for(var i=0;i<list.length;i++){
+    var e = list[i], due = e.getAttribute('data-due'), s = cdText(due);
+    if(e.textContent !== s) e.textContent = s;
+    var c = cdCls(due);
+    if(e.className !== c) e.className = c;
+  }
+}
+setInterval(tickCD, 20000);
 function todoRow(t, n, compact){
-  var d='', dcls='due';
-  if(t.due){
+  var d='', dcls='due';  if(t.due){
     var overdue = t.due < now(), today = t.due.slice(0,10)===now().slice(0,10);
     if(overdue && !t.done) dcls+=' over'; else if(today) dcls+=' today';
-    d='<span class="'+dcls+'">'+fmtTime(t.due)+'</span>';
+    d='<span class="'+dcls+'">'+fmtTime(t.due)+'</span>'+cdChip(t);
   }
   var extra = [];
   if(t.priority==='high') extra.push('<span class="chip err">重要</span>');
   if(t.priority==='low') extra.push('<span class="chip">低</span>');
   if(!compact && t.source==='manual') extra.push('<span class="chip">手动</span>');
-  return '<div class="todo'+(t.done?' done':'')+(t.priority==='high'?' pri-high':'')+'">'
-    +'<div class="cb'+(t.done?' on':'')+'" onclick="toggle(\''+n.id+'\',\''+t.id+'\')">'+(t.done?'✓':'')+'</div>'
-    +'<div class="tx">'+esc(t.text)+'<small>'+d+' '+extra.join(' ')+'</small></div>'
+  return '<div class="todo'+(t.done?' done':'')+(t.priority==='high'?' pri-high':'')+enterCls(n,t)+'">'
+    +'<div class="cb'+(t.done?' on':'')+'" onclick="toggle(\''+n.id+'\',\''+t.id+'\',this)">'+(t.done?'✓':'')+'</div>'
+    +'<div class="tx"><span class="ttx">'+esc(t.text)+'</span><small>'+d+' '+extra.join(' ')+'</small></div>'
     +(compact?'':'<button class="btn sm gh" onclick="delTodo(\''+n.id+'\',\''+t.id+'\')">✕</button>')
     +'</div>';
 }
@@ -460,7 +557,7 @@ function noteCard(n, k){
     h += '<div class="hits"><span class="hit">📎 ' + n.attachments.length + ' 个附件</span></div>';
   if(n.imagePath) h += '<img class="thumb" src="/img?id='+n.id+'">';
   h += '<div class="body'+(exp?'':' clamp')+'">'+esc(body)+'</div>';
-  if(n.error) h += '<div class="err">'+esc(n.error)+'</div>';
+  if(n.error) h += '<div class="errbox">'+esc(n.error)+'</div>';
   if(n.todos && n.todos.length){
     h += '<div style="margin-top:10px">'+n.todos.map(function(t){return todoRow(t,n,true)}).join('')+'</div>';
   }
@@ -477,7 +574,7 @@ function noteCard(n, k){
 function renderNotes(){
   var list = notesFiltered();
   if(!S.notes.length) return strip() + '<div class="empty"><div class="em">📥</div>还没有笔记<br>'
-    + '在任何 app 里点「分享 → eNote」，文字和图片会自动变成笔记与待办</div>';
+    + '在任何 app 里点「分享 → 懒得记」，文字和图片会自动变成笔记与待办</div>';
   if(!list.length) return strip() + '<div class="empty"><div class="em">🔍</div>没有符合条件的笔记<br>'
     +'<span style="font-size:12px">换个关键词，或点右上角 ⇅ 重置筛选</span></div>';
   var h = strip();
@@ -537,10 +634,10 @@ function renderTodos(){
     if(p.sort==='pri') items.sort(function(a,b){return rank(b.t)-rank(a.t)});
     h += '<div class="sec">'+icons[k0]+' '+k0+' · '+items.length+'</div><div class="card" style="--i:'+(k++)+'">';
     items.forEach(function(o){
-      h += '<div class="todo'+(o.t.done?' done':'')+(o.t.priority==='high'?' pri-high':'')+'">'
-        +'<div class="cb'+(o.t.done?' on':'')+'" onclick="toggle(\''+o.n.id+'\',\''+o.t.id+'\')">'+(o.t.done?'✓':'')+'</div>'
-        +'<div class="tx">'+esc(o.t.text)
-        +'<small>'+(o.t.due?'<span class="due'+(o.t.due<now()&&!o.t.done?' over':'')+'">'+fmtTime(o.t.due)+'</span> ':'')
+      h += '<div class="todo'+(o.t.done?' done':'')+(o.t.priority==='high'?' pri-high':'')+enterCls(o.n,o.t)+'">'
+        +'<div class="cb'+(o.t.done?' on':'')+'" onclick="toggle(\''+o.n.id+'\',\''+o.t.id+'\',this)">'+(o.t.done?'✓':'')+'</div>'
+        +'<div class="tx"><span class="ttx">'+esc(o.t.text)
+        +'<small>'+(o.t.due?'<span class="due'+(o.t.due<now()&&!o.t.done?' over':'')+'">'+fmtTime(o.t.due)+'</span> '+cdChip(o.t):'')
         +'<a href="#" onclick="jump(\''+o.n.id+'\');return false">'+esc(o.n.title||'查看笔记')+'</a></small></div></div>';
     });
     h += '</div>';
@@ -552,16 +649,17 @@ function renderTodos(){
 function rank(t){ return ({high:3,normal:2,low:1})[t.priority||'normal'] }
 function hit(s){ if(!q) return true; return (s||'').toLowerCase().indexOf(q.toLowerCase())>=0 }
 function renderSettings(){
-  var s = S.settings, i = S.info;
-  var h = '<div class="card"><h2>外观</h2>'
-   +'<div class="seg" style="margin-top:10px">'
+  var s = S.settings, i = S.info, st = ST;
+  var h = '<div class="pgroup">外观</div>'
+   +'<div class="card"><div class="seg" style="margin-top:2px">'
    + ['light','dark','auto'].map(function(m){
        return '<button class="'+(m===(s.theme||'light')?'on':'')+'" onclick="setTheme(\''+m+'\')">'
          + ({light:'☀️ 亮色', dark:'🌙 暗色', auto:'🌗 跟随系统'}[m]) + '</button>'}).join('')
-   +'</div><div style="font-size:11px;color:var(--dim);margin-top:8px">默认亮色；' 
-   +'选「跟随系统」时随手机夜间模式切换</div></div>';
-  h += '<div class="card"><h2>AI 模型（BYOK）</h2>'
-   +'<div class="row between" style="margin-top:8px"><div><b>启用 AI 解析</b>'
+   +'</div><div style="font-size:11px;color:var(--dim);margin-top:8px">默认亮色；'
+   +'选「跟随系统」时随手机夜间模式切换，状态栏与导航栏同步变色</div></div>';
+
+  h += '<div class="pgroup">AI 模型（BYOK）</div><div class="card">'
+   +'<div class="row between" style="margin-top:2px"><div><b>启用 AI 解析</b>'
    +'<div style="font-size:11px;color:var(--dim)">关闭后只保存原文，不调用模型</div></div>'
    +'<div class="sw'+(s.useAI?' on':'')+'" onclick="toggleAI(this)"></div></div>'
    +'<label>API Base URL（OpenAI 兼容）</label><input id="sUrl" value="'+esc(s.baseUrl)+'" placeholder="https://your-server:8080/v1">'
@@ -569,23 +667,50 @@ function renderSettings(){
    +'<label>模型名</label><input id="sModel" value="'+esc(s.model)+'">'
    +'<div class="grid2"><div><label>超时（秒）</label><input id="sTimeout" value="'+(s.timeoutS||90)+'"></div>'
    +'<div><label>最大 tokens</label><input id="sMax" value="'+(s.maxTokens||2048)+'"></div></div>'
+   +'<label>温度 temperature</label><input id="sTemp" value="'+(s.temperature==null?'0.2':s.temperature)+'">'
    +'<div class="acts"><button class="btn pri" onclick="saveSettings()">保存</button>'
    +'<button class="btn" onclick="testLLM()">测试连接</button></div>'
    +'<div id="llmOut"></div></div>';
-  h += '<div class="card"><h2>状态</h2>'
-   +'<div class="kv"><span>笔记 / 待办</span><span>'+(i.notes||0)+' / '+(i.todos||0)+'</span></div>'
-   +'<div class="kv"><span>未完成 / 已逾期</span><span>'+(i.open||0)+' / <b style="color:var(--bad)">'+(i.overdue||0)+'</b></span></div>'
-   +'<div class="kv"><span>本地 OCR 引擎</span><span>'+(i.ocrReady?'✅ 就绪':'⏳ 初始化中')+'</span></div>'
+
+  h += '<div class="pgroup">采集</div><div class="card">'
+   +'<div class="row between" style="margin-top:2px"><div><b>剪贴板监听</b>'
+   +'<div style="font-size:11px;color:var(--dim)">复制文字 / 图片后自动暂存，点「解析」才发到大模型</div></div>'
+   +'<div class="sw dis" onclick="toast(\'剪贴板采集在 P6 上线\')"></div></div>'
+   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">需要「无障碍」权限（Android 13+ 还要通知权限）；'
+   +'未点解析之前，剪贴板内容不会离开本机。</div></div>';
+
+  h += '<div class="pgroup">本地 OCR</div><div class="card">'
+   +'<div class="kv"><span>引擎状态</span><span>'+(i.ocrReady?'✅ 就绪':'⏳ 初始化中')+'</span></div>'
+   +'<div class="kv"><span>引擎信息</span><span>'+(S.ocrInfo||'vivo 离线 OCR')+'</span></div>'
+   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">图片只在本机识别成文字，'
+   +'只有识别出的文字（和原文）会发给模型。单条笔记可在笔记卡片上「↻ 重新识别图片」。</div></div>';
+
+  h += '<div class="pgroup">数据</div><div class="card">'
+   +'<div class="kv"><span>笔记 / 待办</span><span>'+(st?st.notes.total:i.notes||0)+' / '
+     +(st?st.todos.total:i.todos||0)+'</span></div>'
+   +'<div class="kv"><span>未完成 / 已逾期</span><span>'+(st?st.todos.open:i.open||0)+' / <b style="color:var(--bad)">'
+     +(st?st.todos.overdue:i.overdue||0)+'</b></span></div>'
+   +'<div class="kv"><span>附件 / 占用</span><span>'+(st?(st.attach.count||0):0)+' 个 / '
+     +fmtSize(st?st.bytes:0)+'</span></div>'
+   +'<div class="acts"><button class="btn gh" onclick="location.href=\'/api/export\'">导出 JSON</button>'
+   +'<button class="btn gh" onclick="importJSON()">导入 JSON</button>'
+   +'<button class="btn dg" onclick="clearAllNotes()">清空全部</button></div>'
+   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">导出＝全量备份（含待办与附件元数据）；'
+   +'导入按笔记 ID 合并，已存在的笔记不覆盖；清空只删笔记与附件，设置与 API Key 保留。</div></div>';
+
+  h += '<div class="pgroup">运行状态</div><div class="card">'
    +'<div class="kv"><span>Go 服务</span><span>'+(i.server||'')+'</span></div>'
    +'<div class="kv"><span>Go / 运行时长</span><span>'+(i.go||'')+' / '+(i.uptimeS||0)+'s</span></div>'
+   +'<div class="kv"><span>时区</span><span>'+(i.tz||'')+'</span></div>'
+   +'<div class="kv"><span>解析队列</span><span>'+(i.queue||0)+' 条待处理</span></div>'
    +'<div class="acts"><button class="btn gh" onclick="showLog()">查看日志</button>'
-   +'<button class="btn gh" onclick="showDebug()">AI 调用记录</button>'
-   +'<button class="btn gh" onclick="location.href=\'/api/export\'">导出 JSON</button></div></div>';
-  h += '<div class="card"><h2>用法</h2><div class="body" style="margin-top:4px">'
-   +'· 在微信 / 浏览器 / 相册里点「分享」→ 选 eNote<br>'
-   +'· 文字直接发给模型；图片先在本机用 vivo 离线 OCR 识别成文字，再发给模型（图片不出门）<br>'
+   +'<button class="btn gh" onclick="showDebug()">AI 调用记录</button></div></div>';
+
+  h += '<div class="pgroup">用法</div><div class="card"><div class="body" style="margin-top:2px">'
+   +'· 在微信 / 浏览器 / 相册里点「分享」→ 选 懒得记<br>'
+   +'· 文字直接发给模型；图片先在本机用离线 OCR 识别成文字，再发给模型（图片不出门）<br>'
    +'· 模型返回 JSON：标题、正文、标签、待办（含到期时间）<br>'
-   +'· 底部 ＋ 可手动记文字或选图片</div></div>';
+   +'· 底部 ＋ 可手动记文字或选图片；返回键先关面板，再回笔记页</div></div>';
   return h;
 }
 function render(){
@@ -593,6 +718,7 @@ function render(){
                      : tab==='todos' ? renderTodos()
                      : tab==='files' ? renderFiles() : renderMine();
   paintStatus();
+  clearEnter();
 }
 function strip(){
   var i = S.info;
@@ -610,6 +736,7 @@ var FA = {items:[], total:0, bytes:0, files:0, missing:0, scanned:0, diskFiles:0
 var KIND = {image:'🖼',pdf:'📕',doc:'📄',sheet:'📊',slides:'📽',text:'📝',audio:'🎵',video:'🎬',archive:'🗜',file:'📎'};
 function fmtSize(b){
   b = b||0;
+  if(b >= 1073741824) return (b/1073741824).toFixed(2)+' GB';
   if(b >= 1048576) return (b/1048576).toFixed(1)+' MB';
   if(b >= 1024) return Math.round(b/1024)+' KB';
   return b+' B';
@@ -681,24 +808,69 @@ function pickFile(){
   setTimeout(function(){ filesNow() }, 2500);
   setTimeout(function(){ filesNow() }, 8000);
 }
-/* ---------- 我的页（R5/R6，P5 完善统计）---------- */
+/* ---------- 我的页（R5）：本地数据摘要 + 近 7 天活动 ----------
+   数字全部来自 /api/stats（服务端从同一份 store 现算，不会和列表页对不上）。 */
+var ST = null, stBusy = false;
+async function statsNow(){
+  if(stBusy) return;
+  stBusy = true;
+  try{ ST = await api('/api/stats') }catch(e){ ST = null }
+  stBusy = false;
+  if(tab==='mine') render();
+}
 function renderMine(){
-  var i = S.info;
-  var h = '<div class="hero"><h1>eNote</h1><p>分享即笔记 · 本机离线 OCR · 自带大模型（BYOK）</p></div>';
+  var i = S.info, s = ST;
+  var h = '<div class="hero"><h1>懒得记</h1><p>分享即笔记 · 本机离线 OCR · 自带大模型（BYOK）</p>'
+    + '<p style="margin-top:9px;font-size:11.5px;opacity:.92">'
+    + (s ? (s.notes.total+' 条笔记 · '+s.todos.total+' 条待办 · '+(s.attach.count||0)+' 个附件 · '
+            + fmtSize(s.bytes)) : '正在统计本地数据…')
+    + '</p></div>';
+  if(!s) return h + '<div class="card"><div class="skel l"></div><div class="skel s"></div></div>';
   h += '<div class="statgrid">'
-    + stat(0, i.notes||0, '笔记') + stat(1, i.todos||0, '待办') + stat(2, i.open||0, '未完成')
-    + stat(3, i.overdue||0, '已逾期') + stat(4, i.queue||0, '待解析')
-    + stat(5, i.ocrReady?'✓':'…', 'OCR 引擎') + '</div>';
-  // 主题开关在设置面板里，这里不重复列一项
+    + stat(0, s.notes.total, '笔记') + stat(1, s.todos.total, '待办')
+    + stat(2, s.todos.open, '未完成') + stat(3, s.todos.overdue, '已逾期')
+    + stat(4, s.attach.count||0, '附件') + stat(5, s.ai.calls||0, 'AI 调用') + '</div>';
+  h += '<div class="card"><h2>近 7 天</h2>'+chartHTML(s.days)
+    + '<div class="legend"><span><i style="background:var(--acc)"></i>新增笔记</span>'
+    + '<span><i style="background:var(--acc2)"></i>完成待办</span></div></div>';
+  h += '<div class="card"><h2>笔记状态</h2>'
+    + kv('AI 解析完成', s.notes.done) + kv('仅存原文', s.notes.raw)
+    + kv('解析失败', s.notes.error) + kv('队列中', (s.notes.queued||0)+(s.notes.parsing||0))
+    + kv('附件缺失文件', s.attach.missing||0) + '</div>';
+  if(s.tags && s.tags.length){
+    h += '<div class="card"><h2>常见标签</h2><div class="tagrow">'
+      + s.tags.map(function(t){return '<span class="chip tag">#'+esc(t.tag)+' · '+t.n+'</span>'}).join('')
+      + '</div></div>';
+  }
   h += '<div class="card" style="padding:2px 12px">'
-    + li('⚙️','设置','AI 模型 / 外观 / 运行状态 / 用法', 'settingsSheet()')
-    + li('📤','导出 JSON','全量备份笔记', "location.href='/api/export'")
-    + li('📜','运行日志','', 'showLog()')
-    + li('✨','AI 调用记录','', 'showDebug()')
+    + li('⚙️','设置','AI 模型 / 外观 / 采集 / OCR / 数据', 'settingsSheet()')
+    + li('📜','运行日志','Go 服务、解析队列、OCR 状态', 'showLog()')
+    + li('✨','AI 调用记录','本次运行的请求与返回', 'showDebug()')
+    + li('📤','导出 JSON','全量备份笔记与待办', "location.href='/api/export'")
+    + li('📥','导入 JSON','按笔记 ID 合并，不覆盖本地', 'importJSON()')
+    + li('🗑','清空全部','删除所有笔记与附件', 'clearAllNotes()')
     + '</div>';
   h += '<div class="card"><div class="kv"><span>Go 服务</span><span>'+(i.server||'')+'</span></div>'
-    +'<div class="kv"><span>Go / 运行时长</span><span>'+(i.go||'')+' / '+(i.uptimeS||0)+'s</span></div></div>';
+    + '<div class="kv"><span>Go / 运行时长</span><span>'+(i.go||'')+' / '+(i.uptimeS||0)+'s</span></div>'
+    + '<div class="kv"><span>时区</span><span>'+(i.tz||'')+'</span></div>'
+    + '<div class="kv"><span>OCR 引擎</span><span>'+(i.ocrReady?'✅ 就绪':'⏳ 初始化中')+'</span></div></div>';
   return h;
+}
+function kv(k, v){ return '<div class="kv"><span>'+k+'</span><span>'+v+'</span></div>' }
+function chartHTML(days){
+  var mx = 1;
+  days.forEach(function(d){ mx = Math.max(mx, d.notes, d.done) });
+  var h = '<div class="chart">';
+  days.forEach(function(d, k){
+    h += '<div class="col" title="'+esc(d.day)+'：'+d.notes+' 条笔记 / '+d.done+' 条完成">'
+      + '<div class="bars">'
+      + '<div class="bar n" style="height:'+Math.max(2,Math.round(d.notes/mx*76))
+        +'px;animation-delay:'+(k*40)+'ms"></div>'
+      + '<div class="bar d" style="height:'+Math.max(2,Math.round(d.done/mx*76))
+        +'px;animation-delay:'+(k*40+60)+'ms"></div>'
+      + '</div><div class="lb">'+esc(d.label)+'</div></div>';
+  });
+  return h+'</div>';
 }
 function stat(i, v, label){
   return '<div class="stat" style="--i:'+i+'"><b>'+v+'</b><span>'+label+'</span></div>';
@@ -709,7 +881,30 @@ function li(ic, t, sub, fn){
     +(sub?'<div style="font-size:11px;color:var(--dim2);margin-top:1px">'+sub+'</div>':'')+'</div>'
     +'<span style="color:var(--dim2)">›</span></div>';
 }
-function settingsSheet(){ sheet(renderSettings(), true); }
+function settingsSheet(){ pageSheet('设置', renderSettings()); }
+/* 全屏面板：设置页用，顶栏固定，内容可滚 */
+function pageSheet(title, html){
+  var p = $('#panel');
+  p.className = 'panel page';
+  p.innerHTML = '<div class="phead"><button class="iconbtn" onclick="closeSheet()" aria-label="返回">←</button>'
+    + '<div style="flex:1">'+esc(title)+'</div></div><div class="pbody">'+html+'</div>';
+  $('#sheet').classList.add('on');
+  p.scrollTop = 0;
+}
+function importJSON(){
+  if(!window.Android){ toast('导入只在 app 内可用'); return }
+  toast('选择之前导出的 JSON 文件…');
+  Android.pickJSON();
+}
+function clearAllNotes(){
+  var n = ST ? ST.notes.total : (S.info.notes||0);
+  askDel('清空全部 '+n+' 条笔记？附件文件一并删除，设置与 API Key 保留。', function(){
+    api('/api/clear', {}).then(function(r){
+      toast(r.ok ? ('已删除 '+r.deleted+' 条') : ('清空失败: '+(r.error||'')));
+      ST = null; refresh(); statsNow();
+    }, function(e){ toast('清空失败: '+e) });
+  });
+}
 /* ---------- 排序 / 筛选浮层（R3，P3 接服务端）---------- */
 function sortSheet(){
   var p = P(), h = '<h2>排序与筛选</h2><div style="height:6px"></div>';
@@ -763,6 +958,7 @@ function sigOf(d){
           (d && d.settings && d.settings.theme) || ''].join('|');
 }
 async function refresh(quiet){
+  if(Date.now() < animLock){ paintStatus(); return }
   try{ var d = await api('/api/state'); S = d;
        var dirty = !quiet || !drawn || sigOf(d) !== SIG;
        if(!prefsLoaded && S.settings && S.settings.ui){
@@ -783,7 +979,31 @@ async function refresh(quiet){
   catch(e){ var d = $('#dot'); if(d) d.className='dot bad'; if(!drawn) render(); }
 }
 function expand(id){ open[id]=!open[id]; render(); }
-async function toggle(nid,tid){ await api('/api/todo',{action:'toggle',noteId:nid,todoId:tid}); refresh(); }
+async function toggle(nid,tid,el){
+  // 先就地动画（划线 + 勾选 + 淡出），再提交，再让新位置高亮入场；轮询在动画期间不重绘
+  var row = el && el.closest ? el.closest('.todo') : null;
+  var done = row ? row.classList.contains('done') : false;
+  justDone[nid+'|'+tid] = 1;
+  if(row){
+    if(!done){
+      row.classList.add('justdone');
+      var cb = row.querySelector('.cb');
+      if(cb){ cb.classList.add('on'); cb.textContent = '✓' }
+      animLock = Date.now() + 900;
+      setTimeout(function(){ row.classList.add('leaving') }, 430);
+    }else{
+      row.classList.add('undone');
+      animLock = Date.now() + 520;
+    }
+  }
+  api('/api/todo', {action:'toggle', noteId:nid, todoId:tid}).then(function(){
+    setTimeout(function(){ animLock = 0; refresh(true) }, done ? 300 : 780);
+  }, function(){ animLock = 0; refresh(true) });
+}
+var justDone = {}, animLock = 0;
+function keyOf(n,t){ return n.id+'|'+t.id }
+function enterCls(n,t){ return justDone[keyOf(n,t)] ? ' enter' : '' }
+function clearEnter(){ setTimeout(function(){ justDone = {} }, 120) }
 async function delTodo(nid,tid){ await api('/api/todo',{action:'delete',noteId:nid,todoId:tid}); refresh(); }
 async function reparse(id){ if(busy[id])return; busy[id]=1; toast('AI 重新解析中…');
   await api('/api/reparse',{id:id}); setTimeout(refresh,600); setTimeout(refresh,4000); }
@@ -940,6 +1160,7 @@ function setTab(anim){
   }
   render();
   searchNow();
+  if(tab==='mine' && !ST) statsNow();
 }
 var enterT = 0;
 function moveInd(){
@@ -990,5 +1211,6 @@ setInterval(function(){ if(!document.hidden) refresh(true); }, 2000);
 refresh();
 setTab();
 </script>
+
 </body>
 </html>

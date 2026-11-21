@@ -244,6 +244,16 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * 删掉 P1 的临时调试入口（长按品牌字切换主题）。
 * 验收：`/api/stats` 数字与 `/api/state` 一致；设置面板保存后重启 app 保持；主题在设置里切换即时生效；截图（我的页 light + dark、设置面板）。
 
+### P5 验收补充（真机反馈后的修补，全部已落地）
+* **应用改名「懒得记」**：`AndroidManifest.xml` 的 `android:label`、`res/values/strings.xml`、`go/ui.html` 顶栏品牌位同步；包名 `dev.xduo.enote` 不变（改名不换包，升级安装不丢数据）。
+* **逾期差 8 小时**：Go 侧按 UTC 算「今天」，Java 把 `TimeZone.getDefault().getID()` 通过 `ENOTE_TZ` 传给 Go，`time.LoadLocation` 后按本地时区算天界；按天统计（近 7 天）同源修复。我的页「运行状态」新增一行「时区 Asia/Shanghai (UTC+8:00)」便于核对。
+* **待办到期倒计时（R11）**：`dueChip(t)` 输出「不足 N 天 / 不足 N 小时 / 不足 N 分钟 / 逾期 N…」，每秒就地改文案（`setInterval` 只写 `.cd` 的 `textContent`，不重建 DOM，不打断别的动画）；逾期红、临期黄、远期灰。
+* **勾选完成的动画**：划线（`.justdone` 删除线动画）→ 原位淡出（`.leaving`）→ 提交 → 新位置高亮入场；动画期间 `animLock` 让轮询跳过重绘，避免划线被 1.8s 刷新打断。
+* **「重要」chip 比时间标签高一截**：根因不是字体缩放，是**类名撞车**——笔记错误框 `.err`（`font-size:12px;padding:7px 9px;border-radius:10px;margin-top:8px`）与 chip 的 `class="chip err"` 同特异性、写在后面，把 chip 的盒模型整条盖掉了。错误框改名 `.errbox`，chip 只留配色；`.chip`/`.due`/`.cd` 统一 `display:inline-flex;align-items:center;font-size:10.5px;line-height:1.4;padding:1px 7px;border:1px solid …`，`.tx small` 改 `display:flex;align-items:center;gap:4px`。真机像素核对：时间 55px / 倒计时 51px / 重要 51px，上下沿 y 913–963 完全对齐。
+* **数据进出**：`/api/import`（按笔记 ID 合并，不覆盖本地）+ `/api/clear` + 导出 JSON；导入走系统文件选择器（`ACTION_GET_CONTENT` → `REQ_IMPORT` → `ContentResolver` 读流 → POST），导出页用返回键可退出（Java 返回键先回退网页历史）。
+* **启动图标换成用户提供的图标集**（不再是 `tools/gen_icon.py` 自绘竖琴，脚本保留备用）：`res/mipmap-{m,h,x,xx,xxx}hdpi/ic_launcher.png`（48/72/96/144/192）+ `res/drawable-*/ic_launcher_{background,foreground}.png`（108…432）+ `res/mipmap-anydpi-v26/ic_launcher.xml` 自适应图标；删掉全部 `ic_launcher_round.*`，`android:roundIcon` 指向 `@mipmap/ic_launcher`。app 内 logo 同源：512 母图缩到 96×96 作 `go/icon.png`，`go/web.go` `//go:embed` 后挂在 `/icon.png`，顶栏品牌位 `<img class="brand">`。母图归档 `docs/icon-src/`。
+* 回归：`tools/ui_sig_test.js` 扩到 40 条（改名、图标各尺寸 + 自适应图层 + app 内 logo、chip 统一盒模型、倒计时文案与就地更新、完成动画三段、时区传递、导入导出清空、设置面板分组）；`./test.sh --skip-build --vd` 全绿。截图：`v2-chips`/`v2-todos`/`v2-mine`/`v2-mine-bottom`/`v2-settings`/`v2-dark-*`/`v2-anim-*`。
+
 ### P6 剪贴板采集 + 常驻通知 + 批量解析（R7，方案 B）— 最大，独立发布
 * 权限：`POST_NOTIFICATIONS` 运行时申请（Android 13+）；无障碍服务在 `AndroidManifest.xml` 声明（`BIND_ACCESSIBILITY_SERVICE` + `res/xml/clip_accessibility.xml`）。
 * `ClipWatchService : AccessibilityService`：`onServiceConnected` 里注册 `addPrimaryClipChangedListener`，后台直接读全文（无障碍豁免）；同时挂常驻通知（`IMPORTANCE_LOW`，不响铃）= “已暂存 N 条 · 点按查看”，开关关闭时 `disableSelf()`。
@@ -254,7 +264,7 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * 验收：`adb shell am broadcast` 或手动复制文字/图片 → `/api/clip` 出现 N 条且笔记数不变 → 勾选 2 条 → `/api/clip/parse` → 生成 2 条笔记（`source=clip-text`/`clip-image`）；常驻通知可见（截图）；开关关掉后 `dumpsys accessibility | grep -i enote` 无服务；`test.sh` 加全链路断言。
 
 ### P7 图标重绘（R9）+ 打磨
-* `tools/gen_icon.py`：PIL 画 1024 母图（蓝绿渐变圆角底 + 白色几何竖琴：琴柱/琴颈/5～7 根弦，曲线取“神韵”不做写实），输出自适应图标（`mipmap-anydpi-v26/ic_launcher.xml` + 背景/前景层，前景留 66dp 安全区）+ `mipmap-{mdpi..xxxhdpi}/ic_launcher.png` + `docs/icon-master.png`；启动器上实机截图核对（小尺寸下弦不能糊成一团）。
+* ~~`tools/gen_icon.py` 自绘竖琴母图~~ → **已换成用户提供的图标集**（2026-11-21）：`res/mipmap-*/ic_launcher.png` + `res/drawable-*/ic_launcher_{background,foreground}.png` + `res/mipmap-anydpi-v26/ic_launcher.xml`，母图与说明归档 `docs/icon-src/`，`docs/icon-192.png` 为预览；`tools/gen_icon.py` 保留备用。剩下要做的是启动器实机截图核对（小尺寸不能糊）。
 * 微动画收尾（R10）：逐页补齐按压/入场/切换动效，统一走 token；`prefers-reduced-motion` 降级；无障碍（tab `aria-label`、点击目标 ≥44px）。
 * 其他：状态栏/导航栏颜色随主题；长文截断；`README.md`（新界面截图、剪贴板与无障碍权限说明）、`CHANGELOG.md`、`test.sh` 全量回归。
 * 可选（有余力）：导入 JSON、待办到期提醒通知、附件预览。
@@ -268,9 +278,9 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 [x] P3 搜索 + 排序 + 筛选面板（三页共用，条件持久化）
 [x] P4 附件页（附件模型 + 网格 + 通用文件服务）
 [x] P4b 底栏 5 按钮 + 自绘对话框 + 逐级返回（主页连返两次退出）+ 页面留白 + 去过度动画
-[ ] P5 我的页（统计）+ 全屏设置面板
+[x] P5 我的页（统计）+ 全屏设置面板（+ 改名「懒得记」、时区修复、倒计时、完成动画、新图标）
 [ ] P6 无障碍服务采集 + 常驻通知 + 批量一键解析
-[ ] P7 新图标（竖琴）+ 动效打磨 + 文档 + 全量回归
+[~] P7 新图标（已换成用户提供的图标集）+ 动效打磨（进行中）+ 文档 + 全量回归
 ```
 
 ---
