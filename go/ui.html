@@ -633,7 +633,15 @@ function askBattery(){
 var clipSel = {};
 function clipBanner(){
   var n = (S.info && S.info.clip) || 0;
-  if(!n) return '';
+  if(!n){
+    // 后台看到剪贴板变了，但前台读被系统拒了 → 给个一键入口，不要默默失败
+    var hint = window.Android && Android.clipHint && Android.clipHint() === '1';
+    if(!hint) return '';
+    return '<div class="clipbanner" onclick="importClip()"><span>📋</span>'
+      +'<div style="flex:1"><b>剪贴板刚有更新</b>'
+      +'<div class="cbsub">系统不让后台读，点这里收进暂存</div></div>'
+      +'<span class="cbar">收进来 ›</span></div>';
+  }
   return '<div class="clipbanner" onclick="clipSheet()"><span>📋</span>'
     +'<div style="flex:1"><b>剪贴板暂存 '+n+' 条</b>'
     +'<div class="cbsub">复制的内容已留在这里，点开勾选再处理</div></div>'
@@ -1196,8 +1204,11 @@ function settingsRefresh(){
   settingsSheet();
   requestAnimationFrame(function(){ $('#panel').scrollTop = top; });
 }
-/* 从系统设置页回来后重新读一次权限/保活状态 */
-window.onAppResume = settingsRefresh;
+/* 从系统设置页回来后重新读一次权限/保活状态；顺便重画，让「剪贴板刚有更新」提示立刻出现 */
+window.onAppResume = function(){
+  settingsRefresh();
+  if (S && S.notes) render();
+};
 /* 全屏面板：设置页用，顶栏固定，内容可滚 */
 function pageSheet(title, html){
   var p = $('#panel');

@@ -69,6 +69,7 @@ if (!noPageEnter) bad++;
 
 // ---------- 底部 5 按钮 / 自绘对话框 / 返回键 ----------
 const java = fs.readFileSync(path.join(root, 'src/dev/xduo/enote/MainActivity.java'), 'utf8');
+const keepalive = fs.readFileSync(path.join(root, 'src/dev/xduo/enote/KeepAlive.java'), 'utf8');
 
 // “记一笔”在导航栏第三格，形成 5 个按钮
 const bar = src.match(/<nav class="tabbar"[\s\S]*?<\/nav>/);
@@ -282,7 +283,10 @@ if (!clip) bad++;
 const clipFocus = /onWindowFocusChanged/.test(mainact) && /clipWaitingFocus/.test(mainact)
   && /clipTries/.test(mainact)
   && /public void clipImport/.test(fs.readFileSync(path.join(root, 'src/dev/xduo/enote/Bridge.java'), 'utf8'))
-  && /id="clipBtn"/.test(src) && /Android\.clipImport/.test(src) && /window\.onClipRead/.test(src);
+  && /id="clipBtn"/.test(src) && /Android\.clipImport/.test(src) && /window\.onClipRead/.test(src)
+  // 后台监听器只记录「剪贴板变了」（读才受限），回来读不到时页面给一键入口
+  && /markClipChanged/.test(keepalive) && /clipHint/.test(keepalive)
+  && /Android\.clipHint/.test(src) && /剪贴板刚有更新/.test(src);
 console.log((clipFocus ? '  ok   ' : '  FAIL ') + '剪贴板焦点重试（通知点进来读得到的修复）+ 顶栏 📋 手动导入');
 if (!clipFocus) bad++;
 

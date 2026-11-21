@@ -164,6 +164,7 @@ public class MainActivity extends Activity {
         // 用户从别处复制、切回来时 onResume 会把内容暂存，Go 侧去重避免重复。
         registerClipboard();
         clipTries = 0;
+        resumedNow = true;
         clipWaitingFocus = true;
         drainClipboard();
         // 常驻后台：用户在设置里开过就重新拉起（进程被回收后回来也能恢复）
@@ -175,6 +176,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        resumedNow = false;
         ClipboardManager cm = clipboard;
         if (cm != null) {
             try { cm.removePrimaryClipChangedListener(clipListener); } catch (Throwable ignored) {}
@@ -186,6 +188,7 @@ public class MainActivity extends Activity {
     ClipboardManager clipboard;
     int clipTries;                // 被系统拒读时的重试次数
     boolean clipWaitingFocus;    // onResume 比窗口拿到焦点更早，等焦点到了再读一次
+    boolean resumedNow;           // 只给诊断日志用
     final ClipboardManager.OnPrimaryClipChangedListener clipListener =
             new ClipboardManager.OnPrimaryClipChangedListener() {
                 @Override public void onPrimaryClipChanged() { drainClipboard(); }
@@ -202,6 +205,7 @@ public class MainActivity extends Activity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        note("window focus: " + hasFocus + (clipWaitingFocus ? " → 补读剪贴板" : ""));
         if (hasFocus && clipWaitingFocus) {
             clipWaitingFocus = false;
             drainClipboard();
@@ -239,10 +243,13 @@ public class MainActivity extends Activity {
                     ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                     ClipData cd = cm == null ? null : cm.getPrimaryClip();
                     if (cd == null) {
-                        // 读被拒（无焦点）或剪贴板为空：退避重试几次，焦点一到就能读到
-                        if (clipTries < 4 && web != null) {
+                        // 读被拒（无焦点）或剪贴板为空：退避重试，焦点一到就能读到
+                        note("clip drain#" + clipTries + " 读不到（windowFocus="
+                                + (web != null && web.hasWindowFocus()) + ", resumed=" + resumedNow
+                                + "）" + (KeepAlive.clipHint(Bridge.appCtx != null ? Bridge.appCtx : getApplicationContext()) ? " · 后台看到过变化" : ""));
+                        if (clipTries < 8 && web != null) {
                             clipTries++;
-                            web.postDelayed(clipRetry, 300L * clipTries);
+                            web.postDelayed(clipRetry, 400L * clipTries);
                         }
                         return;
                     }
@@ -651,6 +658,10 @@ public class MainActivity extends Activity {
                         public void run() {
                             ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                             if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("hook", t));
+                            // 写完再采：跟真实场景一致（复制发生在前台采集之前）
+                            clipTries = 0;
+                            clipWaitingFocus = true;
+                            drainClipboard();
                         }
                     });
                     out = "{\"ok\":true,\"len\":" + t.length() + "}";

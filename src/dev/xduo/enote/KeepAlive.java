@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -43,6 +44,33 @@ public final class KeepAlive extends Service {
     static final long RESYNC_MS = 10 * 60 * 1000L;
     private static final String PREFS = "keepalive";
     private static final String KEY_ON = "on";
+    private static final String KEY_CLIP_CHANGED = "clipChangedAt";
+    private static final String KEY_CLIP_CAPTURED = "clipCapturedAt";
+
+    // ---------------------------------------------------------------- clipboard hint
+    //
+    // A clipboard *listener* is allowed in the background (only the read is restricted), so the
+    // service records "the clipboard changed at T". When the user comes back and the focused
+    // read is refused, the UI can say "剪贴板刚有更新 · 点这里收进来" instead of failing silently.
+
+    static void markClipChanged(Context c) {
+        prefs(c).edit().putLong(KEY_CLIP_CHANGED, System.currentTimeMillis()).apply();
+        Log.i(TAG, "clipboard changed (watched by keepalive)");
+    }
+
+    static void markClipCaptured(Context c) {
+        prefs(c).edit().putLong(KEY_CLIP_CAPTURED, System.currentTimeMillis()).apply();
+    }
+
+    /** True when the clipboard changed after our last successful capture. */
+    static boolean clipHint(Context c) {
+        SharedPreferences p = prefs(c);
+        return p.getLong(KEY_CLIP_CHANGED, 0) > p.getLong(KEY_CLIP_CAPTURED, 0);
+    }
+
+    private static SharedPreferences prefs(Context c) {
+        return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
 
     private Handler handler;
 
@@ -151,6 +179,7 @@ public final class KeepAlive extends Service {
             return START_NOT_STICKY;
         }
         startForeground(NOTIFY_ID, build(this));
+        watchClipboard();
         if (handler != null) {
             handler.removeCallbacks(resync);
             handler.post(resync);
@@ -163,7 +192,28 @@ public final class KeepAlive extends Service {
     @Override
     public void onDestroy() {
         if (handler != null) handler.removeCallbacksAndMessages(null);
+        try {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null && clipWatcher != null) cm.removePrimaryClipChangedListener(clipWatcher);
+        } catch (Throwable ignored) {}
+        clipWatcher = null;
         super.onDestroy();
+    }
+
+    ClipboardManager.OnPrimaryClipChangedListener clipWatcher;
+
+    private void watchClipboard() {
+        try {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm == null || clipWatcher != null) return;
+            clipWatcher = new ClipboardManager.OnPrimaryClipChangedListener() {
+                @Override public void onPrimaryClipChanged() { markClipChanged(KeepAlive.this); }
+            };
+            cm.addPrimaryClipChangedListener(clipWatcher);
+            Log.i(TAG, "keepalive: clipboard watcher registered");
+        } catch (Throwable t) {
+            Log.w(TAG, "keepalive clipboard watcher: " + t);
+        }
     }
 
     /** Re-asserts the alarm set from the store; the page is not involved. */

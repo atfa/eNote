@@ -38,8 +38,11 @@ public class Bridge {
     static native String nativeNoteImage(String id);
     static native void nativeSetOcr(boolean ready, String info);
 
+    static volatile Context appCtx;  // set in init(), for the clipboard hint (no Activity needed)
+
     static synchronized void init(Context c) {
         if (loaded) return;
+        appCtx = c.getApplicationContext();
         try {
             System.loadLibrary("enote");
             loaded = true;
@@ -130,7 +133,16 @@ public class Bridge {
             return false;
         }
         String r = nativeClipAdd(o.toString());
-        return r != null && r.contains("\"ok\":true") && !r.contains("\"duplicate\":true");
+        boolean added = r != null && r.contains("\"ok\":true") && !r.contains("\"duplicate\":true");
+        if (added && appCtx != null) KeepAlive.markClipCaptured(appCtx);
+        return added;
+    }
+
+    /** 剪贴板在后台变过、我们还没成功抓到 → 页面提示「点这里收进来」。 */
+    @JavascriptInterface
+    public String clipHint() {
+        Context c = appCtx;
+        return c != null && KeepAlive.clipHint(c) ? "1" : "0";
     }
 
 
