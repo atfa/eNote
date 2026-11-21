@@ -255,13 +255,15 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .clicb{flex:0 0 20px;width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line);
   display:flex;align-items:center;justify-content:center;color:var(--acc);font-size:13px;margin-top:2px}
 .clipitem.on .clicb{background:var(--acc);border-color:var(--acc);color:#fff}
-.clipbody{flex:1;min-width:0}
+.clipbody{flex:1;min-width:0;text-align:left}
 .cliprev{font-size:13px;color:var(--fg);white-space:pre-wrap;word-break:break-word}
 .climthumb{font-size:13px;color:var(--fg)}
 .climeta{font-size:11px;color:var(--dim);margin-top:4px}
 .clipacts{display:flex;gap:8px;margin-top:12px}
 .clipacts .btn{flex:1}
-.clipload{color:var(--dim);padding:20px 0;text-align:center}
+.clipdel{background:none;border:none;color:var(--dim);font-size:15px;padding:2px 6px;cursor:pointer}
+.clipdel:active{color:var(--acc)}
+.clipload{color:var(--dim);padding:20px 0}
 
 /* --- 底部导航（4 页 + 中间动作按钮 = 5 个，滑动指示条，R2a）--- */
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;align-items:flex-end;
@@ -665,6 +667,7 @@ function clipSheet(){
     +'<div class="sp"></div><span id="clipCount" style="font-size:12px;color:var(--dim)"></span></div>'
     +'<div id="clipList" class="clipload">加载中…</div>'
     +'<div class="clipacts">'
+    +'<button class="btn" onclick="clipDelSel()">删除所选</button>'
     +'<button class="btn" onclick="clipParse(false)">原样存为笔记</button>'
     +'<button class="btn pri" onclick="clipParse(true)">一键解析</button></div>');
   loadClips();
@@ -681,8 +684,10 @@ async function loadClips(){
       return;
     }
     var h = '';
+    // clipSel 是全局的，只增不减的话「已选 N 条」会把早就处掉的旧 id 也算进去
+    var keep = {};
     clips.forEach(function(c){
-      clipSel[c.id] = clipSel[c.id] !== undefined ? clipSel[c.id] : true;
+      keep[c.id] = clipSel[c.id] !== undefined ? clipSel[c.id] : true;
       var on = !!clipSel[c.id];
       var body = c.kind==='image'
         ? '<div class="climthumb">🖼 图片'+(c.name?' · '+esc(c.name):'')+'</div>'
@@ -690,8 +695,10 @@ async function loadClips(){
       h += '<div class="clipitem'+(on?' on':'')+'" onclick="clipPick(\''+c.id+'\',this)">'
         +'<div class="clicb">'+(on?'✓':'')+'</div>'
         +'<div class="clipbody">'+body
-        +'<div class="climeta">'+esc(c.app||'剪贴板')+' · '+relTime(c.createdAt)+'</div></div></div>';
+        +'<div class="climeta">'+esc(c.app||'剪贴板')+' · '+relTime(c.createdAt)+'</div></div>'
+        +'<button class="clipdel" onclick="clipDel(event,'+JSON.stringify(c.id)+')" aria-label="删除这条">✕</button></div>';
     });
+    clipSel = keep;
     var el2 = $('#clipList'); if(el2) el2.innerHTML = h;
     clipCount();
   }catch(e){
@@ -716,11 +723,35 @@ function clipSelAll(v){
   clipCount();
 }
 function clipCount(){
-  var n = Object.keys(clipSel).filter(function(k){return clipSel[k]}).length;
-  var el = $('#clipCount'); if(el) el.textContent = '已选 '+n+' 条';
+  // 以页面上真正列出来的条目为准，不拿全局 map 计数
+  var items = document.querySelectorAll('.clipitem');
+  var n = 0;
+  for(var i=0;i<items.length;i++){ if(items[i].classList.contains('on')) n++; }
+  var el = $('#clipCount');
+  if(el) el.textContent = items.length ? '已选 '+n+' / '+items.length+' 条' : '0 条';
 }
 function clipSelected(){
   return Object.keys(clipSel).filter(function(k){return clipSel[k]});
+}
+function clipDel(ev, id){
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  clipRemove([id]);
+}
+function clipDelSel(){
+  var ids = clipSelected();
+  if(!ids.length) return toast('先勾选要删除的条目');
+  clipRemove(ids);
+}
+async function clipRemove(ids){
+  try{
+    var r = await api('/api/clip/remove', {ids:ids});
+    if(r && r.ok === false) return toast('删除失败: '+(r.error||''));
+    ids.forEach(function(id){ delete clipSel[id]; });
+    toast('已删除 '+ids.length+' 条');
+    if(window.Android && Android.clipSync) Android.clipSync();
+    loadClips();
+    refresh(true);
+  }catch(e){ toast('删除失败'); }
 }
 async function clipParse(ai){
   var ids = clipSelected();
@@ -730,6 +761,7 @@ async function clipParse(ai){
   toast(ai ? (ok ? '已入队解析 '+r.parsed+' 条' : '解析失败: '+(r&&r.error||''))
             : (ok ? '已存 '+r.parsed+' 条笔记' : '保存失败: '+(r&&r.error||'')));
   clipSel = {};
+  if(window.Android && Android.clipSync) Android.clipSync();
   closeSheet();
   refresh();
 }

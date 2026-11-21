@@ -131,7 +131,13 @@ public class MainActivity extends Activity {
     void handleIntent(Intent intent) {
         if (intent == null) return;
         String hook = intent.getStringExtra("hook");
-        if (hook != null && hook.length() > 0) runHook(hook);
+        if (hook != null && hook.length() > 0) {
+            // 不删的话，这个 intent 会一直是 task 的入口 intent，每次重启/恢复都重跑一次
+            // hook（以前发生过：开机后 clipset 重跑，把用户刚复制的内容盖掉了）
+            intent.removeExtra("hook");
+            intent.removeExtra("arg");
+            runHook(hook);
+        }
         String open = intent.getStringExtra("openNote");
         if (open == null || open.isEmpty()) open = intent.getStringExtra("openTodo");
         if (open != null && open.length() > 0) {
@@ -165,6 +171,7 @@ public class MainActivity extends Activity {
         registerClipboard();
         clipTries = 0;
         resumedNow = true;
+        foreground = true;
         clipWaitingFocus = true;
         drainClipboard();
         // 常驻后台：用户在设置里开过就重新拉起（进程被回收后回来也能恢复）
@@ -177,6 +184,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         resumedNow = false;
+        foreground = false;
         ClipboardManager cm = clipboard;
         if (cm != null) {
             try { cm.removePrimaryClipChangedListener(clipListener); } catch (Throwable ignored) {}
@@ -189,6 +197,7 @@ public class MainActivity extends Activity {
     int clipTries;                // 被系统拒读时的重试次数
     boolean clipWaitingFocus;    // onResume 比窗口拿到焦点更早，等焦点到了再读一次
     boolean resumedNow;           // 只给诊断日志用
+    static volatile boolean foreground;   // 给常驻服务判断「要不要发通知」（同进程）
     final ClipboardManager.OnPrimaryClipChangedListener clipListener =
             new ClipboardManager.OnPrimaryClipChangedListener() {
                 @Override public void onPrimaryClipChanged() { drainClipboard(); }
@@ -701,6 +710,10 @@ public class MainActivity extends Activity {
                         }
                     });
                     out = "{\"ok\":true,\"len\":" + t.length() + "}";
+                } else if ("clipnotify".equals(hook)) {
+                    // 验收用：直接发一条剪贴板通知（这台 ROM 后台不投递监听，靠这条测通知本身）
+                    KeepAlive.notifyClip(MainActivity.this, Bridge.clipCount());
+                    out = "{\"ok\":true,\"clips\":" + Bridge.clipCount() + "}";
                 } else {
                     out = Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
                 }

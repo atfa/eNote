@@ -136,8 +136,27 @@ public class Bridge {
         Log.i(TAG, "clipAdd resp=" + (r == null ? "null"
                 : r.length() > 220 ? r.substring(0, 220) : r) + " 入参 text=" + text.length() + " app=" + app);
         boolean added = r != null && r.contains("\"ok\":true") && !r.contains("\"duplicate\":true");
-        if (added && appCtx != null) KeepAlive.markClipCaptured(appCtx);
+        if (added && appCtx != null) {
+            KeepAlive.markClipCaptured(appCtx);
+            KeepAlive.updateNotification(appCtx);          // 常驻通知上的条数跟着变
+            if (!MainActivity.foreground) KeepAlive.notifyClip(appCtx, clipCount());
+        }
         return added;
+    }
+
+    static int clipCount() {
+        try {
+            return loaded ? nativeClipCount() : 0;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    /** 页面删完条目后叫一声，让常驻通知上的条数别撒谎。 */
+    @JavascriptInterface
+    public void clipSync() {
+        Context c = appCtx;
+        if (c != null) KeepAlive.updateNotification(c);
     }
 
     /** 剪贴板在后台变过、我们还没成功抓到 → 页面提示「点这里收进来」。 */

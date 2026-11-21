@@ -37,8 +37,12 @@ import android.util.Log;
 public final class KeepAlive extends Service {
     static final String TAG = "enote";
     static final String CHANNEL = "keepalive";
+    static final String CHANNEL_CLIP = "clipboard";
     /** Deliberately a fixed id so repeated startForeground calls reuse one notification. */
     static final int NOTIFY_ID = 0x4b41;
+    static final int CLIP_NOTIFY_ID = 0x4b42;
+    /** Tapping the clipboard notification opens the app on the 暂存 page. */
+    public static final String EXTRA_OPEN_CLIP = "openClip";
     static final String ACTION_ON = "dev.xduo.enote.KEEPALIVE_ON";
     /** How often we re-assert the alarm set. Cheap: one JSON read + a diff. */
     static final long RESYNC_MS = 10 * 60 * 1000L;
@@ -56,6 +60,9 @@ public final class KeepAlive extends Service {
     static void markClipChanged(Context c) {
         prefs(c).edit().putLong(KEY_CLIP_CHANGED, System.currentTimeMillis()).apply();
         Log.i(TAG, "clipboard changed (watched by keepalive)");
+        // 后台看到变化：发一条通知让用户知道，而不是等他下拉界面去找（标准 API，
+        // 部分厂商 ROM 只在后台投递监听，这里发不出去也不算失败）。
+        if (!MainActivity.foreground) notifyClip(c, -1);
     }
 
     static void markClipCaptured(Context c) {
@@ -169,6 +176,7 @@ public final class KeepAlive extends Service {
         super.onCreate();
         handler = new Handler(Looper.getMainLooper());
         ensureChannel(this);
+        ensureClipChannel(this);
     }
 
     @Override
@@ -251,16 +259,77 @@ public final class KeepAlive extends Service {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pi = PendingIntent.getActivity(c, 0x4b41, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        int clips = Bridge.clipCount();
         Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? new Notification.Builder(c, CHANNEL) : new Notification.Builder(c);
         b.setSmallIcon(android.R.drawable.ic_menu_recent_history)
                 .setContentTitle("懒得记正在守护到期提醒")
-                .setContentText("常驻后台已开启 · 点按打开；不需要可在设置里关闭")
+                .setContentText(clips > 0
+                        ? "剪贴板暂存 " + clips + " 条 · 点按整理"
+                        : "常驻后台已开启 · 点按打开；不需要可在设置里关闭")
                 .setOngoing(true)
                 .setShowWhen(false)
                 .setPriority(Notification.PRIORITY_MIN)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .setContentIntent(pi);
         return b.build();
+    }
+
+    /** 常驻通知兼作状态条：条数变了就刷新一下（只在服务确实在跑时）。 */
+    static void updateNotification(Context c) {
+        try {
+            NotificationManager nm = c.getSystemService(NotificationManager.class);
+            if (nm == null || !enabled(c)) return;
+            android.service.notification.StatusBarNotification[] active = nm.getActiveNotifications();
+            if (active == null) return;
+            for (android.service.notification.StatusBarNotification n : active) {
+                if (n.getId() == NOTIFY_ID) { nm.notify(NOTIFY_ID, build(c)); return; }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "keepalive notify: " + t);
+        }
+    }
+
+    /**
+     * 剪贴板有新东西：主动发一条可点的通知，而不是等用户自己下拉界面去找。
+     * count < 0 表示只知道「变了」还不知道条数（后台监听只能知道变化，读不到内容）。
+     */
+    static void notifyClip(Context c, int count) {
+        try {
+            ensureClipChannel(c);
+            Intent open = new Intent(c, MainActivity.class)
+                    .setAction(Intent.ACTION_VIEW)
+                    .putExtra(EXTRA_OPEN_CLIP, "1")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent pi = PendingIntent.getActivity(c, 0x4b42, open,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? new Notification.Builder(c, CHANNEL_CLIP) : new Notification.Builder(c);
+            b.setSmallIcon(android.R.drawable.ic_menu_agenda)
+                    .setContentTitle(count > 0 ? "剪贴板已暂存 " + count + " 条" : "剪贴板刚复制了内容")
+                    .setContentText(count > 0 ? "点按整理（勾选后一键解析 / 原样存为笔记）"
+                            : "点一下收进暂存（系统不让后台读，前台才能读）")
+                    .setStyle(new Notification.BigTextStyle().bigText(
+                            count > 0 ? "已暂存 " + count + " 条，点按勾选后一键解析成笔记 + 待办"
+                                    : "在后台看到剪贴板变了，但系统不让后台读内容，点一下收进来"))
+                    .setAutoCancel(true)
+                    .setContentIntent(pi);
+            NotificationManager nm = c.getSystemService(NotificationManager.class);
+            if (nm != null) nm.notify(CLIP_NOTIFY_ID, b.build());
+            Log.i(TAG, "clip notify: " + count);
+        } catch (Throwable t) {
+            Log.w(TAG, "clip notify: " + t);
+        }
+    }
+
+    /** IMPORTANCE_DEFAULT：普通横幅，不震动不 heads-up 骚扰。 */
+    static void ensureClipChannel(Context c) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        if (nm == null || nm.getNotificationChannel(CHANNEL_CLIP) != null) return;
+        NotificationChannel ch = new NotificationChannel(
+                CHANNEL_CLIP, "剪贴板暂存", NotificationManager.IMPORTANCE_DEFAULT);
+        ch.setDescription("复制了内容时提醒收进暂存");
+        nm.createNotificationChannel(ch);
     }
 }

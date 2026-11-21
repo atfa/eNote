@@ -290,6 +290,29 @@ const clipFocus = /onWindowFocusChanged/.test(mainact) && /clipWaitingFocus/.tes
 console.log((clipFocus ? '  ok   ' : '  FAIL ') + '剪贴板焦点重试（通知点进来读得到的修复）+ 顶栏 📋 手动导入');
 if (!clipFocus) bad++;
 
+// 恒真式去重签名（kindSig 忽略 c 自己）让第一条之后的复制全被当重复丢弃：
+// 签名必须用存储项自己的字段，并且有「三次不同复制存三条」的回归护栏。
+const clipSig = /func \(c \*Clip\) sig\(\) string/.test(goclip)
+  && /last\.sig\(\) == sig/.test(goclip) && !/kindSig\(kind, text, path\) == sig/.test(goclip);
+const clipSigTest = /TestClipAddKeepsDistinctCopies/.test(fs.readFileSync(path.join(root, 'go/clip_test.go'), 'utf8'));
+console.log((clipSig && clipSigTest ? '  ok   ' : '  FAIL ') + '剪贴板去重签名用存储项自己的字段（恒真式回归）');
+if (!(clipSig && clipSigTest)) bad++;
+
+// 计数以页面列出的条目为准（全局 clipSel 只增不减会把旧 id 算进去）；条目可单条删除
+const clipDel = /function clipRemove/.test(src) && /\/api\/clip\/remove/.test(src)
+  && /class="clipdel"/.test(src) && /function clipDelSel/.test(src)
+  && /已选 /.test(src) && /clipSel = keep/.test(src);
+console.log((clipDel ? '  ok   ' : '  FAIL ') + '剪贴板计数按页面条目算 + 单条/批量删除');
+if (!clipDel) bad++;
+
+// 监控到变化要主动发通知，不是等用户下拉界面；常驻通知兼作条数状态条
+const clipNotify = /CLIP_NOTIFY_ID/.test(keepalive) && /static void notifyClip/.test(keepalive)
+  && /CHANNEL_CLIP/.test(keepalive) && /updateNotification/.test(keepalive)
+  && /notifyClip/.test(fs.readFileSync(path.join(root, 'src/dev/xduo/enote/Bridge.java'), 'utf8'))
+  && /剪贴板暂存 /.test(keepalive);
+console.log((clipNotify ? '  ok   ' : '  FAIL ') + '剪贴板主动通知 + 常驻通知显示暂存条数');
+if (!clipNotify) bad++;
+
 // tab 切换不再有整页浮现动画（用户要求：干净利落，避免闪烁）
 const cleanTab = !/main\.enter/.test(src) && !/@keyframes fadein/.test(src)
   && /\.todo\.enter/.test(src);              // 完成待办的高亮动画保留
