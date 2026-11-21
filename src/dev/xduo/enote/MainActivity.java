@@ -4,6 +4,8 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
+import android.provider.AlarmClock;
+import android.provider.CalendarContract;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -252,6 +254,49 @@ public class MainActivity extends Activity {
     }
 
     /** Called from JS: window.Android.pickJSON() - restore a JSON export (设置 → 数据). */
+    /**
+     * R13-A: hand a due todo to the system calendar. ACTION_INSERT needs no permission and
+     * lets the user confirm in the calendar app, which owns its own reminder machinery.
+     */
+    public void addToCalendar(String title, long dueMs) {
+        long end = dueMs + 30 * 60 * 1000L;
+        Intent i = new Intent(Intent.ACTION_INSERT);
+        i.setData(CalendarContract.Events.CONTENT_URI);
+        i.putExtra(CalendarContract.Events.TITLE, title);
+        i.putExtra(CalendarContract.Events.DESCRIPTION, "来自 懒得记");
+        i.putExtra(CalendarContract.Events.DTSTART, dueMs);
+        i.putExtra(CalendarContract.Events.DTEND, end);
+        i.putExtra(CalendarContract.Events.ALL_DAY, false);
+        // vivo/AOSP 日历读这两个 key 预填时间（Intent.EXTRA_EVENT_* 在 API 33 里不存在）
+        i.putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dueMs);
+        i.putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end);
+        i.putExtra(Intent.EXTRA_EMAIL, "");
+        launchExternal(i, "日历");
+    }
+
+    /** R13-B: system alarm at the due time; some vendor clock apps ignore SKIP_UI. */
+    public void setAlarm(long dueMs, String label) {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.setTimeInMillis(dueMs);
+        Intent i = new Intent(AlarmClock.ACTION_SET_ALARM);
+        i.putExtra(AlarmClock.EXTRA_HOUR, c.get(java.util.Calendar.HOUR_OF_DAY));
+        i.putExtra(AlarmClock.EXTRA_MINUTES, c.get(java.util.Calendar.MINUTE));
+        i.putExtra(AlarmClock.EXTRA_MESSAGE, label);
+        i.putExtra(AlarmClock.EXTRA_SKIP_UI, true);
+        i.putExtra(AlarmClock.EXTRA_VIBRATE, true);
+        launchExternal(i, "闹钟");
+    }
+
+    private void launchExternal(Intent i, String what) {
+        try {
+            startActivity(i);
+            note(what + "：已交给系统应用");
+        } catch (Throwable t) {
+            note(what + "：没有可用的系统应用（" + t.getClass().getSimpleName() + "）");
+            Toast.makeText(this, "这台机器没有可用的" + what + "应用", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     public void pickJSON() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         i.setType("*/*");
@@ -383,6 +428,18 @@ public class MainActivity extends Activity {
                     out = Bridge.statusStatic();
                 } else if ("enqueue".equals(hook)) {
                     out = Bridge.nativeEnqueue(arg == null ? "{}" : arg);
+                } else if ("calendar".equals(hook)) {
+                    final String t = arg == null ? "懒得记 hook 测试" : arg;
+                    runOnUiThread(new Runnable() {
+                        public void run() { addToCalendar(t, System.currentTimeMillis() + 3600000L); }
+                    });
+                    out = "{\"ok\":true,\"what\":\"calendar\"}";
+                } else if ("alarm".equals(hook)) {
+                    final String t = arg == null ? "懒得记 hook 测试" : arg;
+                    runOnUiThread(new Runnable() {
+                        public void run() { setAlarm(System.currentTimeMillis() + 3600000L, t); }
+                    });
+                    out = "{\"ok\":true,\"what\":\"alarm\"}";
                 } else {
                     out = Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
                 }

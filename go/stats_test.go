@@ -170,3 +170,16 @@ func TestImportEnvelope(t *testing.T) {
 		t.Fatalf("single import = %+v", r4)
 	}
 }
+
+// R12: cleanFacts drops empty/duplicate entries and caps the list.
+func TestCleanFacts(t *testing.T) {
+	in := []Fact{{Q: "何时", A: "2026-11-19"}, {Q: "何时", A: "重复"}, {Q: "何人", A: "  "},
+		{Q: " ", A: "无问题"}, {Q: "异常指标", A: "总胆固醇偏高"}}
+	got := cleanFacts(in)
+	if len(got) != 2 || got[0].Q != "何时" || got[0].A != "2026-11-19" || got[1].Q != "异常指标" {
+		t.Fatalf("cleanFacts: %+v", got)
+	}
+	if cleanFacts([]Fact{{Q: "何时", A: ""}}) != nil {
+		t.Fatal("empty facts must be nil so the card shows nothing")
+	}
+}

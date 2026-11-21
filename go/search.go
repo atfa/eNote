@@ -53,9 +53,14 @@ func searchableFields(n *Note) [][2]string {
 	for _, a := range n.Attachments {
 		names = append(names, a.Name)
 	}
+	facts := make([]string, 0, len(n.Facts))
+	for _, f := range n.Facts {
+		facts = append(facts, f.Q+" "+f.A)
+	}
 	return [][2]string{
 		{"标题", n.Title},
 		{"正文", n.Content},
+		{"关键信息", strings.Join(facts, " ")},
 		{"待办", strings.Join(todos, " ")},
 		{"标签", strings.Join(n.Tags, " ")},
 		{"附件名", strings.Join(names, " ")},

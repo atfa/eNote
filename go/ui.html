@@ -138,6 +138,18 @@ a{color:var(--acc)}
 .cd.soon{color:var(--warn);border-color:var(--warn);background:var(--warn-s)}
 .cd.over{color:var(--bad);border-color:var(--bad);background:var(--bad-s)}
 .cd.done{color:var(--dim2);font-weight:500;opacity:.8}
+/* 关键信息（R12）：六问提取出来的事实，问题做 label、答案做正文 */
+.facts{margin:8px 0 2px;border:1px solid var(--line);border-radius:11px;background:var(--card2);overflow:hidden}
+.facts .fh{font-size:11px;font-weight:700;color:var(--dim);letter-spacing:1px;padding:7px 10px 5px;
+  border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px}
+.facts .fr{display:flex;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);align-items:baseline}
+.facts .fr:last-child{border-bottom:0}
+.facts .fq{flex:0 0 62px;font-size:11px;color:var(--acc);font-weight:600}
+.facts .fa{flex:1;font-size:12.5px;color:var(--fg);word-break:break-word}
+/* 到期提醒入口（R13-A/B）：有 due 才出现，交给系统日历/闹钟 */
+.remind{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.4;padding:1px 6px;
+  border-radius:6px;border:1px solid var(--line);background:var(--card2);color:var(--dim);vertical-align:middle}
+.remind:active{transform:scale(.94)}
 .thumb{width:100%;max-height:230px;object-fit:contain;border-radius:12px;margin-top:8px;
   border:1px solid var(--line);background:var(--thumb-bg)}
 .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
@@ -202,10 +214,11 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;
   padding:calc(8px + env(safe-area-inset-top)) 10px 8px;
   background:var(--header-bg);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-.iconbtn{flex:0 0 38px;height:38px;border-radius:12px;border:1px solid var(--line);background:var(--card);
+.iconbtn{flex:0 0 38px;height:38px;padding:0;border-radius:12px;border:1px solid var(--line);background:var(--card);
   display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--fg);position:relative;
   box-shadow:var(--sh);overflow:hidden;
   transition:transform var(--d1) var(--ease),background var(--d1) var(--ease)}
+/* logo 铺满按钮：UA 的 button{padding} 会把图挤小，露出一圈白底外框（R14）*/
 .iconbtn img.brand{width:100%;height:100%;object-fit:cover;border-radius:11px;display:block}
 .iconbtn:active{transform:scale(.9)}
 .iconbtn .dot{position:absolute;right:5px;top:5px;width:7px;height:7px;border-radius:50%;background:var(--ok)}
@@ -525,11 +538,38 @@ function tickCD(){
   }
 }
 setInterval(tickCD, 20000);
+function dueMs(iso){ if(!iso) return 0; var d=new Date(iso); return isNaN(d)?0:d.getTime() }
+/* R13：把到期时间交给系统日历 / 闹钟（intent，不需要权限）*/
+function toCalendar(nid,tid,ev){
+  ev.stopPropagation();
+  var n=S.notes.filter(function(x){return x.id===nid})[0]; if(!n) return;
+  var t=(n.todos||[]).filter(function(x){return x.id===tid})[0]; if(!t||!t.due) return;
+  if(!window.Android||!Android.addToCalendar){ toast('日历只在 app 内可用'); return }
+  Android.addToCalendar(t.text, dueMs(t.due));
+}
+function toAlarm(nid,tid,ev){
+  ev.stopPropagation();
+  var n=S.notes.filter(function(x){return x.id===nid})[0]; if(!n) return;
+  var t=(n.todos||[]).filter(function(x){return x.id===tid})[0]; if(!t||!t.due) return;
+  if(!window.Android||!Android.setAlarm){ toast('闹钟只在 app 内可用'); return }
+  Android.setAlarm(dueMs(t.due), t.text);
+}
+function remindBtns(n,t){
+  if(!t.due||t.done) return '';
+  return ' <span class="remind" onclick="toCalendar(\''+n.id+'\',\''+t.id+'\',event)">📅</span>'
+       + ' <span class="remind" onclick="toAlarm(\''+n.id+'\',\''+t.id+'\',event)">⏰</span>';
+}
+function factsBlock(n){
+  var f = n.facts||[]; if(!f.length) return '';
+  return '<div class="facts"><div class="fh">🔎 关键信息</div>'
+    + f.map(function(x){return '<div class="fr"><span class="fq">'+esc(x.q)+'</span>'
+        + '<span class="fa">'+esc(x.a)+'</span></div>'}).join('') + '</div>';
+}
 function todoRow(t, n, compact){
   var d='', dcls='due';  if(t.due){
     var overdue = t.due < now(), today = t.due.slice(0,10)===now().slice(0,10);
     if(overdue && !t.done) dcls+=' over'; else if(today) dcls+=' today';
-    d='<span class="'+dcls+'">'+fmtTime(t.due)+'</span>'+cdChip(t);
+    d='<span class="'+dcls+'">'+fmtTime(t.due)+'</span>'+cdChip(t)+remindBtns(n,t);
   }
   var extra = [];
   if(t.priority==='high') extra.push('<span class="chip err">重要</span>');
@@ -556,6 +596,7 @@ function noteCard(n, k){
   if(n.attachments && n.attachments.length > 1)
     h += '<div class="hits"><span class="hit">📎 ' + n.attachments.length + ' 个附件</span></div>';
   if(n.imagePath) h += '<img class="thumb" src="/img?id='+n.id+'">';
+  h += factsBlock(n);
   h += '<div class="body'+(exp?'':' clamp')+'">'+esc(body)+'</div>';
   if(n.error) h += '<div class="errbox">'+esc(n.error)+'</div>';
   if(n.todos && n.todos.length){
@@ -637,7 +678,7 @@ function renderTodos(){
       h += '<div class="todo'+(o.t.done?' done':'')+(o.t.priority==='high'?' pri-high':'')+enterCls(o.n,o.t)+'">'
         +'<div class="cb'+(o.t.done?' on':'')+'" onclick="toggle(\''+o.n.id+'\',\''+o.t.id+'\',this)">'+(o.t.done?'✓':'')+'</div>'
         +'<div class="tx"><span class="ttx">'+esc(o.t.text)
-        +'<small>'+(o.t.due?'<span class="due'+(o.t.due<now()&&!o.t.done?' over':'')+'">'+fmtTime(o.t.due)+'</span> '+cdChip(o.t):'')
+        +'<small>'+(o.t.due?'<span class="due'+(o.t.due<now()&&!o.t.done?' over':'')+'">'+fmtTime(o.t.due)+'</span> '+cdChip(o.t)+remindBtns(o.n,o.t):'')
         +'<a href="#" onclick="jump(\''+o.n.id+'\');return false">'+esc(o.n.title||'查看笔记')+'</a></small></div></div>';
     });
     h += '</div>';

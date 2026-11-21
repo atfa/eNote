@@ -75,6 +75,9 @@ nav:     [笔记] [待办] [附件] [我的]        +  右下角圆角矩形 FAB
 | **R8** | 明暗主题切换，默认亮色 | CSS 变量双主题；`theme` 设置项（light/dark/auto）；状态栏 + `theme-color` 同步；默认 light |
 | **R9** | 重绘 app 图标：现代简洁，有竖琴的神韵 | 新画 1024 母图（几何竖琴 + 蓝绿渐变）→ 自适应图标（前景/背景层）+ 各密度 mipmap；`tools/gen_icon.py` 一键重生成 |
 | **R10** | 界面元素增加大量微动画（按钮、点击等），形成自己的组件库方便复用 | `go/ui.css` 组件层（btn/card/chip/sheet/toast/topbar/tabbar/fab/switch/segmented/empty/skeleton）+ 动画 token；按钮按压回弹、tab 滑动指示器、卡片 stagger 入场、勾选划线、删除滑出、主题交叉淡入；`prefers-reduced-motion` 降级 |
+| **R12** | AI 不只提取待办，还要提取「事实类关键信息」：体检报告→体检时间/异常指标；获奖证书→何时/何机构/何奖项。门类无法穷举，改用固定提问框架 | 解析 JSON 增加 `facts`：按 **何时 / 何人 / 何地 / 何事 / 为何 / 下一步** 六问抽取，每条 `{q,a}`；无信息则留空；卡片上渲染「关键信息」块；搜索纳入 `facts` |
+| **R13** | 有了倒计时，能不能接系统日历 / 闹钟 / 系统提醒？还是自研提醒 | 见 §3.5 评估：先做「写入系统日历 + 设为闹钟」intent（零权限），自研提醒留到 P6 之后（复用常驻通知基建） |
+| **R14** | 顶栏左上角 logo：圆角矩形外面那圈白色留白要去掉 | `.iconbtn` 继承 UA `button{padding}` 把图挤小 → `padding:0`，图片铺满按钮 |
 
 ---
 
@@ -180,6 +183,20 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 
 ---
 
+### 3.5 R13 评估：系统日历 / 闹钟 / 自研提醒（2026-11-21）
+
+| 方案 | 做法 | 权限 | 结论 |
+|---|---|---|---|
+| A. 系统日历（intent） | `CalendarContract.Events.CONTENT_URI` 走 `ACTION_INSERT`，预填标题/开始/结束时间，用户在日历里点保存 | 无需权限 | ✅ 做。vivo 日历能收到并自带到期提醒；零权限、零后台进程 |
+| B. 系统闹钟（intent） | `AlarmClock.ACTION_SET_ALARM` + `EXTRA_SKIP_UI`（API 23+） | `SET_ALARM`（normal，装机即有） | ✅ 做，作为「设为闹钟」次选。部分国产时钟 App 不认 SKIP_UI，失败就 toast |
+| C. 直接写日历数据库 | `CONTENT_URI` insert + `Calendars` 账号 | `WRITE_CALENDAR`（dangerous，要弹窗） | ⏸ 暂不做。多一个运行时权限弹窗，收益只是省一次点击 |
+| D. 系统「提醒事项」 | 无公开 API（Google Tasks / 三星 Reminder 各自私有） | — | ❌ 不可行 |
+| E. 自研提醒 | `AlarmManager.setExactAndAllowWhileIdle` + 通知渠道「到期提醒」，点击打开对应待办 | `POST_NOTIFICATIONS`(33) + `SCHEDULE_EXACT_ALARM`(31+，可在设置里被关) | ✅ 做，但排在 P6 之后：常驻通知、前台服务、通知渠道这些基建 P6 才建好，届时只加一个闹钟调度 |
+
+**结论**：P5.5 先落 A + B（每个待办行加「📅 日历」「⏰ 闹钟」两个小按钮，有 due 才显示）；A/B 只用 AOSP 标准契约（`ACTION_INSERT` + `CalendarContract.EXTRA_EVENT_BEGIN_TIME/END_TIME`、`AlarmClock.ACTION_SET_ALARM` + `EXTRA_HOUR/MINUTES/SKIP_UI` + normal 权限 `SET_ALARM`），**不为任何厂商魔改做适配**——厂商 App 认不认 extras 是它的事，拉了不该拉的界面就 toast 提示，不追。
+
+**E（自研提醒）提升为 P6.5 并前移**：厂商日历/闹钟的 extras 兼容性不可控（vivo 会丢自定义时间、SKIP_UI 被忽略），而 `AlarmManager.setExactAndAllowWhileIdle` + `NotificationChannel` 是纯标准 API，所有 Android 8+ 行为一致。因此「到点弹通知」由自己做，系统日历/闹钟只作为「我想在系统里也留一条」的次要出口。
+
 ## 4. 重排后的开发顺序
 
 > 每个阶段结束必须：`GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd` 全绿 + 后台屏截图存 `.test/shots/`，并在 `CHANGELOG`/commit 里记录。
@@ -254,6 +271,17 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * **启动图标换成用户提供的图标集**（不再是 `tools/gen_icon.py` 自绘竖琴，脚本保留备用）：`res/mipmap-{m,h,x,xx,xxx}hdpi/ic_launcher.png`（48/72/96/144/192）+ `res/drawable-*/ic_launcher_{background,foreground}.png`（108…432）+ `res/mipmap-anydpi-v26/ic_launcher.xml` 自适应图标；删掉全部 `ic_launcher_round.*`，`android:roundIcon` 指向 `@mipmap/ic_launcher`。app 内 logo 同源：512 母图缩到 96×96 作 `go/icon.png`，`go/web.go` `//go:embed` 后挂在 `/icon.png`，顶栏品牌位 `<img class="brand">`。母图归档 `docs/icon-src/`。
 * 回归：`tools/ui_sig_test.js` 扩到 40 条（改名、图标各尺寸 + 自适应图层 + app 内 logo、chip 统一盒模型、倒计时文案与就地更新、完成动画三段、时区传递、导入导出清空、设置面板分组）；`./test.sh --skip-build --vd` 全绿。截图：`v2-chips`/`v2-todos`/`v2-mine`/`v2-mine-bottom`/`v2-settings`/`v2-dark-*`/`v2-anim-*`。
 
+### P5.5 事实提取 + 提醒入口 + logo 留白（R12 + R13-A/B + R14）— 小步快跑，先于 P6
+* **R14**：`.iconbtn{padding:0}`（UA `button{padding:1px 6px}` 没被 reset，flex 里的 `<img>` 被挤小 → 一圈白底外框）；`img.brand` 铺满并继承 12px 圆角。
+* **R12**：`systemPromptTemplate` 增加 `facts` 字段与六问框架（何时/何人/何地/何事/为何/下一步），规则写明「只写原文里有的，没有就省略该问」；`parsedNote` 加 `Facts []fact`；`Note.Facts` 落 JSON；卡片在正文上方渲染「关键信息」列表（问题做 label、答案做正文）；`/api/search` 把 `facts` 纳入匹配；旧笔记无 `facts` 时不显示该块（向后兼容，不迁移）。
+* **R13-A/B**：`MainActivity` 暴露 `addToCalendar(title, dueMs)` / `setAlarm(dueMs, label)` 两个 JS 桥（`addJavascriptInterface` 已有 `Bridge`，直接加方法），JS 侧在待办行 due 存在时显示两个小按钮。
+* 验收（分层，不依赖任何厂商 UI）：
+  * R12 文本链路：`/api/add` 打真模型 → `notes.json` 里 `facts` 六问齐（已实测：何时/何人/何地/何事/下一步）。
+  * R12 渲染/搜索：`go test`（`TestSearchMatchesFacts`、`TestCleanFacts`）+ 后台屏截图（已存 `.test/shots/v2-facts.png`）。
+  * R13 契约：`go test` + `tools/ui_sig_test.js` 静态断言（标准 extra key、normal 权限）；系统层用 `dumpsys alarm` 计数与 `dumpsys activity` 里 intent 解析核对（已验证：SET_ALARM 生效、日历 intent 带着正确 DTSTART 拉起）。
+  * R14：像素扫描顶栏左侧白色环带宽度 68px→0（已核对）。
+* **已知差异（不阻塞，记录备查）**：部分厂商日历会忽略 `EXTRA_EVENT_BEGIN_TIME` 只取当前时间；部分厂商时钟忽略 `EXTRA_SKIP_UI` 直接弹编辑页。均为厂商 App 行为，非本 App 缺陷。
+
 ### P6 剪贴板采集 + 常驻通知 + 批量解析（R7，方案 B）— 最大，独立发布
 * 权限：`POST_NOTIFICATIONS` 运行时申请（Android 13+）；无障碍服务在 `AndroidManifest.xml` 声明（`BIND_ACCESSIBILITY_SERVICE` + `res/xml/clip_accessibility.xml`）。
 * `ClipWatchService : AccessibilityService`：`onServiceConnected` 里注册 `addPrimaryClipChangedListener`，后台直接读全文（无障碍豁免）；同时挂常驻通知（`IMPORTANCE_LOW`，不响铃）= “已暂存 N 条 · 点按查看”，开关关闭时 `disableSelf()`。
@@ -279,6 +307,8 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 [x] P4 附件页（附件模型 + 网格 + 通用文件服务）
 [x] P4b 底栏 5 按钮 + 自绘对话框 + 逐级返回（主页连返两次退出）+ 页面留白 + 去过度动画
 [x] P5 我的页（统计）+ 全屏设置面板（+ 改名「懒得记」、时区修复、倒计时、完成动画、新图标）
+[x] P5.5 事实提取（R12）+ 日历/闹钟入口（R13-A/B，标准契约）+ logo 去白框（R14）
+[ ] P6.5 自研到期提醒：AlarmManager + 通知渠道（R13-E，标准 API，前移）
 [ ] P6 无障碍服务采集 + 常驻通知 + 批量一键解析
 [~] P7 新图标（已换成用户提供的图标集）+ 动效打磨（进行中）+ 文档 + 全量回归
 ```

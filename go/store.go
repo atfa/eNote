@@ -44,11 +44,21 @@ type Attachment struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// Fact is one key fact pulled out of a note (R12). We cannot enumerate every
+// kind of document a person shares, so the model answers a fixed set of
+// questions about the content: Q is the question ("何时"), A the answer taken
+// from the source text. Empty answers are dropped before saving.
+type Fact struct {
+	Q string `json:"q"`
+	A string `json:"a"`
+}
+
 type Note struct {
 	ID          string       `json:"id"`
 	Title       string       `json:"title"`
 	Content     string       `json:"content"`
 	RawText     string       `json:"rawText"` // original shared/OCR text, kept for 重新解析
+	Facts       []Fact       `json:"facts,omitempty"`
 	Tags        []string     `json:"tags"`
 	Todos       []Todo       `json:"todos"`
 	Source      string       `json:"source"` // share-text|share-image|manual-text|manual-image

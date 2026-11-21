@@ -13,6 +13,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- R13-B：向系统时钟设闹钟（normal 权限，装机即授予）；日历走 ACTION_INSERT，不需要权限 -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
     <application
         android:name=".EnoteApp"

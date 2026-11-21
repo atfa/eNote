@@ -148,3 +148,18 @@ func TestSearchLimitAndFilesTab(t *testing.T) {
 		t.Fatalf("limit: total=%d len=%d, want 2/1", got.Total, len(got.Notes))
 	}
 }
+
+// R12: facts are searchable and reported as 关键信息.
+func TestSearchMatchesFacts(t *testing.T) {
+	n := note("f", "体检报告", "胃镜结果", "", "share-image", stDone, 10)
+	n.Facts = []Fact{{Q: "体检时间", A: "2026-11-19"}, {Q: "异常指标", A: "总胆固醇偏高"}}
+	testStore(t, n)
+
+	got := runSearch(searchReq{Q: "总胆固醇"})
+	if got.Total != 1 {
+		t.Fatalf("fact hit: got %d, want 1", got.Total)
+	}
+	if w := got.Where["f"]; len(w) == 0 || w[0] != "关键信息" {
+		t.Fatalf("fact hit label: got %v, want [关键信息]", w)
+	}
+}

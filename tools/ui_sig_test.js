@@ -225,4 +225,36 @@ const backHist = /if \(w\.canGoBack\(\)\) \{ w\.goBack\(\); return; \}/.test(jav
 console.log((backHist ? '  ok   ' : '  FAIL ') + '返回键先回退网页历史（导出页能退出）');
 if (!backHist) bad++;
 
+// ---- R12/R13/R14 ----
+const gollm = fs.readFileSync(path.join(root, 'go/llm.go'), 'utf8');
+const gostore = fs.readFileSync(path.join(root, 'go/store.go'), 'utf8');
+const gosearch = fs.readFileSync(path.join(root, 'go/search.go'), 'utf8');
+const bridge = fs.readFileSync(path.join(root, 'src/dev/xduo/enote/Bridge.java'), 'utf8');
+
+// 关键信息：六问框架进提示词，落到 Note.Facts，卡片渲染，搜索能命中
+const facts = /facts/.test(gollm) && /何时/.test(gollm) && /何人/.test(gollm) && /何地/.test(gollm)
+  && /何事/.test(gollm) && /为何/.test(gollm) && /下一步/.test(gollm)
+  && /Facts\s+\[\]Fact/.test(gostore) && /func cleanFacts/.test(gollm)
+  && /关键信息/.test(gosearch)
+  && /function factsBlock/.test(src) && /factsBlock\(n\)/.test(src) && /class="facts"/.test(src);
+console.log((facts ? '  ok   ' : '  FAIL ') + '关键信息：六问提取 + 落库 + 卡片渲染 + 可搜索');
+if (!facts) bad++;
+
+// 到期提醒：系统日历 + 系统闹钟 intent（零权限），有 due 才显示按钮
+const remind = /ACTION_INSERT[\s\S]{0,400}CalendarContract\.Events/.test(java)
+  && /CalendarContract\.EXTRA_EVENT_BEGIN_TIME/.test(java) && /CalendarContract\.EXTRA_EVENT_END_TIME/.test(java)
+  && /com\.android\.alarm\.permission\.SET_ALARM/.test(man)
+  && /AlarmClock\.ACTION_SET_ALARM/.test(java) && /EXTRA_SKIP_UI/.test(java)
+  && /addToCalendar/.test(bridge) && /setAlarm/.test(bridge)
+  && /function remindBtns/.test(src) && /toCalendar\(/.test(src) && /toAlarm\(/.test(src)
+  && /if\(!t\.due\|\|t\.done\) return ''/.test(src)
+  && (src.match(/remindBtns\(/g)||[]).length >= 3;   // 笔记卡片 + 待办页两处都要有
+console.log((remind ? '  ok   ' : '  FAIL ') + '待办可一键写入系统日历 / 设为闹钟（intent，无权限）');
+if (!remind) bad++;
+
+// logo 铺满按钮：UA button{padding} 会挤出一圈白框
+const logo = /\.iconbtn\{[^}]*padding:0/.test(src) && /img\.brand\{width:100%;height:100%/.test(src);
+console.log((logo ? '  ok   ' : '  FAIL ') + '顶栏 logo 铺满按钮（去掉白底外框留白）');
+if (!logo) bad++;
+
 process.exit(bad ? 1 : 0);

@@ -169,6 +169,26 @@ public class Bridge {
         }
     }
 
+    /** window.Android.addToCalendar(title, dueMs): system calendar insert (R13-A). */
+    @JavascriptInterface
+    public void addToCalendar(final String title, final double dueMs) {
+        final MainActivity a = current.get();
+        Log.i(TAG, "js addToCalendar " + title + " " + dueMs);
+        if (a != null) a.runOnUiThread(new Runnable() {
+            public void run() { a.addToCalendar(title, (long) dueMs); }
+        });
+    }
+
+    /** window.Android.setAlarm(dueMs, label): system alarm at the due time (R13-B). */
+    @JavascriptInterface
+    public void setAlarm(final double dueMs, final String label) {
+        final MainActivity a = current.get();
+        Log.i(TAG, "js setAlarm " + dueMs);
+        if (a != null) a.runOnUiThread(new Runnable() {
+            public void run() { a.setAlarm((long) dueMs, label); }
+        });
+    }
+
     /** window.Android.setTheme(mode): keeps the system bars in sync with the CSS theme. */
     @JavascriptInterface
     public void setTheme(final String mode) {

@@ -20,8 +20,8 @@ type LLMCall struct {
 	System   string    `json:"system"`
 	User     string    `json:"user"`
 	HTTPCode int       `json:"httpCode"`
-	Raw      string    `json:"raw"`      // message.content as returned
-	Reason   string    `json:"reason"`   // reasoning_content, when the model emits it
+	Raw      string    `json:"raw"`    // message.content as returned
+	Reason   string    `json:"reason"` // reasoning_content, when the model emits it
 	MS       int64     `json:"ms"`
 	Err      string    `json:"err,omitempty"`
 	Usage    any       `json:"usage,omitempty"`
@@ -60,12 +60,12 @@ type chatMsg struct {
 }
 
 type chatReq struct {
-	Model          string           `json:"model"`
-	Messages       []chatMsg        `json:"messages"`
-	MaxTokens      int              `json:"max_tokens"`
-	Temperature    float64          `json:"temperature"`
-	Stream         bool             `json:"stream"`
-	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	Model           string    `json:"model"`
+	Messages        []chatMsg `json:"messages"`
+	MaxTokens       int       `json:"max_tokens"`
+	Temperature     float64   `json:"temperature"`
+	Stream          bool      `json:"stream"`
+	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 }
 
 type chatResp struct {
@@ -167,14 +167,15 @@ type parsedTodo struct {
 type parsedNote struct {
 	Title   string       `json:"title"`
 	Content string       `json:"content"`
+	Facts   []Fact       `json:"facts"`
 	Tags    []string     `json:"tags"`
 	Todos   []parsedTodo `json:"todos"`
 }
 
-const systemPromptTemplate = `你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记加若干待办事项。
+const systemPromptTemplate = `你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。
 
 只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：
-{"title":"不超过20字的标题","content":"整理后的笔记正文","tags":["标签"],"todos":[{"text":"待办事项","due":"YYYY-MM-DDTHH:MM","priority":"high|normal|low"}]}
+{"title":"不超过20字的标题","content":"整理后的笔记正文","facts":[{"q":"何时","a":"2026-11-19"}],"tags":["标签"],"todos":[{"text":"待办事项","due":"YYYY-MM-DDTHH:MM","priority":"high|normal|low"}]}
 
 规则：
 1. 现在是 {{NOW}}（本地时区，星期{{WEEK}}）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。
@@ -183,7 +184,11 @@ const systemPromptTemplate = `你是笔记与待办整理助手。用户把一�
 4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。
 5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。
 6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。
-7. tags 0-3 个，短词。`
+7. tags 0-3 个，短词。
+8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。
+   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；
+   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；
+   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。`
 
 var weekNames = []string{"日", "一", "二", "三", "四", "五", "六"}
 
@@ -254,6 +259,7 @@ func applyParsed(n *Note, p *parsedNote, model string, ms int64) {
 	n.Status = stDone
 	n.Error = ""
 	src := "ai"
+	n.Facts = cleanFacts(p.Facts)
 	n.Todos = nil
 	for _, t := range p.Todos {
 		txt := strings.TrimSpace(t.Text)
@@ -270,6 +276,29 @@ func applyParsed(n *Note, p *parsedNote, model string, ms int64) {
 		})
 	}
 	sortTodos(n.Todos)
+}
+
+// cleanFacts keeps the six-question facts usable: answers must be non-empty,
+// one entry per question, at most six, each answer short enough to read on a card.
+func cleanFacts(in []Fact) []Fact {
+	out := make([]Fact, 0, len(in))
+	seen := map[string]bool{}
+	for _, f := range in {
+		q := clip(strings.TrimSpace(f.Q), 24)
+		a := clip(strings.TrimSpace(f.A), 200)
+		if q == "" || a == "" || seen[q] {
+			continue
+		}
+		seen[q] = true
+		out = append(out, Fact{Q: q, A: a})
+		if len(out) == 6 {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // userPromptFor builds the user message for one note.
