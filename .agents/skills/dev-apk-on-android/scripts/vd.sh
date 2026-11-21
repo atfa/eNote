@@ -218,7 +218,9 @@ key() {
 text() {
   need_root
   [ $# -ge 1 ] || die "usage: vd.sh text <string>"
-  asroot "input text -d $(display_id) '$*'"
+  # `-d` is a flag of `input` itself: it has to come *before* the command, otherwise
+  # `text` swallows it and sendText() throws NullPointerException (empty keychar map).
+  asroot "input -d $(display_id) text '$*'"
 }
 
 # The app window's rotation, from the input dispatcher: ROT_0 / ROT_90 / ROT_180 / ROT_270.

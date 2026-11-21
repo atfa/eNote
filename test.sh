@@ -46,7 +46,12 @@ have_root || {
 
 VDID=""
 if [ "$VD" = 1 ]; then
-  [ -n "$(sh "$HERE/vd.sh" id 2>/dev/null)" ] || sh "$HERE/vd.sh" create
+  # 虚拟屏只在手机醒着时才是 ON；屏一灭它就 OFF（截图全白、hook 也拿不到）
+  asroot "input keyevent 224" >/dev/null 2>&1 || true
+  asroot "wm dismiss-keyguard" >/dev/null 2>&1 || true
+  asroot "echo enote_test > /sys/power/wake_lock" >/dev/null 2>&1 || true
+  sh "$HERE/vd.sh" destroy >/dev/null 2>&1 || true
+  sh "$HERE/vd.sh" create >/dev/null || die "vd.sh create failed"
   VDID=$(sh "$HERE/vd.sh" id)
   [ -n "$VDID" ] || die "no background display (vd.sh create failed)"
 fi
@@ -347,8 +352,19 @@ assert d['missing'] == 0, d
 " || fail "deleting a note must delete its attachment files"
 say "  ok (pdf share, list counts match the disk, search by name, delete)"
 
+step "ui: 轮询只在数据变化时重绘（不闪）"
+if command -v node >/dev/null 2>&1; then
+  node "$HERE/tools/ui_sig_test.js" | sed 's/^/  /' || fail "轮询指纹回归失败"
+else
+  say "  跳过（没有 node）"
+fi
+
 step "app alive"
 sh "$HERE/probe.sh" "$APP_PACKAGE" | sed 's/^/  /'
+
+if [ "$VD" = 1 ]; then
+  asroot "echo enote_test > /sys/power/wake_unlock" >/dev/null 2>&1 || true
+fi
 
 if [ "$CLEAN" = 1 ]; then
   asroot "pm uninstall '$APP_PACKAGE'" >/dev/null 2>&1 || true

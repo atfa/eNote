@@ -90,14 +90,21 @@ been exercised on hardware - if a shot comes out mirrored, that is the code path
 
 ## Input
 
-The display id comes from `vd.sh id`. The input source goes **before** `-d`:
+The display id comes from `vd.sh id`. `input` parses `-d` as its own flag **before** the
+command; the touch sources happen to tolerate it after the source name, `text` does not
+(it swallows `-d <id>` into the string and `sendText()` dies with `NullPointerException`).
 
 ```sh
-su -c "input touchscreen -d 131 tap 580 1000"     # OK
-su -c "input -d 131 touchscreen tap 580 1000"     # Unknown command: touchscreen
-su -c "input keyevent -d 131 66"                 # KEYCODE_ENTER
-su -c "input text -d 131 'hello'"
+su -c "input -d 131 touchscreen tap 580 1000"     # OK
+su -c "input touchscreen -d 131 tap 580 1000"    # also works (source tolerates it)
+su -c "input -d 131 keyevent 66"                 # KEYCODE_ENTER
+su -c "input -d 131 text 'hello'"                 # OK
+su -c "input text -d 131 'hello'"                 # NullPointerException
 ```
+
+`input text` only knows ASCII (it needs a keychar map): passing CJK either throws
+`NullPointerException` or types nothing at all. Type an ASCII marker and assert on that, or
+set the Chinese value through the app's own HTTP API / prefs instead of the keyboard.
 
 A tap that lands outside the app window's `touchableRegion` is dropped silently - check with
 `su -c "dumpsys input"` and look under `Display: 131` for `touchableRegion=[0,0][1080,1080]`.
@@ -135,6 +142,22 @@ sh $S/vd.sh create && sh $S/vd.sh launch com.example.myapp/.MainActivity
 
 `vd.sh power [state]` re-applies the override (`vd.sh power 2`); use it after the panel fell
 asleep, and check with `su -c "dumpsys display" | grep -A2 "Display Id=<id>"`.
+
+**The display dies with the phone's screen.** `power 2` on a display that was created in a
+previous, now-sleeping session is accepted and still stays OFF, so a long unattended run (an
+LLM-backed suite that takes minutes) ends with `Display State=OFF`, blank shots and a hook that
+never fires. Recreate it, don't re-power it, and hold a wakelock while the run lasts:
+
+```sh
+su -c "input keyevent 224"                         # wake the panel first
+su -c "echo mytest > /sys/power/wake_lock"         # keep this run from dozing off
+sh $S/vd.sh destroy && sh $S/vd.sh create
+… run the suite …
+su -c "echo mytest > /sys/power/wake_unlock"
+```
+
+`/sys/power/wake_lock` does not exist on every kernel; ignore the failure and recreate the
+display unconditionally at the start of the run instead of testing whether the old one is alive.
 
 ## Driving the app on the background display
 
@@ -210,6 +233,8 @@ is wiped on boot on most devices.
 | the app pops onto the panel when you run `destroy` | the system moved it there when its display vanished | keep `DESTROY_CONTENT_ON_REMOVAL` in the flag set (it is on by default) |
 | nothing renders with the screen off | power override missing | `vd.sh log`, look for `OK power 2 via …` |
 | `Display State=OFF` forever, override returns OK | display created while the device was in doze | wake the panel (`input keyevent 224`), `vd.sh destroy && vd.sh create` |
+| a long run suddenly goes blank, the hook stops firing, shots are white | the phone screen slept and took the virtual display with it; `power 2` does not revive it | wakelock (or recreate the display) at the start of the run; recreate, never just re-power |
+| `input text` types nothing / `NullPointerException: length of null array` | `-d <id>` placed after the command, or CJK characters | `input -d <id> text 'ascii'`; type an ASCII marker and assert on that |
 | taps near the bottom do nothing, shot never changes | the system nav-bar/gesture area covers it | tap higher (on a 2400-tall VD, `y ~ 2250`), check focus with `probe.sh` |
 | shots are a blank wallpaper | BACK closed the app, the launcher has focus on the VD | `vd.sh launch` again; avoid `vd.sh key 4` |
 | app is on the panel, not the VD | `am start --display` on a running instance does not move it | `su -c "am force-stop <pkg>"` then `vd.sh launch` |

@@ -71,7 +71,6 @@ a{color:var(--acc)}
 .agrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:2px}
 .acard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px;
   box-shadow:var(--sh);display:flex;flex-direction:column;gap:5px;cursor:pointer;
-  animation:rise var(--d3) var(--ease) both;animation-delay:calc(var(--i,0)*24ms);
   transition:transform var(--d1) var(--ease)}
 .acard:active{transform:scale(.97)}
 .acard.gone{opacity:.62}
@@ -216,8 +215,8 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 
 /* --- 卡片入场（只在切页/首次渲染时逐张浮现，最多 8 张错峰）--- */
 @keyframes rise{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
-main.enter .card{animation:rise var(--d2) var(--ease) both;animation-delay:calc(var(--i,0) * 24ms)}
-main.enter .card:nth-child(n+9){animation-delay:0ms}
+main.enter .card,main.enter .acard{animation:rise var(--d2) var(--ease) both;animation-delay:calc(var(--i,0) * 24ms)}
+main.enter .card:nth-child(n+9),main.enter .acard:nth-child(n+9){animation-delay:0ms}
 @keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 main.enter{animation:fadein var(--d2) var(--ease)}
 
@@ -336,14 +335,18 @@ function savePrefs(){
   clearTimeout(saveT);
   saveT = setTimeout(function(){ api('/api/prefs', prefPayload()).catch(function(){}) }, 350);
 }
+var SRK = ''; // 上次搜索结果的指纹，内容一样就不重建 DOM
 async function searchNow(){
   if(tab==='files'){ filesNow(); return; }
   var my = ++searchSeq;
   try{
     var d = await api('/api/search?'+prefQS());
     if(my !== searchSeq) return;
+    var k = JSON.stringify(d);
     SR = {notes:d.notes||[], todoIds:d.todoIds||null, where:d.where||{}, total:d.total||0, scanned:d.scanned||0};
-  }catch(e){ SR = {notes:null, todoIds:null, where:{}, total:0, scanned:0} }
+    if(k === SRK){ paintStatus(); return }
+    SRK = k;
+  }catch(e){ SR = {notes:null, todoIds:null, where:{}, total:0, scanned:0}; SRK = '' }
   render();
 }
 
@@ -598,9 +601,12 @@ async function filesNow(){
   try{
     var d = await api('/api/attachments?'+s);
     if(my !== searchSeq) return;
+    var k = JSON.stringify(d);
     FA = {items:d.items||[], total:d.total||0, bytes:d.bytes||0, files:d.files||0,
           missing:d.missing||0, scanned:d.scanned||0, diskFiles:d.diskFiles||0, loaded:true};
-  }catch(e){ FA.loaded = false }
+    if(k === SRK){ paintStatus(); return }
+    SRK = k;
+  }catch(e){ FA.loaded = false; SRK = '' }
   render();
 }
 function fileStrip(){
@@ -731,8 +737,24 @@ function resetPrefs(){
   q = ''; var el = $('#q'); if(el){ el.value=''; $('#searchBox').classList.remove('has'); }
   closeSheet(); searchNow(); savePrefs();
 }
-async function refresh(){
+/* ---------- 轮询：只在数据真的变了才重绘（避免秒级闪烁 ----------
+   2s 一次的 /api/state 很便宜，但 render() 要重建整个列表、重载缩略图、
+   重播入场动画。所以先比指纹，没变就只刷新右上角状态点。 */
+var SIG = '', drawn = false;
+function sigOf(d){
+  var ns = (d && d.notes) || [], i = (d && d.info) || {}, h = 0, k, j, s;
+  for(k = 0; k < ns.length; k++){
+    var n = ns[k];
+    s = (n.id||'') + (n.status||'') + (n.updatedAt||'') + (n.title||'') +
+        (n.todos ? n.todos.length : 0) + (n.attachments ? n.attachments.length : 0);
+    for(j = 0; j < s.length; j++) h = (h*31 + s.charCodeAt(j)) | 0;
+  }
+  return [ns.length, h, i.todos, i.open, i.overdue, i.queue, i.ocrReady?1:0,
+          (d && d.settings && d.settings.theme) || ''].join('|');
+}
+async function refresh(quiet){
   try{ var d = await api('/api/state'); S = d;
+       var dirty = !quiet || !drawn || sigOf(d) !== SIG;
        if(!prefsLoaded && S.settings && S.settings.ui){
          prefsLoaded = true;
          var fp = flattenPrefs(S.settings.ui);
@@ -741,10 +763,14 @@ async function refresh(){
          });
          q = P().q || '';
          var el = $('#q'); el.value = q; $('#searchBox').classList.toggle('has', !!q);
+         dirty = true;
        }
-       if(themeOf() !== curTheme){ curTheme = themeOf(); applyTheme(); }
+       if(themeOf() !== curTheme){ curTheme = themeOf(); applyTheme(); dirty = true; }
+       paintStatus();
+       if(!dirty) return;
+       SIG = sigOf(d); drawn = true;
        searchNow(); }
-  catch(e){ var d = $('#dot'); if(d) d.className='dot bad'; render(); }
+  catch(e){ var d = $('#dot'); if(d) d.className='dot bad'; if(!drawn) render(); }
 }
 function expand(id){ open[id]=!open[id]; render(); }
 async function toggle(nid,tid){ await api('/api/todo',{action:'toggle',noteId:nid,todoId:tid}); refresh(); }
@@ -854,10 +880,16 @@ function setTab(anim){
   var qi = $('#q'); qi.value = q; $('#searchBox').classList.toggle('has', !!q);
   var v = $('#view');
   v.classList.remove('enter');
-  if(anim !== false){ void v.offsetWidth; v.classList.add('enter'); }
+  clearTimeout(enterT);
+  if(anim !== false){
+    void v.offsetWidth; v.classList.add('enter');
+    // 入场动画只属于切页：不摘掉 enter，每次轮询重绘都会重播一遍
+    enterT = setTimeout(function(){ v.classList.remove('enter') }, 520);
+  }
   render();
   searchNow();
 }
+var enterT = 0;
 function moveInd(){
   var el = document.querySelector('.tabbar .tab.on'), ind = $('#ind');
   if(!el || !ind) return;
@@ -888,16 +920,20 @@ document.querySelectorAll('.tabbar .tab').forEach(function(b){
     tab = b.dataset.tab; setTab(); window.scrollTo(0,0); }});
 $('#brandBtn').onclick = function(){ tab='mine'; setTab(); window.scrollTo(0,0); };
 $('#sortBtn').onclick = sortSheet;
+var searchT = 0;
 $('#q').addEventListener('input', function(){
   q = this.value.trim();
   P().q = q;
   $('#searchBox').classList.toggle('has', !!q);
-  render(); searchNow(); savePrefs();
+  // 服务端搜索：等用户停手再发，避免每敲一个字就重建一次列表
+  clearTimeout(searchT);
+  searchT = setTimeout(function(){ searchNow(); savePrefs(); }, 260);
 });
 $('#qClear').onclick = function(){ q=''; this.blur(); var el=$('#q'); el.value='';
-  $('#searchBox').classList.remove('has'); P().q=''; render(); searchNow(); savePrefs(); };
+  $('#searchBox').classList.remove('has'); P().q=''; clearTimeout(searchT); searchNow(); savePrefs(); };
 window.addEventListener('resize', moveInd);
-setInterval(function(){ if(!document.hidden) refresh(); }, 1800);
+// 安静轮询：数据没变就只刷状态点，不重建 DOM
+setInterval(function(){ if(!document.hidden) refresh(true); }, 2000);
 refresh();
 setTab();
 </script>

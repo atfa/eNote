@@ -219,7 +219,7 @@ key() {
 text() {
   need_root
   [ $# -ge 1 ] || die "usage: vd.sh text <string>"
-  asroot "input text -d $(display_id) '$*'"
+  asroot "input -d $(display_id) text '$*'"
 }
 
 # The app window's rotation, from the input dispatcher: ROT_0 / ROT_90 / ROT_180 / ROT_270.

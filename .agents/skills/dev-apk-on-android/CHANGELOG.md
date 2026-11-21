@@ -1,3 +1,21 @@
+# 0.3.3
+
+## Input and display failures found by a real regression run
+
+* `scripts/vd.sh` - **`vd.sh text` was broken**: it ran `input text -d <id> '…'`, but `-d` is a
+  flag of `input` itself, so `text` swallowed it and `sendText()` died with
+  `NullPointerException: Attempt to get length of null array`. Now `input -d <id> text '…'`.
+* `references/virtual-display.md` - Input section rewritten: `-d` goes before the command; the
+  touch sources tolerate it after the source name, `text` does not. `input text` only knows ASCII,
+  so CJK either throws or silently types nothing - type an ASCII marker, or set the Chinese value
+  through the app's own HTTP API.
+* `references/virtual-display.md` - new note **The display dies with the phone's screen**: a
+  display created in an earlier session stays `Display State=OFF` even after `power 2`; a
+  multi-minute unattended run ends with blank shots and a test hook that never fires. Recreate it
+  (never just re-power it) and hold `/sys/power/wake_lock` for the duration.
+* Troubleshooting table: two new rows (blank run after the screen slept, `input text` typing
+  nothing / NPE).
+
 # 0.3.2
 
 ## Background-display gotchas (found while driving a 4-tab WebView UI for hours)

@@ -222,6 +222,12 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 
 > **已完成（本机）**：`go/attach.go` = 附件模型（`Attachment{ID,NoteID,Name,MIME,Size,Path,Source,CreatedAt}`）+ `attachTo`（同路径去重，双写 `Note.ImagePath`）+ `mimeByExt/kindOfMime`（扩展名兜底：`file://` 分享常带 `application/octet-stream`）+ `listAttachments`（`sort=new/size/name/kind`，`dir` 直接表示方向而非翻转；`mime` 支持 `image/` 前缀或 `image/pdf/doc/...` 类型名；`files/missing` 统计的是**过滤后**列表）+ `handleFile`（`inline; filename*=UTF-8''`，404/410）。`/api/attachments`、`/api/attach/delete`、`/file?id=`。`store.remove` 遍历删附件文件；`openStore` 惰性迁移 `imagePath` → `Attachments[]`（日志 `synthesised attachment records for N note(s)`）。分享扩展：`ShareActivity.processFile`（`share-file`）+ 清单加 `text/*`、`application/pdf`（刻意不收 `*/*`）；`Bridge.enqueueFile` + `MainActivity.pickFile()`（`ACTION_OPEN_DOCUMENT`，图片走 OCR、其余存文件）+ FAB「添加附件」。搜索加 `附件名` 字段和有无附件筛选（`file=yes/no`，笔记页筛选面板第四组）。Go 单测 `go/attach_test.go`（6 个用例）+ `test.sh` 的 `attachments: share a file, list it, delete it` 步骤（分享 PDF → 列表 +1 且与磁盘数一致 → 按名搜索 → `/file` 取字节 → 删附件 → 删笔记后文件清零）。**未做**：附件预览（点击 toast「预览即将上线」）、导入/多选删除、非图片附件缩略图。
 
+### 修补：列表秒级闪烁（P4 验收时发现）
+* 症状：停在列表页什么都不做，界面约每秒重绘一次（卡片入场动画重播、缩略图重载、滚动位置微跳）。
+* 原因：`setInterval(refresh, 1800)` 无条件 `render()` 重建 `#view.innerHTML`；且 `#view` 上的 `enter` class 加上后再未移除，于是每次重建都重播 `.card`/`.acard` 的入场动画。
+* 修法：轮询改“安静刷新”——`sigOf(S)` 指纹（笔记数/状态/updatedAt/标题/待办数/附件数/统计/主题）没变就只刷状态点；`searchNow`/`filesNow` 再比一次响应指纹，内容相同不重建 DOM；`enter` 在 520ms 后摘掉，`.acard` 去掉无条件动画；搜索框改为 260ms 防抖（原来每敲一个字重建一次）。
+* 回归：`tools/ui_sig_test.js`（从 `ui.html` 注释真实 `sigOf` 源码测 12 条断言）接进 `test.sh` 的 `ui: 轮询只在数据变化时重绘` 步骤；真机连拍验证——静止时逐像素相同，外部改数据后截图变化。
+
 ### P5 我的页 + 设置面板（R5 + R6）
 * `/api/stats`；我的页独立视觉：头像区（应用图标 + 本地数据摘要）、统计卡片（笔记/待办/附件/AI 调用）、近 7 天柱状（纯 CSS）、入口列表（设置、主题、AI 调用记录、导出、导入、关于）。
 * 设置改成**全屏面板**（从"我的"进入），分组：AI（端点/Key/模型/超时/maxTokens/温度/开关 + 测试连接）、外观（主题三档）、采集（剪贴板监听开关，P6 后启用）、OCR（引擎状态、重新识别）、数据（导出/导入/清空）。
