@@ -11,6 +11,7 @@
 #     tap X Y              X,Y are pixels in the screenshot
 #     swipe X1 Y1 X2 Y2 [ms]
 #     key <keyevent|name>  e.g. 66, KEYCODE_BACK, KEYCODE_HOME
+#     power [state]        re-power the display (2 = on) if it fell asleep with the screen
 #     text <string>
 #     launch [activity]    start the app on the display (default: app.env ACTIVITY)
 #     rotate <deg>         override the shot rotation (0 | 90 | 180 | 270)
@@ -271,6 +272,7 @@ case "${1:-}" in
   text)    shift; text "$@" ;;
   launch)  shift; launch "${1:-}" ;;
   rotate)  shift; rotate "${1:-0}" ;;
+  power)   shift; send "power ${1:-2}" >/dev/null; say "display power -> ${1:-2} (2=on)" ;;
   log)     shift; log "${1:-20}" ;;
   *) cat <<'EOF'
 usage: vd.sh {create [WxH@dpi] | destroy | status | id | size | shot [file]
