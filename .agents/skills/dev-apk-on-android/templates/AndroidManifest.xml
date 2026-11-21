@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  No <uses-sdk> here on purpose: minSdk/targetSdk are passed to `aapt2 link` by build.sh from
+  app.env, so the two cannot drift apart. package/label/icon are filled in by new-project.sh.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="__PACKAGE__"
+    android:versionCode="1"
+    android:versionName="1.0">
+
+    <application
+        android:label="__LABEL__"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:debuggable="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0b0f14">
+<title>eNote</title>
+<style>
+:root{
+  --bg:#0b0f14; --card:#151b23; --card2:#1b232d; --line:rgba(255,255,255,.07);
+  --fg:#e8eef6; --dim:#8b98a9; --dim2:#5f6b7a;
+  --acc:#6c9cff; --acc2:#39d0a3; --warn:#ffb454; --bad:#ff6b6b; --ok:#39d0a3;
+  --r:16px; --sh:0 6px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+  font:15px/1.55 -apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}
+body{padding-bottom:calc(76px + env(safe-area-inset-bottom));overscroll-behavior:none}
+a{color:var(--acc)}
+header{position:sticky;top:0;z-index:20;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;
+  background:linear-gradient(180deg,#0d131b 0%,rgba(13,19,27,.92) 70%,rgba(13,19,27,0) 100%);
+  backdrop-filter:blur(10px);display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.brand{font-size:22px;font-weight:800;letter-spacing:.5px;
+  background:linear-gradient(90deg,#8ab4ff,#39d0a3);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand .sub{font-size:11px;font-weight:500;color:var(--dim2);margin-left:6px;
+  -webkit-text-fill-color:var(--dim2)}
+.hstats{font-size:11px;color:var(--dim);text-align:right;line-height:1.35}
+.hstats b{color:var(--acc2);font-weight:700}
+.hstats i{color:var(--bad);font-style:normal;font-weight:700}
+main{padding:4px 14px 20px;max-width:760px;margin:0 auto}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;align-items:center;
+  gap:4px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+  background:rgba(13,19,27,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line)}
+nav button{flex:1;background:none;border:0;color:var(--dim);font-size:12px;padding:6px 0;
+  display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:600}
+nav button span{font-size:19px;filter:grayscale(1);opacity:.75}
+nav button.on{color:var(--acc)}
+nav button.on span{filter:none;opacity:1}
+nav .fab{flex:0 0 58px;height:52px;border-radius:50%;background:linear-gradient(135deg,#6c9cff,#39d0a3);
+  color:#06121f;font-size:30px;font-weight:700;box-shadow:0 6px 18px rgba(108,156,255,.4);
+  align-self:center;margin:0 6px;justify-content:center;line-height:1}
+nav .fab span{font-size:26px;filter:none;opacity:1;color:#06121f}
+.sec{margin:14px 2px 8px;font-size:12px;font-weight:700;color:var(--dim);letter-spacing:1px;
+  display:flex;align-items:center;gap:8px}
+.sec:after{content:"";flex:1;height:1px;background:var(--line)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:13px 14px;margin:10px 0;box-shadow:var(--sh)}
+.row{display:flex;align-items:center;gap:8px}
+.between{justify-content:space-between}
+.t{font-size:16px;font-weight:700;margin:0 0 4px}
+.meta{font-size:11px;color:var(--dim2);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.body{font-size:14px;color:#c9d4e2;white-space:pre-wrap;word-break:break-word;margin-top:6px}
+.body.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.chip{font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);
+  color:var(--dim);background:rgba(255,255,255,.03);white-space:nowrap}
+.chip.ai{color:var(--acc);border-color:rgba(108,156,255,.35);background:rgba(108,156,255,.1)}
+.chip.img{color:var(--acc2);border-color:rgba(57,208,163,.3);background:rgba(57,208,163,.1)}
+.chip.pend{color:var(--warn);border-color:rgba(255,180,84,.35);background:rgba(255,180,84,.1)}
+.chip.err{color:var(--bad);border-color:rgba(255,107,107,.35);background:rgba(255,107,107,.1)}
+.chip.tag{color:#c8b6ff;border-color:rgba(200,182,255,.25)}
+.err{margin-top:8px;font-size:12px;color:var(--bad);background:rgba(255,107,107,.08);
+  border:1px solid rgba(255,107,107,.2);border-radius:10px;padding:7px 9px}
+.todo{display:flex;align-items:flex-start;gap:10px;padding:9px 2px;border-top:1px solid var(--line)}
+.todo:first-child{border-top:0}
+.cb{flex:0 0 22px;height:22px;margin-top:1px;border-radius:7px;border:1.6px solid #3b4756;
+  background:transparent;display:flex;align-items:center;justify-content:center;
+  font-size:14px;color:transparent;transition:.15s;cursor:pointer}
+.cb.on{background:var(--acc2);border-color:var(--acc2);color:#06121f}
+.tx{flex:1;font-size:14.5px}
+.tx small{display:block;color:var(--dim2);font-size:11px;margin-top:2px}
+.todo.done .tx{color:var(--dim2);text-decoration:line-through}
+.pri-high{border-left:3px solid var(--bad);padding-left:8px}
+.pri-low{opacity:.85}
+.due{font-size:11px;padding:1px 6px;border-radius:6px;background:rgba(108,156,255,.12);color:var(--acc)}
+.due.over{background:rgba(255,107,107,.14);color:var(--bad)}
+.due.today{background:rgba(57,208,163,.14);color:var(--acc2)}
+.thumb{width:100%;max-height:230px;object-fit:contain;border-radius:12px;margin-top:8px;
+  border:1px solid var(--line);background:#000}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.btn{border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--fg);
+  border-radius:10px;padding:7px 12px;font-size:13px;font-weight:600}
+.btn:active{transform:scale(.97)}
+.btn.pri{background:linear-gradient(135deg,#6c9cff,#39d0a3);color:#06121f;border:0}
+.btn.gh{background:none;color:var(--dim)}
+.btn.dg{color:var(--bad);border-color:rgba(255,107,107,.3)}
+.btn.sm{padding:4px 9px;font-size:12px}
+input,textarea,select{width:100%;background:var(--card2);border:1px solid var(--line);
+  border-radius:11px;color:var(--fg);padding:10px 12px;font-size:15px;font-family:inherit}
+textarea{min-height:110px;resize:vertical}
+label{display:block;font-size:11px;color:var(--dim);margin:12px 0 5px;font-weight:600;letter-spacing:.5px}
+.empty{text-align:center;color:var(--dim2);padding:56px 20px;font-size:14px}
+.empty div{font-size:44px;margin-bottom:10px;opacity:.6}
+.sheet{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:none;
+  align-items:flex-end;justify-content:center}
+.sheet.on{display:flex}
+.sheet .panel{width:100%;max-width:760px;max-height:88vh;overflow:auto;background:var(--card);
+  border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--line);animation:up .18s ease-out}
+@keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
+.grip{width:38px;height:4px;border-radius:2px;background:#39424f;margin:0 auto 12px}
+h2{font-size:17px;margin:0 0 4px}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.kv span:first-child{color:var(--dim)}
+.kv span:last-child{text-align:right;word-break:break-all;color:#cfe0ff}
+pre{background:#0a0e13;border:1px solid var(--line);border-radius:10px;padding:10px;
+  font-size:11px;overflow:auto;max-height:260px;color:#9fd0ff;white-space:pre-wrap;word-break:break-word}
+#toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:#22303f;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;
+  box-shadow:var(--sh);opacity:0;transition:.2s;pointer-events:none;z-index:60;max-width:86vw}
+#toast.on{opacity:1}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.25);
+  border-top-color:var(--acc);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;
+  background:rgba(108,156,255,.12);color:var(--acc);font-size:12px;font-weight:600;border:1px solid rgba(108,156,255,.25)}
+.sw{position:relative;width:46px;height:26px;flex:0 0 46px;border-radius:999px;background:#39424f;transition:.2s}
+.sw:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on{background:var(--acc2)}.sw.on:after{left:23px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">eNote<span class="sub">分享即笔记</span></div>
+  <div class="hstats" id="hstats">…</div>
+</header>
+<main id="view"></main>
+<nav>
+  <button data-tab="notes" class="on"><span>📝</span>笔记</button>
+  <button data-tab="todos"><span>✅</span>待办</button>
+  <button class="fab" id="addBtn"><span>＋</span></button>
+  <button data-tab="settings"><span>⚙️</span>设置</button>
+</nav>
+<div class="sheet" id="sheet"><div class="panel" id="panel"></div></div>
+<div id="toast"></div>
+<script>
+var S = {notes:[], settings:{}, info:{}};
+var tab = 'notes', open = {}, busy = {};
+
+function $(s){return document.querySelector(s)}
+function esc(s){return (s||'').replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');
+  clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on')},2200)}
+async function api(path, body){
+  var o = body ? {method:'POST',headers:{'Content-Type':'application/json'},
+                  body:JSON.stringify(body)} : {};
+  var r = await fetch(path, o);
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
+function now(){var d=new Date(),p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes())}
+function fmtTime(iso){if(!iso)return '';var d=new Date(iso);if(isNaN(d))return iso;
+  var p=n=>String(n).padStart(2,'0'), t=new Date();
+  var same = d.toDateString()===t.toDateString();
+  return (same?'今天':(d.getMonth()+1)+'/'+d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}
+function srcChip(n){
+  if(n.source==='share-text') return '<span class="chip">分享文字</span>';
+  if(n.source==='share-image') return '<span class="chip img">分享图片</span>';
+  if(n.source==='manual-image') return '<span class="chip img">图片</span>';
+  return '<span class="chip">手动</span>';
+}
+function statusChip(n){
+  if(n.status==='queued') return '<span class="chip pend"><span class="spin"></span> 排队中</span>';
+  if(n.status==='parsing') return '<span class="chip pend"><span class="spin"></span> AI 解析中</span>';
+  if(n.status==='done') return '<span class="chip ai">✦ AI '+(n.aiModel||'')+' · '+(n.aiMs||0)+'ms</span>';
+  if(n.status==='raw') return '<span class="chip pend">仅原文</span>';
+  if(n.status==='error') return '<span class="chip err">失败</span>';
+  return '';
+}
+function todoRow(t, n, compact){
+  var d='', dcls='due';
+  if(t.due){
+    var overdue = t.due < now(), today = t.due.slice(0,10)===now().slice(0,10);
+    if(overdue && !t.done) dcls+=' over'; else if(today) dcls+=' today';
+    d='<span class="'+dcls+'">'+fmtTime(t.due)+'</span>';
+  }
+  var extra = [];
+  if(t.priority==='high') extra.push('<span class="chip err">重要</span>');
+  if(t.priority==='low') extra.push('<span class="chip">低</span>');
+  if(!compact && t.source==='manual') extra.push('<span class="chip">手动</span>');
+  return '<div class="todo'+(t.done?' done':'')+(t.priority==='high'?' pri-high':'')+'">'
+    +'<div class="cb'+(t.done?' on':'')+'" onclick="toggle(\''+n.id+'\',\''+t.id+'\')">'+(t.done?'✓':'')+'</div>'
+    +'<div class="tx">'+esc(t.text)+'<small>'+d+' '+extra.join(' ')+'</small></div>'
+    +(compact?'':'<button class="btn sm gh" onclick="delTodo(\''+n.id+'\',\''+t.id+'\')">✕</button>')
+    +'</div>';
+}
+function noteCard(n){
+  var exp = !!open[n.id];
+  var body = n.content || '(无正文)';
+  var h = '<div class="card">';
+  h += '<div class="row between"><p class="t">'+esc(n.title || '未命名笔记')+'</p></div>';
+  h += '<div class="meta">'+srcChip(n)+statusChip(n)
+     + '<span>'+fmtTime(n.createdAt.toISOString?n.createdAt:n.createdAt)+'</span>'
+     + (n.tags||[]).map(function(t){return '<span class="chip tag">#'+esc(t)+'</span>'}).join('')
+     + '</div>';
+  if(n.imagePath) h += '<img class="thumb" src="/img?id='+n.id+'">';
+  h += '<div class="body'+(exp?'':' clamp')+'">'+esc(body)+'</div>';
+  if(n.error) h += '<div class="err">'+esc(n.error)+'</div>';
+  if(n.todos && n.todos.length){
+    h += '<div style="margin-top:10px">'+n.todos.map(function(t){return todoRow(t,n,true)}).join('')+'</div>';
+  }
+  h += '<div class="acts">';
+  h += '<button class="btn sm gh" onclick="expand(\''+n.id+'\')">'+(exp?'收起':'展开详情')+'</button>';
+  if(n.status==='done'||n.status==='raw')
+    h += '<button class="btn sm" onclick="reparse(\''+n.id+'\')">↻ 重新解析</button>';
+  if(n.imagePath) h += '<button class="btn sm" onclick="reocr(\''+n.id+'\')">↻ 重新识别图片</button>';
+  h += '<button class="btn sm" onclick="addTodoSheet(\''+n.id+'\')">＋ 待办</button>';
+  h += '<button class="btn sm dg" onclick="delNote(\''+n.id+'\')">删除</button>';
+  h += '</div></div>';
+  return h;
+}
+function renderNotes(){
+  var h = '';
+  if(!S.notes.length) return '<div class="empty"><div>📥</div>还没有笔记<br>'
+    + '在任何 app 里点「分享 → eNote」，文字和图片会自动变成笔记与待办</div>';
+  S.notes.forEach(function(n){h += noteCard(n)});
+  return h;
+}
+function groupTodos(){
+  var g = {'已逾期':[],'今天':[],'明天':[],'本周':[],'以后':[],'无日期':[],'已完成':[]};
+  var t = new Date(), p = n=>String(n).padStart(2,'0');
+  var today = now().slice(0,10);
+  var weekEnd = new Date(t.getTime()+6*864e5);
+  var weekEndS = weekEnd.getFullYear()+'-'+p(weekEnd.getMonth()+1)+'-'+p(weekEnd.getDate());
+  S.notes.forEach(function(n){(n.todos||[]).forEach(function(x){
+    var o = {t:x, n:n};
+    if(x.done) g['已完成'].push(o);
+    else if(!x.due) g['无日期'].push(o);
+    else if(x.due < now()) g['已逾期'].push(o);
+    else if(x.due.slice(0,10)===today) g['今天'].push(o);
+    else if(x.due.slice(0,10)===tomorrow()) g['明天'].push(o);
+    else if(x.due.slice(0,10)<=weekEndS) g['本周'].push(o);
+    else g['以后'].push(o);
+  })});
+  return g;
+}
+function tomorrow(){var d=new Date(Date.now()+864e5),p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
+function renderTodos(){
+  var g = groupTodos(), h = '', icons = {'已逾期':'⚠️','今天':'🔥','明天':'📅','本周':'🗓','以后':'🌱','无日期':'📌','已完成':'✅'};
+  var any = false;
+  Object.keys(g).forEach(function(k){
+    if(!g[k].length) return; any = true;
+    h += '<div class="sec">'+icons[k]+' '+k+' · '+g[k].length+'</div><div class="card">';
+    g[k].forEach(function(o){
+      h += '<div class="todo'+(o.t.done?' done':'')+(o.t.priority==='high'?' pri-high':'')+'">'
+        +'<div class="cb'+(o.t.done?' on':'')+'" onclick="toggle(\''+o.n.id+'\',\''+o.t.id+'\')">'+(o.t.done?'✓':'')+'</div>'
+        +'<div class="tx">'+esc(o.t.text)
+        +'<small>'+(o.t.due?'<span class="due'+(o.t.due<now()&&!o.t.done?' over':'')+'">'+fmtTime(o.t.due)+'</span> ':'')
+        +'<a href="#" onclick="jump(\''+o.n.id+'\');return false">'+esc(o.n.title||'查看笔记')+'</a></small></div></div>';
+    });
+    h += '</div>';
+  });
+  if(!any) return '<div class="empty"><div>🎉</div>没有待办事项<br>分享一段文字，AI 会自动提取待办</div>';
+  return h;
+}
+function renderSettings(){
+  var s = S.settings, i = S.info;
+  var h = '<div class="card"><h2>AI 模型（BYOK）</h2>'
+   +'<div class="row between" style="margin-top:8px"><div><b>启用 AI 解析</b>'
+   +'<div style="font-size:11px;color:var(--dim)">关闭后只保存原文，不调用模型</div></div>'
+   +'<div class="sw'+(s.useAI?' on':'')+'" onclick="toggleAI(this)"></div></div>'
+   +'<label>API Base URL（OpenAI 兼容）</label><input id="sUrl" value="'+esc(s.baseUrl)+'" placeholder="https://your-server:8080/v1">'
+   +'<label>API Key</label><input id="sKey" value="'+esc(s.apiKey)+'" placeholder="sk-...">'
+   +'<label>模型名</label><input id="sModel" value="'+esc(s.model)+'">'
+   +'<div class="grid2"><div><label>超时（秒）</label><input id="sTimeout" value="'+(s.timeoutS||90)+'"></div>'
+   +'<div><label>最大 tokens</label><input id="sMax" value="'+(s.maxTokens||2048)+'"></div></div>'
+   +'<div class="acts"><button class="btn pri" onclick="saveSettings()">保存</button>'
+   +'<button class="btn" onclick="testLLM()">测试连接</button></div>'
+   +'<div id="llmOut"></div></div>';
+  h += '<div class="card"><h2>状态</h2>'
+   +'<div class="kv"><span>笔记 / 待办</span><span>'+(i.notes||0)+' / '+(i.todos||0)+'</span></div>'
+   +'<div class="kv"><span>未完成 / 已逾期</span><span>'+(i.open||0)+' / <b style="color:var(--bad)">'+(i.overdue||0)+'</b></span></div>'
+   +'<div class="kv"><span>本地 OCR 引擎</span><span>'+(i.ocrReady?'✅ 就绪':'⏳ 初始化中')+'</span></div>'
+   +'<div class="kv"><span>Go 服务</span><span>'+(i.server||'')+'</span></div>'
+   +'<div class="kv"><span>Go / 运行时长</span><span>'+(i.go||'')+' / '+(i.uptimeS||0)+'s</span></div>'
+   +'<div class="acts"><button class="btn gh" onclick="showLog()">查看日志</button>'
+   +'<button class="btn gh" onclick="showDebug()">AI 调用记录</button>'
+   +'<button class="btn gh" onclick="location.href=\'/api/export\'">导出 JSON</button></div></div>';
+  h += '<div class="card"><h2>用法</h2><div class="body" style="margin-top:4px">'
+   +'· 在微信 / 浏览器 / 相册里点「分享」→ 选 eNote<br>'
+   +'· 文字直接发给模型；图片先在本机用 vivo 离线 OCR 识别成文字，再发给模型（图片不出门）<br>'
+   +'· 模型返回 JSON：标题、正文、标签、待办（含到期时间）<br>'
+   +'· 底部 ＋ 可手动记文字或选图片</div></div>';
+  return h;
+}
+function render(){
+  $('#view').innerHTML = tab==='notes'?renderNotes():tab==='todos'?renderTodos():renderSettings();
+  var i = S.info;
+  $('#hstats').innerHTML = '待办 <b>'+(i.open||0)+'</b> · 逾期 <i>'+(i.overdue||0)+'</i><br>'
+    +(i.server?'<span style="opacity:.6">OCR '+(i.ocrReady?'✓':'…')+'</span>':'');
+}
+async function refresh(){
+  try{ var d = await api('/api/state'); S = d; render(); }
+  catch(e){ $('#hstats').innerHTML='<span style="color:var(--bad)">服务未响应</span>'; }
+}
+function expand(id){ open[id]=!open[id]; render(); }
+async function toggle(nid,tid){ await api('/api/todo',{action:'toggle',noteId:nid,todoId:tid}); refresh(); }
+async function delTodo(nid,tid){ await api('/api/todo',{action:'delete',noteId:nid,todoId:tid}); refresh(); }
+async function reparse(id){ if(busy[id])return; busy[id]=1; toast('AI 重新解析中…');
+  await api('/api/reparse',{id:id}); setTimeout(refresh,600); setTimeout(refresh,4000); }
+async function delNote(id){ if(!confirm('删除这条笔记？'))return;
+  await api('/api/delete',{id:id}); toast('已删除'); refresh(); }
+function reocr(id){ if(!window.Android){toast('图片识别只在 app 内可用');return;}
+  toast('正在识别图片…'); Android.reocr(id); setTimeout(refresh,1500); setTimeout(refresh,5000); }
+function jump(id){ tab='notes'; open[id]=true; setTab(); refresh();
+  setTimeout(function(){var el=document.querySelector('[id="n'+id+'"]');if(el)el.scrollIntoView()},200); }
+function toggleAI(el){ var s=S.settings; s.useAI=!s.useAI; el.classList.toggle('on'); saveSettings(); }
+async function saveSettings(){
+  var s = {baseUrl:$('#sUrl').value.trim(), apiKey:$('#sKey').value.trim(),
+    model:$('#sModel').value.trim(), timeoutS:parseInt($('#sTimeout').value)||90,
+    maxTokens:parseInt($('#sMax').value)||2048, useAI:S.settings.useAI,
+    temperature:S.settings.temperature||0.2};
+  var r = await api('/api/settings', s);
+  toast(r.ok?'已保存':'保存失败'); if(r.ok){S.settings=r.settings; render();}
+}
+async function testLLM(){
+  $('#llmOut').innerHTML='<div class="body"><span class="spin"></span> 连接中…</div>';
+  var r = await api('/api/llm/test',{});
+  $('#llmOut').innerHTML='<div class="body" style="margin-top:10px">'
+    +(r.ok?'✅ 成功（'+r.ms+'ms，HTTP '+r.httpCode+'）<br>'+esc(r.reply)
+           :'❌ 失败（'+(r.ms||0)+'ms）<br>'+esc(r.error||''))+'</div>';
+}
+async function showLog(){
+  var r = await api('/api/log?n=150');
+  sheet('<h2>运行日志</h2><div class="meta"><span class="chip">OCR '+(r.ocrReady?'ready':'…')
+    +'</span><span class="chip">'+esc(r.server||'')+'</span></div><pre>'+esc(r.log)+'</pre>');
+}
+async function showDebug(){
+  var r = await api('/api/llmlog');
+  var h='<h2>AI 调用记录</h2>';
+  if(!r.calls.length) h+='<div class="empty">还没有调用记录</div>';
+  r.calls.slice(0,10).forEach(function(c){
+    h+='<div class="card"><div class="meta"><span class="chip">'+esc(c.model)+'</span>'
+     +'<span class="chip">'+c.ms+'ms</span><span class="chip">HTTP '+c.httpCode+'</span></div>'
+     +'<div class="body" style="font-size:12px">输入：'+esc(clip(c.user,200))+'</div>'
+     +'<pre>'+esc(c.err?('错误：'+c.err):c.raw)+'</pre></div>';
+  });
+  sheet(h);
+}
+function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
+function sheet(html){ $('#panel').innerHTML='<div class="grip"></div>'+html; $('#sheet').classList.add('on'); }
+function closeSheet(){ $('#sheet').classList.remove('on'); }
+$('#sheet').addEventListener('click', function(e){ if(e.target.id==='sheet') closeSheet(); });
+function addSheet(){
+  sheet('<h2>记一笔</h2>'
+   +'<label>文字</label><textarea id="addText" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea>'
+   +'<div class="acts"><button class="btn pri" onclick="addNote()">保存并解析</button>'
+   +'<button class="btn" onclick="pickImage()">📷 选图片（本机 OCR）</button></div>');
+}
+async function addNote(){
+  var t = $('#addText').value.trim(); if(!t){toast('写点内容吧');return;}
+  closeSheet(); toast('已加入队列…');
+  var r = await api('/api/add',{text:t});
+  if(!r.ok) toast(r.error||'失败');
+  setTimeout(refresh,500); setTimeout(refresh,3000); setTimeout(refresh,9000);
+}
+function pickImage(){
+  if(!window.Android){toast('选图只在 app 内可用');return;}
+  Android.pickImage(); closeSheet(); toast('已提交，正在识别图片…');
+  setTimeout(refresh,1500); setTimeout(refresh,5000); setTimeout(refresh,12000);
+}
+function addTodoSheet(nid){
+  sheet('<h2>添加待办</h2><label>事项</label><input id="tText" placeholder="要做什么">'
+   +'<div class="grid2"><div><label>日期</label><input type="date" id="tDate"></div>'
+   +'<div><label>时间</label><input type="time" id="tTime"></div></div>'
+   +'<label>优先级</label><select id="tPri"><option value="normal">普通</option>'
+   +'<option value="high">重要</option><option value="low">低</option></select>'
+   +'<div class="acts"><button class="btn pri" onclick="addTodo(\''+nid+'\')">添加</button></div>');
+}
+async function addTodo(nid){
+  var t=$('#tText').value.trim(); if(!t){toast('写点内容吧');return;}
+  var due = $('#tDate').value ? $('#tDate').value+'T'+($('#tTime').value||'09:00') : '';
+  var r = await api('/api/todo',{action:'add',noteId:nid,text:t,due:due,priority:$('#tPri').value});
+  closeSheet(); toast(r.ok?'已添加':'失败'); refresh();
+}
+function setTab(){
+  tab = tab||'notes';
+  document.querySelectorAll('nav button[data-tab]').forEach(function(b){
+    b.classList.toggle('on', b.dataset.tab===tab)});
+  render();
+}
+document.querySelectorAll('nav button[data-tab]').forEach(function(b){
+  b.onclick = function(){ tab = b.dataset.tab; setTab(); }});
+$('#addBtn').onclick = addSheet;
+setInterval(function(){ if(!document.hidden) refresh(); }, 1800);
+refresh();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+out/
+.test/shots/
+*.apk
+*.apk.idsig
+go/enotebin
+go/ui.bundle.js

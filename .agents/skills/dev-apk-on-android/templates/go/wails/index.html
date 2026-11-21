@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>__LABEL__</title>
+  <style>
+    body{background:#101418;color:#e6edf3;font:16px/1.5 system-ui;margin:0;padding:24px}
+    pre{background:#161b22;padding:12px;border-radius:8px;white-space:pre-wrap}
+    .ok{color:#3fb950}
+  </style>
+</head>
+<body>
+<h1>__LABEL__</h1>
+<p>Wails v3 business logic, Android WebView UI.</p>
+<p id="who">loading&hellip;</p>
+<pre id="out">running&hellip;</pre>
+<script type="module">
+  // Generated on the phone by: wails3 generate bindings -b -d frontend/dist/wailsjs .
+  import { App } from '__BINDINGS__';
+
+  const out = document.getElementById('out');
+  const say = (t) => { out.textContent += "\n" + t; };
+
+  try {
+    const info = await App.Info();
+    document.getElementById('who').innerHTML = '<span class="ok">' + info + '</span>';
+    say('App.Info() -> ' + info);
+
+    const f = await App.Fib(28);
+    say('App.Fib(28) -> ' + JSON.stringify(f));
+
+    const p = await App.Ping('hello from the WebView');
+    say('App.Ping -> ' + p);
+
+    if (window.Android) {
+      window.Android.fromWeb('wails ok: fib(28)=' + f.value + ' in ' + f.ms + ' ms');
+      say('reported to Java through window.Android');
+    } else {
+      say('(no Android bridge: running outside the APK)');
+    }
+  } catch (e) {
+    say('FAILED: ' + (e && e.message ? e.message : e));
+    if (window.Android) window.Android.fromWeb('wails FAILED: ' + e);
+  }
+</script>
+</body>
+</html>

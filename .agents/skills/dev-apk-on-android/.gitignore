@@ -1,0 +1,18 @@
+# build output of scaffolded projects (they carry their own copies of the scripts)
+out/
+*.apk
+app.env.bak
+
+# python caches
+__pycache__/
+*.pyc
+
+# local smoke-test leftovers
+.dev-apk-selfcheck*/
+dev-apk-selfcheck/
+
+# NOTE: vendor/ is intentionally NOT ignored - the offline toolchain ships with the skill.
+# A global ~/.gitignore_global with `vendor/` (common on Go setups) would otherwise hide the
+# jars and the virtual-display daemon, so re-include the whole tree here.
+!vendor/
+!vendor/**
