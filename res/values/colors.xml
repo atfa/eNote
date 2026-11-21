@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors the CSS tokens in go/ui.html; Java paints the system bars with these. -->
+    <color name="bgLight">#F5F7FB</color>
+    <color name="bgDark">#0B0F14</color>
+    <color name="navLight">#FFFFFF</color>
+</resources>

@@ -58,6 +58,7 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/delete", handleDelete)
 	m.HandleFunc("/api/todo", handleTodo)
 	m.HandleFunc("/api/settings", handleSettings)
+	m.HandleFunc("/api/theme", handleTheme)
 	m.HandleFunc("/api/llm/test", handleLLMTest)
 	m.HandleFunc("/api/llmlog", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, map[string]any{"ok": true, "calls": llmHistory()})
@@ -237,11 +238,37 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 	if s.Model == "" {
 		s.Model = old.Model
 	}
+	if s.Theme == "" {
+		s.Theme = old.Theme
+	}
+	if s.UI == nil {
+		s.UI = old.UI
+	}
 	if err := config.set(s); err != nil {
 		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	jsonOut(w, map[string]any{"ok": true, "settings": maskedSettings()})
+}
+
+// handleTheme switches the palette: the WebView repaints from settings.theme and calls
+// Android.setTheme so Java can repaint the status/navigation bars to match.
+func handleTheme(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	if err := readBody(r, &body); err != nil {
+		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	s := config.get()
+	s.Theme = strings.TrimSpace(body.Mode)
+	if err := config.set(s); err != nil {
+		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	jsonOut(w, map[string]any{"ok": true, "theme": config.get().Theme,
+		"settings": maskedSettings()})
 }
 
 // handleLLMTest is the BYOK "测试连接" button: one round trip, raw reply shown in the UI.

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Non-fullscreen on purpose: this is a notes app, the status bar (clock, battery,
+      notifications) must stay visible. Theme.apply() repaints the bars to match the
+      WebView theme at runtime, so the static values here are only the startup frame.
+    -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/bgLight</item>
+        <item name="android:statusBarColor">@color/bgLight</item>
+        <item name="android:navigationBarColor">@color/navLight</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowTranslucentStatus">false</item>
+    </style>
+</resources>

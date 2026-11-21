@@ -9,15 +9,25 @@ import (
 	"time"
 )
 
-// Settings is the BYOK configuration, editable in the app's 设置 tab.
+// Settings is the BYOK configuration plus UI preferences, editable in 我的 → 设置.
 type Settings struct {
-	BaseURL  string `json:"baseUrl"`
-	APIKey   string `json:"apiKey"`
-	Model    string `json:"model"`
-	TimeoutS int    `json:"timeoutS"`
-	MaxTok   int    `json:"maxTokens"`
+	BaseURL  string  `json:"baseUrl"`
+	APIKey   string  `json:"apiKey"`
+	Model    string  `json:"model"`
+	TimeoutS int     `json:"timeoutS"`
+	MaxTok   int     `json:"maxTokens"`
 	Temp     float64 `json:"temperature"`
-	UseAI    bool   `json:"useAI"`  // off = save shared content as-is, no LLM call
+	UseAI    bool    `json:"useAI"` // off = save shared content as-is, no LLM call
+	Theme    string  `json:"theme"` // light | dark | auto, default light
+	UI       map[string]ViewPrefs `json:"ui"` // per-page remembered search/sort/filter
+}
+
+// ViewPrefs is one page's remembered query state (notes / todos / files).
+type ViewPrefs struct {
+	Q       string            `json:"q"`
+	Sort    string            `json:"sort"`
+	Dir     string            `json:"dir"`
+	Filters map[string]string `json:"filters"`
 }
 
 // A fresh install has no AI configured: the app is BYOK, so the endpoint goes into 设置
@@ -30,6 +40,7 @@ var defaultSettings = Settings{
 	MaxTok:   2048,
 	Temp:     0.2,
 	UseAI:    true,
+	Theme:    "light",
 }
 
 type Config struct {
@@ -59,6 +70,12 @@ func openConfig(dir string) (*Config, error) {
 
 func (c *Config) normalize() {
 	c.BaseURL = trimSlash(strings.TrimSpace(c.BaseURL))
+	if c.Theme != "dark" && c.Theme != "auto" {
+		c.Theme = "light"
+	}
+	if c.UI == nil {
+		c.UI = map[string]ViewPrefs{}
+	}
 	if c.TimeoutS <= 0 {
 		c.TimeoutS = 90
 	}

@@ -84,6 +84,9 @@ fail() {
 api_get()  { curl -s -m "${2:-30}" "http://127.0.0.1:$PORT/api/$1"; }
 api_post() { curl -s -m "${3:-120}" -X POST "http://127.0.0.1:$PORT/api/$1" -d "$2"; }
 
+# logcat_has <pattern>: the app logs with Log.i("enote", ...); logcat needs root on this ROM.
+logcat_has() { asroot "logcat -d -s enote:V" 2>/dev/null | grep -q "$1"; }
+
 # wait_note <python predicate on the note dict> <seconds> <label>
 wait_note() {
   n=0
@@ -223,6 +226,23 @@ assert s["baseUrl"].startswith("http"), s["baseUrl"]
 ' || fail "settings did not survive the round trip"
 api_post llm/test "" | grep -q '"ok":true' || fail "the masked key broke the llm"
 say "  ok"
+
+step "theme (light default, switch, java sync)"
+api_get state | "$PY" -c '
+import json,sys
+s = json.load(sys.stdin)["settings"]
+assert s.get("theme") in ("light","dark","auto"), "no theme in settings: %r" % s.get("theme")
+' || fail "settings.theme missing"
+api_post theme '{"mode":"dark"}' | "$PY" -c 'import json,sys; d=json.load(sys.stdin); assert d["ok"] and d["theme"]=="dark", d' \
+  || fail "cannot switch to dark"
+api_get state | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["settings"]["theme"]=="dark"' \
+  || fail "dark theme did not stick"
+sleep 3   # the UI polls /api/state and calls Android.setTheme
+logcat_has "js setTheme" || fail "the webview never told java about the theme"
+api_post theme '{"mode":"light"}' >/dev/null
+api_get state | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["settings"]["theme"]=="light"' \
+  || fail "light theme did not stick"
+say "  ok (light is the default, java stays in sync)"
 
 step "app alive"
 sh "$HERE/probe.sh" "$APP_PACKAGE" | sed 's/^/  /'

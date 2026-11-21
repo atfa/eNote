@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
         handleIntent(getIntent());
 
         String url = Bridge.startServer();
+        Theme.apply(this, Theme.loadMode(this));
         if (url == null || !url.startsWith("http")) {
             TextView t = new TextView(this);
             t.setText("Go 服务未启动\n" + url + "\n" + Bridge.initResult);
@@ -102,6 +103,8 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         Bridge.current = new WeakReference<MainActivity>(this);
+        // "auto" follows the system night mode, which can change while we are backgrounded.
+        Theme.apply(this, Theme.loadMode(this));
     }
 
     // ---------------------------------------------------------------- image picker

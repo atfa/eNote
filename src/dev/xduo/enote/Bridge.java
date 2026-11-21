@@ -121,6 +121,24 @@ public class Bridge {
         Log.i(TAG, "web: " + msg);
     }
 
+    /** window.Android.setTheme(mode): keeps the system bars in sync with the CSS theme. */
+    @JavascriptInterface
+    public void setTheme(final String mode) {
+        final MainActivity a = current.get();
+        Log.i(TAG, "js setTheme " + mode);
+        if (a != null) a.runOnUiThread(new Runnable() {
+            public void run() {
+                Theme.apply(a, mode);
+            }
+        });
+    }
+
+    /** window.Android.themeMode(): resolved theme, so the WebView's first paint matches. */
+    @JavascriptInterface
+    public String themeMode() {
+        return Theme.resolve();
+    }
+
     @JavascriptInterface
     public String status() {
         return statusStatic();
