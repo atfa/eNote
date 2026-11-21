@@ -276,6 +276,16 @@ const clip = /func clipAdd/.test(goclip) && /func clipParse/.test(goclip)
 console.log((clip ? '  ok   ' : '  FAIL ') + '剪贴板前台采集 + 暂存去重 + 横幅/批量页/一键解析');
 if (!clip) bad++;
 
+// Android 10+ 只让「当前焦点窗口」读剪贴板，onResume 比窗口拿焦点早，那一次必然被拒
+// （ClipboardService: Denying clipboard access ... not in focus，返回 null 而不报错）。
+// 修：onWindowFocusChanged 里重试 + 退避重试，再加顶栏 📋 手动入口兼底。
+const clipFocus = /onWindowFocusChanged/.test(mainact) && /clipWaitingFocus/.test(mainact)
+  && /clipTries/.test(mainact)
+  && /public void clipImport/.test(fs.readFileSync(path.join(root, 'src/dev/xduo/enote/Bridge.java'), 'utf8'))
+  && /id="clipBtn"/.test(src) && /Android\.clipImport/.test(src) && /window\.onClipRead/.test(src);
+console.log((clipFocus ? '  ok   ' : '  FAIL ') + '剪贴板焦点重试（通知点进来读得到的修复）+ 顶栏 📋 手动导入');
+if (!clipFocus) bad++;
+
 // tab 切换不再有整页浮现动画（用户要求：干净利落，避免闪烁）
 const cleanTab = !/main\.enter/.test(src) && !/@keyframes fadein/.test(src)
   && /\.todo\.enter/.test(src);              // 完成待办的高亮动画保留

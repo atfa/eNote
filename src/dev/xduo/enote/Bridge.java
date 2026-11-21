@@ -182,6 +182,14 @@ public class Bridge {
         Log.i(TAG, "web: " + msg);
     }
 
+    /** 手动「从剪贴板导入」：页面上的 📋 按钮，读到就进暂存队列。 */
+    @JavascriptInterface
+    public void clipImport() {
+        MainActivity a = current.get();
+        Log.i(TAG, "js clipImport");
+        if (a != null) a.clipImportNow();
+    }
+
     /**
      * window.Android.dialogResult(id, ok): resolves a native alert/confirm that MainActivity
      * forwarded to the page's own dialog, so the user never sees the "http://127.0.0.1" bar.

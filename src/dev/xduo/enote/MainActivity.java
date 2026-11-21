@@ -163,6 +163,8 @@ public class MainActivity extends Activity {
         // 前台剪贴板监听（R7/P6）：Android 10+ 只有有焦点的 app 能读剪贴板，所以只能前台暂存。
         // 用户从别处复制、切回来时 onResume 会把内容暂存，Go 侧去重避免重复。
         registerClipboard();
+        clipTries = 0;
+        clipWaitingFocus = true;
         drainClipboard();
         // 常驻后台：用户在设置里开过就重新拉起（进程被回收后回来也能恢复）
         KeepAlive.resumeIfEnabled(this);
@@ -182,10 +184,43 @@ public class MainActivity extends Activity {
     // ---------------------------------------------------------------- clipboard (foreground)
 
     ClipboardManager clipboard;
+    int clipTries;                // 被系统拒读时的重试次数
+    boolean clipWaitingFocus;    // onResume 比窗口拿到焦点更早，等焦点到了再读一次
     final ClipboardManager.OnPrimaryClipChangedListener clipListener =
             new ClipboardManager.OnPrimaryClipChangedListener() {
                 @Override public void onPrimaryClipChanged() { drainClipboard(); }
             };
+    final Runnable clipRetry = new Runnable() {
+        @Override public void run() { drainClipboard(); }
+    };
+
+    /**
+     * Android 10+ 只允许「当前焦点窗口」读剪贴板，被拒时 getPrimaryClip() 直接返回 null（不抛异常）：
+     * ClipboardService: Denying clipboard access to dev.xduo.enote, application is not in focus.
+     * onResume 跑得比窗口拿到焦点早，所以从通知点进来的那一次必然读不到，得等焦点。
+     */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && clipWaitingFocus) {
+            clipWaitingFocus = false;
+            drainClipboard();
+        }
+    }
+
+    /** JS 里点「📋」：此刻窗口已有焦点，读得到；把结果回到页面。 */
+    void clipImportNow() {
+        final int before = Bridge.nativeClipCount();
+        clipTries = 0;
+        drainClipboard();
+        if (web == null) return;
+        web.postDelayed(new Runnable() {
+            @Override public void run() {
+                int after = Bridge.nativeClipCount();
+                runJs("window.onClipRead && onClipRead(" + after + "," + (after > before) + ")");
+            }
+        }, 400);
+    }
 
     void registerClipboard() {
         try {
@@ -203,7 +238,16 @@ public class MainActivity extends Activity {
                 try {
                     ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                     ClipData cd = cm == null ? null : cm.getPrimaryClip();
-                    if (cd == null || cd.getItemCount() == 0) return;
+                    if (cd == null) {
+                        // 读被拒（无焦点）或剪贴板为空：退避重试几次，焦点一到就能读到
+                        if (clipTries < 4 && web != null) {
+                            clipTries++;
+                            web.postDelayed(clipRetry, 300L * clipTries);
+                        }
+                        return;
+                    }
+                    clipTries = 0;
+                    clipWaitingFocus = false;
                     CharSequence cs = cd.getItemAt(0).getText();
                     if (cs == null) return;
                     String text = cs.toString();
@@ -600,6 +644,16 @@ public class MainActivity extends Activity {
                         + ",\"batteryIgnoring\":" + KeepAlive.ignoringBattery(MainActivity.this)
                         + ",\"pending\":" + Reminders.sync(MainActivity.this, Bridge.remindersFromStore())
                         + "}";
+                } else if ("clipset".equals(hook)) {
+                    // 模拟「在别的 app 里复制了一段文字」：写剪贴板，接下来的前台读走哪条路径跟真实场景一致
+                    final String t = arg == null ? "懒得记 剪贴板测试" : arg;
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("hook", t));
+                        }
+                    });
+                    out = "{\"ok\":true,\"len\":" + t.length() + "}";
                 } else {
                     out = Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
                 }

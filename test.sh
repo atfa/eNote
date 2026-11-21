@@ -394,6 +394,26 @@ if asroot "dumpsys activity services $APP_PACKAGE" | grep -q 'KeepAlive'; then
 fi
 say "  ok (关掉开关后服务停止)"
 
+step "P6 剪贴板：无焦点被拒 → 拿到焦点后重试（从通知点进来的场景）"
+api_post clip/clear '' >/dev/null 2>&1 || true
+asroot "input keyevent KEYCODE_HOME" >/dev/null 2>&1 || true
+sleep 2
+# 模拟：在别的 app 里复制 → 点常驻通知回到 app（onResume 比窗口拿焦点早，系统会拒读）
+CLIPTEXT="买咖啡 焦点重试 $(date +%H%M%S)"
+am_start "$ACTIVITY" "--es hook clipset --es arg '$CLIPTEXT'"
+n=0
+while [ "$n" -lt 20 ]; do
+  api_get clip/list | grep -q '焦点重试' && break
+  sleep 1; n=$((n + 1))
+done
+api_get clip/list | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+hits = [c for c in d.get("clips", []) if "焦点重试" in c.get("text", "")]
+assert hits, d
+print("  ok (被拒后重试成功，暂存 %d 条：%s)" % (len(hits), hits[0]["text"][:24]))
+' || fail "剪贴板在窗口拿到焦点后仍未被暂存（焦点重试没生效）"
+
 step "app alive"
 sh "$HERE/probe.sh" "$APP_PACKAGE" | sed 's/^/  /'
 

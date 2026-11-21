@@ -292,6 +292,17 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * 验收：真机复制 → 切回 app → 横幅出现 → 勾选 → 一键解析 → `clipboard-text` 笔记 `status=done`、facts 已提取、clip 清空（已实测）。
 * 备注：通知权限（POST_NOTIFICATIONS）保留，P6.5 到期提醒要用。
 
+### P6c 剪贴板焦点修复（用户实测反馈，2026-11-21）
+
+* **现象**：在浏览器复制一段文字 → 下拉状态栏 → 点常驻通知回到 app → 没有看到「剪贴板暂存 N 条」横幅。
+* **根因**（日志实锤）：`ClipboardService: Denying clipboard access to dev.xduo.enote, application is not in focus nor is it a system service`。Android 10+ 只允许**当前焦点窗口**读剪贴板，被拒时 `getPrimaryClip()` 直接返回 `null`（不抛异常），而 `onResume()` 比窗口拿到焦点**更早**执行——所以从通知/启动器点进来的那一次必然读不到，旧代码把它当成「剪贴板是空的」静默吞了。
+* **修**：
+  * `onWindowFocusChanged(true)` 里补读一次（`clipWaitingFocus` 标记，只在 onResume 后需要时读）；
+  * `getPrimaryClip()` 返回 null 时退避重试（300/600/900/1200ms，最多 4 次）；
+  * 顶栏新增 📋 手动入口（`Android.clipImport()` → `clipImportNow()` → `window.onClipRead(n, added)`）：用户主动点的时候窗口肯定有焦点，这条路径 100% 读得到，读到就打开整理页，没读到弹 toast 说明原因。
+* **设计说明**：本来就是「前台采集」的设计，流程没错；错在把「前台」当成了 `onResume`，而 Android 上的「前台」等于「有焦点」。横幅只在队列非空时出现，失败时用户完全看不到入口，📋 就是补上这个缺口。
+* **验收**：`test.sh` 新增一档（hook `clipset` 模拟在别的 app 复制 → HOME → 通知式回到 app → 断言队列里出现该文字）；真机手动 📋 已实测（清空队列后点 📋 → 直接打开「剪贴板暂存」并列出那条）。
+
 ### P6.5 自研到期提醒 + 常驻后台（2026-11-21）
 
 * **提醒本体的定稿**：`AlarmManager.setAlarmClock()`（API 21+）登记，`AlarmReceiver` 到点发 `reminder` 渠道通知（IMPORTANCE_HIGH，heads-up/声音/震动）。选它而不是 `setExactAndAllowWhileIdle` 的理由：它是系统时钟 app 自己排闹钟的入口，属于「必须响」的登记方式；`setExactAndAllowWhileIdle` 在本机后台冻结时会被**无声取消**。旧方案靠 `shared_prefs/reminders.xml` 里的 `scheme` 版本号自愈升级：读到旧版本先把老 PendingIntent 全删一遍再按新方式重排。

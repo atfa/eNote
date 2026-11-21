@@ -391,6 +391,7 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
     <input id="q" type="search" placeholder="搜索笔记与待办" autocomplete="off">
     <button class="sclr" id="qClear" aria-label="清除">✕</button>
   </div>
+  <button class="iconbtn" id="clipBtn" aria-label="从剪贴板导入"><span>📋</span></button>
   <button class="iconbtn" id="sortBtn" aria-label="排序与筛选"><span>⇅</span></button>
 </header>
 <main id="view"></main>
@@ -639,6 +640,16 @@ function clipBanner(){
     +'<span class="cbar">整理 ›</span></div>';
 }
 function openClip(){ clipSheet(); }
+/** 顶栏 📋：手动把当前剪贴板收进暂存队列（此刻窗口有焦点，系统允许读）。 */
+function importClip(){
+  if(!(window.Android && Android.clipImport)) return toast('暂不支持读取剪贴板');
+  Android.clipImport();
+}
+/** Java 读完剪贴板后的回调：有新内容直接打开整理页，否则说一声。 */
+window.onClipRead = function(n, added){
+  if(added) clipSheet();
+  else toast(n > 0 ? '剪贴板里没有新文字（已暂存 '+n+' 条）' : '剪贴板是空的');
+};
 function clipSheet(){
   pageSheet('剪贴板暂存', '<div class="cliptop">'
     +'<button class="btn sm" onclick="clipSelAll(true)">全选</button>'
@@ -967,10 +978,11 @@ function renderSettings(){
    +'<div id="llmOut"></div></div>';
 
   h += '<div class="pgroup">采集</div><div class="card">'
-   +'<div class="kv"><span>剪贴板暂存</span><span style="color:var(--acc2)">前台自动</span></div>'
+   +'<div class="kv"><span>剪贴板暂存</span><span style="color:var(--acc2)">前台自动 + 📋 手动</span></div>'
    +'<div style="font-size:11px;color:var(--dim);margin-top:8px">打开 app 时自动暂存剪贴板里的文字；'
-   +'在别的 app 复制后切回「懒得记」即可看到，点「解析」才发到大模型。'
-   +'Android 限制后台读剪贴板，所以只在 app 前台时暂存；未点解析之前内容不会离开本机。</div></div>';
+   +'在别的 app 复制后切回「懒得记」即可看到，顶栏 📋 也可以随时手动收一条。'
+   +'Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。'
+   +'点「解析」才发到大模型，之前内容不会离开本机。</div></div>';
 
   h += '<div class="pgroup">本地 OCR</div><div class="card">'
    +'<div class="kv"><span>引擎状态</span><span>'+(i.ocrReady?'✅ 就绪':'⏳ 初始化中')+'</span></div>'
@@ -1489,6 +1501,7 @@ document.querySelectorAll('.tabbar .tab').forEach(function(b){
     tab = b.dataset.tab; setTab(); window.scrollTo(0,0); }});
 $('#brandBtn').onclick = function(){ tab='mine'; setTab(); window.scrollTo(0,0); };
 $('#sortBtn').onclick = sortSheet;
+$('#clipBtn').onclick = importClip;
 var searchT = 0;
 $('#q').addEventListener('input', function(){
   q = this.value.trim();
