@@ -40,8 +40,9 @@ public class MainActivity extends Activity {
     static final int REQ_FILE = 8;
     static final int REQ_IMPORT = 9;
     static final int REQ_NOTIFY = 10;
-    /** A note to open once the page is ready (notification tap). */
+    /** A note/todo to open once the page is ready (notification tap). */
     static String pendingOpenNote;
+    static String pendingOpenTodo;
     static boolean pendingOpenClip;
     WebView web;
     /** A native alert/confirm forwarded to the page; resolved by Bridge.dialogResult. */
@@ -131,10 +132,14 @@ public class MainActivity extends Activity {
         if (intent == null) return;
         String hook = intent.getStringExtra("hook");
         if (hook != null && hook.length() > 0) runHook(hook);
-        String open = intent.getStringExtra("openTodo");
+        String open = intent.getStringExtra("openNote");
+        if (open == null || open.isEmpty()) open = intent.getStringExtra("openTodo");
         if (open != null && open.length() > 0) {
-            note("open todo from notification: " + open);
+            // The reminder notification carries real ids: note to expand + todo to highlight.
+            String todo = intent.getStringExtra("openTodoId");
+            note("open from notification: note=" + open + " todo=" + todo);
             pendingOpenNote = open;
+            pendingOpenTodo = todo == null ? "" : todo;
             flushPendingOpen();
         }
         if ("1".equals(intent.getStringExtra("openClip"))) {
@@ -159,6 +164,10 @@ public class MainActivity extends Activity {
         // 用户从别处复制、切回来时 onResume 会把内容暂存，Go 侧去重避免重复。
         registerClipboard();
         drainClipboard();
+        // 常驻后台：用户在设置里开过就重新拉起（进程被回收后回来也能恢复）
+        KeepAlive.resumeIfEnabled(this);
+        // 从系统设置页（电池优化 / 通知权限）回来时刷新设置页的状态
+        if (web != null) runJs("window.onAppResume && onAppResume()");
     }
 
     @Override
@@ -341,11 +350,13 @@ public class MainActivity extends Activity {
         });
     }
 
-    /** Opens the note a reminder notification pointed at, once the page can handle it. */
+    /** Opens the note/todo a reminder notification pointed at, once the page can handle it. */
     void flushPendingOpen() {
         final String id = pendingOpenNote;
+        final String todo = pendingOpenTodo;
         final boolean clip = pendingOpenClip;
         pendingOpenNote = null;
+        pendingOpenTodo = null;
         pendingOpenClip = false;
         if ((id == null || id.isEmpty()) && !clip) return;
         if (web == null) return;
@@ -353,6 +364,8 @@ public class MainActivity extends Activity {
             public void run() {
                 if (clip) {
                     runJs("window.openClip && openClip()");
+                } else if (todo != null && !todo.isEmpty()) {
+                    runJs("window.openTodo && openTodo('" + id + "','" + todo + "')");
                 } else {
                     runJs("window.openNote && openNote('" + id + "')");
                 }
@@ -579,6 +592,14 @@ public class MainActivity extends Activity {
                         public void run() { setAlarm(System.currentTimeMillis() + 3600000L, t); }
                     });
                     out = "{\"ok\":true,\"what\":\"alarm\"}";
+                } else if ("keepalive".equals(hook)) {
+                    // headless switch for the acceptance test: on|off, then report the state
+                    boolean on = !"off".equals(arg);
+                    KeepAlive.setEnabled(MainActivity.this, on);
+                    out = "{\"keepAlive\":" + KeepAlive.enabled(MainActivity.this)
+                        + ",\"batteryIgnoring\":" + KeepAlive.ignoringBattery(MainActivity.this)
+                        + ",\"pending\":" + Reminders.sync(MainActivity.this, Bridge.remindersFromStore())
+                        + "}";
                 } else {
                     out = Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
                 }

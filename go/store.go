@@ -252,6 +252,35 @@ func (s *Store) snapshot() []*Note {
 	return out
 }
 
+// pendingReminders is the alarm list Reminders.java builds its alarm set from:
+// one entry per unfinished todo with a due time still in the future.
+//
+// The page pushes the same shape after every render (it knows about a todo that was
+// just added and not yet saved), but this exists so the foreground service can rebuild
+// the set on its own: after a process restart, or after the system dropped our alarms
+// while the app was frozen, the timers come back without the WebView being alive.
+func (s *Store) pendingReminders() []map[string]any {
+	cut := time.Now().Add(5 * time.Second)
+	out := make([]map[string]any, 0, 8)
+	for _, n := range s.snapshot() {
+		for _, t := range n.Todos {
+			if t.Done || t.Due == "" {
+				continue
+			}
+			d, err := time.ParseInLocation("2006-01-02T15:04", t.Due, time.Local)
+			if err != nil || d.Before(cut) {
+				continue
+			}
+			out = append(out, map[string]any{
+				"id": n.ID + "|" + t.ID, "noteId": n.ID, "todoId": t.ID,
+				"text": t.Text, "note": n.Title,
+				"dueMs": d.UnixNano() / int64(time.Millisecond),
+			})
+		}
+	}
+	return out
+}
+
 func newID() string {
 	return fmt.Sprintf("%d%s", time.Now().UnixNano()/1000, randSuffix(4))
 }

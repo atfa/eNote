@@ -33,6 +33,7 @@ public class Bridge {
     static native int nativeClipCount();
     static native String nativeEnqueue(String payloadJson);
     static native String nativeStatus();
+    static native String nativeReminders();
     static native String nativeSelfTest(String json);
     static native String nativeNoteImage(String id);
     static native void nativeSetOcr(boolean ready, String info);
@@ -202,12 +203,55 @@ public class Bridge {
      */
     @JavascriptInterface
     public int syncReminders(final String json) {
+        return Reminders.sync(EnoteApp.app, json);
+    }
+
+    /**
+     * The alarm list straight from Go's store. The foreground service calls this so it can
+     * rebuild the timers with no WebView alive (restart, or alarms dropped while frozen).
+     */
+    static String remindersFromStore() {
         try {
-            return Reminders.sync(EnoteApp.app, json);
+            return loaded ? nativeReminders() : "[]";
         } catch (Throwable t) {
-            Log.w(TAG, "syncReminders: " + t);
-            return 0;
+            Log.w(TAG, "remindersFromStore: " + t);
+            return "[]";
         }
+    }
+
+    // ------------------------------------------------------- keep-alive (P6.5, standard APIs)
+
+    /** window.Android.keepAlive(): is the 常驻后台 foreground service switched on? */
+    @JavascriptInterface
+    public boolean keepAlive() {
+        return KeepAlive.enabled(EnoteApp.app);
+    }
+
+    /** window.Android.setKeepAlive(on): start/stop the foreground service. */
+    @JavascriptInterface
+    public void setKeepAlive(final boolean on) {
+        Log.i(TAG, "js setKeepAlive " + on);
+        new Thread(new Runnable() {
+            public void run() {
+                try { KeepAlive.setEnabled(EnoteApp.app, on); } catch (Throwable t) { Log.w(TAG, "setKeepAlive: " + t); }
+            }
+        }).start();
+    }
+
+    /** window.Android.batteryIgnoring(): already exempt from battery optimisation? */
+    @JavascriptInterface
+    public boolean batteryIgnoring() {
+        return KeepAlive.ignoringBattery(EnoteApp.app);
+    }
+
+    /** window.Android.askBattery(): open the standard battery-optimisation settings. */
+    @JavascriptInterface
+    public void askBattery() {
+        final MainActivity a = current.get();
+        Log.i(TAG, "js askBattery");
+        if (a != null) a.runOnUiThread(new Runnable() {
+            public void run() { KeepAlive.askIgnoreBattery(a); }
+        });
     }
 
     /** window.Android.exactGranted(): true when exact alarms are allowed. */

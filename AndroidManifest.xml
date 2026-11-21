@@ -23,6 +23,10 @@
     <!-- targetSdk 33 上 SCHEDULE_EXACT_ALARM 默认不授予；USE_EXACT_ALARM 是 33+ 给
          闹钟/提醒类应用的自动授予版本，canScheduleExactAlarms() 直接为 true -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- P6.5 常驻后台：前台服务 + 一条低优先级常驻通知，是 AOSP 认可的“别冻结我”信号。
+         REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 只用于弹标准的电池优化豁免对话框。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".EnoteApp"
@@ -91,14 +95,20 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
-        <!-- 到期闹钟的落点：只发通知，不启动界面（后台唤起 Activity 会被系统拦） -->
-        <receiver
+        <!-- 到期闹钟的落点：只发通知，不启动界面（后台唤起 Activity 会被系统拦） -->        <receiver
             android:name=".Reminders$AlarmReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="dev.xduo.enote.REMIND" />
             </intent-filter>
         </receiver>
+
+        <!-- P6.5 常驻后台（可选，默认关）。targetSdk 33 上不需要 foregroundServiceType；
+             START_STICKY 让进程被回收后服务自己回来，回来时重排一遍闹钟。 -->
+        <service
+            android:name=".KeepAlive"
+            android:exported="false"
+            android:stopWithTask="false" />
 
     </application>
 </manifest>

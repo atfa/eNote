@@ -8,6 +8,7 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.media.RingtoneManager;
 import android.os.Build;
@@ -40,7 +41,11 @@ public final class Reminders {
     static final String ACTION_FIRE = "dev.xduo.enote.REMIND";
     static final String EXTRA_ID = "reminderId";
     static final String EXTRA_TEXT = "reminderText";
+    /** Note title, shown as the notification's second line. */
     static final String EXTRA_NOTE = "reminderNote";
+    /** Real ids, so tapping the notification opens that note *and* that todo. */
+    static final String EXTRA_NOTE_ID = "reminderNoteId";
+    static final String EXTRA_TODO_ID = "reminderTodoId";
     /**
      * Keys ("noteId|todoId@dueMs") we have an alarm for. Persisted, because the process
      * dies often and a fresh in-memory set would leave orphaned alarms in AlarmManager
@@ -86,10 +91,28 @@ public final class Reminders {
      * Replaces the whole alarm set with {@code json} (from Go: [{id,text,note,dueMs}]).
      * Returns how many alarms are pending.
      */
+    /**
+     * Bumped when the way we arm alarms changes: the persisted key set is only a cache of
+     * "we already have a PendingIntent for this", so on an upgrade we cancel what the old
+     * scheme left behind and let the new one arm everything again.
+     */
+    private static final int SCHEME = 2; // 2 = setAlarmClock
+    private static final String KEY_SCHEME = "scheme";
+
     static int sync(Context c, String json) {
         ensureChannel(c);
         AlarmManager am = c.getSystemService(AlarmManager.class);
         if (am == null) return 0;
+        SharedPreferences sp = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (sp.getInt(KEY_SCHEME, 0) != SCHEME) {
+            // drop alarms armed by the previous scheme so they cannot fire as duplicates
+            for (String old : load(c)) {
+                try { am.cancel(pending(c, old, null, null, null, null)); } catch (Throwable ignored) {}
+            }
+            save(c, new LinkedHashSet<String>());
+            sp.edit().putInt(KEY_SCHEME, SCHEME).apply();
+            Log.i(TAG, "reminder scheme -> " + SCHEME);
+        }
         List<JSONObject> want = new ArrayList<>();
         try {
             JSONArray a = new JSONArray(json == null || json.isEmpty() ? "[]" : json);
@@ -112,28 +135,47 @@ public final class Reminders {
         for (JSONObject o : want) wantKeys.add(keyOf(o));
         for (String key : new ArrayList<>(scheduled)) {
             if (wantKeys.contains(key)) continue;
-            am.cancel(pending(c, key, null, null));
+            am.cancel(pending(c, key, null, null, null, null));
             scheduled.remove(key);
         }
         boolean exact = canExact(am);
         for (JSONObject o : want) {
             String key = keyOf(o);
             if (scheduled.contains(key)) continue;
-            PendingIntent pi = pending(c, key, o.optString("text"), o.optString("note"));
+            String noteId = o.optString("noteId");
+            String todoId = o.optString("todoId");
+            if (noteId.isEmpty() || todoId.isEmpty()) {
+                // older payload: "<noteId>|<todoId>"
+                String id = o.optString("id");
+                int bar = id.indexOf('|');
+                if (bar > 0) {
+                    noteId = id.substring(0, bar);
+                    todoId = id.substring(bar + 1);
+                }
+            }
+            PendingIntent pi = pending(c, key, o.optString("text"), o.optString("note"),
+                    noteId, todoId);
             long due = o.optLong("dueMs");
             try {
-                if (exact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, pi);
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, pi);
+                // setAlarmClock 是“必须响”的登记方式（系统时钟 app 自己的闹钟就是这么排的）：
+                // Doze / 应用待机 / 厂商冻结都不会静默丢弃它，到点还会唤醒进程。
+                // setExactAndAllowWhileIdle 在厂商冻结策略下会被无声吞掉（实测）。
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    am.setAlarmClock(new AlarmManager.AlarmClockInfo(due, showIntent(c, noteId, todoId)), pi);
+                } else if (exact) {
+                    am.setExact(AlarmManager.RTC_WAKEUP, due, pi);
                 } else {
                     am.set(AlarmManager.RTC_WAKEUP, due, pi);
                 }
                 scheduled.add(key);
             } catch (SecurityException se) {
-                Log.w(TAG, "setExact denied, retry inexact: " + se);
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, pi);
-                scheduled.add(key);
+                Log.w(TAG, "setAlarmClock denied, retry idle-safe: " + se);
+                try {
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, pi);
+                    scheduled.add(key);
+                } catch (Throwable t2) {
+                    Log.w(TAG, "alarm not scheduled: " + t2);
+                }
             }
         }
         save(c, scheduled);
@@ -146,11 +188,25 @@ public final class Reminders {
         return o.optString("id") + "@" + o.optLong("dueMs");
     }
 
-    private static PendingIntent pending(Context c, String key, String text, String note) {
+    /** What opens when the user taps the alarm icon the system shows for setAlarmClock. */
+    private static PendingIntent showIntent(Context c, String noteId, String todoId) {
+        Intent i = new Intent(c, MainActivity.class)
+                .setAction(Intent.ACTION_VIEW)
+                .putExtra("openNote", noteId == null ? "" : noteId)
+                .putExtra("openTodoId", todoId == null ? "" : todoId)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        return PendingIntent.getActivity(c, (noteId + "|" + todoId).hashCode(), i,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private static PendingIntent pending(Context c, String key, String text, String note,
+                                         String noteId, String todoId) {
         Intent i = new Intent(c, AlarmReceiver.class).setAction(ACTION_FIRE)
                 .putExtra(EXTRA_ID, key)
                 .putExtra(EXTRA_TEXT, text == null ? "" : text)
-                .putExtra(EXTRA_NOTE, note == null ? "" : note);
+                .putExtra(EXTRA_NOTE, note == null ? "" : note)
+                .putExtra(EXTRA_NOTE_ID, noteId == null ? "" : noteId)
+                .putExtra(EXTRA_TODO_ID, todoId == null ? "" : todoId);
         // Stable per-key request code: cancel() needs the same PendingIntent back.
         return PendingIntent.getBroadcast(c, key.hashCode(), i,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -188,6 +244,8 @@ public final class Reminders {
             if (intent == null || !ACTION_FIRE.equals(intent.getAction())) return;
             String text = intent.getStringExtra(EXTRA_TEXT);
             String note = intent.getStringExtra(EXTRA_NOTE);
+            String noteId = intent.getStringExtra(EXTRA_NOTE_ID);
+            String todoId = intent.getStringExtra(EXTRA_TODO_ID);
             String key = intent.getStringExtra(EXTRA_ID);
             // 响过就不再排：把它从持久化的集合里摘掉，否则集合只增不减
             if (key != null && !key.isEmpty()) {
@@ -200,7 +258,8 @@ public final class Reminders {
             if (nm == null) return;
             Intent open = new Intent(c, MainActivity.class)
                     .setAction(Intent.ACTION_VIEW)
-                    .putExtra("openTodo", note == null ? "" : note)
+                    .putExtra("openNote", noteId == null ? "" : noteId)
+                    .putExtra("openTodoId", todoId == null ? "" : todoId)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             PendingIntent pi = PendingIntent.getActivity(c, text.hashCode(), open,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

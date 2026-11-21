@@ -166,6 +166,19 @@ func Java_dev_xduo_enote_Bridge_nativeNoteImage(env *C.JNIEnv, cls C.jclass, js 
 	})
 }
 
+// nativeReminders() - pending due reminders read straight from the store, so the
+// optional foreground service can rebuild the alarm set with no WebView alive.
+//
+//export Java_dev_xduo_enote_Bridge_nativeReminders
+func Java_dev_xduo_enote_Bridge_nativeReminders(env *C.JNIEnv, cls C.jclass) C.jstring {
+	return guard(env, "nativeReminders", func() C.jstring {
+		if store == nil {
+			return s2j(env, "[]")
+		}
+		return js2j(env, store.pendingReminders())
+	})
+}
+
 // nativeStatus() - diagnostics for `am start --es hook status` and the debug tab.
 //
 //export Java_dev_xduo_enote_Bridge_nativeStatus

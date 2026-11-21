@@ -11,15 +11,15 @@ import (
 
 // Settings is the BYOK configuration plus UI preferences, editable in 我的 → 设置.
 type Settings struct {
-	BaseURL  string  `json:"baseUrl"`
-	APIKey   string  `json:"apiKey"`
-	Model    string  `json:"model"`
-	TimeoutS int     `json:"timeoutS"`
-	MaxTok   int     `json:"maxTokens"`
-	Temp     float64 `json:"temperature"`
-	UseAI    bool    `json:"useAI"` // off = save shared content as-is, no LLM call
-	Theme    string  `json:"theme"` // light | dark | auto, default light
-	UI       map[string]ViewPrefs `json:"ui"` // per-page remembered search/sort/filter
+	BaseURL  string               `json:"baseUrl"`
+	APIKey   string               `json:"apiKey"`
+	Model    string               `json:"model"`
+	TimeoutS int                  `json:"timeoutS"`
+	MaxTok   int                  `json:"maxTokens"`
+	Temp     float64              `json:"temperature"`
+	UseAI    bool                 `json:"useAI"` // off = save shared content as-is, no LLM call
+	Theme    string               `json:"theme"` // light | dark | auto, default light
+	UI       map[string]ViewPrefs `json:"ui"`    // per-page remembered search/sort/filter
 }
 
 // ViewPrefs is one page's remembered query state (notes / todos / files).
@@ -45,7 +45,7 @@ var defaultSettings = Settings{
 }
 
 type Config struct {
-	mu  sync.Mutex
+	mu   sync.Mutex
 	path string
 	Settings
 }

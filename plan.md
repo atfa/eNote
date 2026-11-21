@@ -292,6 +292,21 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * 验收：真机复制 → 切回 app → 横幅出现 → 勾选 → 一键解析 → `clipboard-text` 笔记 `status=done`、facts 已提取、clip 清空（已实测）。
 * 备注：通知权限（POST_NOTIFICATIONS）保留，P6.5 到期提醒要用。
 
+### P6.5 自研到期提醒 + 常驻后台（2026-11-21）
+
+* **提醒本体的定稿**：`AlarmManager.setAlarmClock()`（API 21+）登记，`AlarmReceiver` 到点发 `reminder` 渠道通知（IMPORTANCE_HIGH，heads-up/声音/震动）。选它而不是 `setExactAndAllowWhileIdle` 的理由：它是系统时钟 app 自己排闹钟的入口，属于「必须响」的登记方式；`setExactAndAllowWhileIdle` 在本机后台冻结时会被**无声取消**。旧方案靠 `shared_prefs/reminders.xml` 里的 `scheme` 版本号自愈升级：读到旧版本先把老 PendingIntent 全删一遍再按新方式重排。
+* **状态归属**：Java 不存业务状态。UI 每次渲染后把「未完成 + 未来到期」的待办整份推到 `Bridge.syncReminders`；另外 Go 新增 `nativeReminders()`（`store.pendingReminders()`），给前台服务在没有 WebView 时用同一份数据重排。
+* **常驻后台（用户新要求）**：`KeepAlive.java` 是标准 foreground service + 一条 IMPORTANCE_MIN 的常驻通知（渠道 `keepalive`），默认关闭，开关在「设置 → 后台 → 常驻后台」，状态存 `shared_prefs/keepalive.xml`；进程被回收后靠 `START_STICKY` + `EnoteApp.onCreate` / `MainActivity.onResume` 恢复；服务每 10 分钟 `Reminders.sync(...)` 自愈一次被系统丢掉的闹钟。
+* **电池优化引导**：开关打开且未豁免时，设置页直接展开标准步骤（①点按钮 ②找到「懒得记」③选不限制），按钮走 `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` → `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` → `ACTION_APPLICATION_DETAILS_SETTINGS` 三级回退。**不做品牌判断**，页面名字由厂商决定。
+* **通知点击路由修复**：以前把笔记标题当 id 传（`openTodo` = 标题），点进去等于打开不存在的笔记。现在 `Reminders` 的 extras 分开携带 `noteId` / `todoId`，`MainActivity` 先 `openNote` 再 `openTodo(noteId,todoId)`，待办滚到中间并闪一下（`.todo.flash`，2.6s）。
+* **实测结论（必须记住的边界）**：
+  * 前台：闹钟到点 → 系统通知正常弹出（`channel=reminder importance=4`，已有截图）。
+  * 后台：本机（vivo/OriginOS）在应用进入后台后冻结进程，**不到 1 分钟** loopback API 就超时，即使已经：①开着前台服务（`curProcState=4 mAdjType=fg-service`）②有常驻通知 ③在 Doze 白名单里（`dumpsys alarm` 的 `Exempted bucket packages` 含 `dev.xduo.enote`）。
+  * 冻结状态下到点，系统直接 `Reason=alarm_cancelled` 取消闹钟，广播不投递、通知不出现、`reminders.xml` 的 key 还在 → 属于厂商调度层行为，纯标准 API 已无手段。
+  * 结论：不声称后台可靠。UI 文案改成「尽量不被后台清理」，并提示「打开 app 时未完成的待办都在待办页」。下一步可做的是「打开时补看错过的提醒」横幅，而不是继续加保活手段。
+* **诊断日志**：`Bridge.syncReminders` 里临时的 `a.note("syncReminders: ...")` 已删除（改看 `Reminders.sync` 自己的 `Log.i`）。
+* **验收**：`test.sh` 新增「P6.5 常驻后台」一档：hook 打开开关 → `dumpsys activity services` 有 `KeepAlive` 且 `isForeground=true` → `dumpsys notification` 有 `channel=keepalive` → hook 关掉 → 服务消失。
+
 ### P7 图标重绘（R9）+ 打磨
 * ~~`tools/gen_icon.py` 自绘竖琴母图~~ → **已换成用户提供的图标集**（2026-11-21）：`res/mipmap-*/ic_launcher.png` + `res/drawable-*/ic_launcher_{background,foreground}.png` + `res/mipmap-anydpi-v26/ic_launcher.xml`，母图与说明归档 `docs/icon-src/`，`docs/icon-192.png` 为预览；`tools/gen_icon.py` 保留备用。剩下要做的是启动器实机截图核对（小尺寸不能糊）。
 * 微动画收尾（R10）：逐页补齐按压/入场/切换动效，统一走 token；`prefers-reduced-motion` 降级；无障碍（tab `aria-label`、点击目标 ≥44px）。
@@ -309,7 +324,7 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 [x] P4b 底栏 5 按钮 + 自绘对话框 + 逐级返回（主页连返两次退出）+ 页面留白 + 去过度动画
 [x] P5 我的页（统计）+ 全屏设置面板（+ 改名「懒得记」、时区修复、倒计时、完成动画、新图标）
 [x] P5.5 事实提取（R12）+ 日历/闹钟入口（R13-A/B，标准契约）+ logo 去白框（R14）
-[~] P6.5 自研到期提醒：AlarmManager 精确闹钟已排定生效；到点通知的触发在 vivo 后台冻结下待验证
+[~] P6.5 自研到期提醒：前台正常；常驻后台开关 + 标准电池优化引导已加，后台到点仍被厂商冻结拦下（详见 P6.5 段）
 [x] P6 剪贴板前台采集 + 暂存去重 + 批量一键解析（定稿方案见 P6 段）
 [~] P7 新图标（已换成用户提供的图标集）+ 动效打磨（进行中）+ 文档 + 全量回归
 ```

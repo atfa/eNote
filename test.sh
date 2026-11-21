@@ -359,6 +359,41 @@ else
   say "  跳过（没有 node）"
 fi
 
+step "P6.5 常驻后台（前台服务 + 标准电池优化）"
+am_start "$ACTIVITY" "--es hook keepalive --es arg on"
+n=0
+while [ "$n" -lt 20 ]; do
+  newtlog | grep -q 'hook keepalive: ' && break
+  sleep 1; n=$((n + 1))
+done
+newtlog | grep 'hook keepalive: ' | tail -1 | "$PY" -c '
+import json,sys
+line = sys.stdin.read()
+if "hook keepalive: " not in line:
+    sys.exit("the keepalive hook never finished")
+d = json.loads(line.split("hook keepalive: ", 1)[1])
+assert d["keepAlive"], d
+print("  switch on, batteryIgnoring=%s, %s reminders armed" % (d["batteryIgnoring"], d["pending"]))
+' || fail "keepalive switch did not turn on"
+sleep 3
+asroot "dumpsys activity services $APP_PACKAGE" | grep -q 'KeepAlive' \
+  || fail "the foreground service is not running"
+asroot "dumpsys notification --noredact" | grep -q 'keepalive' \
+  || fail "the keepalive notification/channel is missing"
+say "  ok (前台服务在跑，常驻通知已发布)"
+
+am_start "$ACTIVITY" "--es hook keepalive --es arg off"
+n=0
+while [ "$n" -lt 20 ]; do
+  newtlog | grep -q '"keepAlive":false' && break
+  sleep 1; n=$((n + 1))
+done
+sleep 2
+if asroot "dumpsys activity services $APP_PACKAGE" | grep -q 'KeepAlive'; then
+  fail "the foreground service was not stopped when the switch went off"
+fi
+say "  ok (关掉开关后服务停止)"
+
 step "app alive"
 sh "$HERE/probe.sh" "$APP_PACKAGE" | sed 's/^/  /'
 

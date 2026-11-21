@@ -374,6 +374,10 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .pgroup{font-size:12px;font-weight:700;color:var(--dim2);margin:18px 2px 8px;letter-spacing:.5px}
 .pgroup:first-child{margin-top:2px}
 .sw.dis{opacity:.45}
+/* 从到期通知点进来时，那一条待办短暂亮一下 */
+.todo.flash{animation:tokflash 2.6s var(--ease) both}
+@keyframes tokflash{0%,60%{background:var(--acc-s);box-shadow:inset 0 0 0 1px var(--acc)}
+  100%{background:transparent;box-shadow:none}}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -571,7 +575,8 @@ function syncReminders(){
       if(t.done || !t.due) return;
       var ms = dueMs(t.due);
       if(!ms || ms <= Date.now()+5000) return;          // 已逾期的不排，免得一开 app 就炸一串
-      list.push({id:n.id+'|'+t.id, text:t.text, note:n.title||'', dueMs:ms});
+      list.push({id:n.id+'|'+t.id, noteId:n.id, todoId:t.id,
+                 text:t.text, note:n.title||'', dueMs:ms});
     });
   });
   try { remindPending = Android.syncReminders(JSON.stringify(list)) || 0; } catch(e){ remindPending = 0; }
@@ -595,7 +600,32 @@ function askNotify(){
 function notifyResult(ok){
   toast(ok ? '系统通知已开启，到点会弹提醒' : '没有通知权限；可在系统设置里打开「懒得记」的通知');
   syncReminders();
-  if(document.querySelector('#sheet.on')) settingsSheet();
+  if(document.querySelector('#sheet.on')) settingsRefresh();
+}
+/* ---- P6.5 常驻后台：前台服务 + 标准电池优化豁免，不针对任何品牌做分支 ---- */
+function keepAliveOn(){
+  try { return !!(window.Android && Android.keepAlive && Android.keepAlive()); } catch(e){ return false }
+}
+function batteryIgnoring(){
+  try { return !!(window.Android && Android.batteryIgnoring && Android.batteryIgnoring()); } catch(e){ return true }
+}
+function toggleKeepAlive(el){
+  if(!window.Android || !Android.setKeepAlive){ toast('常驻后台只在 app 内可用'); return }
+  var on = !keepAliveOn();
+  Android.setKeepAlive(on);
+  el.className = 'sw' + (on ? ' on' : '');
+  if(on){
+    toast('已开启常驻后台');
+    if(!batteryIgnoring()) setTimeout(function(){ toast('再点「去关闭电池优化」后台才稳') }, 2400);
+  } else {
+    toast('已关闭常驻后台');
+  }
+  setTimeout(settingsRefresh, 500);
+}
+function askBattery(){
+  if(!window.Android || !Android.askBattery){ toast('电池优化设置只在 app 内可用'); return }
+  toast('找到「懒得记」→ 选「不限制 / 允许后台活动」');
+  Android.askBattery();
 }
 /** 通知点按后打开对应笔记（Java 侧调用）*/
 // ---- 剪贴板暂存（R7/P6）：横幅 + 批量勾选 + 一键解析 ----
@@ -702,6 +732,27 @@ function openNote(id){
     else toast('这条笔记已删除');}, 300);
 }
 window.openNote = openNote; window.notifyResult = notifyResult;
+/* 通知点进来：展开这条笔记并定位到那一条待办（滚过去 + 亮一下）*/
+function openTodo(nid, tid){
+  if(!nid) return;
+  var n = (S.notes||[]).filter(function(x){return x.id===nid})[0];
+  if(n) open[nid] = true;
+  tab='notes'; setTab(); refresh();
+  openTodoFocus(nid, tid, 0);
+}
+function openTodoFocus(nid, tid, tries){
+  setTimeout(function(){
+    var el = document.getElementById('t'+nid+'_'+tid);
+    if(!el){
+      if(tries < 6) return openTodoFocus(nid, tid, tries+1);
+      toast('这条待办已完成或已删除'); return;
+    }
+    el.scrollIntoView({behavior:'smooth', block:'center'});
+    el.classList.add('flash');
+    setTimeout(function(){ el.classList.remove('flash') }, 2600);
+  }, 320);
+}
+window.openTodo = openTodo;
 
 function dueMs(iso){ if(!iso) return 0; var d=new Date(iso); return isNaN(d)?0:d.getTime() }
 /* R13：把到期时间交给系统日历 / 闹钟（intent，不需要权限）*/
@@ -740,7 +791,8 @@ function todoRow(t, n, compact){
   if(t.priority==='high') extra.push('<span class="chip err">重要</span>');
   if(t.priority==='low') extra.push('<span class="chip">低</span>');
   if(!compact && t.source==='manual') extra.push('<span class="chip">手动</span>');
-  return '<div class="todo'+(t.done?' done':'')+(t.priority==='high'?' pri-high':'')+enterCls(n,t)+'">'
+  return '<div class="todo'+(t.done?' done':'')+(t.priority==='high'?' pri-high':'')+enterCls(n,t)+'"'
+    +' id="t'+n.id+'_'+t.id+'">'
     +'<div class="cb'+(t.done?' on':'')+'" onclick="toggle(\''+n.id+'\',\''+t.id+'\',this)">'+(t.done?'✓':'')+'</div>'
     +'<div class="tx"><span class="ttx">'+esc(t.text)+'</span><small>'+d+' '+extra.join(' ')+'</small></div>'
     +(compact?'':'<button class="btn sm gh" onclick="delTodo(\''+n.id+'\',\''+t.id+'\')">✕</button>')
@@ -859,7 +911,7 @@ function renderSettings(){
   var h = '<div class="pgroup">提醒</div>'
    +'<div class="card"><div class="row between" style="margin-top:2px"><div><b>到期待办提醒</b>'
    +'<div style="font-size:11px;color:var(--dim)">'+ (notifyGranted()
-        ? '已排定 '+remindPending+' 条 · '+(exactGranted()?'精确到分钟':'时间可能延后（系统限制精确定时）')
+        ? '已排定 '+remindPending+' 条 · 按系统闹钟登记，尽量不被后台清理'
         : '需要通知权限 · 开启后到点用系统通知提醒') +'</div></div>'
    +'<button class="btn sm '+(notifyGranted()?'gh':'')+'" onclick="askNotify()">'
    + (notifyGranted() ? '已开启' : '开启通知') +'</button></div>'
@@ -867,6 +919,30 @@ function renderSettings(){
        '<div class="row between" style="margin-top:8px"><div><b>精确提醒</b>'
       +'<div style="font-size:11px;color:var(--dim)">允许「闹钟和提醒」后不再被系统延迟</div></div>'
       +'<button class="btn sm" onclick="askExact()">去开启</button></div>')
+   +'</div>'
+   +'<div class="pgroup">后台</div>'
+   +'<div class="card"><div class="row between" style="margin-top:2px"><div><b>常驻后台</b>'
+   +'<div style="font-size:11px;color:var(--dim)">'+ (keepAliveOn()
+        ? (batteryIgnoring() ? '已开启 · 已豁免电池优化' : '已开启 · 建议再豁免电池优化')
+        : '关闭 · 只在打开 app 时可靠，后台可能收不到提醒') +'</div></div>'
+   +'<div class="sw'+(keepAliveOn()?' on':'')+'" onclick="toggleKeepAlive(this)"></div></div>'
+   + (keepAliveOn()
+       ? (batteryIgnoring()
+          ? '<div class="kv" style="margin-top:10px"><span>电池优化</span>'
+            +'<span style="color:var(--ok)">已豁免，不会被冻结</span></div>'
+          : '<div style="margin-top:10px;font-size:12px;color:var(--dim);line-height:1.8">'
+            +'部分系统会在后台冻结应用，连闹钟一起丢掉。标准做法是把它加进电池优化白名单：<br>'
+            +'① 点下面的按钮；<br>② 在列表里找到「懒得记」；<br>'
+            +'③ 选「不限制 / 允许后台活动」。<br>'
+            +'如果系统另外还有「后台高耗电」「自启动」之类的开关，一并允许。</div>'
+            +'<div class="acts"><button class="btn pri" onclick="askBattery()">去关闭电池优化</button>'
+            +'<button class="btn gh" onclick="askNotify()">检查通知权限</button></div>')
+       : '')
+   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">开启后通知栏会有一条常驻提示，'
+   +'这是系统允许的标准保活方式；服务每 10 分钟检查一次待办，把被系统丢掉的闹钟重新排上。'
+   +'仍有厂商会在后台强行冻结应用（连闹钟一起取消），app 无法绕过；那种情况下打开 app 时'
+   +'未完成的待办都还在「待办」页。电池优化页面的名字各厂商可能不同，这只是系统设置页，'
+   +'app 不侦测品牌。</div>'
    +'</div>'
    +'<div class="pgroup">外观</div>'
    +'<div class="card"><div class="seg" style="margin-top:2px">'
@@ -1099,7 +1175,17 @@ function li(ic, t, sub, fn){
     +(sub?'<div style="font-size:11px;color:var(--dim2);margin-top:1px">'+sub+'</div>':'')+'</div>'
     +'<span style="color:var(--dim2)">›</span></div>';
 }
-function settingsSheet(){ pageSheet('设置', renderSettings()); }
+function settingsSheet(){ pageSheet('设置', renderSettings()); $('#panel').dataset.kind = 'settings'; }
+/* 只重绘设置页本身，并把滚动位置放回去（开关、权限回来后刷新用）*/
+function settingsRefresh(){
+  var p = $('#panel');
+  if(!p || p.dataset.kind !== 'settings' || !$('#sheet').classList.contains('on')) return;
+  var top = p.scrollTop;
+  settingsSheet();
+  requestAnimationFrame(function(){ $('#panel').scrollTop = top; });
+}
+/* 从系统设置页回来后重新读一次权限/保活状态 */
+window.onAppResume = settingsRefresh;
 /* 全屏面板：设置页用，顶栏固定，内容可滚 */
 function pageSheet(title, html){
   var p = $('#panel');

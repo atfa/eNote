@@ -62,10 +62,10 @@ if (!quiet) bad++;
 const acard = /^\.acard\{[^}]*animation:/m.test(src);
 console.log((!acard ? '  ok   ' : '  FAIL ') + '附件卡没有无条件动画');
 if (acard) bad++;
-// 切页入场动画只播一次
-const enterOnce = /enterT = setTimeout\(function\(\)\{ v\.classList\.remove\('enter'\) \}/.test(src);
-console.log((enterOnce ? '  ok   ' : '  FAIL ') + 'enter class 会在动画后移除');
-if (!enterOnce) bad++;
+// P6：整页切页入场动画已删除，切页必须是瞬时的（enterT 那套「播完移除」也随之消失）
+const noPageEnter = !/enterT = setTimeout/.test(src) && !/main\.enter/.test(src);
+console.log((noPageEnter ? '  ok   ' : '  FAIL ') + '不再有整页切页入场动画');
+if (!noPageEnter) bad++;
 
 // ---------- 底部 5 按钮 / 自绘对话框 / 返回键 ----------
 const java = fs.readFileSync(path.join(root, 'src/dev/xduo/enote/MainActivity.java'), 'utf8');
@@ -288,5 +288,20 @@ const priBar = /border-left:3px solid transparent/.test(src)
   && /padding:9px 2px 9px 8px/.test(src);
 console.log((priBar ? '  ok   ' : '  FAIL ') + '待办竖条统一占位（checkbox 对齐）');
 if (!priBar) bad++;
+
+// P6.5 常驻后台：设置页开关 + 引导 + 前台服务/电池优化接口都存在
+const ka = /function toggleKeepAlive\(el\)/.test(src)
+  && /Android\.setKeepAlive\(on\)/.test(src)
+  && /function askBattery\(\)/.test(src)
+  && /常驻后台/.test(src)
+  && /去关闭电池优化/.test(src);
+console.log((ka ? '  ok   ' : '  FAIL ') + '设置页有常驻后台开关和电池优化引导');
+if (!ka) bad++;
+
+// 提醒通知带真实 id，点进来能定位到那条待办
+const route = /list\.push\(\{id:n\.id\+'\|'\+t\.id, noteId:n\.id, todoId:t\.id,/.test(src)
+  && /function openTodo\(nid, tid\)/.test(src);
+console.log((route ? '  ok   ' : '  FAIL ') + '通知点击带 noteId/todoId 并定位待办');
+if (!route) bad++;
 
 process.exit(bad ? 1 : 0);
