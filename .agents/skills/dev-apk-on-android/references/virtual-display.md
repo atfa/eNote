@@ -119,6 +119,39 @@ shots two seconds apart differ (`5f18214d…` vs `c4dbafe9…`) with the screen 
 identical (`2d8d5474…`) when the display is off. That is what makes `test.sh --vd` usable
 overnight, with the screen dark and the battery barely touched.
 
+## Creating the display: the device must be AWAKE
+
+`setOverrideDisplayState(ON)` is accepted (`vd.sh log` prints `OK power 2 via …`) but the
+**display only starts rendering if it was created while the device was awake**. Create it during
+Doze and `dumpsys display` keeps saying `Display State=OFF` forever, the override is ignored, and
+every shot is a black frame. So wake the panel first, then create, then launch:
+
+```sh
+su -c "input keyevent 224"          # KEYCODE_WAKEUP, may need it twice on this vivo ROM
+su -c "wm dismiss-keyguard"         # taps are swallowed while isKeyguardShowing=true
+su -c "input keyevent 82"           # menu, unlocks a swipe-free keyguard
+sh $S/vd.sh create && sh $S/vd.sh launch com.example.myapp/.MainActivity
+```
+
+`vd.sh power [state]` re-applies the override (`vd.sh power 2`); use it after the panel fell
+asleep, and check with `su -c "dumpsys display" | grep -A2 "Display Id=<id>"`.
+
+## Driving the app on the background display
+
+* **The nav-bar strip eats taps.** On a 1080x2400 VD the system gesture area covers roughly
+  `y >= 2285`, so a bottom tab bar sits under it: tap the **upper** part of the tab
+  (`y ~ 2250`), not its label. Symptom: the shot never changes and the taps land on the launcher.
+* **`am start --display` does not move a running activity.** Force-stop first
+  (`su -c "am force-stop <pkg>"`), then `vd.sh launch`, or the window stays where it was and you
+  screenshot the old display.
+* **`KEYCODE_BACK` (4) closes the app** and leaves `com.bbk.launcher2/.SecondaryDisplayLauncher`
+  focused on the VD - every later shot is a blank wallpaper. Check focus with `probe.sh` before
+  believing a screenshot.
+* **The system status bar is not composited into VD shots.** A UI that must show the status bar
+  (light/dark icon tint, insets) has to be verified with `dumpsys window windows | grep -E
+  "fitsSystemWindows|systemUiVisibility"` plus a real panel screenshot, not with a VD shot.
+* Termux has no writable `/tmp`: write shots under the project (`.test/shots/`).
+
 ## Fallback without a daemon: overlay displays
 
 Android 10+ has a settings knob that creates an overlay display - no root daemon, but it shows
@@ -176,6 +209,11 @@ is wiped on boot on most devices.
 | app opened on the panel | `am start` without `--display` | `vd.sh launch` (it passes `--display`) |
 | the app pops onto the panel when you run `destroy` | the system moved it there when its display vanished | keep `DESTROY_CONTENT_ON_REMOVAL` in the flag set (it is on by default) |
 | nothing renders with the screen off | power override missing | `vd.sh log`, look for `OK power 2 via …` |
+| `Display State=OFF` forever, override returns OK | display created while the device was in doze | wake the panel (`input keyevent 224`), `vd.sh destroy && vd.sh create` |
+| taps near the bottom do nothing, shot never changes | the system nav-bar/gesture area covers it | tap higher (on a 2400-tall VD, `y ~ 2250`), check focus with `probe.sh` |
+| shots are a blank wallpaper | BACK closed the app, the launcher has focus on the VD | `vd.sh launch` again; avoid `vd.sh key 4` |
+| app is on the panel, not the VD | `am start --display` on a running instance does not move it | `su -c "am force-stop <pkg>"` then `vd.sh launch` |
+| status bar missing from shots | VD shots do not composite the system bars | verify with `dumpsys window windows`, not with a shot |
 
 ## Not covered
 

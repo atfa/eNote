@@ -244,6 +244,52 @@ api_get state | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["settings
   || fail "light theme did not stick"
 say "  ok (light is the default, java stays in sync)"
 
+step "search + per-page prefs (server side, R3)"
+api_get "search?tab=notes" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d["ok"] and d["notes"] and d["scanned"] >= len(d["notes"]), d
+' || fail "plain search returns nothing"
+api_get "search?tab=notes&q=%E5%91%A8%E4%BC%9A" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d["ok"] and d["total"] >= 1, "q=周会 matched nothing"
+assert any("来自图片文字" in v for v in (d.get("where") or {}).values()), \
+  "no hit came from ocr text: %r" % d.get("where")
+' || fail "search must match ocr text and label it 来自图片文字"
+api_get "search?tab=notes&src=image&status=done" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert all(n["source"].endswith("image") and n["status"]=="done" for n in d["notes"]), d["notes"][:1]
+' || fail "src/status filters are ignored"
+api_get "search?tab=notes&sort=title" | "$PY" -c '
+import json,sys
+t = [n["title"] for n in json.load(sys.stdin)["notes"]]
+assert t == sorted(t), "sort=title is not sorted"
+' || fail "sort=title broken"
+api_get "search?tab=todos" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d["total"] >= 1 and d.get("todoIds"), d
+assert all(not t["todo"]["done"] for t in d["todos"]), "the todos page must default to open items"
+' || fail "todos search broken"
+api_get "search?tab=todos&pri=high&done=all" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert all(t["todo"]["priority"]=="high" for t in d["todos"]), d["todos"][:1]
+' || fail "priority filter ignored"
+api_post prefs '{"tab":"notes","q":"取快递","sort":"title","dir":"asc","filters":{"src":"text"}}' \
+  | "$PY" -c 'import json,sys; d=json.load(sys.stdin); assert d["ok"] and d["ui"]["notes"]["q"]=="取快递", d' \
+  || fail "prefs save failed"
+api_get state | "$PY" -c '
+import json,sys
+u = json.load(sys.stdin)["settings"]["ui"]
+assert u["notes"]["sort"]=="title" and u["notes"]["filters"]["src"]=="text", u
+' || fail "per-page conditions do not persist"
+api_post prefs '{"tab":"notes","q":"","sort":"new","filters":{}}' >/dev/null
+api_post prefs '{"tab":"todos","q":"","sort":"due","filters":{"done":"open"}}' >/dev/null
+say "  ok (ocr text is searchable, every page keeps its own conditions)"
+
 step "app alive"
 sh "$HERE/probe.sh" "$APP_PACKAGE" | sed 's/^/  /'
 

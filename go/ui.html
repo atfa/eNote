@@ -61,6 +61,12 @@ a{color:var(--acc)}
 .chip.pend{color:var(--warn);border-color:var(--warn);background:var(--warn-s)}
 .chip.err{color:var(--bad);border-color:var(--bad);background:var(--bad-s)}
 .chip.tag{color:var(--tag);border-color:var(--tag);background:var(--tag-s)}
+/* 搜索命中来源（R3）：图片文字单独配色，因为它不是用户写的 */
+.hits{display:flex;flex-wrap:wrap;gap:5px;margin:7px 0 0}
+.hit{font-size:10px;padding:2px 8px;border-radius:999px;background:var(--acc-s);color:var(--acc);
+  border:1px solid var(--acc);animation:hitin var(--d2) var(--ease) both}
+.hit.img{background:var(--acc2-s);color:var(--acc2);border-color:var(--acc2)}
+@keyframes hitin{from{opacity:0;transform:translateY(-4px) scale(.9)}to{opacity:1;transform:none}}
 .err{margin-top:8px;font-size:12px;color:var(--bad);background:var(--bad-s);
   border:1px solid var(--bad);border-radius:10px;padding:7px 9px}
 .todo{display:flex;align-items:flex-start;gap:10px;padding:9px 2px;border-top:1px solid var(--line)}
@@ -283,6 +289,46 @@ var prefs = {
 };
 function P(){ return prefs[tab] || prefs.notes }
 
+/* ---------- 服务端搜索（R3）----------
+   列表数据一律来自 /api/search；请求失败时退回本地过滤，断网也能看。 */
+var SR = {notes:null, todoIds:null, where:{}, total:0, scanned:0};
+var searchSeq = 0, prefsLoaded = false;
+var PREF_KEYS = ['src','status','done','pri','kind'];
+function prefPayload(){
+  var p = P(), f = {};
+  PREF_KEYS.forEach(function(k){ if(p[k] && p[k]!=='all') f[k]=p[k] });
+  return {tab:tab, q:q, sort:p.sort||'new', dir:p.dir||'', filters:f};
+}
+function prefQS(){
+  var d = prefPayload(), s = 'tab='+d.tab+'&q='+encodeURIComponent(d.q)+'&sort='+encodeURIComponent(d.sort);
+  if(d.dir) s += '&dir='+encodeURIComponent(d.dir);
+  Object.keys(d.filters).forEach(function(k){ s += '&'+k+'='+encodeURIComponent(d.filters[k]) });
+  return s;
+}
+function flattenPrefs(u){
+  var out = {};
+  Object.keys(u||{}).forEach(function(k){
+    var v = u[k]||{}, p = {q:v.q||'', sort:v.sort||'', dir:v.dir||''};
+    Object.keys(v.filters||{}).forEach(function(fk){ p[fk] = v.filters[fk] });
+    out[k] = p;
+  });
+  return out;
+}
+var saveT = 0;
+function savePrefs(){
+  clearTimeout(saveT);
+  saveT = setTimeout(function(){ api('/api/prefs', prefPayload()).catch(function(){}) }, 350);
+}
+async function searchNow(){
+  var my = ++searchSeq;
+  try{
+    var d = await api('/api/search?'+prefQS());
+    if(my !== searchSeq) return;
+    SR = {notes:d.notes||[], todoIds:d.todoIds||null, where:d.where||{}, total:d.total||0, scanned:d.scanned||0};
+  }catch(e){ SR = {notes:null, todoIds:null, where:{}, total:0, scanned:0} }
+  render();
+}
+
 /* ---------- 主题（R8）：CSS 变量切换 + 同步系统栏颜色 ---------- */
 function themeOf(){
   var m = (S.settings && S.settings.theme) || 'light';
@@ -365,6 +411,9 @@ function noteCard(n, k){
      + '<span>'+fmtTime(n.createdAt.toISOString?n.createdAt:n.createdAt)+'</span>'
      + (n.tags||[]).map(function(t){return '<span class="chip tag">#'+esc(t)+'</span>'}).join('')
      + '</div>';
+  var w = SR.where[n.id];
+  if(w && w.length) h += '<div class="hits">' + w.map(function(x){
+      return '<span class="hit'+(x==='来自图片文字'?' img':'')+'">🔍 '+esc(x)+'</span>' }).join('') + '</div>';
   if(n.imagePath) h += '<img class="thumb" src="/img?id='+n.id+'">';
   h += '<div class="body'+(exp?'':' clamp')+'">'+esc(body)+'</div>';
   if(n.error) h += '<div class="err">'+esc(n.error)+'</div>';
@@ -392,6 +441,7 @@ function renderNotes(){
   return h;
 }
 function notesFiltered(){
+  if(SR.notes) return SR.notes; // 服务端结果（已排序）
   var p = P(), a = S.notes.filter(function(n){
     if(p.src==='image' && !/image$/.test(n.source||'')) return false;
     if(p.src==='text' && /image$/.test(n.source||'')) return false;
@@ -435,6 +485,7 @@ function renderTodos(){
     if(k0==='已完成' && p.done==='open') return;
     if(k0!=='已完成' && p.done==='done') return;
     var items = g[k0].filter(function(o){
+      if(SR.todoIds) return SR.todoIds[o.n.id+'|'+o.t.id];
       if(p.pri!=='all' && (o.t.priority||'normal')!==p.pri) return false;
       return hit([o.t.text, o.n.title, o.n.content].join(' '));
     });
@@ -578,18 +629,27 @@ function group(label, key, opts, cur){
         return '<button class="'+(o[0]===cur?'on':'')+'" onclick="setPref(\''+key+'\',\''+o[0]+'\')">'+o[1]+'</button>'
       }).join('') + '</div>';
 }
-function setPref(k, v){ P()[k] = v; closeSheet(); render(); }
+function setPref(k, v){ P()[k] = v; closeSheet(); searchNow(); savePrefs(); }
 function resetPrefs(){
   prefs[tab] = tab==='todos' ? {sort:'due',done:'open',pri:'all'}
              : tab==='files' ? {sort:'new',kind:'all'} : {sort:'new',src:'all',status:'all'};
   q = ''; var el = $('#q'); if(el){ el.value=''; $('#searchBox').classList.remove('has'); }
-  closeSheet(); render();
+  closeSheet(); searchNow(); savePrefs();
 }
 async function refresh(){
   try{ var d = await api('/api/state'); S = d;
+       if(!prefsLoaded && S.settings && S.settings.ui){
+         prefsLoaded = true;
+         var fp = flattenPrefs(S.settings.ui);
+         Object.keys(fp).forEach(function(k){
+           prefs[k] = Object.assign(prefs[k]||{}, fp[k]);
+         });
+         q = P().q || '';
+         var el = $('#q'); el.value = q; $('#searchBox').classList.toggle('has', !!q);
+       }
        if(themeOf() !== curTheme){ curTheme = themeOf(); applyTheme(); }
-       render(); }
-  catch(e){ var d = $('#dot'); if(d) d.className='dot bad'; }
+       searchNow(); }
+  catch(e){ var d = $('#dot'); if(d) d.className='dot bad'; render(); }
 }
 function expand(id){ open[id]=!open[id]; render(); }
 async function toggle(nid,tid){ await api('/api/todo',{action:'toggle',noteId:nid,todoId:tid}); refresh(); }
@@ -695,10 +755,13 @@ function setTab(anim){
     fab.onclick = f.fn;
   } else fab.classList.add('hide');
   $('#q').placeholder = tab==='todos' ? '搜索待办' : tab==='files' ? '搜索附件' : '搜索笔记与待办';
+  q = P().q || '';
+  var qi = $('#q'); qi.value = q; $('#searchBox').classList.toggle('has', !!q);
   var v = $('#view');
   v.classList.remove('enter');
   if(anim !== false){ void v.offsetWidth; v.classList.add('enter'); }
   render();
+  searchNow();
 }
 function moveInd(){
   var el = document.querySelector('.tabbar .tab.on'), ind = $('#ind');
@@ -732,11 +795,12 @@ $('#brandBtn').onclick = function(){ tab='mine'; setTab(); window.scrollTo(0,0);
 $('#sortBtn').onclick = sortSheet;
 $('#q').addEventListener('input', function(){
   q = this.value.trim();
+  P().q = q;
   $('#searchBox').classList.toggle('has', !!q);
-  render();
+  render(); searchNow(); savePrefs();
 });
 $('#qClear').onclick = function(){ q=''; this.blur(); var el=$('#q'); el.value='';
-  $('#searchBox').classList.remove('has'); render(); };
+  $('#searchBox').classList.remove('has'); P().q=''; render(); searchNow(); savePrefs(); };
 window.addEventListener('resize', moveInd);
 setInterval(function(){ if(!document.hidden) refresh(); }, 1800);
 refresh();

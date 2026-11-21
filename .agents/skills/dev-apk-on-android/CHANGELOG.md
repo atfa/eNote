@@ -1,3 +1,18 @@
+# 0.3.2
+
+## Background-display gotchas (found while driving a 4-tab WebView UI for hours)
+
+* `references/virtual-display.md` - new section **Creating the display: the device must be AWAKE**:
+  `setOverrideDisplayState` returns OK but is ignored when the display is created during doze, so
+  `Display State=OFF` sticks and every shot is black; wake (`input keyevent 224`),
+  `wm dismiss-keyguard`, then `destroy && create`.
+* `references/virtual-display.md` - new section **Driving the app on the background display**: the
+  system nav-bar strip swallows taps at the bottom of the VD (tap the upper part of a tab bar),
+  `am start --display` never moves a running activity (force-stop first), `KEYCODE_BACK` closes the
+  app and leaves the launcher focused (blank shots), VD shots do not composite the system status
+  bar, and Termux has no writable `/tmp`.
+* Troubleshooting table: five new rows for the symptoms above.
+
 # 0.3.1
 
 ## Packaging fixes (found while shipping a 9 MB asset model and prebuilt `.so` libraries)

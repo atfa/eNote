@@ -59,6 +59,8 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/todo", handleTodo)
 	m.HandleFunc("/api/settings", handleSettings)
 	m.HandleFunc("/api/theme", handleTheme)
+	m.HandleFunc("/api/search", handleSearch)
+	m.HandleFunc("/api/prefs", handlePrefs)
 	m.HandleFunc("/api/llm/test", handleLLMTest)
 	m.HandleFunc("/api/llmlog", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, map[string]any{"ok": true, "calls": llmHistory()})

@@ -24,6 +24,7 @@ type Settings struct {
 
 // ViewPrefs is one page's remembered query state (notes / todos / files).
 type ViewPrefs struct {
+	Tab     string            `json:"tab,omitempty"`
 	Q       string            `json:"q"`
 	Sort    string            `json:"sort"`
 	Dir     string            `json:"dir"`

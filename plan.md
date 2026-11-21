@@ -197,6 +197,8 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * 验收：`test.sh` 加断言：`GET /api/state` 的 `settings.theme=="light"`；`POST /api/theme {mode:dark}` 后 `/api/state` 返回 dark；截图两张（light/dark）人工核对；grep 检查 `go/ui.html` 里除 `:root`/`[data-theme]` 外无硬编码颜色。
 
 ### P2 外壳重构（R2a + R2b + R6 骨架 + R10 组件库基座）
+
+> **已完成（本机）**：组件库内联在 `go/ui.html`（不拆 `go/ui.css`，避免打包步骤）；4 tab + 滑动指示器、圆角矩形 FAB（随页语义换文案）、共用顶栏、`.btn/.card/.chip/.sheet/.seg/.li/.empty/.skel/.hero/.statgrid` + 动画 token。
 * **先做组件库**（`go/ui.css`）：动画 token + `btn/card/chip/switch/segmented/sheet/toast/topbar/tabbar/fab/list-item/empty/skeleton/field`，现有页面改成调用组件（否则后面四个页面会各自造轮子）。
 * nav 改 4 tab：`笔记 待办 附件 我的`，带滑动指示器动画；`设置` tab 移除（临时把设置挂在“我的”页顶部，P5 完成）。
 * FAB 从 nav 里拿出来：`position:fixed; right:16px; bottom:calc(84px + env(safe-area-inset-bottom))`，**圆角矩形**（`border-radius:16px`，图标+文字“新建”），按压回弹 + 图标旋转，随页面语义变文案/动作；滚动时轻微缩小。
@@ -205,6 +207,8 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * 验收：4 个 tab 可切换且各自内容正确；FAB 在四页语义正确（笔记=记一笔 / 待办=加待办 / 附件=添加文件 / 我的=无 FAB）；FAB 不遮挡列表最后一项；tab 切换与按钮按压有可见动效（连拍截图对比）；`test.sh` 加断言：`/api/state` 正常 + VD 上 tap 四个 tab 后截图。
 
 ### P3 搜索 + 排序 + 筛选（R3）
+
+> **已完成（本机）**：`go/search.go` = `runSearch`（q 命中 标题/正文/待办/标签/图片文字/原始分享文字，命中来源以 `where` 返回，前端渲染成 🔍 徽标，图片文字单独配色）；`GET /api/search?tab&q&sort&dir&src&status&done&pri&limit`；`POST /api/prefs` 写 `settings.ui.<page>`，重启后每页恢复自己的条件。Go 单测 `go/search_test.go`（4 个用例）+ `test.sh` 的 `search + per-page prefs` 步骤。**未做**：有无附件 / 标签 / 日期范围筛选（P4 附件模型落地后加）、关键词高亮。
 * 后端 `/api/search`（§3.3），Go 单元测试覆盖：中文子串、tag 命中、todo 文本命中、各 sort、各 filter、dir。
 * 前端：搜索框防抖 250ms；排序筛选按钮弹**浮动面板**（复用 `.sheet`/panel 组件），面板内容 = 排序字段 + 升降序 + 筛选 chips（来源、状态、有无附件、有无未完成待办、标签、日期范围）；按钮上显示"已启用 N 项筛选"徽标；条件写进 `settings.ui.<page>`，切页/重启后记忆。
 * 空结果态、搜索中态、命中关键词高亮。
@@ -240,10 +244,10 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 ### 里程碑勾选表
 
 ```
-[ ] P0 状态栏可见，无 ANR
-[ ] P1 亮/暗主题，默认亮色，颜色全走 CSS 变量
-[ ] P2 4 tab + 圆角矩形 FAB + 共用顶栏 + 组件库/动画 token
-[ ] P3 搜索 + 排序 + 筛选面板（三页共用，条件持久化）
+[x] P0 状态栏可见，无 ANR
+[x] P1 亮/暗主题，默认亮色，颜色全走 CSS 变量
+[x] P2 4 tab + 圆角矩形 FAB + 共用顶栏 + 组件库/动画 token
+[x] P3 搜索 + 排序 + 筛选面板（三页共用，条件持久化）
 [ ] P4 附件页（附件模型 + 网格 + 通用文件服务）
 [ ] P5 我的页（统计）+ 全屏设置面板
 [ ] P6 无障碍服务采集 + 常驻通知 + 批量一键解析
