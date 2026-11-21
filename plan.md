@@ -1,6 +1,6 @@
 # eNote 开发计划 v2：界面重构 + 附件页 + 剪贴板收集 + 明暗主题
 
-> 状态：**计划，未开发**。本文档写给下一台开发设备（或下一个我）。
+> 状态：**计划已定，本机开发**（不 handoff，全部功能做完再交接）。每阶段做完立即 `git push`，不丢成果。
 > 需求来自 2026-11-21 的口头描述，本文档做了三件事：**拆解 → 分析依赖与平台约束 → 重排成可交付阶段**。
 > 每阶段都是"可编译、可安装、可验收"的完整增量，做完一步再动下一步。
 
@@ -73,6 +73,8 @@ nav:     [笔记] [待办] [附件] [我的]        +  右下角圆角矩形 FAB
 | **R6** | 笔记/待办/附件三页顶栏统一；我的页单独设计、要好看 | 顶栏组件化；我的页独立视觉 |
 | **R7** | 加通知权限、常驻通知、监控剪贴板；复制的文字+图片先暂存不解析；打开 app 后批量勾选、一键解析 | 前台服务 + 常驻通知；剪贴板监听；暂存队列（文字/图片）；批量勾选 UI；批量入队解析 |
 | **R8** | 明暗主题切换，默认亮色 | CSS 变量双主题；`theme` 设置项（light/dark/auto）；状态栏 + `theme-color` 同步；默认 light |
+| **R9** | 重绘 app 图标：现代简洁，有竖琴的神韵 | 新画 1024 母图（几何竖琴 + 蓝绿渐变）→ 自适应图标（前景/背景层）+ 各密度 mipmap；`tools/gen_icon.py` 一键重生成 |
+| **R10** | 界面元素增加大量微动画（按钮、点击等），形成自己的组件库方便复用 | `go/ui.css` 组件层（btn/card/chip/sheet/toast/topbar/tabbar/fab/switch/segmented/empty/skeleton）+ 动画 token；按钮按压回弹、tab 滑动指示器、卡片 stagger 入场、勾选划线、删除滑出、主题交叉淡入；`prefers-reduced-motion` 降级 |
 
 ---
 
@@ -98,16 +100,17 @@ R7 剪贴板/通知 ─────────────────┘（依
 
 1. **状态栏（R1）**：`Theme.Material.NoActionBar.Fullscreen` 是全屏主题，去掉即可。非全屏后 WebView 会自动避开状态栏，`env(safe-area-inset-top)` 变成 0，`go/ui.html:19` 的 header padding 要跟着调，否则顶部会突然挤一下。亮色主题下要让状态栏图标变深色：API 23+ 的 `windowLightStatusBar`（minSdk 26 可直接用），API 30+ 用 `WindowInsetsController.setAppearanceLightStatusBars()`。
 
-2. **剪贴板（R7，最大的坑）**：Android 10（API 29）起，**非前台应用读不到剪贴板内容**——`getPrimaryClip()` 在后台返回被裁剪的占位内容，**前台服务不豁免**（豁免对象只有输入法和无障碍服务）。可行的三种方案：
+2. **剪贴板（R7，最大的坑）——已定方案 B：无障碍服务**。Android 10（API 29）起，**非前台应用读不到剪贴板内容**（`getPrimaryClip()` 在后台返回被裁剪的占位），**前台服务不豁免**，豁免对象只有输入法与**无障碍服务**。所以：
 
-   | 方案 | 做法 | 代价 |
-   |---|---|---|
-   | **A（推荐）** | 前台服务常驻 + `addPrimaryClipChangedListener` 只记"变化事件 + `ClipDescription` 元数据（mime、条目数、时间、`hasImage()`）"；**内容在 app 回到前台时补读**（drain 队列）；常驻通知带"查看剪贴板"动作，点它把 app 拉到前台即触发补读 | 用户复制后如果从不打开 app，内容不会被抓（后台只能拿到元数据） |
-   | B | 无障碍服务读取，后台可读全文 | 要用户去设置里开"无障碍"权限，路径深、解释成本高 |
-   | C | 不做监听，常驻通知上放"粘贴一条"按钮，点击→前台→读剪贴板 | 最省，但违背"监控剪贴板"的原意 |
+   * 声明 `ClipWatchService : AccessibilityService`（`android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"` + `meta-data android.accessibilityservice` 指向 `res/xml/clip_accessibility.xml`）。
+   * 服务内 `onServiceConnected` 里 `getSystemService(ClipboardManager).addPrimaryClipChangedListener(...)`；无障碍服务在后台调 `getPrimaryClip()` **能拿到全文**，图片也能拿到 `content://` URI。
+   * 事件驱动，**不轮询**；`onAccessibilityEvent` 里只处 `TYPE_WINDOW_CONTENT_CHANGED` 做心跳兼底（部分 ROM 后台 listener 会失效）。
+   * 用户引导：设置页→“采集”→开关，未授权时 `startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))` 直接跳到无障碍列表（vivo OriginOS 路径：设置→快捷与辅助→无障碍→已下载的应用），开屏文案要写明“只读剪贴板，不点解析不上传”。
+   * 常驻通知由同一个服务挂（无障碍服务本身就是系统绑定的，比普通前台服务存活好），开关关闭时 `disableSelf()`。
+   * 图片：`ClipDescription.hasImage()`（API 24+）；`content://` 能读就拷进 `attachments/`，读不到（无权限/已失效）则只存元数据并提示手动添加。
+   * 兼容：minSdk 26，无障碍 API 全可用；Android 13+ 的“粘贴提示”toast 属于系统行为，无法关闭，需在文档说明。
 
-   图片剪贴板：`ClipDescription.hasImage()`（API 24+）可判断；相册/微信复制出来的图常是 `content://`，要 `takePersistableUriPermission` 才能长期读，拿不到权限时降级为"只记元数据 + 提示用户手动添加"。
-   实现纪律：**用 listener，不要轮询剪贴板**（轮询费电且 Android 12+ 会弹"来自 XX 的粘贴"提示，很吵）。
+   备选（已否决）：A = 前台服务只记元数据、回前台补读（后台拓不到内容）；C = 不监听，只提供“粘贴一条”按钮。
 
 3. **通知（R7）**：targetSdk 33 → `POST_NOTIFICATIONS` 是运行时权限，必须 `requestPermissions`；常驻通知需要前台服务（`FOREGROUND_SERVICE` 权限 + 通知渠道 `IMPORTANCE_LOW`，别响铃）。若以后把 targetSdk 升到 34+，前台服务必须声明 `foregroundServiceType`（`specialUse` 最贴合），现在先留注释。
 
@@ -116,6 +119,20 @@ R7 剪贴板/通知 ─────────────────┘（依
 5. **附件（R4）**：现在一条笔记最多一张图（`Note.ImagePath`）。泛化成 `Note.Attachments[]`，兼容策略选**惰性迁移**：加载时若 `imagePath` 非空且 `attachments` 为空，就合成一条附件记录；写入时双写（`imagePath` 保留），这样旧读取路径（`/img?id=`、卡片缩略图）不用一起改。分享接收的 intent-filter 若要收任意文件，加 `<data android:mimeType="*/*" />` 的 SEND —— 这会让 eNote 出现在**所有**分享菜单里，是产品决策（见 §3.4）。
 
 6. **搜索（R3）**：中文不做分词，直接大小写不敏感子串匹配（title/content/rawText/ocrText/tags/todos 全参与），数据量级（几百条）线性扫完全够，别引入 boltdb/sqlite。
+
+7. **图标（R9）**：现在 `res/mipmap-*/ic_launcher.png` 是脚本生成的占位图。重绘要点：现代简洁 + **竖琴神韵**（琴柱 + 琴颈 + 弦的几何抽象，不做写实插画）。做法：`tools/gen_icon.py`（PIL）画 1024 母图（蓝绿渐变圆角底 + 白色琴弓曲线 + 5～7 根弦），同时输出：
+   * 自适应图标 `res/mipmap-anydpi-v26/ic_launcher.xml` + `ic_launcher_background.xml`/`ic_launcher_foreground.xml`（矢量，前景留安全区 66dp）；
+   * 各密度 `mipmap-{mdpi..xxxhdpi}/ic_launcher.png`（legacy，给分享面板/启动页用）；
+   * `docs/icon-master.png`（1024，商店用）。
+   约 30 行矢量代码，不用设计工具；改设计只改脚本重跑。
+
+8. **微动画与组件库（R10）**：约束是**不引入构建链与动画库**（无 npm、无 framer），纯 CSS + 少量 JS 工厂：
+   * 动画 token：`--d1:110ms --d2:180ms --d3:280ms --ease:cubic-bezier(.2,.8,.2,1)`，全组件只用这三个时长；
+   * 只用 `transform` / `opacity`（不触发重排），`will-change` 节制使用；
+   * 组件库落在 `go/ui.css`（构建时与 `ui.html` 一起打包）：`btn / btn-primary / btn-ghost / icon-btn`（按压 scale .96 + ripple）、`card`（入场 rise + stagger）、`chip`、`switch`、`segmented`、`sheet`（弹性上滑 + 遮罩淡入）、`toast`、`topbar`、`tabbar`（滑动指示器）、`fab`（圆角矩形，按压 + 图标旋转）、`list-item`（删除滑出）、`empty`、`skeleton`（shimmer）、`field`；
+   * 微动画清单：按钮/图标按压回弹、tab 切换指示器滑动 + 内容淡入、卡片 stagger 入场（≤ 8 张，每张 24ms）、待办勾选划线 + 行变淡、FAB 点击图标旋转 45°、sheet 拖拽关闭、搜索框展开、主题切换交叉淡入、骨架屏 shimmer、数字滚动（统计页）；
+   * `@media (prefers-reduced-motion: reduce)` 统一降级为无动画；
+   * 验收：新页面不得自写样式，必须复用组件库；grep 检查无 `animation:` 硬编码时长（全走 token）。
 
 ### 3.3 数据与 API 变更（一次设计好，避免反复改 JSON）
 
@@ -146,17 +163,20 @@ R7 剪贴板/通知 ─────────────────┘（依
 | `/api/clip/parse` | POST | `{ids:[...]}` → 批量入队（复用现有 ingest 队列），返回新建笔记 id |
 | `/api/theme` | POST | `{mode}` → 写 settings 并回传新色板（Java 侧同步状态栏用） |
 
-Java 侧新增：`ClipService`（前台服务，常驻通知，clip listener）、`NotificationCh`（渠道）、`Bridge.setTheme(mode)`、`Bridge.drainClipboard()`。
+Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常驻通知）、`Notify`（渠道）、`Bridge.setTheme(mode)`、`Bridge.pickFile()`、`Icon`（自适应图标由资源提供）。
 
-### 3.4 需要用户拍板的问题（开发前问一次，别猜）
+### 3.4 决策记录（已拍板，2026-11-21）
 
-1. **剪贴板方案选 A / B / C？**（§3.2 表；默认建议 A：后台只记元数据，回前台补读内容）
-2. 常驻通知**默认开还是默认关**？可否在设置里彻底关闭？（默认建议：开，设置里可关）
-3. 附件分享入口要不要 `*/*`（出现在所有分享菜单，包括 PDF/文档/音频）？还是先只加 `application/pdf` + `text/*`？
-4. 附件页要不要"从文件管理器添加"入口（现在只有图片选择器）？
-5. 主题要不要"跟随系统"选项（用户只说了明暗切换 + 默认亮色）？（默认建议：提供 light/dark/auto 三档，默认 light）
-6. 搜索要不要搜 OCR 原文（`ocrText`）？搜了会命中大量身份证/证书里的噪声文字。（默认建议：搜，但结果里标注来源为"图片文字"）
-7. 待办页顶栏的搜索/筛选是否要包含"已完成"？（默认建议：默认筛选=未完成，面板里可勾选已完成）
+| # | 问题 | 决定 |
+|---|---|---|
+| 1 | 剪贴板方案 | **B：无障碍服务**（后台可读全文，接受去设置里开权限） |
+| 2 | 常驻通知 | 默认开，设置里可关（关了 = 停止采集） |
+| 3 | 分享入口 mime | 先收窄：`text/*` + `application/pdf`（不加 `*/*`，避免出现在所有分享菜单） |
+| 4 | 附件页添加入口 | 加文件选择器（`ACTION_OPEN_DOCUMENT`） |
+| 5 | 主题 | 三档 light/dark/auto，**默认 light** |
+| 6 | 搜索范围 | 包含 `ocrText`，结果里标注“来自图片文字” |
+| 7 | 待办默认筛选 | 默认只看未完成，面板里可勾选已完成 |
+| 8 | 开发方式 | **不 handoff**，本机（Termux）开发完所有功能，每阶段推 github |
 
 ---
 
@@ -176,12 +196,13 @@ Java 侧新增：`ClipService`（前台服务，常驻通知，clip listener）�
 * `config.go` 加 `theme`（默认 `light`）+ `/api/theme`；设置项 UI 在 P5 落地，本阶段先用调试入口（长按顶栏品牌字切换，P5 删掉）。
 * 验收：`test.sh` 加断言：`GET /api/state` 的 `settings.theme=="light"`；`POST /api/theme {mode:dark}` 后 `/api/state` 返回 dark；截图两张（light/dark）人工核对；grep 检查 `go/ui.html` 里除 `:root`/`[data-theme]` 外无硬编码颜色。
 
-### P2 外壳重构（R2a + R2b + R6 骨架）
-* nav 改 4 tab：`笔记 待办 附件 我的`；`设置` tab 移除（临时把设置挂在"我的"页顶部，P5 完成）。
-* FAB 从 nav 里拿出来：`position:fixed; right:16px; bottom:calc(84px + env(safe-area-inset-bottom))`，**圆角矩形**（`border-radius:16px`，带图标+文字"新建"），随页面语义变文案/动作；滚动时轻微缩小（纯 CSS，别加 JS 动画库）。
-* 顶栏组件化：`topbar(mode)` 生成 `icon + 搜索框 + 排序筛选按钮`，笔记/待办/附件三页共用；"我的"页用独立 header（P5）。
-* 现有 `renderSettings()` 保留但只从"我的"进入，保证阶段结束时功能不丢。
-* 验收：4 个 tab 可切换且各自内容正确；FAB 在四页语义正确（笔记=记一笔 / 待办=加待办 / 附件=添加文件 / 我的=无 FAB）；FAB 不遮挡列表最后一项（列表底部 padding 计算）；`test.sh` 加断言：`/api/state` 正常 + VD 上 tap 四个 tab 后截图。
+### P2 外壳重构（R2a + R2b + R6 骨架 + R10 组件库基座）
+* **先做组件库**（`go/ui.css`）：动画 token + `btn/card/chip/switch/segmented/sheet/toast/topbar/tabbar/fab/list-item/empty/skeleton/field`，现有页面改成调用组件（否则后面四个页面会各自造轮子）。
+* nav 改 4 tab：`笔记 待办 附件 我的`，带滑动指示器动画；`设置` tab 移除（临时把设置挂在“我的”页顶部，P5 完成）。
+* FAB 从 nav 里拿出来：`position:fixed; right:16px; bottom:calc(84px + env(safe-area-inset-bottom))`，**圆角矩形**（`border-radius:16px`，图标+文字“新建”），按压回弹 + 图标旋转，随页面语义变文案/动作；滚动时轻微缩小。
+* 顶栏组件化：`topbar(mode)` 生成 `icon + 搜索框 + 排序筛选按钮`，笔记/待办/附件三页共用；“我的”页用独立 header（P5）。
+* 现有 `renderSettings()` 保留但只从“我的”进入，保证阶段结束时功能不丢。
+* 验收：4 个 tab 可切换且各自内容正确；FAB 在四页语义正确（笔记=记一笔 / 待办=加待办 / 附件=添加文件 / 我的=无 FAB）；FAB 不遮挡列表最后一项；tab 切换与按钮按压有可见动效（连拍截图对比）；`test.sh` 加断言：`/api/state` 正常 + VD 上 tap 四个 tab 后截图。
 
 ### P3 搜索 + 排序 + 筛选（R3）
 * 后端 `/api/search`（§3.3），Go 单元测试覆盖：中文子串、tag 命中、todo 文本命中、各 sort、各 filter、dir。
@@ -201,31 +222,32 @@ Java 侧新增：`ClipService`（前台服务，常驻通知，clip listener）�
 * 删掉 P1 的临时调试入口（长按品牌字切换主题）。
 * 验收：`/api/stats` 数字与 `/api/state` 一致；设置面板保存后重启 app 保持；主题在设置里切换即时生效；截图（我的页 light + dark、设置面板）。
 
-### P6 剪贴板收集 + 常驻通知 + 批量解析（R7）— 最大，独立发布
-* 权限：`POST_NOTIFICATIONS` 运行时申请（Android 13+）、`FOREGROUND_SERVICE`；首次进入"我的"页时引导开启（一次性说明为什么需要常驻通知）。
-* `ClipService`：前台服务 + 常驻通知（`IMPORTANCE_LOW`，不响铃），通知内容 = "已暂存 N 条 · 点按查看"，动作按钮 = 打开 app。
-* 监听：`addPrimaryClipChangedListener` → 记录元数据（时间、mime、条目数、`hasImage()`、文本长度）；**内容在 app 回前台时补读**（方案 A）；图片 clip 拷进 `attachments/`（`content://` 取 persistable 权限，失败降级为元数据）。
-* 去重：与上一条内容 hash 相同则跳过；同一来源 5 秒内多次变化只留最后一条。
-* 暂存区 UI：笔记页顶部出现"剪贴板 N 条待处理"横幅 → 进入批量勾选页（全选/反选、逐条预览、显示来源与时间）→ **一键解析**（`/api/clip/parse` 批量入队，复用现有 ingest 队列，状态沿用 `queued→parsing→done`）；也提供"原样存为笔记"（不调 LLM，省 token）。
-* 隐私纪律：**未点"解析"之前，剪贴板内容绝不发到大模型**；设置页明确写出这一点。
-* 验收：`am broadcast`/手动复制文字与图片 → 队列出现 N 条且未产生笔记（`/api/state` 笔记数不变）→ 勾选 2 条 → 一键解析 → 生成 2 条笔记且 `source=clip-text`/`clip-image`；`test.sh` 加 `/api/clip` 全链路断言；常驻通知在通知栏可见（截图）；关闭开关后服务停止（`dumpsys activity services` 无 ClipService）。
+### P6 剪贴板采集 + 常驻通知 + 批量解析（R7，方案 B）— 最大，独立发布
+* 权限：`POST_NOTIFICATIONS` 运行时申请（Android 13+）；无障碍服务在 `AndroidManifest.xml` 声明（`BIND_ACCESSIBILITY_SERVICE` + `res/xml/clip_accessibility.xml`）。
+* `ClipWatchService : AccessibilityService`：`onServiceConnected` 里注册 `addPrimaryClipChangedListener`，后台直接读全文（无障碍豁免）；同时挂常驻通知（`IMPORTANCE_LOW`，不响铃）= “已暂存 N 条 · 点按查看”，开关关闭时 `disableSelf()`。
+* 采集：文字 clip → 暂存队列；图片 clip（`hasImage()`）→ 拷进 `attachments/`（`content://` 能读就拷，失败只记元数据）；**去重**：与上一条 hash 相同跳过，同一来源 5 秒内只留最后一条；单条文本上限 20000 字。
+* 暂存区 UI：笔记页顶部“剪贴板 N 条待处理”横幅 → 批量勾选页（全选/反选、逐条预览、时间/来源）→ **一键解析**（`/api/clip/parse` 批量入队，复用现有 ingest 队列）；提供“原样存为笔记”（不调 LLM）。
+* 引导 UI：未授权时“我的→采集”卡片显示“去开启”，点它 `startActivity(ACTION_ACCESSIBILITY_SETTINGS)`，并附 vivo 路径说明。
+* 隐私纪律：**未点“解析”之前，剪贴板内容绝不发到大模型**；设置页明写。
+* 验收：`adb shell am broadcast` 或手动复制文字/图片 → `/api/clip` 出现 N 条且笔记数不变 → 勾选 2 条 → `/api/clip/parse` → 生成 2 条笔记（`source=clip-text`/`clip-image`）；常驻通知可见（截图）；开关关掉后 `dumpsys accessibility | grep -i enote` 无服务；`test.sh` 加全链路断言。
 
-### P7 收尾打磨
-* 状态栏/导航栏颜色随主题；FAB 与 sheet 的动效统一（150ms，`prefers-reduced-motion` 降级）；列表长文截断、无障碍（tab 的 `aria-label`、点击目标 ≥44px）。
-* `README.md` 更新（新界面截图、剪贴板说明、权限说明）、`CHANGELOG.md`、`test.sh` 全量回归。
-* 可选（有余力再做）：导入 JSON、待办到期提醒通知、附件预览。
+### P7 图标重绘（R9）+ 打磨
+* `tools/gen_icon.py`：PIL 画 1024 母图（蓝绿渐变圆角底 + 白色几何竖琴：琴柱/琴颈/5～7 根弦，曲线取“神韵”不做写实），输出自适应图标（`mipmap-anydpi-v26/ic_launcher.xml` + 背景/前景层，前景留 66dp 安全区）+ `mipmap-{mdpi..xxxhdpi}/ic_launcher.png` + `docs/icon-master.png`；启动器上实机截图核对（小尺寸下弦不能糊成一团）。
+* 微动画收尾（R10）：逐页补齐按压/入场/切换动效，统一走 token；`prefers-reduced-motion` 降级；无障碍（tab `aria-label`、点击目标 ≥44px）。
+* 其他：状态栏/导航栏颜色随主题；长文截断；`README.md`（新界面截图、剪贴板与无障碍权限说明）、`CHANGELOG.md`、`test.sh` 全量回归。
+* 可选（有余力）：导入 JSON、待办到期提醒通知、附件预览。
 
 ### 里程碑勾选表
 
 ```
 [ ] P0 状态栏可见，无 ANR
 [ ] P1 亮/暗主题，默认亮色，颜色全走 CSS 变量
-[ ] P2 4 tab + 圆角矩形 FAB + 共用顶栏骨架
+[ ] P2 4 tab + 圆角矩形 FAB + 共用顶栏 + 组件库/动画 token
 [ ] P3 搜索 + 排序 + 筛选面板（三页共用，条件持久化）
 [ ] P4 附件页（附件模型 + 网格 + 通用文件服务）
 [ ] P5 我的页（统计）+ 全屏设置面板
-[ ] P6 常驻通知 + 剪贴板暂存 + 批量一键解析
-[ ] P7 打磨 + 文档 + 全量回归
+[ ] P6 无障碍服务采集 + 常驻通知 + 批量一键解析
+[ ] P7 新图标（竖琴）+ 动效打磨 + 文档 + 全量回归
 ```
 
 ---
@@ -243,7 +265,8 @@ Java 侧新增：`ClipService`（前台服务，常驻通知，clip listener）�
 | P3 | `/api/search` 的 q/sort/dir/filter 组合（Go 单测 + HTTP 断言各一份） |
 | P4 | `/api/attachments` 计数 == 磁盘文件数；删笔记后文件消失 |
 | P5 | `/api/stats` 与 `/api/state` 计数一致；设置面板保存后重启保持 |
-| P6 | `/api/clip` 入队→不产生笔记→`/api/clip/parse`→产生笔记；`clipWatch=false` 后服务不在 `dumpsys activity services` |
+| P6 | `/api/clip` 入队→不产生笔记→`/api/clip/parse`→产生笔记；`dumpsys accessibility` 能看到服务；开关关掉后服务消失 |
+| P7 | 图标：`aapt dump badging` 确认各密度图标存在；启动器截图；`prefers-reduced-motion` 下无动画（截图对比） |
 
 截图基线一律存 `.test/shots/`（已 gitignore），命名 `p<阶段>-<页面>-<主题>.png`。
 
@@ -268,4 +291,9 @@ Java 侧新增：`ClipService`（前台服务，常驻通知，clip listener）�
 | 主题改造漏掉硬编码颜色 | 暗色下出现"白底白字" | P1 的 grep 断言 + 两主题全页截图核对 |
 | 附件模型迁移丢图 | 用户图片消失 | 惰性迁移 + 双写 `imagePath`；迁移前把 `notes.json` 备份成 `notes.json.bak` |
 | 分享 intent-filter 加 `*/*` 后出现在所有分享菜单 | 用户嫌吵 | 按 §3.4 决策点 3 收窄 mime |
-| 单文件 `ui.html` 膨胀到难维护 | 开发变慢 | P2 时按 `topbar/nav/sheet/render` 分区注释；超过 ~900 行就拆文件（保留打包步骤） |
+| 无障碍服务被 ROM 杀掉 / 用户未授权 | R7 采集失效 | 服务由系统绑定，存活比普通前台服务好；UI 持续显示采集状态（“已开启/未授权”）；提供 `disableSelf()` + 重开路径；文档写清 vivo 开启路径 |
+| 无障碍权限敏感（能读屏幕） | 用户不信任 | 设置页明写“只读剪贴板，不点解析不上传”，并在隐私章节说明服务声明里不开 `accessibilityEventTypes` 的屏幕内容采集 |
+| 后台大量复制导致队列膨胀 | 存储/隐私 | 队列上限 200 条，先进先出；单条文本上限 20000 字；图片只存附件不重复存 base64 |
+| 图标在小尺寸下发糊 | 启动器观感差 | 母图 1024 生成后缩到 48px 目测；弦数 ≤ 7，线宽 ≥ 母图 1.2%；自适应图标前景留 66dp 安全区 |
+| 动画过多导致低端机卡顿 | 体验下降 | 只用 transform/opacity；stagger ≤ 8 项；`prefers-reduced-motion` 全关 |
+| 单文件 `ui.html` 膨胀到难维护 | 开发变慢 | P2 拆出 `go/ui.css`（组件库）；超过 ~900 行再拆 JS，保留打包步骤 |
