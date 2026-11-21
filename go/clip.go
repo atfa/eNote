@@ -109,6 +109,7 @@ func clipAdd(kind, text, path, name, mime, app string) string {
 
 	now := time.Now()
 	sig := kind + "\x00" + text + "\x00" + path
+	logf("clip add: kind=%s runes=%d app=%q path=%q", kind, len([]rune(text)), app, path)
 
 	clipStore.mu.Lock()
 	defer clipStore.mu.Unlock()
@@ -116,11 +117,13 @@ func clipAdd(kind, text, path, name, mime, app string) string {
 	// exact repeat of the newest item -> drop
 	if n := len(clipStore.Clips); n > 0 {
 		last := clipStore.Clips[n-1]
-		if last.kindSig(kind, text, path) == sig {
+		if last.sig() == sig {
+			logf("clip add: 与最新一条完全相同 → 丢弃（最新 %d 字）", len([]rune(last.Text)))
 			return `{"ok":true,"duplicate":true}`
 		}
 		// same source within 5s -> replace the newest
 		if last.App == app && now.Sub(last.CreatedAt) <= 5*time.Second {
+			logf("clip add: 同来源 5s 内 → 覆盖最新一条")
 			last.Text = text
 			last.Path = path
 			last.Name = name
@@ -151,8 +154,11 @@ func clipAdd(kind, text, path, name, mime, app string) string {
 	return `{"ok":true,"id":"` + c.ID + `"}`
 }
 
-func (c *Clip) kindSig(kind, text, path string) string {
-	return kind + "\x00" + text + "\x00" + path
+// sig is the de-dupe fingerprint of a stored clip. It used to take the *incoming*
+// kind/text/path as arguments, which made the comparison `last.kindSig(kind,text,path) == sig`
+// a tautology: every clip after the first one was thrown away as a "duplicate".
+func (c *Clip) sig() string {
+	return c.Kind + "\x00" + c.Text + "\x00" + c.Path
 }
 
 // clipParse turns the selected clips into notes, reusing the normal ingest pipeline:

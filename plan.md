@@ -292,6 +292,26 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * 验收：真机复制 → 切回 app → 横幅出现 → 勾选 → 一键解析 → `clipboard-text` 笔记 `status=done`、facts 已提取、clip 清空（已实测）。
 * 备注：通知权限（POST_NOTIFICATIONS）保留，P6.5 到期提醒要用。
 
+### P6d 剪贴板真凶：去重签名自比恒真（用户第三轮实测，2026-11-21）
+
+* **现象**：浏览器 / 原子笔记复制 → 切回 app，什么都没发生（前两轮修的焦点问题是真的，但不是主因）。
+* **诊断日志给出的证据**（这轮开始每个静默分支都写日志）：
+  ```
+  22:40:43.818 clip 重复，未暂存 28 字（text, label=data）：浏览器复制测试 224100 https://a
+  22:40:43.910 clip add: kind=text runes=28 app="data" path=""
+  22:40:43.910 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）
+  ```
+  28 字的新内容和 15 字的旧内容被判定为「完全相同」。
+* **根因**：
+  ```go
+  func (c *Clip) kindSig(kind, text, path string) string { return kind+"\x00"+text+"\x00"+path }
+  if last.kindSig(kind, text, path) == sig { /* 丢弃 */ }
+  ```
+  签名方法把**新内容**当参数传进去，完全忽略 `c` 自己的字段，于是 `last.kindSig(新) == sig(新)` 是**恒真式**——历史上第一条能存（队列为空），之后每一条都被当重复丢弃。test.sh 那档先 `clip/clear` 清空队列，所以永远只测到「第一条」，长期把这个 bug 并掩埋了。
+* **修**：`func (c *Clip) sig() string { return c.Kind+"\x00"+c.Text+"\x00"+c.Path }`，用存储项自己的值比较；新增 `go/clip_test.go`：三次不同复制必须存下三条（回归护栏）、完全重复丢弃、同来源 5s 内覆盖不叠加。
+* **同时修掉**：浏览器（Chrome / vivo 浏览器）复制的是 `ClipData.newHtmlText("data", …)`，第一项 `getText()` 有值但形态是 HTML，部分场景为 null → 用官方 `Item.coerceToText()` 兼底；`sigOf` 之前不含 `info.clip`，抓到新内容页面不重画，横幅要等切页 → 已加入签名。
+* **顺带结论**：常驻服务的后台剪贴板监听在这台机器上只在**前台**回调（日志证明），后台不保证送达，所以它只能当锦上添花；主路径是前台读 + 顶栏 📋 手动。
+
 ### P6c 剪贴板焦点修复（用户实测反馈，2026-11-21）
 
 * **现象**：在浏览器复制一段文字 → 下拉状态栏 → 点常驻通知回到 app → 没有看到「剪贴板暂存 N 条」横幅。

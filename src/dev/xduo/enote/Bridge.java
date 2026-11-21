@@ -133,6 +133,8 @@ public class Bridge {
             return false;
         }
         String r = nativeClipAdd(o.toString());
+        Log.i(TAG, "clipAdd resp=" + (r == null ? "null"
+                : r.length() > 220 ? r.substring(0, 220) : r) + " 入参 text=" + text.length() + " app=" + app);
         boolean added = r != null && r.contains("\"ok\":true") && !r.contains("\"duplicate\":true");
         if (added && appCtx != null) KeepAlive.markClipCaptured(appCtx);
         return added;

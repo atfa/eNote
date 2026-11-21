@@ -670,6 +670,23 @@ public class MainActivity extends Activity {
                         + ",\"batteryIgnoring\":" + KeepAlive.ignoringBattery(MainActivity.this)
                         + ",\"pending\":" + Reminders.sync(MainActivity.this, Bridge.remindersFromStore())
                         + "}";
+                } else if ("cliphtml".equals(hook)) {
+                    // 浏览器复制的真实形状：ClipData.newHtmlText("data", 文字, html)，
+                    // Chrome / vivo 浏览器都是这个，label 是 "data"，第一项带 text + html。
+                    final String t = arg == null ? "浏览器复制测试 https://example.com/a?b=1\n第二行" : arg;
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                            if (cm != null) {
+                                cm.setPrimaryClip(ClipData.newHtmlText("data", t,
+                                        "<html><body>" + t + "</body></html>"));
+                            }
+                            clipTries = 0;
+                            clipWaitingFocus = true;
+                            drainClipboard();
+                        }
+                    });
+                    out = "{\"ok\":true,\"len\":" + t.length() + "}";
                 } else if ("clipset".equals(hook)) {
                     // 模拟「在别的 app 里复制了一段文字」：写剪贴板，接下来的前台读走哪条路径跟真实场景一致
                     final String t = arg == null ? "懒得记 剪贴板测试" : arg;
