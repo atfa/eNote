@@ -208,11 +208,14 @@ h2{font-size:17px;margin:0 0 4px}
 .kv span:last-child{text-align:right;word-break:break-all;color:var(--acc)}
 pre{background:var(--pre-bg);border:1px solid var(--line);border-radius:10px;padding:10px;
   font-size:11px;overflow:auto;max-height:260px;color:var(--pre-fg);white-space:pre-wrap;word-break:break-word}
-#toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%);
-  background:var(--toast-bg);color:var(--toast-fg);padding:10px 16px;border-radius:12px;font-size:13px;
-  box-shadow:var(--sh);opacity:0;transition:opacity var(--d2) var(--ease),transform var(--d2) var(--ease);
+#toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(6px);
+  display:flex;align-items:center;gap:7px;
+  background:var(--toast-bg);color:var(--toast-fg);padding:10px 16px;border-radius:999px;font-size:13px;font-weight:500;
+  box-shadow:0 8px 28px rgba(12,22,40,.26);opacity:0;
+  transition:opacity var(--d2) var(--ease),transform var(--d2) var(--spring);
   pointer-events:none;z-index:60;max-width:86vw}
-#toast.on{opacity:1;transform:translateX(-50%) translateY(-4px)}
+#toast .ic{width:15px;height:15px;flex:0 0 15px}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);
   border-top-color:var(--acc);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -250,6 +253,7 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .iconbtn:active{transform:scale(.9)}
 .iconbtn .dot{position:absolute;right:5px;top:5px;width:7px;height:7px;border-radius:50%;background:var(--ok)}
 .iconbtn .dot.bad{background:var(--bad)}
+.iconbtn .ic{width:17px;height:17px}
 .search{flex:1;display:flex;align-items:center;gap:6px;height:38px;padding:0 10px;
   background:var(--card);border:1px solid var(--line);border-radius:19px;box-shadow:var(--sh);
   transition:border-color var(--d1) var(--ease),box-shadow var(--d1) var(--ease)}
@@ -295,9 +299,13 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .clipitem{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);
   border-radius:11px;background:var(--card);margin-bottom:8px;cursor:pointer}
 .clipitem.on{border-color:var(--acc);background:var(--acc-s)}
-.clicb{flex:0 0 20px;width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line);
-  display:flex;align-items:center;justify-content:center;color:var(--acc);font-size:13px;margin-top:2px}
-.clipitem.on .clicb{background:var(--acc);border-color:var(--acc);color:#fff}
+.clicb{flex:0 0 20px;width:20px;height:20px;border-radius:7px;border:1.5px solid var(--line);
+  display:flex;align-items:center;justify-content:center;color:#fff;margin-top:2px;
+  transition:background var(--d1) var(--ease),border-color var(--d1) var(--ease)}
+.clicb .ic{width:12px;height:12px;stroke-width:2.6;opacity:0;transform:scale(.4);
+  transition:opacity var(--d1) var(--ease),transform var(--d2) var(--spring)}
+.clipitem.on .clicb{background:var(--acc);border-color:var(--acc)}
+.clipitem.on .clicb .ic{opacity:1;transform:scale(1)}
 .clipbody{flex:1;min-width:0;text-align:left}
 .cliprev{font-size:13px;color:var(--fg);white-space:pre-wrap;word-break:break-word}
 .climthumb{font-size:13px;color:var(--fg)}
@@ -353,15 +361,29 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .li{display:flex;align-items:center;gap:10px;padding:11px 2px;border-top:1px solid var(--line)}
 .li:first-child{border-top:0}
 .li:active{background:var(--card2)}
+.li .lico{flex:0 0 32px;height:32px;border-radius:10px;display:flex;align-items:center;
+  justify-content:center;background:var(--acc-s);color:var(--acc)}
+.li .lico .ic{width:16px;height:16px}
 .skel{border-radius:10px;background:linear-gradient(90deg,var(--card2) 25%,var(--card) 37%,var(--card2) 63%);
   background-size:400% 100%;animation:shim 1.2s var(--ease) infinite}
 @keyframes shim{from{background-position:100% 0}to{background-position:0 0}}
+.skel.img{border-radius:14px}
+.skel.l{height:14px}.skel.s{height:10px}
 .skel.l{height:14px;margin:8px 0}.skel.s{height:10px;width:45%}.skel.img{height:120px;margin:10px 0}
 .empty .em{font-size:44px;margin-bottom:10px;opacity:.6;animation:bob 2.6s var(--ease) infinite}
+.empty .eo{width:76px;height:76px;margin:0 auto 14px;border-radius:26px;display:flex;align-items:center;
+  justify-content:center;background:linear-gradient(160deg,var(--acc-s),var(--card));
+  border:1px solid var(--line);box-shadow:var(--sh);animation:bob 3.4s var(--ease) infinite}
+.empty .eo .ic{width:34px;height:34px;stroke-width:1.4;color:var(--acc);opacity:.9}
+.empty .esub{margin-top:6px;font-size:12px;line-height:1.7;color:var(--dim2);max-width:280px;
+  margin-left:auto;margin-right:auto}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
 
 /* --- 面板（底部弹出，带弹性）--- */
-.sheet .panel{animation:up var(--d2) cubic-bezier(.2,1.08,.28,1)}
+.sheet{background:rgba(10,16,26,.42);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  transition:opacity var(--d2) var(--ease)}
+.sheet .panel{animation:up var(--d2) cubic-bezier(.2,1.08,.28,1);
+  box-shadow:0 -8px 40px rgba(12,22,40,.16)}
 @keyframes up{from{transform:translateY(40px) scale(.98);opacity:.5}to{transform:none;opacity:1}}
 .sheet .panel.full{max-height:94vh;height:94vh;border-radius:22px 22px 0 0}
 .sheet.closing .panel{animation:down var(--d1) var(--ease) forwards}
@@ -495,6 +517,18 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 <symbol id="i-pin" viewBox="0 0 24 24"><path d="M14.6 3.4 20.6 9.4l-3 1-1.2 4.6-5.4-5.4 4.6-1.2-1-3Z"/><path d="M11 13.1 4.6 19.5"/></symbol>
 <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3.6 8.4V6a2.4 2.4 0 0 1 2.4-2.4h2.4M15.6 3.6H18A2.4 2.4 0 0 1 20.4 6v2.4M20.4 15.6V18a2.4 2.4 0 0 1-2.4 2.4h-2.4M8.4 20.4H6A2.4 2.4 0 0 1 3.6 18v-2.4"/><path d="M7 12h10"/></symbol>
 <symbol id="i-mic-slash" viewBox="0 0 24 24"><path d="M9.2 5.9a2.8 2.8 0 0 1 5.6 2.6v3M14.8 14.4a2.8 2.8 0 0 1-5.6-1.9V9"/><path d="M5.6 11.4a6.4 6.4 0 0 0 9.9 5.4M18.4 11.4v.6M12 17.8v3M4 4l16 16"/></symbol>
+<symbol id="i-fire" viewBox="0 0 24 24"><path d="M12 2.8c.6 3-1.4 4.2-2.8 5.7C7.6 10.2 6 11.9 6 14.4A6 6 0 0 0 18 14.4c0-2.2-1-3.6-2.2-5-.6 1-1.3 1.6-2.2 2 .6-2.6.2-6-1.6-8.6Z"/></symbol>
+<symbol id="i-seed" viewBox="0 0 24 24"><path d="M12 21v-7.6"/><path d="M12 13.4C12 9.8 9.2 7 5.6 7c0 3.6 2.8 6.4 6.4 6.4Z"/><path d="M12.6 12.6c0-3.2 2.5-5.7 5.7-5.7 0 3.2-2.5 5.7-5.7 5.7Z"/></symbol>
+<symbol id="i-calendar-check" viewBox="0 0 24 24"><rect x="3.4" y="5" width="17.2" height="15.6" rx="2.6"/><path d="M8 3.4v3.2M16 3.4v3.2M3.4 10h17.2"/><path d="m9 14.6 2.1 2.1 4-4.1"/></symbol>
+<symbol id="i-clipfile" viewBox="0 0 24 24"><path d="M20 9.6 14.4 4H7.6A1.6 1.6 0 0 0 6 5.6v12.8A1.6 1.6 0 0 0 7.6 20h8.8a1.6 1.6 0 0 0 1.6-1.6z"/><path d="M14 4v5.6h5.6"/></symbol>
+<symbol id="i-file-pdf" viewBox="0 0 24 24"><path d="M20 9.6 14.4 4H7.6A1.6 1.6 0 0 0 6 5.6v12.8A1.6 1.6 0 0 0 7.6 20h8.8a1.6 1.6 0 0 0 1.6-1.6z"/><path d="M14 4v5.6h5.6"/><path d="M9 13.4h1.6a1.1 1.1 0 0 1 0 2.2H9zm0 0v4"/></symbol>
+<symbol id="i-file-sheet" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.6h16M4 14.6h16M10 4v16"/></symbol>
+<symbol id="i-file-slides" viewBox="0 0 24 24"><rect x="3.4" y="4.4" width="17.2" height="11.2" rx="2"/><path d="M12 15.6v4M9 19.6h6"/></symbol>
+<symbol id="i-file-text" viewBox="0 0 24 24"><path d="M20 9.6 14.4 4H7.6A1.6 1.6 0 0 0 6 5.6v12.8A1.6 1.6 0 0 0 7.6 20h8.8a1.6 1.6 0 0 0 1.6-1.6z"/><path d="M9 12h6M9 15.4h4"/></symbol>
+<symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V6.4l10-1.8V16"/><circle cx="6.6" cy="18" r="2.4"/><circle cx="16.6" cy="16" r="2.4"/></symbol>
+<symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4.6" width="18" height="14.8" rx="2.4"/><path d="M8 4.6v14.8M16 4.6v14.8M3 12h18"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><rect x="3.4" y="4.4" width="17.2" height="4.4" rx="1.4"/><path d="M5 8.8v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9M10 12.6h4"/></symbol>
+<symbol id="i-warn-tri" viewBox="0 0 24 24"><path d="M10.3 3.9 2.6 17.4A2 2 0 0 0 4.3 20.4h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9.4v4.2M12 17h.01"/></symbol>
 </defs></svg>
 <!-- 顶栏：笔记 / 待办 / 附件 共用（R3、R6）；我的页用自己的 hero 头部 -->
 <header class="topbar" id="topbar">
@@ -610,7 +644,8 @@ async function setTheme(mode){
 function $(s){return document.querySelector(s)}
 function esc(s){return (s||'').replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');
+function toast(m){var t=$('#toast');t.innerHTML=ic('info')+'<span>'+esc(String(m))+'</span>';
+  t.classList.add('on');
   clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on')},2200)}
 async function api(path, body){
   var o = body ? {method:'POST',headers:{'Content-Type':'application/json'},
@@ -746,18 +781,22 @@ function askBattery(){
 /** 通知点按后打开对应笔记（Java 侧调用）*/
 // ---- 剪贴板暂存（R7/P6）：横幅 + 批量勾选 + 一键解析 ----
 var clipSel = {};
+function emptyState(icon, t, sub){
+  return '<div class="empty"><div class="eo"><svg class="ic"><use href="#i-'+icon+'"/></svg></div>'
+    + t + (sub ? '<div class="esub">'+sub+'</div>' : '') + '</div>';
+}
 function clipBanner(){
   var n = (S.info && S.info.clip) || 0;
   if(!n){
     // 后台看到剪贴板变了，但前台读被系统拒了 → 给个一键入口，不要默默失败
     var hint = window.Android && Android.clipHint && Android.clipHint() === '1';
     if(!hint) return '';
-    return '<div class="clipbanner" onclick="importClip()"><span>📋</span>'
+    return '<div class="clipbanner" onclick="importClip()">'+ic('clipboard')
       +'<div style="flex:1"><b>剪贴板刚有更新</b>'
       +'<div class="cbsub">系统不让后台读，点这里收进暂存</div></div>'
       +'<span class="cbar">收进来 ›</span></div>';
   }
-  return '<div class="clipbanner" onclick="clipSheet()"><span>📋</span>'
+  return '<div class="clipbanner" onclick="clipSheet()">'+ic('clipboard')
     +'<div style="flex:1"><b>剪贴板暂存 '+n+' 条</b>'
     +'<div class="cbsub">复制的内容已留在这里，点开勾选再处理</div></div>'
     +'<span class="cbar">整理 ›</span></div>';
@@ -792,7 +831,7 @@ async function loadClips(){
     S.info.clip = clips.length;
     if(!clips.length){
       var el = $('#clipList');
-      if(el) el.innerHTML = '<div class="empty"><div class="em">📭</div>暂存区是空的</div>';
+      if(el) el.innerHTML = emptyState('inbox', '暂存区是空的');
       var cc = $('#clipCount'); if(cc) cc.textContent = '0 条';
       return;
     }
@@ -803,13 +842,13 @@ async function loadClips(){
       keep[c.id] = clipSel[c.id] !== undefined ? clipSel[c.id] : true;
       var on = !!clipSel[c.id];
       var body = c.kind==='image'
-        ? '<div class="climthumb">🖼 图片'+(c.name?' · '+esc(c.name):'')+'</div>'
+        ? '<div class="climthumb">'+ic('image')+' 图片'+(c.name?' · '+esc(c.name):'')+'</div>'
         : '<div class="cliprev">'+esc(String(c.text||'').slice(0,160))+(c.text&&c.text.length>160?'…':'')+'</div>';
       h += '<div class="clipitem'+(on?' on':'')+'" onclick="clipPick(\''+c.id+'\',this)">'
-        +'<div class="clicb">'+(on?'✓':'')+'</div>'
+        +'<div class="clicb">'+ic('check')+'</div>'
         +'<div class="clipbody">'+body
         +'<div class="climeta">'+esc(c.app||'剪贴板')+' · '+relTime(c.createdAt)+'</div></div>'
-        +'<button class="clipdel" onclick="clipDel(event,'+JSON.stringify(c.id)+')" aria-label="删除这条">✕</button></div>';
+        +'<button class="clipdel" onclick="clipDel(event,'+JSON.stringify(c.id)+')" aria-label="删除这条">'+ic('x')+'</button></div>';
     });
     clipSel = keep;
     var el2 = $('#clipList'); if(el2) el2.innerHTML = h;
@@ -822,7 +861,7 @@ function clipPick(id, el){
   clipSel[id] = !clipSel[id];
   el.classList.toggle('on', !!clipSel[id]);
   var cb = el.querySelector('.clicb');
-  if(cb) cb.textContent = clipSel[id] ? '✓' : '';
+  if(cb) cb.classList.toggle('on', !!clipSel[id]);
   clipCount();
 }
 function clipSelAll(v){
@@ -831,7 +870,7 @@ function clipSelAll(v){
   for(var i=0;i<items.length;i++){
     items[i].classList.toggle('on', v);
     var cb = items[i].querySelector('.clicb');
-    if(cb) cb.textContent = v ? '✓' : '';
+    if(cb) cb.classList.toggle('on', v);
   }
   clipCount();
 }
@@ -996,10 +1035,10 @@ function noteCard(n, k){
 }
 function renderNotes(){
   var list = notesFiltered();
-  if(!S.notes.length) return strip()+clipBanner() + '<div class="empty"><div class="em">📥</div>还没有笔记<br>'
-    + '在任何 app 里点「分享 → 懒得记」，文字和图片会自动变成笔记与待办</div>';
-  if(!list.length) return strip()+clipBanner() + '<div class="empty"><div class="em">🔍</div>没有符合条件的笔记<br>'
-    +'<span style="font-size:12px">换个关键词，或点右上角 ⇅ 重置筛选</span></div>';
+  if(!S.notes.length) return strip()+clipBanner() + emptyState('inbox', '还没有笔记',
+      '在任何 app 里点「分享 → 懒得记」，文字和图片会自动变成笔记与待办');
+  if(!list.length) return strip()+clipBanner() + emptyState('search', '没有符合条件的笔记',
+      '换个关键词，或点右上角重置筛选');
   var h = strip()+clipBanner();
   list.forEach(function(n, k){ h += noteCard(n, k) });
   return h;
@@ -1042,7 +1081,7 @@ function groupTodos(){
 function tomorrow(){var d=new Date(Date.now()+864e5),p=n=>String(n).padStart(2,'0');
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
 function renderTodos(){
-  var g = groupTodos(), h = strip(), icons = {'已逾期':'⚠️','今天':'🔥','明天':'📅','本周':'🗓','以后':'🌱','无日期':'📌','已完成':'✅'};
+  var g = groupTodos(), h = strip(), icons = {'已逾期':'warn-tri','今天':'fire','明天':'calendar','本周':'calendar-check','以后':'seed','无日期':'pin','已完成':'check-circle'};
   var any = false, k = 0;
   var p = P();
   Object.keys(g).forEach(function(k0){
@@ -1055,18 +1094,17 @@ function renderTodos(){
     });
     if(!items.length) return; any = true;
     if(p.sort==='pri') items.sort(function(a,b){return rank(b.t)-rank(a.t)});
-    h += '<div class="sec">'+icons[k0]+' '+k0+' · '+items.length+'</div><div class="card" style="--i:'+(k++)+'">';
+    h += '<div class="sec">'+ic(icons[k0], 's')+k0+' · '+items.length+'</div><div class="card" style="--i:'+(k++)+'">';
     items.forEach(function(o){
       h += '<div class="todo'+(o.t.done?' done':'')+(o.t.priority==='high'?' pri-high':'')+enterCls(o.n,o.t)+'">'
-        +'<div class="cb'+(o.t.done?' on':'')+'" onclick="toggle(\''+o.n.id+'\',\''+o.t.id+'\',this)">'+(o.t.done?'✓':'')+'</div>'
+        +'<div class="cb'+(o.t.done?' on':'')+'" onclick="toggle(\''+o.n.id+'\',\''+o.t.id+'\',this)">'+ic('check')+'</div>'
         +'<div class="tx"><span class="ttx">'+esc(o.t.text)
-        +'<small>'+(o.t.due?'<span class="due'+(o.t.due<now()&&!o.t.done?' over':'')+'">'+fmtTime(o.t.due)+'</span> '+cdChip(o.t)+remindBtns(o.n,o.t):'')
+        +'<small>'+(o.t.due?'<span class="due'+(o.t.due<now()&&!o.t.done?' over':'')+'">'+ic('calendar')+fmtTime(o.t.due)+'</span> '+cdChip(o.t)+remindBtns(o.n,o.t):'')
         +'<a href="#" onclick="jump(\''+o.n.id+'\');return false">'+esc(o.n.title||'查看笔记')+'</a></small></div></div>';
     });
     h += '</div>';
   });
-  if(!any) return h + '<div class="empty"><div class="em">🎉</div>没有符合条件的待办<br>'
-    +'分享一段文字，AI 会自动提取待办</div>';
+  if(!any) return h + emptyState('check-circle', '没有符合条件的待办', '分享一段文字，AI 会自动提取待办');
   return h;
 }
 function rank(t){ return ({high:3,normal:2,low:1})[t.priority||'normal'] }
@@ -1113,7 +1151,7 @@ function renderSettings(){
    +'<div class="card"><div class="seg" style="margin-top:2px">'
    + ['light','dark','auto'].map(function(m){
        return '<button class="'+(m===(s.theme||'light')?'on':'')+'" onclick="setTheme(\''+m+'\')">'
-         + ({light:'☀️ 亮色', dark:'🌙 暗色', auto:'🌗 跟随系统'}[m]) + '</button>'}).join('')
+         + ic(m==='light'?'sun':m==='dark'?'moon':'monitor')+({light:'亮色', dark:'暗色', auto:'跟随系统'}[m]) + '</button>'}).join('')
    +'</div><div style="font-size:11px;color:var(--dim);margin-top:8px">默认亮色；'
    +'选「跟随系统」时随手机夜间模式切换，状态栏与导航栏同步变色</div></div>';
 
@@ -1132,14 +1170,14 @@ function renderSettings(){
    +'<div id="llmOut"></div></div>';
 
   h += '<div class="pgroup">采集</div><div class="card">'
-   +'<div class="kv"><span>剪贴板暂存</span><span style="color:var(--acc2)">前台自动 + 📋 手动</span></div>'
+   +'<div class="kv"><span>剪贴板暂存</span><span style="color:var(--acc2)">前台自动 + 顶栏按钮手动</span></div>'
    +'<div style="font-size:11px;color:var(--dim);margin-top:8px">打开 app 时自动暂存剪贴板里的文字；'
-   +'在别的 app 复制后切回「懒得记」即可看到，顶栏 📋 也可以随时手动收一条。'
+   +'在别的 app 复制后切回「懒得记」即可看到，顶栏剪贴板按钮也可以随时手动收一条。'
    +'Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。'
    +'点「解析」才发到大模型，之前内容不会离开本机。</div></div>';
 
   h += '<div class="pgroup">本地 OCR</div><div class="card">'
-   +'<div class="kv"><span>引擎状态</span><span>'+(i.ocrReady?'✅ 就绪':'⏳ 初始化中')+'</span></div>'
+   +'<div class="kv"><span>引擎状态</span><span>'+(i.ocrReady?'<b style="color:var(--ok)">● 就绪</b>':'<span style="color:var(--warn)">◌ 初始化中</span>')+'</span></div>'
    +'<div class="kv"><span>引擎信息</span><span>'+(S.ocrInfo||'vivo 离线 OCR')+'</span></div>'
    +'<div style="font-size:11px;color:var(--dim);margin-top:8px">图片只在本机识别成文字，'
    +'只有识别出的文字（和原文）会发给模型。单条笔记可在笔记卡片上「↻ 重新识别图片」。</div></div>';
@@ -1199,7 +1237,7 @@ function paintStatus(){
 /* ---------- 附件页（R4）----------
    数据来自 /api/attachments（服务端过滤/排序，含磁盘文件数校验）。 */
 var FA = {items:[], total:0, bytes:0, files:0, missing:0, scanned:0, diskFiles:0, loaded:false};
-var KIND = {image:'🖼',pdf:'📕',doc:'📄',sheet:'📊',slides:'📽',text:'📝',audio:'🎵',video:'🎬',archive:'🗜',file:'📎'};
+var KIND = {image:'image',pdf:'file-pdf',doc:'file',sheet:'file-sheet',slides:'file-slides',text:'file-text',audio:'music',video:'film',archive:'archive',file:'clipfile'};
 function fmtSize(b){
   b = b||0;
   if(b >= 1073741824) return (b/1073741824).toFixed(2)+' GB';
@@ -1232,23 +1270,23 @@ function fileStrip(){
 function renderFiles(){
   if(!FA.loaded) return fileStrip() + '<div class="card"><div class="skel img"></div>'
     + '<div class="skel l"></div><div class="skel s"></div></div>';
-  if(!FA.items.length) return fileStrip() + '<div class="empty"><div class="em">📎</div>'
-    + (q ? '没有匹配的附件' : '还没有附件')
-    + '<br><span style="font-size:12px">分享图片 / PDF，或点右下角「添加附件」</span></div>';
+  if(!FA.items.length) return fileStrip() + emptyState('clip',
+      q ? '没有匹配的附件' : '还没有附件',
+      '分享图片 / PDF，或点右下角「添加附件」');
   var h = fileStrip() + '<div class="agrid">';
   FA.items.forEach(function(a, k){
     h += '<div class="acard'+(a.missing?' gone':'')+'" style="--i:'+Math.min(k,8)+'" '
       + 'onclick="openAttach(\''+a.id+'\')">'
       + (a.kind==='image' && !a.missing
           ? '<img class="athumb" loading="lazy" src="/file?id='+a.id+'">'
-          : '<div class="aglyph">'+(KIND[a.kind]||'📎')+'</div>')
+          : '<div class="aglyph">'+ic(KIND[a.kind]||'clipfile','xl')+'</div>')
       + '<div class="aname">'+esc(a.name)+'</div>'
       + '<div class="ameta">'+esc(a.kind)+' · '+fmtSize(a.size)+' · '+fmtTime(a.createdAt)+'</div>'
       + '<div class="anote">'+esc(a.noteTitle||'')+'</div>'
       + (a.missing ? '<div class="amiss">文件已不在</div>' : '')
       + '<div class="arow" onclick="event.stopPropagation()">'
-      + '<button class="btn sm gh" onclick="jump(\''+a.noteId+'\')">笔记</button>'
-      + '<button class="btn sm dg" onclick="delAttach(\''+a.id+'\')">删除</button>'
+      + '<button class="btn sm gh" onclick="jump(\''+a.noteId+'\')">'+ic('note')+'笔记</button>'
+      + '<button class="btn sm dg" onclick="delAttach(\''+a.id+'\')">'+ic('trash')+'删除</button>'
       + '</div></div>';
   });
   return h + '</div>';
@@ -1309,17 +1347,17 @@ function renderMine(){
       + '</div></div>';
   }
   h += '<div class="card" style="padding:2px 12px">'
-    + li('⚙️','设置','AI 模型 / 外观 / 采集 / OCR / 数据', 'settingsSheet()')
-    + li('📜','运行日志','Go 服务、解析队列、OCR 状态', 'showLog()')
-    + li('✨','AI 调用记录','本次运行的请求与返回', 'showDebug()')
-    + li('📤','导出 JSON','全量备份笔记与待办', "location.href='/api/export'")
-    + li('📥','导入 JSON','按笔记 ID 合并，不覆盖本地', 'importJSON()')
-    + li('🗑','清空全部','删除所有笔记与附件', 'clearAllNotes()')
+    + li('settings','设置','AI 模型 / 外观 / 采集 / OCR / 数据', 'settingsSheet()')
+    + li('file-text','运行日志','Go 服务、解析队列、OCR 状态', 'showLog()')
+    + li('sparkle','AI 调用记录','本次运行的请求与返回', 'showDebug()')
+    + li('download','导出 JSON','全量备份笔记与待办', "location.href='/api/export'")
+    + li('inbox','导入 JSON','按笔记 ID 合并，不覆盖本地', 'importJSON()')
+    + li('trash','清空全部','删除所有笔记与附件', 'clearAllNotes()')
     + '</div>';
   h += '<div class="card"><div class="kv"><span>Go 服务</span><span>'+(i.server||'')+'</span></div>'
     + '<div class="kv"><span>Go / 运行时长</span><span>'+(i.go||'')+' / '+(i.uptimeS||0)+'s</span></div>'
     + '<div class="kv"><span>时区</span><span>'+(i.tz||'')+'</span></div>'
-    + '<div class="kv"><span>OCR 引擎</span><span>'+(i.ocrReady?'✅ 就绪':'⏳ 初始化中')+'</span></div></div>';
+    + '<div class="kv"><span>OCR 引擎</span><span>'+(i.ocrReady?'<b style="color:var(--ok)">● 就绪</b>':'<span style="color:var(--warn)">◌ 初始化中</span>')+'</span></div></div>';
   return h;
 }
 function kv(k, v){ return '<div class="kv"><span>'+k+'</span><span>'+v+'</span></div>' }
@@ -1341,8 +1379,8 @@ function chartHTML(days){
 function stat(i, v, label){
   return '<div class="stat" style="--i:'+i+'"><b>'+v+'</b><span>'+label+'</span></div>';
 }
-function li(ic, t, sub, fn){
-  return '<div class="li" onclick="'+fn+'"><span style="font-size:19px">'+ic+'</span>'
+function li(icn, t, sub, fn){
+  return '<div class="li" onclick="'+fn+'"><span class="lico">'+ic(icn)+'</span>'
     +'<div style="flex:1"><b style="font-size:14.5px">'+t+'</b>'
     +(sub?'<div style="font-size:11px;color:var(--dim2);margin-top:1px">'+sub+'</div>':'')+'</div>'
     +'<span style="color:var(--dim2)">›</span></div>';
@@ -1365,7 +1403,7 @@ window.onAppResume = function(){
 function pageSheet(title, html){
   var p = $('#panel');
   p.className = 'panel page';
-  p.innerHTML = '<div class="phead"><button class="iconbtn" onclick="closeSheet()" aria-label="返回">←</button>'
+  p.innerHTML = '<div class="grip"></div><div class="phead"><button class="iconbtn" onclick="closeSheet()" aria-label="返回">'+ic('chev')+'</button>'
     + '<div style="flex:1">'+esc(title)+'</div></div><div class="pbody">'+html+'</div>';
   $('#sheet').classList.add('on');
   p.scrollTop = 0;
@@ -1388,9 +1426,9 @@ function clearAllNotes(){
 function sortSheet(){
   var p = P(), h = '<h2>排序与筛选</h2><div style="height:6px"></div>';
   var sorts = tab==='todos'
-    ? [['due','⏰ 按到期'],['pri','❗ 重要优先'],['new','🕐 最新']]
-    : tab==='files' ? [['new','🕐 最新'],['size','📏 大小'],['name','🔤 名称'],['kind','🗂 类型']]
-      : [['new','🕐 最新在前'],['old','🕐 最早在前'],['title','🔤 标题']];
+    ? [['due',ic('clock')+'按到期'],['pri',ic('bolt')+'重要优先'],['new',ic('sort')+'最新']]
+    : tab==='files' ? [['new',ic('sort')+'最新'],['size',ic('db')+'大小'],['name',ic('file')+'名称'],['kind',ic('folder')+'类型']]
+      : [['new',ic('sort')+'最新在前'],['old',ic('sort')+'最早在前'],['title',ic('file-text')+'标题']];
   h += group('排序', 'sort', sorts, p.sort);
   if(tab==='notes'){
     h += group('来源', 'src', [['all','全部'],['text','文字'],['image','图片']], p.src);
@@ -1467,7 +1505,7 @@ async function toggle(nid,tid,el){
     if(!done){
       row.classList.add('justdone');
       var cb = row.querySelector('.cb');
-      if(cb){ cb.classList.add('on'); cb.textContent = '✓' }
+      if(cb){ cb.classList.add('on'); }
       animLock = Date.now() + 900;
       setTimeout(function(){ row.classList.add('leaving') }, 430);
     }else{
@@ -1586,7 +1624,7 @@ function addSheet(){
   sheet('<h2>记一笔</h2>'
    +'<label>文字</label><textarea id="addText" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea>'
    +'<div class="acts"><button class="btn pri" onclick="addNote()">保存并解析</button>'
-   +'<button class="btn" onclick="pickImage()">📷 选图片（本机 OCR）</button></div>');
+   +'<button class="btn" onclick="pickImage()">'+ic('camera')+'选图片（本机 OCR）</button></div>');
 }
 async function addNote(){
   var t = $('#addText').value.trim(); if(!t){toast('写点内容吧');return;}
