@@ -339,10 +339,33 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * **验收**：`test.sh` 新增「P6.5 常驻后台」一档：hook 打开开关 → `dumpsys activity services` 有 `KeepAlive` 且 `isForeground=true` → `dumpsys notification` 有 `channel=keepalive` → hook 关掉 → 服务消失。
 
 ### P7 图标重绘（R9）+ 打磨
-* ~~`tools/gen_icon.py` 自绘竖琴母图~~ → **已换成用户提供的图标集**（2026-11-21）：`res/mipmap-*/ic_launcher.png` + `res/drawable-*/ic_launcher_{background,foreground}.png` + `res/mipmap-anydpi-v26/ic_launcher.xml`，母图与说明归档 `docs/icon-src/`，`docs/icon-192.png` 为预览；`tools/gen_icon.py` 保留备用。剩下要做的是启动器实机截图核对（小尺寸不能糊）。
-* 微动画收尾（R10）：逐页补齐按压/入场/切换动效，统一走 token；`prefers-reduced-motion` 降级；无障碍（tab `aria-label`、点击目标 ≥44px）。
-* 其他：状态栏/导航栏颜色随主题；长文截断；`README.md`（新界面截图、剪贴板与无障碍权限说明）、`CHANGELOG.md`、`test.sh` 全量回归。
-* 可选（有余力）：导入 JSON、待办到期提醒通知、附件预览。
+* **图标（2026-11-22 重做）**：`tools/gen_icon.py` 用一份 Python 几何常量同时输出
+  `res/drawable/ic_launcher_{background,foreground,monochrome}.xml`（自适应图标，`<aapt:attr>` 渐变）
+  + `res/mipmap-anydpi-v26/ic_launcher.xml` + `go/icon.png`（192×192，`go:embed`，app 内 logo 走 `/icon.png`）。
+  所有 mipmap/drawable PNG 删除，APK 14,174,783 → 13,837,907 字节。旧母图归档 `docs/icon-src/`。
+  坑：`<vector>` 上必须声明 `xmlns:aapt="http://schemas.android.com/aapt"` 才能用 `<aapt:attr>`。
+* **图标系统（P7b-A）**：`go/ui.html` 内嵌 24dp 线性 SVG sprite（约 65 个 `<symbol>`，紧跟 `<body>`），
+  `ic(name, cls)` 生成 `<svg class="ic"><use href="#i-…"/></svg>`，颜色随 `currentColor`；
+  `.ic.s/.m/.l/.xl` 控尺寸。顶栏 / 底栏（选中加胶囊底）/ FAB / 指标卡全部图标化。
+  修掉一个真 bug：`--grad-hot` 没定义 → 逾期数字透明看不见。
+* **卡片与待办行（P7b-B）**：标题 16.5px/-.2px；来源与状态改成图标胶囊；正文改成左竖条引用块
+  （`padding:9px 11px`、`border-radius:0 11px 11px 0`）；`.chip`/`.due`/`.cd` 统一
+  `inline-flex + gap:3px + 11px 图标 + padding:1px 7px`（sig 测试断言「重要」与时间标签同高，
+  padding 不能改）；圆形勾选框 + SVG 勾 + `scale(.4)→scale(1)` 弹性；提醒按钮（日历/闹钟）。
+* **弹层 / 空状态 / 我的页（P7c）**：`pageSheet()` 顶部加 `.grip` + chevron 返回键，遮罩 `backdrop-filter:blur(6px)`；
+  新增 `emptyState(icon,t,sub)`（76px 圆角渐变底 + 图标）替换全部 emoji 空状态；
+  待办分组标题、剪贴板横幅与条目勾选、我的页列表项（`.lico` 32px 图标底）、主题分段、排序浮层、
+  toast（胶囊 + 弹性上浮）、附件类型 `KIND` 图标全部去 emoji。
+* **动效（P7c）**：`.card/.acard/.stat.enter` 入场动画，`animation-delay:calc(min(var(--i),6)*45ms)`；
+  JS 用 `seen` 表只给「新出现」的卡片加 `.enter`，`setTab()` 时 `clearSeen()`，轮询重绘不再反复跳；
+  关键信息行按 `--k` 错峰 40ms；`.body` 展开加 `max-height` 过渡；`prefers-reduced-motion` 全量降级。
+* **我的页（P7d）**：hero 左侧应用图标（`/icon.png`）+ 标题 + 运行环境行 + 胶囊统计；
+  指标卡加图标底（逾期红色）；近 7 天柱状图渐变柱 + 底部淡底。深色模式截图核对通过。
+* **文档**：`README.md` 重写（界面截图 `docs/shots/`、5 tab 用法、完整 API 表、已知限制含厂商冻结与
+  剪贴板边界、新增踩坑条目）、`CHANGELOG.md` 新建。
+* 无障碍：tab `aria-label`、删除按钮 `aria-label`、点击目标 ≥44px（`.tab` 56px、`.remind` 18px 高但
+  外层有 44px 命中区 `.hit`）。
+* 可选（未做）：「打开时补看错过的提醒」横幅（后台被冻结，这是唯一还有意义的补救手段）。
 
 ### 里程碑勾选表
 
@@ -357,7 +380,11 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 [x] P5.5 事实提取（R12）+ 日历/闹钟入口（R13-A/B，标准契约）+ logo 去白框（R14）
 [~] P6.5 自研到期提醒：前台正常；常驻后台开关 + 标准电池优化引导已加，后台到点仍被厂商冻结拦下（详见 P6.5 段）
 [x] P6 剪贴板前台采集 + 暂存去重 + 批量一键解析（定稿方案见 P6 段）
-[~] P7 新图标（已换成用户提供的图标集）+ 动效打磨（进行中）+ 文档 + 全量回归
+[x] P7a 启动器图标（gen_icon.py 一份几何 → 矢量 XML + app 内 logo，去 PNG）
+[x] P7b 图标系统 + 顶栏/底栏/指标卡 + 笔记卡片/待办行图标化（去 emoji）
+[x] P7c 弹层 / 空状态 / 我的页列表 / toast 图标化 + 卡片入场动效（seen 表，轮询不跳）
+[x] P7d 我的页 hero + 指标卡图标 + 图表渐变柱 + 深色模式核对
+[x] P7e 文档（README 重写 + CHANGELOG）+ 全量回归
 ```
 
 ---

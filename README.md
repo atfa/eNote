@@ -1,10 +1,26 @@
-# eNote — 分享即笔记
+# eNote（懒得记）— 分享即笔记
 
-一个装在 Android 手机上的笔记 + 待办：把任何文字或图片**分享**给 eNote，它先在本地做 OCR，
-再交给自己的大模型（BYOK）整理成「标题 / 正文 / 标签 / 带截止时间的待办」。
+一个装在 Android 手机上的笔记 + 待办：把任何文字、图片、或刚复制的剪贴板内容丢给「懒得记」，
+它先在本地做 OCR，再交给自己的大模型（BYOK）整理成「标题 / 正文 / 标签 / 带截止时间的待办」。
 全部构建、签名、安装、测试都在这台手机的 Termux 里完成，没有 PC、没有 Gradle、没有 Android Studio。
 
-包名 `dev.xduo.enote`，标签 `eNote`，minSdk 26，targetSdk 33，arm64-v8a，APK ≈ 13.7 MB。
+包名 `dev.xduo.enote`，显示名 `懒得记`，minSdk 26，targetSdk 33，arm64-v8a，APK ≈ 13.2 MB。
+
+---
+
+## 界面
+
+<p>
+<img src="docs/shots/ui-b-notes.jpg" width="210" alt="笔记">
+<img src="docs/shots/ui-b-todos.jpg" width="210" alt="待办">
+<img src="docs/shots/ui-c-clipsheet.jpg" width="210" alt="剪贴板暂存">
+<img src="docs/shots/ui-d-mine.jpg" width="210" alt="我的">
+<img src="docs/shots/ui-d-dark.jpg" width="210" alt="深色模式">
+</p>
+
+界面是**一个内嵌 HTML**（`go/ui.html`），由 Go 的 HTTP 服务在 `127.0.0.1` 上提供，WebView 加载。
+图标是一整套 24dp 线性 SVG（内嵌 sprite，随 `currentColor` 变色），启动器图标由
+`tools/gen_icon.py` 用同一份几何同时生成矢量 XML 和 app 内 logo，APK 里没有任何 PNG 图标。
 
 ---
 
@@ -34,12 +50,20 @@ GO_TEST=1 ./build.sh      # 编译 Go（含单元测试）+ javac + d8 + aapt2 +
 
 图片走 `SEND` / `SEND_MULTIPLE` / `VIEW` 三种 intent，所以相册、微信、浏览器都能分享进来。
 
-**App 内**：底部四个标签 笔记 / 待办 / ➕ / 设置。
+**App 内**：底部五个入口 笔记 / 待办 / ➕记一笔 / 附件 / 我的，顶栏是搜索 + 剪贴板暂存 + 排序。
 
 * ➕「记一笔」：粘贴文字直接解析，或「选图片（本机 OCR）」从相册挑一张。
-* 笔记卡片：勾选待办、展开详情、`重新解析`、`重新识别图片`、`+ 待办`、`删除`。
-* 待办页按 今天 / 明天 / 无日期 / 已完成 分组，红色左边框 = 高优先级，逾期数字在顶栏。
-* 设置页：API Base URL、Key、模型名、超时、max tokens、温度、`测试连接`，以及本地 OCR 引擎状态。
+* 笔记卡片：勾选待办、展开详情、`重新解析`、`重新识别图片`、`+ 待办`、`删除`；
+  AI 提取出的「关键信息」（何时 / 何人 / 何事 / 何地 / 为什么 / 备注）直接列在卡片里。
+* 待办页按 已逾期 / 今天 / 明天 / 本周 / 以后 / 无日期 / 已完成 分组，红色左边框 = 高优先级，
+  倒计时标签（今天 / 3 天后 / 已逾期 2 天）实时刷新，勾选完成有划线 + 淡出 + 高亮入场动画。
+* 剪贴板暂存：复制过的文本自动攒着（前台采集，去重），横幅上显示条数，打开后勾选 →
+  `一键解析` / `原样存为笔记` / `删除所选`。
+* 附件页：图片 / PDF / 音频 / 压缩包按类型图标展示，可预览、可转成笔记。
+* 我的页：本地数据摘要（笔记 / 待办 / 附件 / 占用）、近 7 天活动柱状图、笔记状态、常见标签，
+  以及设置、运行日志、AI 调用记录、导出 / 导入 JSON、清空数据。
+* 设置页：API Base URL、Key、模型名、超时、max tokens、温度、`测试连接`、主题（亮 / 暗 / 跟随系统）、
+  本地 OCR 引擎状态、剪贴板采集开关、常驻后台开关与电池优化引导。
   Key 明文存在 `files/enote/settings.json`，接口返回时打码成「前 4 + … + 后 4」，回传打码值不会覆盖真 Key。
 
 默认不预置大模型（仓库里不带任何端点）：装好后在设置里填 API Base URL / Key / 模型名，任何
@@ -97,11 +121,23 @@ curl -s "http://127.0.0.1:$P/api/state" | python3 -m json.tool
 | POST | `/api/delete` | `{id}` |
 | POST | `/api/todo` | `{action: add\|toggle\|delete, noteId, text, due, priority, todoId}` |
 | GET/POST | `/api/settings` | 读（Key 打码）/ 写（传打码值则保留真 Key） |
+| POST | `/api/theme` | `{mode: light\|dark\|auto}` |
+| GET/POST | `/api/prefs` | 每个 tab 的上次排序 / 筛选条件 |
+| GET | `/api/search?q=` | 笔记 + 待办全文搜索 |
+| GET | `/api/clip/list` | 剪贴板暂存列表 |
+| POST | `/api/clip/parse` | `{ids}` 批量解析成笔记 |
+| POST | `/api/clip/remove` / `/api/clip/clear` | 删除所选 / 清空 |
+| GET | `/api/attachments` | 附件列表（含缺失文件标记） |
+| POST | `/api/attach/delete` | `{id}` |
+| GET | `/api/stats` | 我的页统计（笔记 / 待办 / 附件 / 近 7 天 / 标签） |
+| POST | `/api/import` / `/api/clear` | 按笔记 ID 合并导入 / 清空数据 |
 | POST | `/api/llm/test` | 连通性测试，返回 `{ok, httpCode, ms, reply}` |
 | GET | `/api/llmlog` | 最近的大模型调用（模型、耗时、HTTP 码、输入、原始返回） |
 | GET | `/api/log` | 最近的业务日志 |
 | GET | `/api/export` | 全部笔记的 JSON 数组（备份用） |
 | GET | `/img?id=` | 笔记里的图片 |
+| GET | `/file?id=` | 附件原件 |
+| GET | `/icon.png` | 应用图标（我的页 hero 用） |
 
 ## 5. 无头测试（手机照常能用）
 
@@ -152,9 +188,12 @@ App 自己写 `files/enote/enote.log`。
 
 ## 6. 已知限制（MVP）
 
-* 没有通知栏提醒，待办只在 App 里看；没有本地推送。
-* 只导出（`/api/export`），没有导入；没有多设备同步。
-* API Key 明文存在 `files/`（App 私有目录，未加密）。
+* 到期提醒：前台到点能弹通知；本机（vivo/OriginOS）应用一进后台就冻结进程，闹钟直接被
+  `alarm_cancelled`，即使有前台服务 + 常驻通知 + Doze 白名单。不声称后台可靠，
+  UI 文案是「尽量不被后台清理」（纯标准 AOSP 契约，不做品牌分支）。
+* 剪贴板采集只在前台：Android 10+ 禁止非获焦应用读剪贴板，本 ROM 也不给后台窗口投递
+  `OnPrimaryClipChangedListener`，所以后台复制的内容采不到。
+* API Key 明文存在 `files/`（App 私有目录，未加密）；导入 JSON 按笔记 ID 合并，没有多设备同步。
 * 一次只解析一张图片；`SEND_MULTIPLE` 会拆成多条笔记。
 * 分享 URL 按纯文本处理，不抓网页正文。
 * 只打包 arm64-v8a。
@@ -168,8 +207,12 @@ build.sh                Go → .so → javac → d8 → aapt2 → zipalign → a
 install.sh              pm install -g（--bg 用后台屏）
 test.sh                 端到端验收测试（见上）
 vd.sh / screen.sh / probe.sh / log.sh    后台屏、截图、存活检查、日志
-src/dev/xduo/enote/     Java 壳（5 个类）+ com/vivo/aiocr/general（OCR SDK 封装）
-go/                     Go 业务层 + ui.html（内嵌 UI）
+src/dev/xduo/enote/     Java 壳（8 个类）+ com/vivo/aiocr/general（OCR SDK 封装）
+go/                     Go 业务层 + ui.html（内嵌 UI）+ icon.png（go:embed）
+res/                    启动器图标（矢量 XML，由 tools/gen_icon.py 生成）
+tools/gen_icon.py       图标几何（矢量 XML + PNG 一起出）
+tools/ui_sig_test.js    UI 结构契约测试（51 项，无浏览器，纯静态断言）
+docs/shots/             README 截图（由 .test/shots/ 缩图生成）
 assets/mdl_ocr/         OCR 模型（9 MB）
 jniLibs/arm64-v8a/      OCR 引擎 .so（6.7 MB）
 vendor/                 从 ~/ocr 拷来的 SDK jar 与头文件
@@ -188,3 +231,12 @@ vendor/                 从 ~/ocr 拷来的 SDK jar 与头文件
 * 测试 hook 里同步调用大模型（10 s）会卡住主线程 → ANR 被系统杀掉，hook 一律起线程。
 * POSIX `sh` 里 `echo "$json"` 会展开 `\n`，把 JSON 打碎，用 `printf '%s'`。
 * `am start` 送到已在前台的实例时不会重建 Activity，所以要实现 `onNewIntent` + `launchMode="singleTop"`。
+* `aapt2 link` 里用 `<aapt:attr>` 渐变填充矢量图时，`<vector>` 上必须声明
+  `xmlns:aapt="http://schemas.android.com/aapt"`，否则报 attribute 未定义。
+* 后台屏截图前必须让 app 真的 RESUMED：先 `input keyevent 224` + `wm dismiss-keyguard`，
+  再 `vd.sh destroy/create`，最后 `am start --display $D`；否则 `vd.sh shot` 拿到的是冻结帧
+  （`dumpsys window` 里 `visibleRequested=false`）。
+* WebView 里的 `<svg><use href="#id">` 必须和 `<symbol>` 在同一个 document，且 sprite 要在
+  `<body>` 最前面；用外部 `sprite.svg` 在 `file://`/自定义 scheme 下会拿不到。
+* 图标几何只写一份：`tools/gen_icon.py` 里一组 Python 常量同时生成矢量 XML 和 `go/icon.png`，
+  启动器图标和 app 内 logo 永远一致。
