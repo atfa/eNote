@@ -12,6 +12,7 @@ import android.net.Uri;
 import android.provider.AlarmClock;
 import android.provider.CalendarContract;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
@@ -176,6 +177,7 @@ public class MainActivity extends Activity {
         resumedNow = true;
         foreground = true;
         clipWaitingFocus = true;
+        clipWaitStart = SystemClock.uptimeMillis();
         drainClipboard();
         // 常驻后台：用户在设置里开过就重新拉起（进程被回收后回来也能恢复）
         KeepAlive.resumeIfEnabled(this);
@@ -198,6 +200,7 @@ public class MainActivity extends Activity {
 
     ClipboardManager clipboard;
     int clipTries;                // 被系统拒读时的重试次数
+    long clipWaitStart;           // 本轮等待焦点的起点（uptimeMillis）
     boolean clipWaitingFocus;    // onResume 比窗口拿到焦点更早，等焦点到了再读一次
     boolean resumedNow;           // 只给诊断日志用
     static volatile boolean foreground;   // 给常驻服务判断「要不要发通知」（同进程）
@@ -253,16 +256,27 @@ public class MainActivity extends Activity {
             public void run() {
                 try {
                     ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                    ClipData cd = cm == null ? null : cm.getPrimaryClip();
+                    if (cm == null) { note("clip 拿不到 ClipboardManager"); return; }
+                    ClipData cd = cm.getPrimaryClip();
                     if (cd == null) {
-                        // 读被拒（无焦点）或剪贴板为空：退避重试，焦点一到就能读到
-                        note("clip drain#" + clipTries + " 读不到（windowFocus="
-                                + (web != null && web.hasWindowFocus()) + ", resumed=" + resumedNow
-                                + "）" + (KeepAlive.clipHint(Bridge.appCtx != null ? Bridge.appCtx : getApplicationContext()) ? " · 后台看到过变化" : ""));
-                        if (clipTries < 8 && web != null) {
+                        boolean has = cm.hasPrimaryClip();
+                        // 空剪贴板和「无焦点被拒」都返回 null，分不开，所以只要还在等焦点就继续
+                        // 重试（上限 20 秒）；焦点到了 onWindowFocusChanged 也会立刻叫一次。
+                        // 重试只走一条链：监听器、焦点回调、上一次重试会同时叫，不排队的话
+                        // 一次复制能刷出几十个线程。
+                        long waited = SystemClock.uptimeMillis() - clipWaitStart;
+                        boolean keep = clipWaitingFocus && clipTries < 40 && waited < 20000L;
+                        if (keep && web != null) {
+                            // 只排一次：post 到同一个 Runnable，重复 post 会先撤掉上一次，
+                            // 所以监听器/焦点回调/上一次重试一起叫也只有一条链。
                             clipTries++;
-                            web.postDelayed(clipRetry, 400L * clipTries);
+                            web.postDelayed(clipRetry, Math.min(1200L, 250L * clipTries));
                         }
+                        note("clip drain#" + clipTries + " 读不到（hasPrimaryClip=" + has
+                                + ", windowFocus=" + (web != null && web.hasWindowFocus())
+                                + ", resumed=" + resumedNow + ", 已等 " + (waited / 1000)
+                                + "s, 继续重试=" + keep + "）"
+                                + (KeepAlive.clipHint(Bridge.appCtx != null ? Bridge.appCtx : getApplicationContext()) ? " · 后台看到过变化" : ""));
                         return;
                     }
                     clipTries = 0;
@@ -696,6 +710,7 @@ public class MainActivity extends Activity {
                             }
                             clipTries = 0;
                             clipWaitingFocus = true;
+                            clipWaitStart = SystemClock.uptimeMillis();
                             drainClipboard();
                         }
                     });
@@ -703,17 +718,34 @@ public class MainActivity extends Activity {
                 } else if ("clipset".equals(hook)) {
                     // 模拟「在别的 app 里复制了一段文字」：写剪贴板，接下来的前台读走哪条路径跟真实场景一致
                     final String t = arg == null ? "懒得记 剪贴板测试" : arg;
+                    final boolean[] written = {false};
+                    final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
                     runOnUiThread(new Runnable() {
                         public void run() {
                             ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("hook", t));
-                            // 写完再采：跟真实场景一致（复制发生在前台采集之前）
+                            if (cm == null) { note("clipset 拿不到 ClipboardManager"); return; }
+                            try {
+                                cm.setPrimaryClip(ClipData.newPlainText("hook", t));
+                            } catch (Throwable e) {
+                                note("clipset setPrimaryClip 抛异常: " + e);
+                                return;
+                            }
+                            // 写完立刻回读：写不进去是系统不让写（无焦点的窗口连写都被拒），
+                            // 不是 app 的 bug，测试要能分辨这两件事
+                            ClipData back = cm.getPrimaryClip();
+                            written[0] = back != null && back.getItemCount() > 0;
+                            note("clipset 写完回读：" + (written[0]
+                                    ? "ok focus=" + (web != null && web.hasWindowFocus())
+                                    : "null（写入被系统忽略）focus=" + (web != null && web.hasWindowFocus())));
                             clipTries = 0;
                             clipWaitingFocus = true;
+                            clipWaitStart = SystemClock.uptimeMillis();
                             drainClipboard();
+                            done.countDown();
                         }
                     });
-                    out = "{\"ok\":true,\"len\":" + t.length() + "}";
+                    try { done.await(3, java.util.concurrent.TimeUnit.SECONDS); } catch (Throwable ignored) {}
+                    out = "{\"ok\":true,\"len\":" + t.length() + ",\"written\":" + written[0] + "}";
                 } else if ("clipnotify".equals(hook)) {
                     // 验收用：直接发一条剪贴板通知（这台 ROM 后台不投递监听，靠这条测通知本身）
                     KeepAlive.notifyClip(MainActivity.this, Bridge.clipCount());
