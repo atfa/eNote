@@ -181,8 +181,9 @@ public final class KeepAlive extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && ACTION_ON.equals(intent.getAction()) && !enabled(this)) {
-            // started by a stale restart after the user turned the switch off
+        // 开关是唯一的真相：粘性重启（intent==null）和「关掉之后才到的 start 请求」都不该拉起服务，
+        // 否则用户关了开关后服务会被 START_STICKY 复活，dumpsys 里永远停不掉。
+        if (!enabled(this)) {
             stopSelf();
             return START_NOT_STICKY;
         }

@@ -791,6 +791,15 @@ function batteryIgnoring(){
 function toggleKeepAlive(el){
   if(!window.Android || !Android.setKeepAlive){ toast('常驻后台只在 app 内可用'); return }
   var on = !keepAliveOn();
+  // 关掉要二次确认：服务一停，后台到点的提醒就全交给系统调度了
+  if(!on){
+    dialog({title:'关闭常驻后台', body:'关闭后 app 在后台可能被系统冻结，到点提醒可能不响。',
+      ok:'关闭', danger:true, onOk:function(){ applyKeepAlive(el, false) }});
+    return;
+  }
+  applyKeepAlive(el, true);
+}
+function applyKeepAlive(el, on){
   Android.setKeepAlive(on);
   el.className = 'sw' + (on ? ' on' : '');
   if(on){

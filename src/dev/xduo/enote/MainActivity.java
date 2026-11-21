@@ -131,12 +131,15 @@ public class MainActivity extends Activity {
     void handleIntent(Intent intent) {
         if (intent == null) return;
         String hook = intent.getStringExtra("hook");
+        // arg 要在 removeExtra 之前取：runHook 也读它，先删掉的话 hook 只会看到默认值
+        //（真踩过：`--es hook keepalive --es arg off` 变成默认 on，测试永远说服务停不掉）
+        final String hookArg = intent.getStringExtra("arg");
         if (hook != null && hook.length() > 0) {
             // 不删的话，这个 intent 会一直是 task 的入口 intent，每次重启/恢复都重跑一次
             // hook（以前发生过：开机后 clipset 重跑，把用户刚复制的内容盖掉了）
             intent.removeExtra("hook");
             intent.removeExtra("arg");
-            runHook(hook);
+            runHook(hook, hookArg);
         }
         String open = intent.getStringExtra("openNote");
         if (open == null || open.isEmpty()) open = intent.getStringExtra("openTodo");
@@ -644,8 +647,9 @@ public class MainActivity extends Activity {
     // ---------------------------------------------------------------- headless hooks
 
     /** `am start -n dev.xduo.enote/.MainActivity --es hook selftest [--es arg {...}]` */
-    void runHook(final String hook) {
-        final String arg = getIntent().getStringExtra("arg");
+    void runHook(final String hook) { runHook(hook, getIntent().getStringExtra("arg")); }
+
+    void runHook(final String hook, final String arg) {
         // Off the main thread: a selftest waits for a full llm round trip and anr's otherwise.
         new Thread(new Runnable() {
             @Override
