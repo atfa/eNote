@@ -107,12 +107,8 @@ public class ShareActivity extends Activity {
                 return;
             }
             if (stream != null) {
-                processImage(stream);
-                return;
-            }
-            // some apps share a plain-text file through EXTRA_STREAM
-            if (stream != null && type.startsWith("text/")) {
-                processImage(stream);
+                // anything that is not an image (pdf, txt, office, ...) is stored as a file
+                processFile(stream);
                 return;
             }
             ui("没有可保存的内容");
@@ -141,9 +137,42 @@ public class ShareActivity extends Activity {
         }
     }
 
+    void processFile(Uri uri) {
+        ui("正在保存文件…");
+        String mime = "application/octet-stream";
+        try {
+            String m = getContentResolver().getType(uri);
+            if (m != null && m.length() > 0) mime = m;
+        } catch (Throwable ignored) {
+        }
+        try {
+            File f = copyToInbox(uri, extFor(mime));
+            ui("已保存：" + f.getName());
+            Bridge.enqueueFile(f.getAbsolutePath(), displayName(uri), mime, "", "share-file");
+        } catch (Throwable t) {
+            Log.e(TAG, "file failed", t);
+            ui("文件处理失败: " + t);
+            Bridge.enqueueFile("", displayName(uri), mime,
+                    "文件处理失败: " + t, "share-file");
+        }
+    }
+
+    static String extFor(String mime) {
+        if (mime == null) return ".bin";
+        if (mime.startsWith("image/")) return ".jpg";
+        if (mime.contains("pdf")) return ".pdf";
+        if (mime.startsWith("text/")) return ".txt";
+        if (mime.contains("zip")) return ".zip";
+        return ".bin";
+    }
+
     File copyToInbox(Uri uri) throws Exception {
+        return copyToInbox(uri, ".jpg");
+    }
+
+    File copyToInbox(Uri uri, String defExt) throws Exception {
         String name = displayName(uri);
-        String ext = ".jpg";
+        String ext = defExt;
         int dot = name.lastIndexOf('.');
         if (dot > 0 && dot > name.length() - 7) ext = name.substring(dot);
         File dir = OcrHelper.inboxDir(this);

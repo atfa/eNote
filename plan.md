@@ -220,6 +220,8 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * 前端：网格视图（图片=缩略图卡片，其他=类型图标 + 文件名 + 大小 + 日期），点击**暂不打开**（点击给 toast "预览即将上线"），长按/卡片菜单可"跳到所属笔记"和"删除附件"；顶栏排序筛选组件作用于本页（按大小/名称/时间/类型）。
 * 验收：分享一张图 + 分享一段文本 → 附件页只多一条；`/api/attachments` 数量与磁盘文件数一致；删除笔记后附件文件从磁盘消失（`su --mount-master` 数文件）；截图网格页（图片卡 + 非图片卡）。
 
+> **已完成（本机）**：`go/attach.go` = 附件模型（`Attachment{ID,NoteID,Name,MIME,Size,Path,Source,CreatedAt}`）+ `attachTo`（同路径去重，双写 `Note.ImagePath`）+ `mimeByExt/kindOfMime`（扩展名兜底：`file://` 分享常带 `application/octet-stream`）+ `listAttachments`（`sort=new/size/name/kind`，`dir` 直接表示方向而非翻转；`mime` 支持 `image/` 前缀或 `image/pdf/doc/...` 类型名；`files/missing` 统计的是**过滤后**列表）+ `handleFile`（`inline; filename*=UTF-8''`，404/410）。`/api/attachments`、`/api/attach/delete`、`/file?id=`。`store.remove` 遍历删附件文件；`openStore` 惰性迁移 `imagePath` → `Attachments[]`（日志 `synthesised attachment records for N note(s)`）。分享扩展：`ShareActivity.processFile`（`share-file`）+ 清单加 `text/*`、`application/pdf`（刻意不收 `*/*`）；`Bridge.enqueueFile` + `MainActivity.pickFile()`（`ACTION_OPEN_DOCUMENT`，图片走 OCR、其余存文件）+ FAB「添加附件」。搜索加 `附件名` 字段和有无附件筛选（`file=yes/no`，笔记页筛选面板第四组）。Go 单测 `go/attach_test.go`（6 个用例）+ `test.sh` 的 `attachments: share a file, list it, delete it` 步骤（分享 PDF → 列表 +1 且与磁盘数一致 → 按名搜索 → `/file` 取字节 → 删附件 → 删笔记后文件清零）。**未做**：附件预览（点击 toast「预览即将上线」）、导入/多选删除、非图片附件缩略图。
+
 ### P5 我的页 + 设置面板（R5 + R6）
 * `/api/stats`；我的页独立视觉：头像区（应用图标 + 本地数据摘要）、统计卡片（笔记/待办/附件/AI 调用）、近 7 天柱状（纯 CSS）、入口列表（设置、主题、AI 调用记录、导出、导入、关于）。
 * 设置改成**全屏面板**（从"我的"进入），分组：AI（端点/Key/模型/超时/maxTokens/温度/开关 + 测试连接）、外观（主题三档）、采集（剪贴板监听开关，P6 后启用）、OCR（引擎状态、重新识别）、数据（导出/导入/清空）。
@@ -248,7 +250,7 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 [x] P1 亮/暗主题，默认亮色，颜色全走 CSS 变量
 [x] P2 4 tab + 圆角矩形 FAB + 共用顶栏 + 组件库/动画 token
 [x] P3 搜索 + 排序 + 筛选面板（三页共用，条件持久化）
-[ ] P4 附件页（附件模型 + 网格 + 通用文件服务）
+[x] P4 附件页（附件模型 + 网格 + 通用文件服务）
 [ ] P5 我的页（统计）+ 全屏设置面板
 [ ] P6 无障碍服务采集 + 常驻通知 + 批量一键解析
 [ ] P7 新图标（竖琴）+ 动效打磨 + 文档 + 全量回归

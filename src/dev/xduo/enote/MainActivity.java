@@ -26,6 +26,7 @@ import java.util.Locale;
  */
 public class MainActivity extends Activity {
     static final int REQ_IMG = 7;
+    static final int REQ_FILE = 8;
     WebView web;
 
     @Override
@@ -123,12 +124,33 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Called from JS: window.Android.pickFile() - any document, not only images. */
+    public void pickFile() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.setType("*/*");
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "image/*", "text/*", "application/pdf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.ms-excel",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.ms-powerpoint",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "application/zip", "audio/*", "video/*"});
+        try {
+            startActivityForResult(Intent.createChooser(i, "添加附件"), REQ_FILE);
+        } catch (Throwable t) {
+            note("pickFile failed: " + t);
+        }
+    }
+
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
-        if (req != REQ_IMG || res != RESULT_OK || data == null || data.getData() == null) {
-            return;
-        }
+        if (res != RESULT_OK || data == null || data.getData() == null) return;
+        if (req == REQ_FILE) { pickDocument(data.getData()); return; }
+        if (req != REQ_IMG) return;
         final Uri uri = data.getData();
         new Thread(new Runnable() {
             public void run() {
@@ -147,6 +169,61 @@ public class MainActivity extends Activity {
                 }
             }
         }).start();
+    }
+
+    /** The 附件页 "添加附件" path: images go through OCR, everything else is stored as a file. */
+    void pickDocument(final Uri uri) {
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    String mime = getTypeFor(uri);
+                    File f = copyIn(uri);
+                    String name = displayName(uri, f.getName());
+                    note("picked file -> " + f + " (" + mime + ")");
+                    if (mime.startsWith("image/")) {
+                        OcrHelper.Out o = OcrHelper.get(MainActivity.this)
+                                .recognizeFile(f.getAbsolutePath());
+                        note("enqueue manual-image -> " + Bridge.enqueueImage(null,
+                                f.getAbsolutePath(), name, o.text, o.ms, o.error, "manual-image"));
+                        return;
+                    }
+                    note("enqueue manual-file -> " + Bridge.enqueueFile(
+                            f.getAbsolutePath(), name, mime, "", "manual-file"));
+                } catch (Throwable t) {
+                    Log.e("enote", "pick file failed", t);
+                    Bridge.enqueueFile("", String.valueOf(uri), "",
+                            "文件处理失败: " + t, "manual-file");
+                }
+            }
+        }).start();
+    }
+
+    String getTypeFor(Uri uri) {
+        try {
+            String m = getContentResolver().getType(uri);
+            if (m != null && m.length() > 0) return m;
+        } catch (Throwable ignored) {
+        }
+        return "application/octet-stream";
+    }
+
+    String displayName(Uri uri, String fallback) {
+        try {
+            android.database.Cursor c = getContentResolver().query(uri,
+                    new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null);
+            if (c != null) {
+                try {
+                    if (c.moveToFirst()) {
+                        String s = c.getString(0);
+                        if (s != null && s.length() > 0) return s;
+                    }
+                } finally {
+                    c.close();
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return fallback;
     }
 
     File copyIn(Uri uri) throws Exception {

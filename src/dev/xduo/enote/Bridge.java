@@ -89,6 +89,21 @@ public class Bridge {
         return nativeEnqueue(o.toString());
     }
 
+    static String enqueueFile(String path, String name, String mime, String error, String source) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("kind", "file");
+            o.put("path", path == null ? "" : path);
+            o.put("name", name == null ? "" : name);
+            o.put("mime", mime == null ? "" : mime);
+            o.put("fileError", error == null ? "" : error);
+            o.put("source", source);
+        } catch (Exception e) {
+            return "{\"error\":\"" + e + "\"}";
+        }
+        return nativeEnqueue(o.toString());
+    }
+
     // ---------------------------------------------------------------- webview bridge
 
     /** Called from JS as window.Android.pickImage() - opens the system image picker. */
@@ -97,6 +112,14 @@ public class Bridge {
         MainActivity a = current.get();
         Log.i(TAG, "js pickImage");
         if (a != null) a.pickImage();
+    }
+
+    /** window.Android.pickFile(): any document (ACTION_OPEN_DOCUMENT), for the 附件 page. */
+    @JavascriptInterface
+    public void pickFile() {
+        MainActivity a = current.get();
+        Log.i(TAG, "js pickFile");
+        if (a != null) a.pickFile();
     }
 
     /** window.Android.reocr(id): re-run the local OCR on a note's stored image. */

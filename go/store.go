@@ -13,11 +13,11 @@ import (
 
 // Note statuses.
 const (
-	stQueued   = "queued"   // waiting for the worker
-	stParsing  = "parsing"  // LLM call in flight
-	stDone     = "done"     // LLM produced structured output
-	stRaw      = "raw"      // LLM failed / unparseable: text kept, no todos
-	stError    = "error"    // ingest failed (OCR failed, file unreadable, ...)
+	stQueued  = "queued"  // waiting for the worker
+	stParsing = "parsing" // LLM call in flight
+	stDone    = "done"    // LLM produced structured output
+	stRaw     = "raw"     // LLM failed / unparseable: text kept, no todos
+	stError   = "error"   // ingest failed (OCR failed, file unreadable, ...)
 )
 
 type Todo struct {
@@ -30,25 +30,40 @@ type Todo struct {
 	Source   string `json:"source,omitempty"`   // ai|manual
 }
 
-type Note struct {
+// Attachment is a file that belongs to a note: a shared image, a picked document, a PDF.
+// Notes used to carry exactly one image in ImagePath; that field is still written (double
+// write) so the old read paths (/img?id=, card thumbnails) keep working.
+type Attachment struct {
 	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content"`
-	RawText   string    `json:"rawText"` // original shared/OCR text, kept for 重新解析
-	Tags      []string  `json:"tags"`
-	Todos     []Todo    `json:"todos"`
-	Source    string    `json:"source"` // share-text|share-image|manual-text|manual-image
-	ImagePath string    `json:"imagePath,omitempty"`
-	ImageName string    `json:"imageName,omitempty"`
-	OCRText   string    `json:"ocrText,omitempty"`
-	OCRMs     int64     `json:"ocrMs,omitempty"`
-	AIModel   string    `json:"aiModel,omitempty"`
-	AIMs      int64     `json:"aiMs,omitempty"`
-	AIRaw     string    `json:"aiRaw,omitempty"` // raw model output, for the debug tab
-	Status    string    `json:"status"`
-	Error     string    `json:"error,omitempty"`
+	NoteID    string    `json:"noteId,omitempty"`
+	Name      string    `json:"name"`
+	MIME      string    `json:"mime"`
+	Size      int64     `json:"size"`
+	Path      string    `json:"path"`
+	Source    string    `json:"source,omitempty"` // share-image|manual-image|share-file|manual-file
 	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type Note struct {
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Content     string       `json:"content"`
+	RawText     string       `json:"rawText"` // original shared/OCR text, kept for 重新解析
+	Tags        []string     `json:"tags"`
+	Todos       []Todo       `json:"todos"`
+	Source      string       `json:"source"` // share-text|share-image|manual-text|manual-image
+	ImagePath   string       `json:"imagePath,omitempty"`
+	ImageName   string       `json:"imageName,omitempty"`
+	Attachments []Attachment `json:"attachments,omitempty"`
+	OCRText     string       `json:"ocrText,omitempty"`
+	OCRMs       int64        `json:"ocrMs,omitempty"`
+	AIModel     string       `json:"aiModel,omitempty"`
+	AIMs        int64        `json:"aiMs,omitempty"`
+	AIRaw       string       `json:"aiRaw,omitempty"` // raw model output, for the debug tab
+	Status      string       `json:"status"`
+	Error       string       `json:"error,omitempty"`
+	CreatedAt   time.Time    `json:"createdAt"`
+	UpdatedAt   time.Time    `json:"updatedAt"`
 }
 
 type Store struct {
@@ -74,13 +89,58 @@ func openStore(dir string) (*Store, error) {
 			logf("store: corrupt %s moved to %s", s.path, bak)
 		}
 	}
+	mig := 0
 	for _, n := range s.Notes {
 		if n.Status == stParsing || n.Status == stQueued {
 			n.Status = stRaw // a previous process died mid-parse
 			n.Error = "处理被中断，可点「重新解析」"
 		}
+		if migrateAttachments(n) {
+			mig++
+		}
+	}
+	if mig > 0 {
+		if err := s.save(); err != nil {
+			logf("store migrate attachments: %v", err)
+		}
+		logf("store: synthesised attachment records for %d note(s)", mig)
 	}
 	return s, nil
+}
+
+// migrateAttachments is the lazy half of the one-image -> attachments[] migration: a note that
+// has an ImagePath and no attachment record gets one, so the 附件 page sees old notes too.
+func migrateAttachments(n *Note) bool {
+	if n.ImagePath == "" {
+		return false
+	}
+	for i := range n.Attachments {
+		a := &n.Attachments[i]
+		if a.NoteID == "" {
+			a.NoteID = n.ID
+		}
+		if a.Path == n.ImagePath {
+			return false
+		}
+	}
+	attachTo(n, Attachment{
+		ID:        newID(),
+		NoteID:    n.ID,
+		Name:      firstNonEmpty(n.ImageName, filepath.Base(n.ImagePath)),
+		MIME:      mimeForName(n.ImagePath),
+		Size:      fileSize(n.ImagePath),
+		Path:      n.ImagePath,
+		Source:    n.Source,
+		CreatedAt: n.CreatedAt,
+	})
+	return true
+}
+
+func fileSize(p string) int64 {
+	if st, err := os.Stat(p); err == nil {
+		return st.Size()
+	}
+	return 0
 }
 
 // save writes atomically (temp file + rename); caller holds the lock.
@@ -140,10 +200,14 @@ func (s *Store) remove(id string) bool {
 	for i, n := range s.Notes {
 		if n.ID == id {
 			s.Notes = append(s.Notes[:i], s.Notes[i+1:]...)
-			if n.ImagePath != "" {
-				if err := os.Remove(n.ImagePath); err != nil && !os.IsNotExist(err) {
-					logf("store remove image: %v", err)
-				}
+			// every file the note owned goes with it, not just the first image
+			seen := map[string]bool{}
+			for _, a := range n.Attachments {
+				seen[a.Path] = true
+				removeFile(a.Path)
+			}
+			if n.ImagePath != "" && !seen[n.ImagePath] {
+				removeFile(n.ImagePath)
 			}
 			if err := s.save(); err != nil {
 				logf("store remove: %v", err)
@@ -154,6 +218,15 @@ func (s *Store) remove(id string) bool {
 	return false
 }
 
+func removeFile(p string) {
+	if p == "" {
+		return
+	}
+	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+		logf("remove file %s: %v", p, err)
+	}
+}
+
 // snapshot returns copies newest-first, so the UI never reads a half-written note.
 func (s *Store) snapshot() []*Note {
 	s.mu.Lock()
@@ -162,6 +235,7 @@ func (s *Store) snapshot() []*Note {
 	for _, n := range s.Notes {
 		c := *n
 		c.Todos = append([]Todo(nil), n.Todos...)
+		c.Attachments = append([]Attachment(nil), n.Attachments...)
 		out = append(out, &c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })

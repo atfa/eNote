@@ -61,6 +61,8 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/theme", handleTheme)
 	m.HandleFunc("/api/search", handleSearch)
 	m.HandleFunc("/api/prefs", handlePrefs)
+	m.HandleFunc("/api/attachments", handleAttachments)
+	m.HandleFunc("/api/attach/delete", handleAttachDelete)
 	m.HandleFunc("/api/llm/test", handleLLMTest)
 	m.HandleFunc("/api/llmlog", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, map[string]any{"ok": true, "calls": llmHistory()})
@@ -79,6 +81,7 @@ func apiMux() *http.ServeMux {
 		w.Write(b)
 	})
 	m.HandleFunc("/img", handleImg)
+	m.HandleFunc("/file", handleFile)
 	return m
 }
 

@@ -49,11 +49,16 @@ func searchableFields(n *Note) [][2]string {
 	for _, t := range n.Todos {
 		todos = append(todos, t.Text)
 	}
+	names := make([]string, 0, len(n.Attachments))
+	for _, a := range n.Attachments {
+		names = append(names, a.Name)
+	}
 	return [][2]string{
 		{"标题", n.Title},
 		{"正文", n.Content},
 		{"待办", strings.Join(todos, " ")},
 		{"标签", strings.Join(n.Tags, " ")},
+		{"附件名", strings.Join(names, " ")},
 		{"来自图片文字", n.OCRText},
 		{"原始分享文字", n.RawText},
 	}
@@ -69,6 +74,16 @@ func matchNote(n *Note, q string, f map[string]string) ([]string, bool) {
 		}
 	case "text":
 		if strings.HasSuffix(n.Source, "image") {
+			return nil, false
+		}
+	}
+	switch f["file"] {
+	case "yes":
+		if len(n.Attachments) == 0 {
+			return nil, false
+		}
+	case "no":
+		if len(n.Attachments) > 0 {
 			return nil, false
 		}
 	}
@@ -243,6 +258,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 			"status": qs.Get("status"),
 			"done":   qs.Get("done"),
 			"pri":    qs.Get("pri"),
+			"file":   qs.Get("file"),
 		},
 	}
 	if req.Tab == "" {

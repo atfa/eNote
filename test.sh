@@ -83,6 +83,8 @@ fail() {
 
 api_get()  { curl -s -m "${2:-30}" "http://127.0.0.1:$PORT/api/$1"; }
 api_post() { curl -s -m "${3:-120}" -X POST "http://127.0.0.1:$PORT/api/$1" -d "$2"; }
+# raw_get <path>: not every route lives under /api (the attachment viewer is /file).
+raw_get()  { curl -s -m "${2:-30}" "http://127.0.0.1:$PORT/$1"; }
 
 # logcat_has <pattern>: the app logs with Log.i("enote", ...); logcat needs root on this ROM.
 logcat_has() { asroot "logcat -d -s enote:V" 2>/dev/null | grep -q "$1"; }
@@ -289,6 +291,61 @@ assert u["notes"]["sort"]=="title" and u["notes"]["filters"]["src"]=="text", u
 api_post prefs '{"tab":"notes","q":"","sort":"new","filters":{}}' >/dev/null
 api_post prefs '{"tab":"todos","q":"","sort":"due","filters":{"done":"open"}}' >/dev/null
 say "  ok (ocr text is searchable, every page keeps its own conditions)"
+
+step "attachments: share a file, list it, delete it (R4)"
+EXT="/sdcard/Android/data/$APP_PACKAGE/files"
+UID_APP=$(asroot "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+PDF_MARK="附件测试$$"
+printf '%%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\ntrailer2 %s\n' "$PDF_MARK" > "$TMPDIR/att-test.pdf"
+asroot_global "mkdir -p '$EXT' && cp '$TMPDIR/att-test.pdf' '$EXT/att-test.pdf' && chown '$UID_APP:$UID_APP' '$EXT/att-test.pdf' && chmod 644 '$EXT/att-test.pdf'" \
+  || fail "cannot stage the test pdf in $EXT"
+# leftovers from earlier runs would break the count checks, so clear them first
+api_get attachments | "$PY" -c 'import json,sys
+for a in json.load(sys.stdin)["items"]:
+    if a["name"] == "att-test.pdf": print(a["id"])' | while read -r x; do
+  api_post attach/delete "{\"id\":\"$x\"}" >/dev/null; done
+BEFORE_ATT=$(api_get attachments | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["total"])')
+am_start "$APP_PACKAGE/.ShareActivity" "-a android.intent.action.SEND -t application/pdf --eu android.intent.extra.STREAM file://$EXT/att-test.pdf"
+sleep 3
+api_get attachments | "$PY" -c "
+import json,sys
+d = json.load(sys.stdin)
+assert d['total'] == $BEFORE_ATT + 1, 'the shared pdf is not listed: %d -> %d' % ($BEFORE_ATT, d['total'])
+a = d['items'][0]
+assert a['name'] == 'att-test.pdf' and a['kind'] == 'pdf', a
+assert not a.get('missing'), a
+assert d['files'] + d['missing'] == d['total'], d
+assert d['diskFiles'] >= d['files'], 'fewer files on disk than in the list: %s' % d
+print('  listed %d attachments, %s on disk, %s' % (d['total'], d['diskFiles'], a['name']))
+" || fail "the shared file never became an attachment"
+api_get "search?tab=notes&file=yes" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d["notes"], "file=yes matched nothing"
+assert all(n.get("attachments") for n in d["notes"]), d["notes"][0]
+' || fail "the 有无附件 filter is broken"
+api_get "search?tab=notes&q=att-test" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d["total"] >= 1 and any("附件名" in v for v in (d.get("where") or {}).values()), d.get("where")
+' || fail "attachment names must be searchable"
+AID=$(api_get "attachments?q=att-test" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["id"])')
+TOPDF=$(api_get "attachments?q=att-test" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["noteId"])')
+raw_get "file?id=$AID" | grep -q "$PDF_MARK" || fail "/file does not serve the attachment bytes"
+api_post attach/delete "{\"id\":\"$AID\"}" | grep -q '"ok":true' || fail "attachment delete rejected"
+api_get attachments | "$PY" -c "
+import json,sys
+items = json.load(sys.stdin)['items']
+assert all(a['id'] != '$AID' for a in items), 'the deleted attachment is still listed'
+" || fail "the deleted attachment is still listed"
+api_post delete "{\"id\":\"$TOPDF\"}" | grep -q '"ok":true' || fail "note delete rejected"
+api_get attachments | "$PY" -c "
+import json,sys
+d = json.load(sys.stdin)
+assert d['total'] == $BEFORE_ATT, 'attachments left after deleting the note: %s' % d
+assert d['missing'] == 0, d
+" || fail "deleting a note must delete its attachment files"
+say "  ok (pdf share, list counts match the disk, search by name, delete)"
 
 step "app alive"
 sh "$HERE/probe.sh" "$APP_PACKAGE" | sed 's/^/  /'

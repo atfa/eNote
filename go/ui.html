@@ -67,6 +67,23 @@ a{color:var(--acc)}
   border:1px solid var(--acc);animation:hitin var(--d2) var(--ease) both}
 .hit.img{background:var(--acc2-s);color:var(--acc2);border-color:var(--acc2)}
 @keyframes hitin{from{opacity:0;transform:translateY(-4px) scale(.9)}to{opacity:1;transform:none}}
+/* 附件网格（R4）：图片给缩略图，其他文件给类型图标 */
+.agrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:2px}
+.acard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px;
+  box-shadow:var(--sh);display:flex;flex-direction:column;gap:5px;cursor:pointer;
+  animation:rise var(--d3) var(--ease) both;animation-delay:calc(var(--i,0)*24ms);
+  transition:transform var(--d1) var(--ease)}
+.acard:active{transform:scale(.97)}
+.acard.gone{opacity:.62}
+.athumb{width:100%;height:96px;object-fit:contain;border-radius:10px;background:var(--card2)}
+.aglyph{height:96px;display:flex;align-items:center;justify-content:center;font-size:38px;
+  border-radius:10px;background:var(--card2)}
+.aname{font-size:12.5px;font-weight:600;word-break:break-all;line-height:1.35}
+.ameta{font-size:10.5px;color:var(--dim2)}
+.anote{font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.amiss{font-size:10.5px;color:var(--bad)}
+.arow{display:flex;gap:6px;margin-top:2px}
+.arow .btn{flex:1}
 .err{margin-top:8px;font-size:12px;color:var(--bad);background:var(--bad-s);
   border:1px solid var(--bad);border-radius:10px;padding:7px 9px}
 .todo{display:flex;align-items:flex-start;gap:10px;padding:9px 2px;border-top:1px solid var(--line)}
@@ -293,7 +310,7 @@ function P(){ return prefs[tab] || prefs.notes }
    列表数据一律来自 /api/search；请求失败时退回本地过滤，断网也能看。 */
 var SR = {notes:null, todoIds:null, where:{}, total:0, scanned:0};
 var searchSeq = 0, prefsLoaded = false;
-var PREF_KEYS = ['src','status','done','pri','kind'];
+var PREF_KEYS = ['src','status','done','pri','kind','file'];
 function prefPayload(){
   var p = P(), f = {};
   PREF_KEYS.forEach(function(k){ if(p[k] && p[k]!=='all') f[k]=p[k] });
@@ -320,6 +337,7 @@ function savePrefs(){
   saveT = setTimeout(function(){ api('/api/prefs', prefPayload()).catch(function(){}) }, 350);
 }
 async function searchNow(){
+  if(tab==='files'){ filesNow(); return; }
   var my = ++searchSeq;
   try{
     var d = await api('/api/search?'+prefQS());
@@ -414,6 +432,8 @@ function noteCard(n, k){
   var w = SR.where[n.id];
   if(w && w.length) h += '<div class="hits">' + w.map(function(x){
       return '<span class="hit'+(x==='来自图片文字'?' img':'')+'">🔍 '+esc(x)+'</span>' }).join('') + '</div>';
+  if(n.attachments && n.attachments.length > 1)
+    h += '<div class="hits"><span class="hit">📎 ' + n.attachments.length + ' 个附件</span></div>';
   if(n.imagePath) h += '<img class="thumb" src="/img?id='+n.id+'">';
   h += '<div class="body'+(exp?'':' clamp')+'">'+esc(body)+'</div>';
   if(n.error) h += '<div class="err">'+esc(n.error)+'</div>';
@@ -560,10 +580,79 @@ function paintStatus(){
   if(!d) return;
   d.className = 'dot' + ((i.server && i.ocrReady) ? '' : ' bad');
 }
-/* ---------- 附件页（P4 填充，R4）---------- */
+/* ---------- 附件页（R4）----------
+   数据来自 /api/attachments（服务端过滤/排序，含磁盘文件数校验）。 */
+var FA = {items:[], total:0, bytes:0, files:0, missing:0, scanned:0, diskFiles:0, loaded:false};
+var KIND = {image:'🖼',pdf:'📕',doc:'📄',sheet:'📊',slides:'📽',text:'📝',audio:'🎵',video:'🎬',archive:'🗜',file:'📎'};
+function fmtSize(b){
+  b = b||0;
+  if(b >= 1048576) return (b/1048576).toFixed(1)+' MB';
+  if(b >= 1024) return Math.round(b/1024)+' KB';
+  return b+' B';
+}
+async function filesNow(){
+  var my = ++searchSeq, p = P();
+  var s = 'q='+encodeURIComponent(q)+'&sort='+encodeURIComponent(p.sort||'new');
+  if(p.dir) s += '&dir='+encodeURIComponent(p.dir);
+  if(p.kind && p.kind!=='all') s += '&mime='+encodeURIComponent(p.kind);
+  try{
+    var d = await api('/api/attachments?'+s);
+    if(my !== searchSeq) return;
+    FA = {items:d.items||[], total:d.total||0, bytes:d.bytes||0, files:d.files||0,
+          missing:d.missing||0, scanned:d.scanned||0, diskFiles:d.diskFiles||0, loaded:true};
+  }catch(e){ FA.loaded = false }
+  render();
+}
+function fileStrip(){
+  if(!FA.total) return '<div class="strip">附件 <b>0</b></div>';
+  return '<div class="strip">附件 <b>'+FA.total+'</b> · '+fmtSize(FA.bytes)
+    + (FA.missing ? ' · <i>'+FA.missing+' 个文件缺失</i>' : '')
+    + '</div>';
+}
 function renderFiles(){
-  return '<div class="empty"><div class="em">📎</div>附件页即将上线<br>'
-    +'<span style="font-size:12px">图片与文件会统一在这里列出</span></div>';
+  if(!FA.loaded) return fileStrip() + '<div class="card"><div class="skel img"></div>'
+    + '<div class="skel l"></div><div class="skel s"></div></div>';
+  if(!FA.items.length) return fileStrip() + '<div class="empty"><div class="em">📎</div>'
+    + (q ? '没有匹配的附件' : '还没有附件')
+    + '<br><span style="font-size:12px">分享图片 / PDF，或点右下角「添加附件」</span></div>';
+  var h = fileStrip() + '<div class="agrid">';
+  FA.items.forEach(function(a, k){
+    h += '<div class="acard'+(a.missing?' gone':'')+'" style="--i:'+Math.min(k,8)+'" '
+      + 'onclick="openAttach(\''+a.id+'\')">'
+      + (a.kind==='image' && !a.missing
+          ? '<img class="athumb" loading="lazy" src="/file?id='+a.id+'">'
+          : '<div class="aglyph">'+(KIND[a.kind]||'📎')+'</div>')
+      + '<div class="aname">'+esc(a.name)+'</div>'
+      + '<div class="ameta">'+esc(a.kind)+' · '+fmtSize(a.size)+' · '+fmtTime(a.createdAt)+'</div>'
+      + '<div class="anote">'+esc(a.noteTitle||'')+'</div>'
+      + (a.missing ? '<div class="amiss">文件已不在</div>' : '')
+      + '<div class="arow" onclick="event.stopPropagation()">'
+      + '<button class="btn sm gh" onclick="jump(\''+a.noteId+'\')">笔记</button>'
+      + '<button class="btn sm dg" onclick="delAttach(\''+a.id+'\')">删除</button>'
+      + '</div></div>';
+  });
+  return h + '</div>';
+}
+function openAttach(id){
+  var a = null;
+  FA.items.forEach(function(x){ if(x.id===id) a = x });
+  toast('预览即将上线' + (a ? '：' + a.name : ''));
+}
+async function delAttach(id){
+  var a = null;
+  FA.items.forEach(function(x){ if(x.id===id) a = x });
+  if(!confirm('删除附件' + (a ? '「'+a.name+'」' : '') + '？文件会从存储中删除。')) return;
+  try{
+    var r = await api('/api/attach/delete', {id:id});
+    toast(r.ok ? '已删除' : ('删除失败: ' + (r.error||'')));
+  }catch(e){ toast('删除失败: '+e) }
+  filesNow(); refresh();
+}
+function pickFile(){
+  if(!window.Android){ toast('文件选择只在 app 内可用'); return; }
+  Android.pickFile();
+  setTimeout(function(){ filesNow() }, 2500);
+  setTimeout(function(){ filesNow() }, 8000);
 }
 /* ---------- 我的页（R5/R6，P5 完善统计）---------- */
 function renderMine(){
@@ -610,14 +699,20 @@ function sortSheet(){
   var p = P(), h = '<h2>排序与筛选</h2><div style="height:6px"></div>';
   var sorts = tab==='todos'
     ? [['due','⏰ 按到期'],['pri','❗ 重要优先'],['new','🕐 最新']]
-    : tab==='files' ? [['new','🕐 最新'],['size','📏 大小']] : [['new','🕐 最新在前'],['old','🕐 最早在前'],['title','🔤 标题']];
+    : tab==='files' ? [['new','🕐 最新'],['size','📏 大小'],['name','🔤 名称'],['kind','🗂 类型']]
+      : [['new','🕐 最新在前'],['old','🕐 最早在前'],['title','🔤 标题']];
   h += group('排序', 'sort', sorts, p.sort);
   if(tab==='notes'){
     h += group('来源', 'src', [['all','全部'],['text','文字'],['image','图片']], p.src);
     h += group('状态', 'status', [['all','全部'],['done','已解析'],['raw','仅原文'],['error','失败']], p.status);
+    h += group('附件', 'file', [['all','全部'],['yes','有附件'],['no','无附件']], p.file);
   }else if(tab==='todos'){
     h += group('状态', 'done', [['open','未完成'],['done','已完成'],['all','全部']], p.done);
     h += group('优先级', 'pri', [['all','全部'],['high','重要'],['normal','普通'],['low','低']], p.pri);
+  }else if(tab==='files'){
+    // the server knows more kinds (slides/audio/video/archive); the common ones keep the row readable
+    h += group('类型', 'kind', [['all','全部'],['image','图片'],['pdf','PDF'],['doc','文档'],
+      ['sheet','表格'],['text','文本'],['file','其他']], p.kind);
   }
   h += '<div class="acts"><button class="btn" onclick="resetPrefs()">重置</button>'
      + '<button class="btn pri" onclick="closeSheet()">完成</button></div>';
@@ -632,7 +727,7 @@ function group(label, key, opts, cur){
 function setPref(k, v){ P()[k] = v; closeSheet(); searchNow(); savePrefs(); }
 function resetPrefs(){
   prefs[tab] = tab==='todos' ? {sort:'due',done:'open',pri:'all'}
-             : tab==='files' ? {sort:'new',kind:'all'} : {sort:'new',src:'all',status:'all'};
+             : tab==='files' ? {sort:'new',kind:'all'} : {sort:'new',src:'all',status:'all',file:'all'};
   q = ''; var el = $('#q'); if(el){ el.value=''; $('#searchBox').classList.remove('has'); }
   closeSheet(); searchNow(); savePrefs();
 }
@@ -772,7 +867,7 @@ function moveInd(){
 var FABS = {
   notes:{ico:'＋', label:'记一笔', fn:function(){ addSheet() }},
   todos:{ico:'＋', label:'记待办', fn:function(){ addSheet() }},
-  files:{ico:'📎', label:'添加附件', fn:function(){ toast('附件上传即将上线') }},
+  files:{ico:'📎', label:'添加附件', fn:function(){ pickFile() }},
   mine:null
 };
 /* 涟漪（R10）：一个监听器给所有按钮类组件 */

@@ -11,16 +11,18 @@ import (
 // ingestReq is what Java hands over: shared text, or an image plus the text the local
 // vivo OCR engine read out of it. The image itself never goes to the LLM.
 type ingestReq struct {
-	ID       string `json:"id"` // set = re-ingest an existing note (re-OCR + re-parse)
-	Kind     string `json:"kind"` // text | image
-	Text     string `json:"text"`
-	Subject  string `json:"subject"`
-	Path     string `json:"path"`
-	Name     string `json:"name"`
-	OCR      string `json:"ocr"`
-	OCRMs    int64  `json:"ocrMs"`
-	OCRError string `json:"ocrError"`
-	Source   string `json:"source"` // share-text | share-image | manual-text | manual-image
+	ID        string `json:"id"`   // set = re-ingest an existing note (re-OCR + re-parse)
+	Kind      string `json:"kind"` // text | image
+	Text      string `json:"text"`
+	Subject   string `json:"subject"`
+	Path      string `json:"path"`
+	Name      string `json:"name"`
+	OCR       string `json:"ocr"`
+	OCRMs     int64  `json:"ocrMs"`
+	OCRError  string `json:"ocrError"`
+	MIME      string `json:"mime"`      // kind=file
+	FileError string `json:"fileError"` // kind=file: the copy failed, keep the reason
+	Source    string `json:"source"`    // share-text | share-image | manual-text | manual-image | share-file | manual-file
 }
 
 var jobs = make(chan string, 256)
@@ -63,6 +65,9 @@ func enqueue(r ingestReq) enqueueResult {
 		}
 		n.ImagePath = r.Path
 		n.ImageName = firstNonEmpty(r.Name, filepath.Base(r.Path))
+		if r.Path != "" {
+			attachTo(n, attachmentFor(n.ID, r.Path, n.ImageName, r.MIME, r.Source, n.CreatedAt))
+		}
 		n.OCRText = strings.TrimSpace(r.OCR)
 		n.OCRMs = r.OCRMs
 		n.RawText = n.OCRText
@@ -71,6 +76,27 @@ func enqueue(r ingestReq) enqueueResult {
 			n.Status = stRaw
 			n.Error = "图片里没有识别到文字"
 		}
+	case "file":
+		// a document (pdf, docx, txt, ...) shared or picked: stored, not sent to the LLM
+		if n.Source == "manual-text" {
+			n.Source = "manual-file"
+		}
+		if r.FileError != "" {
+			n.Status = stError
+			n.Error = r.FileError
+			n.Content = "文件接收失败：" + r.FileError
+			n.Title = firstNonEmpty(r.Name, "文件")
+			break
+		}
+		if r.Path == "" {
+			return enqueueResult{Kind: r.Kind, Error: "文件路径为空"}
+		}
+		n.Title = firstNonEmpty(r.Name, filepath.Base(r.Path))
+		n.Content = "已保存附件：" + n.Title
+		n.RawText = ""
+		n.Status = stRaw
+		n.Error = "文件已保存，未做 AI 解析"
+		attachTo(n, attachmentFor(n.ID, r.Path, n.Title, r.MIME, n.Source, n.CreatedAt))
 	default: // text
 		n.RawText = strings.TrimSpace(r.Text)
 		n.Content = n.RawText
@@ -102,6 +128,7 @@ func reingest(r ingestReq) enqueueResult {
 		if r.Path != "" {
 			n.ImagePath = r.Path
 			n.ImageName = firstNonEmpty(r.Name, filepath.Base(r.Path))
+			attachTo(n, attachmentFor(n.ID, r.Path, n.ImageName, r.MIME, n.Source, n.CreatedAt))
 		}
 		n.OCRText = txt
 		n.OCRMs = r.OCRMs
