@@ -255,18 +255,37 @@ public class MainActivity extends Activity {
                     }
                     clipTries = 0;
                     clipWaitingFocus = false;
-                    CharSequence cs = cd.getItemAt(0).getText();
-                    if (cs == null) return;
-                    String text = cs.toString();
-                    if (text.trim().isEmpty()) return;
+                    if (cd.getItemCount() == 0) { note("clip 剪贴板为空"); return; }
+                    ClipData.Item it = cd.getItemAt(0);
                     String app = "";
                     try {
                         CharSequence l = cd.getDescription() != null ? cd.getDescription().getLabel() : null;
                         if (l != null) app = l.toString();
                     } catch (Throwable ignored) {}
-                    if (Bridge.clipAdd("text", text, "", "", "", app)) {
-                        note("clip: 暂存文字 " + text.length() + " 字");
+                    CharSequence cs = null;
+                    String via = "text";
+                    try { cs = it.getText(); } catch (Throwable ignored) {}
+                    if (cs == null || cs.toString().trim().isEmpty()) {
+                        // 浏览器复制常常是 content:// URI（Chrome / vivo 浏览器都这样），
+                        // getText() 就是 null；coerceToText 是官方给的标准做法，会去读那个 provider。
+                        via = "coerce";
+                        try {
+                            cs = it.coerceToText(getApplicationContext());
+                        } catch (Throwable t) {
+                            note("clip coerceToText 失败: " + t);
+                        }
                     }
+                    if (cs == null) {
+                        note("clip 没有文字项（label=" + app + ", uri="
+                                + (it.getUri() == null ? "无" : it.getUri().getScheme()) + "）");
+                        return;
+                    }
+                    String text = cs.toString();
+                    if (text.trim().isEmpty()) { note("clip 只有空白字符"); return; }
+                    boolean added = Bridge.clipAdd("text", text, "", "", "", app);
+                    note("clip " + (added ? "暂存文字 " : "重复，未暂存 ") + text.length()
+                            + " 字（" + via + ", label=" + app + "）："
+                            + text.substring(0, Math.min(24, text.length())).replace("\n", "\\n"));
                 } catch (Throwable t) {
                     Log.w("enote", "clip: " + t);
                 }

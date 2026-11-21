@@ -1281,7 +1281,7 @@ function sigOf(d){
         (n.todos ? n.todos.length : 0) + (n.attachments ? n.attachments.length : 0);
     for(j = 0; j < s.length; j++) h = (h*31 + s.charCodeAt(j)) | 0;
   }
-  return [ns.length, h, i.todos, i.open, i.overdue, i.queue, i.ocrReady?1:0,
+  return [ns.length, h, i.todos, i.open, i.overdue, i.queue, i.clip, i.ocrReady?1:0,
           (d && d.settings && d.settings.theme) || ''].join('|');
 }
 async function refresh(quiet){
