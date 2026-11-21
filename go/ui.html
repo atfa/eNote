@@ -417,22 +417,39 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 /* --- 我的页头部（R6）：静态装饰，不做入场动画（过度设计已删）--- */
 .hero{position:relative;overflow:hidden;border-radius:20px;padding:20px 18px 18px;margin:14px 0 10px;
   background:var(--grad);color:var(--on-grad);box-shadow:var(--sh)}
-.hero h1{margin:0;font-size:24px;font-weight:800;letter-spacing:.5px}
+.hero:after{content:"";position:absolute;right:-46px;top:-56px;width:190px;height:190px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,.26),rgba(255,255,255,0) 70%);pointer-events:none}
+.hero .hrow{display:flex;align-items:center;gap:12px;position:relative;z-index:1}
+.hero .hlogo{flex:0 0 46px;height:46px;border-radius:14px;background:rgba(255,255,255,.2);
+  border:1px solid rgba(255,255,255,.34);overflow:hidden}
+.hero .hlogo img{width:100%;height:100%;display:block;object-fit:cover}
+.hero h1{margin:0;font-size:23px;font-weight:800;letter-spacing:.5px}
+.hero .hver{font-size:10.5px;opacity:.8;letter-spacing:.6px;margin-top:2px}
 .hero p{margin:4px 0 0;font-size:12px;opacity:.85}
+.hero .hstats{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;position:relative;z-index:1}
+.hero .hstats span{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;
+  background:rgba(255,255,255,.17);border:1px solid rgba(255,255,255,.26);font-size:11px;
+  font-variant-numeric:tabular-nums}
+.hero .hstats .ic{width:12px;height:12px}
 .statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 8px;text-align:center;
   box-shadow:var(--sh)}
+.stat .si{width:22px;height:22px;margin:0 auto 3px;border-radius:8px;display:flex;align-items:center;
+  justify-content:center;background:var(--acc-s);color:var(--acc)}
+.stat .si .ic{width:13px;height:13px}
+.stat.hot .si{background:var(--bad-s);color:var(--bad)}
 .stat b{display:block;font-size:20px;background:var(--grad-text);-webkit-background-clip:text;
   background-clip:text;color:transparent;font-weight:800}
 .stat span{font-size:11px;color:var(--dim)}
 /* 我的页（R5）：近 7 天活动柱状图（纯 CSS，无图表库） */
-.chart{display:flex;align-items:flex-end;gap:5px;margin-top:14px}
+.chart{display:flex;align-items:flex-end;gap:5px;margin-top:14px;
+  background:linear-gradient(to top,var(--card2),transparent);border-radius:12px;padding:8px 4px 0}
 .chart .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px}
 .chart .bars{display:flex;gap:3px;align-items:flex-end;height:76px}
-.chart .bar{width:9px;border-radius:3px 3px 1px 1px;min-height:2px;transform-origin:bottom;
+.chart .bar{width:9px;border-radius:5px 5px 2px 2px;min-height:2px;transform-origin:bottom;
   animation:grow var(--d3) var(--ease) both}
-.chart .bar.n{background:var(--acc)}
-.chart .bar.d{background:var(--acc2)}
+.chart .bar.n{background:var(--grad);box-shadow:0 2px 6px var(--acc-s)}
+.chart .bar.d{background:var(--acc2);opacity:.9}
 .chart .lb{font-size:9.5px;color:var(--dim2);white-space:nowrap}
 @keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
 .legend{display:flex;gap:14px;font-size:11px;color:var(--dim2);margin-top:10px}
@@ -1324,16 +1341,20 @@ async function statsNow(){
 }
 function renderMine(){
   var i = S.info, s = ST;
-  var h = '<div class="hero"><h1>懒得记</h1><p>分享即笔记 · 本机离线 OCR · 自带大模型（BYOK）</p>'
-    + '<p style="margin-top:9px;font-size:11.5px;opacity:.92">'
-    + (s ? (s.notes.total+' 条笔记 · '+s.todos.total+' 条待办 · '+(s.attach.count||0)+' 个附件 · '
-            + fmtSize(s.bytes)) : '正在统计本地数据…')
-    + '</p></div>';
+  var h = '<div class="hero"><div class="hrow"><div class="hlogo"><img src="/icon.png" alt=""></div>'
+    + '<div><h1>懒得记</h1><div class="hver">'+esc(i.go||'')+' · 本机离线 OCR · BYOK</div></div></div>'
+    + '<div class="hstats">'
+    + (s ? '<span>'+ic('note')+s.notes.total+' 条笔记</span>'
+          + '<span>'+ic('check-square')+s.todos.total+' 条待办</span>'
+          + '<span>'+ic('clip')+(s.attach.count||0)+' 个附件</span>'
+          + '<span>'+ic('db')+fmtSize(s.bytes)+'</span>'
+      : '<span>正在统计本地数据…</span>')
+    + '</div></div>';
   if(!s) return h + '<div class="card"><div class="skel l"></div><div class="skel s"></div></div>';
   h += '<div class="statgrid">'
-    + stat(0, s.notes.total, '笔记') + stat(1, s.todos.total, '待办')
-    + stat(2, s.todos.open, '未完成') + stat(3, s.todos.overdue, '已逾期')
-    + stat(4, s.attach.count||0, '附件') + stat(5, s.ai.calls||0, 'AI 调用') + '</div>';
+    + stat(0, s.notes.total, '笔记', 'note') + stat(1, s.todos.total, '待办', 'check-square')
+    + stat(2, s.todos.open, '未完成', 'clock') + stat(3, s.todos.overdue, '已逾期', 'alert', 1)
+    + stat(4, s.attach.count||0, '附件', 'clip') + stat(5, s.ai.calls||0, 'AI 调用', 'sparkle') + '</div>';
   h += '<div class="card"><h2>近 7 天</h2>'+chartHTML(s.days)
     + '<div class="legend"><span><i style="background:var(--acc)"></i>新增笔记</span>'
     + '<span><i style="background:var(--acc2)"></i>完成待办</span></div></div>';
@@ -1376,8 +1397,9 @@ function chartHTML(days){
   });
   return h+'</div>';
 }
-function stat(i, v, label){
-  return '<div class="stat" style="--i:'+i+'"><b>'+v+'</b><span>'+label+'</span></div>';
+function stat(i, v, label, icon, hot){
+  return '<div class="stat'+(hot?' hot':'')+'" style="--i:'+i+'">'
+    + '<div class="si">'+ic(icon)+'</div><b>'+v+'</b><span>'+label+'</span></div>';
 }
 function li(icn, t, sub, fn){
   return '<div class="li" onclick="'+fn+'"><span class="lico">'+ic(icn)+'</span>'
