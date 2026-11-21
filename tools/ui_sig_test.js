@@ -195,17 +195,19 @@ const named = /android:label="懒得记"/.test(man) && !/android:label="eNote"/.
   && /<title>懒得记<\/title>/.test(src);
 console.log((named ? '  ok   ' : '  FAIL ') + '应用名改为「懒得记」');
 if (!named) bad++;
-// 图标换成用户提供的稿子：各尺寸方形 + 自适应图层 + app 内 logo
-const icon = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']
-    .every(d => fs.existsSync(path.join(root, 'res/mipmap-' + d + '/ic_launcher.png'))
-      && fs.existsSync(path.join(root, 'res/drawable-' + d + '/ic_launcher_foreground.png'))
-      && fs.existsSync(path.join(root, 'res/drawable-' + d + '/ic_launcher_background.png')))
+// 图标：minSdk 26 只需要自适应图层，几何由 tools/gen_icon.py 单源生成（矢量 + 预览 + app 内 logo）
+const icon = ['ic_launcher_background', 'ic_launcher_foreground', 'ic_launcher_monochrome']
+    .every(n => fs.existsSync(path.join(root, 'res/drawable/' + n + '.xml')))
   && fs.existsSync(path.join(root, 'res/mipmap-anydpi-v26/ic_launcher.xml'))
+  && /<monochrome[^>]*@drawable\/ic_launcher_monochrome/.test(
+      fs.readFileSync(path.join(root, 'res/mipmap-anydpi-v26/ic_launcher.xml'), 'utf8'))
   && !fs.existsSync(path.join(root, 'res/mipmap-anydpi-v26/ic_launcher_round.xml'))
+  && !fs.existsSync(path.join(root, 'res/mipmap-hdpi'))     // PNG 全删：矢量自适应图标够用，APK 还小 337KB
   && /android:roundIcon="@mipmap\/ic_launcher"/.test(man)
   && fs.existsSync(path.join(root, 'go/icon.png'))
-  && /\/icon\.png/.test(goweb) && /src="\/icon\.png"/.test(src);
-console.log((icon ? '  ok   ' : '  FAIL ') + '启动图标：各尺寸 + 自适应图层 + app 内 logo');
+  && /\/icon\.png/.test(goweb) && src.includes('src="/icon.png"')
+  && /def star_points/.test(fs.readFileSync(path.join(root, 'tools/gen_icon.py'), 'utf8'));
+console.log((icon ? '  ok   ' : '  FAIL ') + '启动图标：矢量自适应图层 + 主题图标 + app 内 logo（单源生成）');
 if (!icon) bad++;
 
 // 「重要」标签不能比时间标签高出一截：两者都要 inline-block + 固定行高
