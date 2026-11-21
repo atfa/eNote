@@ -257,4 +257,36 @@ const logo = /\.iconbtn\{[^}]*padding:0/.test(src) && /img\.brand\{width:100%;he
 console.log((logo ? '  ok   ' : '  FAIL ') + '顶栏 logo 铺满按钮（去掉白底外框留白）');
 if (!logo) bad++;
 
+
+// ---- R7/P6 剪贴板采集 ----
+// 后台读剪贴板在 Android 10+ 被系统禁止（只有默认输入法/有焦点 app 可以），
+// 所以方案定稿为前台监听：MainActivity onResume 注册 ClipboardManager 监听，
+// Go 侧 clip.json 暂存 + 去重，UI 横幅 + 批量勾选 + 一键解析。
+const goclip = fs.readFileSync(path.join(root, 'go/clip.go'), 'utf8');
+const mainact = fs.readFileSync(path.join(root, 'src/dev/xduo/enote/MainActivity.java'), 'utf8');
+const clip = /func clipAdd/.test(goclip) && /func clipParse/.test(goclip)
+  && /5\*time\.Second/.test(goclip) && /clip\.json/.test(goclip)
+  && /nativeClipAdd/.test(goclip)
+  && /addPrimaryClipChangedListener/.test(mainact) && /drainClipboard/.test(mainact)
+  && /onResume\(\)/.test(mainact)
+  && !/ClipWatchService/.test(man)            // 无障碍方案已移除（读不到内容）
+  && /function clipBanner/.test(src) && /function clipSheet/.test(src)
+  && /\/api\/clip\/parse/.test(src) && /\/api\/clip\/list/.test(src)
+  && (src.match(/clipBanner\(\)/g)||[]).length >= 3;   // 三个 renderNotes 分支都挂横幅
+console.log((clip ? '  ok   ' : '  FAIL ') + '剪贴板前台采集 + 暂存去重 + 横幅/批量页/一键解析');
+if (!clip) bad++;
+
+// tab 切换不再有整页浮现动画（用户要求：干净利落，避免闪烁）
+const cleanTab = !/main\.enter/.test(src) && !/@keyframes fadein/.test(src)
+  && /\.todo\.enter/.test(src);              // 完成待办的高亮动画保留
+console.log((cleanTab ? '  ok   ' : '  FAIL ') + '切页无整页浮现动画（完成动画保留）');
+if (!cleanTab) bad++;
+
+// 待办行左侧竖条：所有行统一 3px 透明占位，重要行只改颜色 → checkbox 对齐
+const priBar = /border-left:3px solid transparent/.test(src)
+  && /\.pri-high\{border-left-color:var\(--bad\)\}/.test(src)
+  && /padding:9px 2px 9px 8px/.test(src);
+console.log((priBar ? '  ok   ' : '  FAIL ') + '待办竖条统一占位（checkbox 对齐）');
+if (!priBar) bad++;
+
 process.exit(bad ? 1 : 0);

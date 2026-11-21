@@ -22,7 +22,8 @@ type ingestReq struct {
 	OCRError  string `json:"ocrError"`
 	MIME      string `json:"mime"`      // kind=file
 	FileError string `json:"fileError"` // kind=file: the copy failed, keep the reason
-	Source    string `json:"source"`    // share-text | share-image | manual-text | manual-image | share-file | manual-file
+	Raw       bool   `json:"raw"`       // true = store as-is, no LLM call
+	Source    string `json:"source"`    // share-text | share-image | manual-text | manual-image | share-file | manual-file | clipboard-*
 }
 
 var jobs = make(chan string, 256)
@@ -103,6 +104,11 @@ func enqueue(r ingestReq) enqueueResult {
 		n.Title = strings.TrimSpace(r.Subject)
 		if n.RawText == "" {
 			return enqueueResult{Kind: r.Kind, Error: "内容为空"}
+		}
+		if r.Raw {
+			// 原样存为笔记：不调 LLM，直接落库
+			n.Status = stRaw
+			n.Error = "原样保存，未做 AI 解析"
 		}
 	}
 	store.add(n)
@@ -258,6 +264,9 @@ func appInit(dir string) map[string]any {
 	if store, err = openStore(dir + "/enote"); err != nil {
 		return map[string]any{"ok": false, "error": "store: " + err.Error()}
 	}
+	if clipStore, err = openClipStore(dir + "/enote"); err != nil {
+		return map[string]any{"ok": false, "error": "clip store: " + err.Error()}
+	}
 	startWorker()
 	bootStats = map[string]any{"ok": true, "dir": dir, "notes": len(store.snapshot()),
 		"go": goVersion()}
@@ -275,6 +284,7 @@ func appInfo() map[string]any {
 		"todos":    0,
 		"open":     0,
 		"overdue":  0,
+		"clip":     clipCount(),
 		"server":   srvURL,
 		"go":       goVersion(),
 		"tz":       tzInfo(),

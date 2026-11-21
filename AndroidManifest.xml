@@ -15,6 +15,14 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- R13-B：向系统时钟设闹钟（normal 权限，装机即授予）；日历走 ACTION_INSERT，不需要权限 -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- R13-E / P6.5：自研到期提醒，全部标准 API。
+         POST_NOTIFICATIONS 是 13+ 的运行时权限；SCHEDULE_EXACT_ALARM 是 31+ 的特殊权限，
+         用户可以关掉，关掉后自动降级成 setAndAllowWhileIdle（可能晚几分钟，但不会丢）。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- targetSdk 33 上 SCHEDULE_EXACT_ALARM 默认不授予；USE_EXACT_ALARM 是 33+ 给
+         闹钟/提醒类应用的自动授予版本，canScheduleExactAlarms() 直接为 true -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <application
         android:name=".EnoteApp"
@@ -83,5 +91,14 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
+        <!-- 到期闹钟的落点：只发通知，不启动界面（后台唤起 Activity 会被系统拦） -->
+        <receiver
+            android:name=".Reminders$AlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="dev.xduo.enote.REMIND" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

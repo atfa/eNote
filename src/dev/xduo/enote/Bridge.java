@@ -1,6 +1,7 @@
 package dev.xduo.enote;
 
 import android.content.Context;
+import android.content.Intent;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsResult;
@@ -28,6 +29,8 @@ public class Bridge {
 
     static native String nativeInit(String filesDir, int tzOffsetSec, String tzId);
     static native String nativeStartServer();
+    static native String nativeClipAdd(String payloadJson);
+    static native int nativeClipCount();
     static native String nativeEnqueue(String payloadJson);
     static native String nativeStatus();
     static native String nativeSelfTest(String json);
@@ -107,6 +110,29 @@ public class Bridge {
         return nativeEnqueue(o.toString());
     }
 
+    // ---------------------------------------------------------------- clipboard (R7/P6)
+
+    /**
+     * Holds one clipboard item back in Go. Returns true when it was actually added (a
+     * duplicate of the last item or a burst does not count), for the notification badge.
+     */
+    static boolean clipAdd(String kind, String text, String path, String name, String mime, String app) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("kind", kind == null ? "text" : kind);
+            o.put("text", text == null ? "" : text);
+            o.put("path", path == null ? "" : path);
+            o.put("name", name == null ? "" : name);
+            o.put("mime", mime == null ? "" : mime);
+            o.put("app", app == null ? "" : app);
+        } catch (Exception e) {
+            return false;
+        }
+        String r = nativeClipAdd(o.toString());
+        return r != null && r.contains("\"ok\":true") && !r.contains("\"duplicate\":true");
+    }
+
+
     // ---------------------------------------------------------------- webview bridge
 
     /** Called from JS as window.Android.pickImage() - opens the system image picker. */
@@ -167,6 +193,50 @@ public class Bridge {
         if (r != null) {
             if (ok) r.confirm(); else r.cancel();
         }
+    }
+
+    /**
+     * window.Android.syncReminders(json): rebuild the alarm set from the open todos.
+     * json = [{"id":"noteId|todoId","text":"...","note":"笔记标题","dueMs":1795...}]
+     * Returns the number of alarms now pending, so the UI can show 已提醒 N 条.
+     */
+    @JavascriptInterface
+    public int syncReminders(final String json) {
+        try {
+            return Reminders.sync(EnoteApp.app, json);
+        } catch (Throwable t) {
+            Log.w(TAG, "syncReminders: " + t);
+            return 0;
+        }
+    }
+
+    /** window.Android.exactGranted(): true when exact alarms are allowed. */
+    @JavascriptInterface
+    public boolean exactGranted() {
+        return Reminders.exactGranted(EnoteApp.app);
+    }
+
+    /** window.Android.askExact(): system page to allow precise reminders (API 31+). */
+    @JavascriptInterface
+    public void askExact() {
+        Log.i(TAG, "js askExact");
+        try { Reminders.askExact(EnoteApp.app); } catch (Throwable t) { Log.w(TAG, "askExact: " + t); }
+    }
+
+    /** window.Android.askNotify(): Android 13+ runtime permission for notifications. */
+    @JavascriptInterface
+    public void askNotify() {
+        final MainActivity a = current.get();
+        Log.i(TAG, "js askNotify");
+        if (a != null) a.runOnUiThread(new Runnable() {
+            public void run() { a.askNotifyPermission(); }
+        });
+    }
+
+    /** window.Android.notifyGranted(): true when notifications can be posted. */
+    @JavascriptInterface
+    public boolean notifyGranted() {
+        return MainActivity.notifyGranted(EnoteApp.app);
     }
 
     /** window.Android.addToCalendar(title, dueMs): system calendar insert (R13-A). */

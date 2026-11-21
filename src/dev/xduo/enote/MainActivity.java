@@ -2,7 +2,12 @@ package dev.xduo.enote;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.content.Context;
 import android.net.Uri;
 import android.provider.AlarmClock;
 import android.provider.CalendarContract;
@@ -34,6 +39,10 @@ public class MainActivity extends Activity {
     static final int REQ_IMG = 7;
     static final int REQ_FILE = 8;
     static final int REQ_IMPORT = 9;
+    static final int REQ_NOTIFY = 10;
+    /** A note to open once the page is ready (notification tap). */
+    static String pendingOpenNote;
+    static boolean pendingOpenClip;
     WebView web;
     /** A native alert/confirm forwarded to the page; resolved by Bridge.dialogResult. */
     static JsResult pendingJs;
@@ -75,6 +84,7 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String u) {
                 note("web: page finished " + u);
+                flushPendingOpen();
             }
 
             @Override
@@ -121,6 +131,17 @@ public class MainActivity extends Activity {
         if (intent == null) return;
         String hook = intent.getStringExtra("hook");
         if (hook != null && hook.length() > 0) runHook(hook);
+        String open = intent.getStringExtra("openTodo");
+        if (open != null && open.length() > 0) {
+            note("open todo from notification: " + open);
+            pendingOpenNote = open;
+            flushPendingOpen();
+        }
+        if ("1".equals(intent.getStringExtra("openClip"))) {
+            note("open clip from notification");
+            pendingOpenClip = true;
+            flushPendingOpen();
+        }
         String text = intent.getStringExtra("shareText");
         if (text != null && text.length() > 0) {
             note("hook: shareText " + text.length() + " chars");
@@ -134,6 +155,63 @@ public class MainActivity extends Activity {
         Bridge.current = new WeakReference<MainActivity>(this);
         // "auto" follows the system night mode, which can change while we are backgrounded.
         Theme.apply(this, Theme.loadMode(this));
+        // 前台剪贴板监听（R7/P6）：Android 10+ 只有有焦点的 app 能读剪贴板，所以只能前台暂存。
+        // 用户从别处复制、切回来时 onResume 会把内容暂存，Go 侧去重避免重复。
+        registerClipboard();
+        drainClipboard();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        ClipboardManager cm = clipboard;
+        if (cm != null) {
+            try { cm.removePrimaryClipChangedListener(clipListener); } catch (Throwable ignored) {}
+        }
+    }
+
+    // ---------------------------------------------------------------- clipboard (foreground)
+
+    ClipboardManager clipboard;
+    final ClipboardManager.OnPrimaryClipChangedListener clipListener =
+            new ClipboardManager.OnPrimaryClipChangedListener() {
+                @Override public void onPrimaryClipChanged() { drainClipboard(); }
+            };
+
+    void registerClipboard() {
+        try {
+            clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (clipboard != null) clipboard.addPrimaryClipChangedListener(clipListener);
+        } catch (Throwable t) {
+            Log.w("enote", "registerClipboard: " + t);
+        }
+    }
+
+    /** Reads the clipboard once (we have focus here) and holds the text back, unparsed. */
+    void drainClipboard() {
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    ClipData cd = cm == null ? null : cm.getPrimaryClip();
+                    if (cd == null || cd.getItemCount() == 0) return;
+                    CharSequence cs = cd.getItemAt(0).getText();
+                    if (cs == null) return;
+                    String text = cs.toString();
+                    if (text.trim().isEmpty()) return;
+                    String app = "";
+                    try {
+                        CharSequence l = cd.getDescription() != null ? cd.getDescription().getLabel() : null;
+                        if (l != null) app = l.toString();
+                    } catch (Throwable ignored) {}
+                    if (Bridge.clipAdd("text", text, "", "", "", app)) {
+                        note("clip: 暂存文字 " + text.length() + " 字");
+                    }
+                } catch (Throwable t) {
+                    Log.w("enote", "clip: " + t);
+                }
+            }
+        }, "clip-front").start();
     }
 
     // ---------------------------------------------------------------- image picker
@@ -254,6 +332,63 @@ public class MainActivity extends Activity {
     }
 
     /** Called from JS: window.Android.pickJSON() - restore a JSON export (设置 → 数据). */
+    /** Runs JS on the UI thread; the page owns all state, Java only nudges it. */
+    void runJs(final String js) {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                try { web.evaluateJavascript(js, null); } catch (Throwable t) { note("runJs: " + t); }
+            }
+        });
+    }
+
+    /** Opens the note a reminder notification pointed at, once the page can handle it. */
+    void flushPendingOpen() {
+        final String id = pendingOpenNote;
+        final boolean clip = pendingOpenClip;
+        pendingOpenNote = null;
+        pendingOpenClip = false;
+        if ((id == null || id.isEmpty()) && !clip) return;
+        if (web == null) return;
+        web.postDelayed(new Runnable() {
+            public void run() {
+                if (clip) {
+                    runJs("window.openClip && openClip()");
+                } else {
+                    runJs("window.openNote && openNote('" + id + "')");
+                }
+            }
+        }, 700);
+    }
+
+    /** Android 13+ asks the user once; older systems grant at install. */
+    static boolean notifyGranted(Context c) {
+        if (android.os.Build.VERSION.SDK_INT < 33) return true;
+        return c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    void askNotifyPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 33) {
+            note("notify: 系统低于 13，通知默认有权限");
+            return;
+        }
+        if (notifyGranted(this)) {
+            note("notify: 已有权限");
+            return;
+        }
+        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFY);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req == REQ_NOTIFY) {
+            boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
+            note("notify: 用户选择 granted=" + ok);
+            runJs("window.notifyResult && notifyResult(" + ok + ")");
+        }
+    }
+
     /**
      * R13-A: hand a due todo to the system calendar. ACTION_INSERT needs no permission and
      * lets the user confirm in the calendar app, which owns its own reminder machinery.
@@ -428,6 +563,10 @@ public class MainActivity extends Activity {
                     out = Bridge.statusStatic();
                 } else if ("enqueue".equals(hook)) {
                     out = Bridge.nativeEnqueue(arg == null ? "{}" : arg);
+                } else if ("exact".equals(hook)) {
+                    out = "{\"exact\":" + Reminders.exactGranted(MainActivity.this)
+                        + ",\"notify\":" + notifyGranted(MainActivity.this)
+                        + ",\"sdk\":" + android.os.Build.VERSION.SDK_INT + "}";
                 } else if ("calendar".equals(hook)) {
                     final String t = arg == null ? "懒得记 hook 测试" : arg;
                     runOnUiThread(new Runnable() {

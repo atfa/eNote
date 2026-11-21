@@ -25,5 +25,6 @@ public class EnoteApp extends Application {
             Log.e(TAG, "Bridge.init failed", t);
         }
         OcrHelper.get(app).initAsync();
+        Reminders.ensureChannel(app);
     }
 }

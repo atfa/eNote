@@ -63,6 +63,10 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/settings", handleSettings)
 	m.HandleFunc("/api/theme", handleTheme)
 	m.HandleFunc("/api/search", handleSearch)
+	m.HandleFunc("/api/clip/list", handleClipList)
+	m.HandleFunc("/api/clip/remove", handleClipRemove)
+	m.HandleFunc("/api/clip/parse", handleClipParse)
+	m.HandleFunc("/api/clip/clear", handleClipClear)
 	m.HandleFunc("/api/prefs", handlePrefs)
 	m.HandleFunc("/api/attachments", handleAttachments)
 	m.HandleFunc("/api/attach/delete", handleAttachDelete)
@@ -156,6 +160,36 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	res := enqueue(ingestReq{Kind: "text", Text: body.Text, Source: "manual-text"})
 	jsonOut(w, map[string]any{"ok": res.Error == "", "id": res.ID, "error": res.Error})
+}
+
+func handleClipList(w http.ResponseWriter, r *http.Request) {
+	jsonOut(w, map[string]any{"ok": true, "clips": clipStore.snapshot()})
+}
+
+func handleClipRemove(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	readBody(r, &body)
+	clipStore.remove(body.IDs)
+	jsonOut(w, map[string]any{"ok": true})
+}
+
+func handleClipClear(w http.ResponseWriter, r *http.Request) {
+	clipStore.clear()
+	jsonOut(w, map[string]any{"ok": true})
+}
+
+func handleClipParse(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+		Raw bool     `json:"raw"` // true = 原样存为笔记，不调 LLM
+	}
+	if err := readBody(r, &body); err != nil {
+		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	jsonOut(w, clipParse(body.IDs, body.Raw))
 }
 
 func handleReparse(w http.ResponseWriter, r *http.Request) {

@@ -71,7 +71,7 @@ nav:     [笔记] [待办] [附件] [我的]        +  右下角圆角矩形 FAB
 | **R4** | 附件页展示用户加进 app 的各种附件（现在只有图片，未来有别的格式），暂不写点击打开的代码；顶栏排序筛选也作用于这一页 | 附件数据模型泛化；附件索引 API；网格 UI；`/file?id=` 通用文件服务；分享接收扩展 mime |
 | **R5** | 我的页展示统计信息；设置按钮移到这里，点击打开新的设置面板 | 统计 API；我的页设计；设置从 tab 变成全屏面板 |
 | **R6** | 笔记/待办/附件三页顶栏统一；我的页单独设计、要好看 | 顶栏组件化；我的页独立视觉 |
-| **R7** | 加通知权限、常驻通知、监控剪贴板；复制的文字+图片先暂存不解析；打开 app 后批量勾选、一键解析 | 前台服务 + 常驻通知；剪贴板监听；暂存队列（文字/图片）；批量勾选 UI；批量入队解析 |
+| **R7** | 加通知权限、常驻通知、监控剪贴板；复制的文字+图片先暂存不解析；打开 app 后批量勾选、一键解析 | **定稿：前台监听**（Android 10+ 只允许默认输入法/有焦点 app 读剪贴板，无障碍服务不豁免——实测被 ClipboardService 拒绝）。MainActivity onResume 注册 ClipboardManager 监听 + 读一次剪贴板；Go 侧 clip.json 暂存 + 去重（同内容跳过、同源 5 秒内替换、单条 20000 字上限）；横幅 + 批量勾选页 + 一键解析/原样存为笔记 |
 | **R8** | 明暗主题切换，默认亮色 | CSS 变量双主题；`theme` 设置项（light/dark/auto）；状态栏 + `theme-color` 同步；默认 light |
 | **R9** | 重绘 app 图标：现代简洁，有竖琴的神韵 | 新画 1024 母图（几何竖琴 + 蓝绿渐变）→ 自适应图标（前景/背景层）+ 各密度 mipmap；`tools/gen_icon.py` 一键重生成 |
 | **R10** | 界面元素增加大量微动画（按钮、点击等），形成自己的组件库方便复用 | `go/ui.css` 组件层（btn/card/chip/sheet/toast/topbar/tabbar/fab/switch/segmented/empty/skeleton）+ 动画 token；按钮按压回弹、tab 滑动指示器、卡片 stagger 入场、勾选划线、删除滑出、主题交叉淡入；`prefers-reduced-motion` 降级 |
@@ -282,14 +282,15 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
   * R14：像素扫描顶栏左侧白色环带宽度 68px→0（已核对）。
 * **已知差异（不阻塞，记录备查）**：部分厂商日历会忽略 `EXTRA_EVENT_BEGIN_TIME` 只取当前时间；部分厂商时钟忽略 `EXTRA_SKIP_UI` 直接弹编辑页。均为厂商 App 行为，非本 App 缺陷。
 
-### P6 剪贴板采集 + 常驻通知 + 批量解析（R7，方案 B）— 最大，独立发布
-* 权限：`POST_NOTIFICATIONS` 运行时申请（Android 13+）；无障碍服务在 `AndroidManifest.xml` 声明（`BIND_ACCESSIBILITY_SERVICE` + `res/xml/clip_accessibility.xml`）。
-* `ClipWatchService : AccessibilityService`：`onServiceConnected` 里注册 `addPrimaryClipChangedListener`，后台直接读全文（无障碍豁免）；同时挂常驻通知（`IMPORTANCE_LOW`，不响铃）= “已暂存 N 条 · 点按查看”，开关关闭时 `disableSelf()`。
-* 采集：文字 clip → 暂存队列；图片 clip（`hasImage()`）→ 拷进 `attachments/`（`content://` 能读就拷，失败只记元数据）；**去重**：与上一条 hash 相同跳过，同一来源 5 秒内只留最后一条；单条文本上限 20000 字。
-* 暂存区 UI：笔记页顶部“剪贴板 N 条待处理”横幅 → 批量勾选页（全选/反选、逐条预览、时间/来源）→ **一键解析**（`/api/clip/parse` 批量入队，复用现有 ingest 队列）；提供“原样存为笔记”（不调 LLM）。
-* 引导 UI：未授权时“我的→采集”卡片显示“去开启”，点它 `startActivity(ACTION_ACCESSIBILITY_SETTINGS)`，并附 vivo 路径说明。
-* 隐私纪律：**未点“解析”之前，剪贴板内容绝不发到大模型**；设置页明写。
-* 验收：`adb shell am broadcast` 或手动复制文字/图片 → `/api/clip` 出现 N 条且笔记数不变 → 勾选 2 条 → `/api/clip/parse` → 生成 2 条笔记（`source=clip-text`/`clip-image`）；常驻通知可见（截图）；开关关掉后 `dumpsys accessibility | grep -i enote` 无服务；`test.sh` 加全链路断言。
+### P6 剪贴板采集（R7，定稿：前台监听）— 完成于 P5.6
+* **关键实测**（2026-11-21）：无障碍服务方案（plan §3.4 方案 B）**不可行**——Android 10+ 的 `ClipboardManager.getPrimaryClip()` 只豁免默认输入法和有焦点的应用，无障碍服务**不在豁免列表**；真机日志：`ClipboardService: Denying clipboard access ... not in focus nor is it a system service`。监听器 `onPrimaryClipChanged` 能触发，但读内容被拒。
+* **定稿方案**：
+  * Java：`MainActivity` `onResume` 注册 `ClipboardManager` 监听并读一次当前剪贴板（此时有焦点，合法），`onPause` 注销；文字走 `Bridge.clipAdd`（JNI `nativeClipAdd`）。
+  * Go：`clip.json` 暂存队列（`clip.go`）：同内容跳过、同源 5 秒内替换、单条 20000 字；`/api/clip/list|remove|clear|parse`；`clipParse` 复用 ingest 队列（`Raw` 支持原样保存不调 LLM）。
+  * UI：笔记页顶部横幅「📋 剪贴板暂存 N 条」；批量勾选页（全选/反选/预览/来源/时间）+「一键解析」「原样存为笔记」；来源芯片「剪贴板/剪贴板图片」。
+  * 砍掉：无障碍服务（ClipWatchService）、常驻通知（后台监控不可行，常驻通知失去意义）。
+* 验收：真机复制 → 切回 app → 横幅出现 → 勾选 → 一键解析 → `clipboard-text` 笔记 `status=done`、facts 已提取、clip 清空（已实测）。
+* 备注：通知权限（POST_NOTIFICATIONS）保留，P6.5 到期提醒要用。
 
 ### P7 图标重绘（R9）+ 打磨
 * ~~`tools/gen_icon.py` 自绘竖琴母图~~ → **已换成用户提供的图标集**（2026-11-21）：`res/mipmap-*/ic_launcher.png` + `res/drawable-*/ic_launcher_{background,foreground}.png` + `res/mipmap-anydpi-v26/ic_launcher.xml`，母图与说明归档 `docs/icon-src/`，`docs/icon-192.png` 为预览；`tools/gen_icon.py` 保留备用。剩下要做的是启动器实机截图核对（小尺寸不能糊）。
@@ -308,10 +309,17 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 [x] P4b 底栏 5 按钮 + 自绘对话框 + 逐级返回（主页连返两次退出）+ 页面留白 + 去过度动画
 [x] P5 我的页（统计）+ 全屏设置面板（+ 改名「懒得记」、时区修复、倒计时、完成动画、新图标）
 [x] P5.5 事实提取（R12）+ 日历/闹钟入口（R13-A/B，标准契约）+ logo 去白框（R14）
-[ ] P6.5 自研到期提醒：AlarmManager + 通知渠道（R13-E，标准 API，前移）
-[ ] P6 无障碍服务采集 + 常驻通知 + 批量一键解析
+[~] P6.5 自研到期提醒：AlarmManager 精确闹钟已排定生效；到点通知的触发在 vivo 后台冻结下待验证
+[x] P6 剪贴板前台采集 + 暂存去重 + 批量一键解析（定稿方案见 P6 段）
 [~] P7 新图标（已换成用户提供的图标集）+ 动效打磨（进行中）+ 文档 + 全量回归
 ```
+
+---
+
+### 5.x P5.6 附带 UI 小修（用户新要求，2026-11-21）
+* **切页动画取消**：`main.enter` 的整页浮现/卡片错峰动画全部移除（每次切页闪烁、从下往上跳，过度设计）；待办完成的高亮入场动画（`.todo.enter`）保留。
+* **待办竖条统一占位**：所有待办行 `border-left:3px solid transparent; padding-left:8px`，重要行只改 `border-left-color:var(--bad)`——checkbox 全部左对齐，红条与 checkbox 间距 8px。
+* **test.sh 修复**：图片/附件测试改放 app 私有 inbox（`/data/user/0/<pkg>/files/enote/inbox`），`/sdcard/Android/data` 被 Scoped Storage 拒读（EACCES）。
 
 ---
 

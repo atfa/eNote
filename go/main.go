@@ -118,6 +118,34 @@ func Java_dev_xduo_enote_Bridge_nativeEnqueue(env *C.JNIEnv, cls C.jclass, js C.
 	})
 }
 
+// nativeClipAdd(payloadJSON) - the clipboard watcher holds text/image back here (R7, P6).
+// payload: {"kind":"text|image","text":...,"path":...,"name":...,"mime":...,"app":...}
+// De-dupe happens inside clipAdd; nothing is parsed yet.
+//
+//export Java_dev_xduo_enote_Bridge_nativeClipAdd
+func Java_dev_xduo_enote_Bridge_nativeClipAdd(env *C.JNIEnv, cls C.jclass, js C.jstring) C.jstring {
+	return guard(env, "nativeClipAdd", func() C.jstring {
+		var r struct {
+			Kind string `json:"kind"`
+			Text string `json:"text"`
+			Path string `json:"path"`
+			Name string `json:"name"`
+			MIME string `json:"mime"`
+			App  string `json:"app"`
+		}
+		_ = json.Unmarshal([]byte(j2s(env, js)), &r)
+		return s2j(env, clipAdd(r.Kind, r.Text, r.Path, r.Name, r.MIME, r.App))
+	})
+}
+
+// nativeClipCount() - how many clipboard items are still held back, for the foreground
+// notification badge and the UI strip.
+//
+//export Java_dev_xduo_enote_Bridge_nativeClipCount
+func Java_dev_xduo_enote_Bridge_nativeClipCount(env *C.JNIEnv, cls C.jclass) C.jint {
+	return C.jint(clipCount())
+}
+
 // nativeSetOcr(ready, info) - Java reports the OCR engine state (init result, version).
 //
 //export Java_dev_xduo_enote_Bridge_nativeSetOcr

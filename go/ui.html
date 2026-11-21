@@ -93,7 +93,8 @@ a{color:var(--acc)}
    小标签会被套上 12px 字号 + 7px 内边距，比旁边的时间标签大一圈 */
 .errbox{margin-top:8px;font-size:12px;color:var(--bad);background:var(--bad-s);
   border:1px solid var(--bad);border-radius:10px;padding:7px 9px}
-.todo{display:flex;align-items:flex-start;gap:10px;padding:9px 2px;border-top:1px solid var(--line);
+.todo{display:flex;align-items:flex-start;gap:10px;padding:9px 2px 9px 8px;border-top:1px solid var(--line);
+  border-left:3px solid transparent;
   max-height:260px;overflow:hidden;
   transition:opacity var(--d3) var(--ease),transform var(--d3) var(--ease),
              max-height var(--d3) var(--ease),padding var(--d3) var(--ease),
@@ -125,7 +126,7 @@ a{color:var(--acc)}
 .tx small{display:flex;flex-wrap:wrap;align-items:center;gap:4px;color:var(--dim2);font-size:11px;margin-top:2px;line-height:1.5}
 .tx small>*{vertical-align:middle}
 .todo.done .tx{color:var(--dim2);text-decoration:line-through}
-.pri-high{border-left:3px solid var(--bad);padding-left:8px}
+.pri-high{border-left-color:var(--bad)}
 .pri-low{opacity:.85}
 .due{display:inline-flex;align-items:center;font-size:10.5px;line-height:1.4;padding:1px 7px;border-radius:6px;
   border:1px solid transparent;background:var(--acc-s);color:var(--acc);vertical-align:middle}
@@ -239,6 +240,29 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .strip b{color:var(--acc2)}.strip i{color:var(--bad);font-style:normal}
 .strip .sp{flex:1}
 
+/* --- 剪贴板暂存（R7/P6）--- */
+.clipbanner{display:flex;align-items:center;gap:10px;margin:10px 2px 0;padding:11px 12px;border-radius:12px;
+  background:linear-gradient(135deg,var(--acc-s),var(--card));border:1px solid var(--acc);
+  font-size:13px;color:var(--fg);box-shadow:var(--sh);cursor:pointer}
+.clipbanner b{color:var(--acc)}
+.clipbanner .cbsub{font-size:11px;color:var(--dim)}
+.clipbanner .cbar{color:var(--acc);font-size:12px;white-space:nowrap}
+.cliptop{display:flex;gap:6px;align-items:center;margin-bottom:10px}
+.cliptop .sp{flex:1}
+.clipitem{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);
+  border-radius:11px;background:var(--card);margin-bottom:8px;cursor:pointer}
+.clipitem.on{border-color:var(--acc);background:var(--acc-s)}
+.clicb{flex:0 0 20px;width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line);
+  display:flex;align-items:center;justify-content:center;color:var(--acc);font-size:13px;margin-top:2px}
+.clipitem.on .clicb{background:var(--acc);border-color:var(--acc);color:#fff}
+.clipbody{flex:1;min-width:0}
+.cliprev{font-size:13px;color:var(--fg);white-space:pre-wrap;word-break:break-word}
+.climthumb{font-size:13px;color:var(--fg)}
+.climeta{font-size:11px;color:var(--dim);margin-top:4px}
+.clipacts{display:flex;gap:8px;margin-top:12px}
+.clipacts .btn{flex:1}
+.clipload{color:var(--dim);padding:20px 0;text-align:center}
+
 /* --- 底部导航（4 页 + 中间动作按钮 = 5 个，滑动指示条，R2a）--- */
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;align-items:flex-end;
   padding:6px 8px calc(6px + env(safe-area-inset-bottom));
@@ -266,12 +290,7 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .tabbar .fab.hide{visibility:hidden}
 @keyframes fabin{from{transform:translateY(16px) scale(.9);opacity:0}to{transform:none;opacity:1}}
 
-/* --- 卡片入场（只在切页/首次渲染时逐张浮现，最多 8 张错峰）--- */
-@keyframes rise{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
-main.enter .card,main.enter .acard{animation:rise var(--d2) var(--ease) both;animation-delay:calc(var(--i,0) * 24ms)}
-main.enter .card:nth-child(n+9),main.enter .acard:nth-child(n+9){animation-delay:0ms}
-@keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-main.enter{animation:fadein var(--d2) var(--ease)}
+/* 切页不再用整页浮现动画：干净利落，避免每次切换闪烁 */
 
 /* --- 按钮涟漪（R10）--- */
 .rip{position:absolute;border-radius:50%;background:currentColor;opacity:.18;transform:scale(0);
@@ -487,6 +506,8 @@ function fmtTime(iso){if(!iso)return '';var d=new Date(iso);if(isNaN(d))return i
   var same = d.toDateString()===t.toDateString();
   return (same?'今天':(d.getMonth()+1)+'/'+d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}
 function srcChip(n){
+  if(n.source==='clipboard-text') return '<span class="chip">剪贴板</span>';
+  if(n.source==='clipboard-image') return '<span class="chip img">剪贴板图片</span>';
   if(n.source==='share-text') return '<span class="chip">分享文字</span>';
   if(n.source==='share-image') return '<span class="chip img">分享图片</span>';
   if(n.source==='manual-image') return '<span class="chip img">图片</span>';
@@ -538,6 +559,150 @@ function tickCD(){
   }
 }
 setInterval(tickCD, 20000);
+// ---- R13-E / P6.5：自研到期提醒（AlarmManager + 通知渠道，纯标准 API）----
+// Java 那边不存状态：每次渲染后把「未完成且到期时间在将来」的待办整份推过去，
+// 它自己 diff 出要新排/要取消的 alarm。id 里带 dueMs，改了时间就是新 id，旧的自然取消。
+var remindPending = 0;
+function syncReminders(){
+  if(!window.Android || !Android.syncReminders) return;
+  var list = [];
+  (S.notes||[]).forEach(function(n){
+    (n.todos||[]).forEach(function(t){
+      if(t.done || !t.due) return;
+      var ms = dueMs(t.due);
+      if(!ms || ms <= Date.now()+5000) return;          // 已逾期的不排，免得一开 app 就炸一串
+      list.push({id:n.id+'|'+t.id, text:t.text, note:n.title||'', dueMs:ms});
+    });
+  });
+  try { remindPending = Android.syncReminders(JSON.stringify(list)) || 0; } catch(e){ remindPending = 0; }
+}
+function exactGranted(){
+  try { return !!(window.Android && Android.exactGranted && Android.exactGranted()); } catch(e){ return true }
+}
+function askExact(){
+  if(!window.Android || !Android.askExact){ toast('精确提醒设置只在 app 内可用'); return }
+  Android.askExact();
+  toast('打开「闹钟和提醒」权限后回来即可精确到分钟');
+}
+function notifyGranted(){
+  try { return !!(window.Android && Android.notifyGranted && Android.notifyGranted()); } catch(e){ return false }
+}
+function askNotify(){
+  if(!window.Android || !Android.askNotify){ toast('通知权限只在 app 内可设置'); return }
+  if(notifyGranted()){ toast('系统通知已授权'); return }
+  Android.askNotify();
+}
+function notifyResult(ok){
+  toast(ok ? '系统通知已开启，到点会弹提醒' : '没有通知权限；可在系统设置里打开「懒得记」的通知');
+  syncReminders();
+  if(document.querySelector('#sheet.on')) settingsSheet();
+}
+/** 通知点按后打开对应笔记（Java 侧调用）*/
+// ---- 剪贴板暂存（R7/P6）：横幅 + 批量勾选 + 一键解析 ----
+var clipSel = {};
+function clipBanner(){
+  var n = (S.info && S.info.clip) || 0;
+  if(!n) return '';
+  return '<div class="clipbanner" onclick="clipSheet()"><span>📋</span>'
+    +'<div style="flex:1"><b>剪贴板暂存 '+n+' 条</b>'
+    +'<div class="cbsub">复制的内容已留在这里，点开勾选再处理</div></div>'
+    +'<span class="cbar">整理 ›</span></div>';
+}
+function openClip(){ clipSheet(); }
+function clipSheet(){
+  pageSheet('剪贴板暂存', '<div class="cliptop">'
+    +'<button class="btn sm" onclick="clipSelAll(true)">全选</button>'
+    +'<button class="btn sm" onclick="clipSelAll(false)">全不选</button>'
+    +'<div class="sp"></div><span id="clipCount" style="font-size:12px;color:var(--dim)"></span></div>'
+    +'<div id="clipList" class="clipload">加载中…</div>'
+    +'<div class="clipacts">'
+    +'<button class="btn" onclick="clipParse(false)">原样存为笔记</button>'
+    +'<button class="btn pri" onclick="clipParse(true)">一键解析</button></div>');
+  loadClips();
+}
+async function loadClips(){
+  try{
+    var r = await api('/api/clip/list');
+    var clips = (r && r.clips) || [];
+    S.info.clip = clips.length;
+    if(!clips.length){
+      var el = $('#clipList');
+      if(el) el.innerHTML = '<div class="empty"><div class="em">📭</div>暂存区是空的</div>';
+      var cc = $('#clipCount'); if(cc) cc.textContent = '0 条';
+      return;
+    }
+    var h = '';
+    clips.forEach(function(c){
+      clipSel[c.id] = clipSel[c.id] !== undefined ? clipSel[c.id] : true;
+      var on = !!clipSel[c.id];
+      var body = c.kind==='image'
+        ? '<div class="climthumb">🖼 图片'+(c.name?' · '+esc(c.name):'')+'</div>'
+        : '<div class="cliprev">'+esc(String(c.text||'').slice(0,160))+(c.text&&c.text.length>160?'…':'')+'</div>';
+      h += '<div class="clipitem'+(on?' on':'')+'" onclick="clipPick(\''+c.id+'\',this)">'
+        +'<div class="clicb">'+(on?'✓':'')+'</div>'
+        +'<div class="clipbody">'+body
+        +'<div class="climeta">'+esc(c.app||'剪贴板')+' · '+relTime(c.createdAt)+'</div></div></div>';
+    });
+    var el2 = $('#clipList'); if(el2) el2.innerHTML = h;
+    clipCount();
+  }catch(e){
+    var el3 = $('#clipList'); if(el3) el3.innerHTML = '<div class="empty">加载失败</div>';
+  }
+}
+function clipPick(id, el){
+  clipSel[id] = !clipSel[id];
+  el.classList.toggle('on', !!clipSel[id]);
+  var cb = el.querySelector('.clicb');
+  if(cb) cb.textContent = clipSel[id] ? '✓' : '';
+  clipCount();
+}
+function clipSelAll(v){
+  Object.keys(clipSel).forEach(function(k){ clipSel[k]=v; });
+  var items = document.querySelectorAll('.clipitem');
+  for(var i=0;i<items.length;i++){
+    items[i].classList.toggle('on', v);
+    var cb = items[i].querySelector('.clicb');
+    if(cb) cb.textContent = v ? '✓' : '';
+  }
+  clipCount();
+}
+function clipCount(){
+  var n = Object.keys(clipSel).filter(function(k){return clipSel[k]}).length;
+  var el = $('#clipCount'); if(el) el.textContent = '已选 '+n+' 条';
+}
+function clipSelected(){
+  return Object.keys(clipSel).filter(function(k){return clipSel[k]});
+}
+async function clipParse(ai){
+  var ids = clipSelected();
+  if(!ids.length){ toast('先勾选要处理的条目'); return; }
+  var r = await api('/api/clip/parse', {ids:ids, raw:!ai});
+  var ok = r && r.ok;
+  toast(ai ? (ok ? '已入队解析 '+r.parsed+' 条' : '解析失败: '+(r&&r.error||''))
+            : (ok ? '已存 '+r.parsed+' 条笔记' : '保存失败: '+(r&&r.error||'')));
+  clipSel = {};
+  closeSheet();
+  refresh();
+}
+function relTime(iso){
+  if(!iso) return '';
+  var d = new Date(iso); if(isNaN(d)) return '';
+  var s = Math.floor((Date.now()-d.getTime())/1000);
+  if(s < 60) return '刚刚';
+  if(s < 3600) return Math.floor(s/60)+' 分钟前';
+  if(s < 86400) return Math.floor(s/3600)+' 小时前';
+  return Math.floor(s/86400)+' 天前';
+}
+window.openClip = openClip;
+function openNote(id){
+  if(!id) return;
+  tab='notes'; open[id]=true; setTab(); refresh();
+  setTimeout(function(){var el=document.getElementById('n'+id);
+    if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+    else toast('这条笔记已删除');}, 300);
+}
+window.openNote = openNote; window.notifyResult = notifyResult;
+
 function dueMs(iso){ if(!iso) return 0; var d=new Date(iso); return isNaN(d)?0:d.getTime() }
 /* R13：把到期时间交给系统日历 / 闹钟（intent，不需要权限）*/
 function toCalendar(nid,tid,ev){
@@ -614,11 +779,11 @@ function noteCard(n, k){
 }
 function renderNotes(){
   var list = notesFiltered();
-  if(!S.notes.length) return strip() + '<div class="empty"><div class="em">📥</div>还没有笔记<br>'
+  if(!S.notes.length) return strip()+clipBanner() + '<div class="empty"><div class="em">📥</div>还没有笔记<br>'
     + '在任何 app 里点「分享 → 懒得记」，文字和图片会自动变成笔记与待办</div>';
-  if(!list.length) return strip() + '<div class="empty"><div class="em">🔍</div>没有符合条件的笔记<br>'
+  if(!list.length) return strip()+clipBanner() + '<div class="empty"><div class="em">🔍</div>没有符合条件的笔记<br>'
     +'<span style="font-size:12px">换个关键词，或点右上角 ⇅ 重置筛选</span></div>';
-  var h = strip();
+  var h = strip()+clipBanner();
   list.forEach(function(n, k){ h += noteCard(n, k) });
   return h;
 }
@@ -691,7 +856,19 @@ function rank(t){ return ({high:3,normal:2,low:1})[t.priority||'normal'] }
 function hit(s){ if(!q) return true; return (s||'').toLowerCase().indexOf(q.toLowerCase())>=0 }
 function renderSettings(){
   var s = S.settings, i = S.info, st = ST;
-  var h = '<div class="pgroup">外观</div>'
+  var h = '<div class="pgroup">提醒</div>'
+   +'<div class="card"><div class="row between" style="margin-top:2px"><div><b>到期待办提醒</b>'
+   +'<div style="font-size:11px;color:var(--dim)">'+ (notifyGranted()
+        ? '已排定 '+remindPending+' 条 · '+(exactGranted()?'精确到分钟':'时间可能延后（系统限制精确定时）')
+        : '需要通知权限 · 开启后到点用系统通知提醒') +'</div></div>'
+   +'<button class="btn sm '+(notifyGranted()?'gh':'')+'" onclick="askNotify()">'
+   + (notifyGranted() ? '已开启' : '开启通知') +'</button></div>'
+   + (exactGranted() ? '' :
+       '<div class="row between" style="margin-top:8px"><div><b>精确提醒</b>'
+      +'<div style="font-size:11px;color:var(--dim)">允许「闹钟和提醒」后不再被系统延迟</div></div>'
+      +'<button class="btn sm" onclick="askExact()">去开启</button></div>')
+   +'</div>'
+   +'<div class="pgroup">外观</div>'
    +'<div class="card"><div class="seg" style="margin-top:2px">'
    + ['light','dark','auto'].map(function(m){
        return '<button class="'+(m===(s.theme||'light')?'on':'')+'" onclick="setTheme(\''+m+'\')">'
@@ -714,11 +891,10 @@ function renderSettings(){
    +'<div id="llmOut"></div></div>';
 
   h += '<div class="pgroup">采集</div><div class="card">'
-   +'<div class="row between" style="margin-top:2px"><div><b>剪贴板监听</b>'
-   +'<div style="font-size:11px;color:var(--dim)">复制文字 / 图片后自动暂存，点「解析」才发到大模型</div></div>'
-   +'<div class="sw dis" onclick="toast(\'剪贴板采集在 P6 上线\')"></div></div>'
-   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">需要「无障碍」权限（Android 13+ 还要通知权限）；'
-   +'未点解析之前，剪贴板内容不会离开本机。</div></div>';
+   +'<div class="kv"><span>剪贴板暂存</span><span style="color:var(--acc2)">前台自动</span></div>'
+   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">打开 app 时自动暂存剪贴板里的文字；'
+   +'在别的 app 复制后切回「懒得记」即可看到，点「解析」才发到大模型。'
+   +'Android 限制后台读剪贴板，所以只在 app 前台时暂存；未点解析之前内容不会离开本机。</div></div>';
 
   h += '<div class="pgroup">本地 OCR</div><div class="card">'
    +'<div class="kv"><span>引擎状态</span><span>'+(i.ocrReady?'✅ 就绪':'⏳ 初始化中')+'</span></div>'
@@ -760,6 +936,7 @@ function render(){
                      : tab==='files' ? renderFiles() : renderMine();
   paintStatus();
   clearEnter();
+  syncReminders();
 }
 function strip(){
   var i = S.info;
@@ -1191,19 +1368,10 @@ function setTab(anim){
   $('#q').placeholder = tab==='todos' ? '搜索待办' : tab==='files' ? '搜索附件' : '搜索笔记与待办';
   q = P().q || '';
   var qi = $('#q'); qi.value = q; $('#searchBox').classList.toggle('has', !!q);
-  var v = $('#view');
-  v.classList.remove('enter');
-  clearTimeout(enterT);
-  if(anim !== false){
-    void v.offsetWidth; v.classList.add('enter');
-    // 入场动画只属于切页：不摘掉 enter，每次轮询重绘都会重播一遍
-    enterT = setTimeout(function(){ v.classList.remove('enter') }, 520);
-  }
   render();
   searchNow();
   if(tab==='mine' && !ST) statsNow();
 }
-var enterT = 0;
 function moveInd(){
   var el = document.querySelector('.tabbar .tab.on'), ind = $('#ind');
   if(!el || !ind) return;

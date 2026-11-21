@@ -175,9 +175,9 @@ print("  title: %s | %d todos, first due %s" % (n["title"], len(n["todos"]),
 
 step "share image -> local ocr -> note"
 UID_APP=$(asroot "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
-EXT="/sdcard/Android/data/$APP_PACKAGE/files"
+EXT="/data/user/0/$APP_PACKAGE/files/enote/inbox"
 BEFORE_ID=$(api_get state | "$PY" -c 'import json,sys; print(max(n["id"] for n in json.load(sys.stdin)["notes"]))')
-asroot_global "mkdir -p '$EXT' && cp '$IMG' '$EXT/ocr-test.png' && chown -R '$UID_APP:$UID_APP' '/sdcard/Android/data/$APP_PACKAGE' && chmod 644 '$EXT/ocr-test.png'" \
+asroot_global "mkdir -p '$EXT' && cp '$IMG' '$EXT/ocr-test.png' && chown '$UID_APP:$UID_APP' '$EXT/ocr-test.png' && chmod 644 '$EXT/ocr-test.png'" \
   || fail "cannot stage the test image in $EXT"
 am_start "$APP_PACKAGE/.ShareActivity" "-a android.intent.action.SEND -t 'image/*' --eu android.intent.extra.STREAM file://$EXT/ocr-test.png"
 sleep 2
@@ -298,7 +298,7 @@ api_post prefs '{"tab":"todos","q":"","sort":"due","filters":{"done":"open"}}' >
 say "  ok (ocr text is searchable, every page keeps its own conditions)"
 
 step "attachments: share a file, list it, delete it (R4)"
-EXT="/sdcard/Android/data/$APP_PACKAGE/files"
+EXT="/data/user/0/$APP_PACKAGE/files/enote/inbox"
 UID_APP=$(asroot "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 PDF_MARK="附件测试$$"
 printf '%%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\ntrailer2 %s\n' "$PDF_MARK" > "$TMPDIR/att-test.pdf"
