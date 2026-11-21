@@ -226,7 +226,17 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * 症状：停在列表页什么都不做，界面约每秒重绘一次（卡片入场动画重播、缩略图重载、滚动位置微跳）。
 * 原因：`setInterval(refresh, 1800)` 无条件 `render()` 重建 `#view.innerHTML`；且 `#view` 上的 `enter` class 加上后再未移除，于是每次重建都重播 `.card`/`.acard` 的入场动画。
 * 修法：轮询改“安静刷新”——`sigOf(S)` 指纹（笔记数/状态/updatedAt/标题/待办数/附件数/统计/主题）没变就只刷状态点；`searchNow`/`filesNow` 再比一次响应指纹，内容相同不重建 DOM；`enter` 在 520ms 后摘掉，`.acard` 去掉无条件动画；搜索框改为 260ms 防抖（原来每敲一个字重建一次）。
-* 回归：`tools/ui_sig_test.js`（从 `ui.html` 注释真实 `sigOf` 源码测 12 条断言）接进 `test.sh` 的 `ui: 轮询只在数据变化时重绘` 步骤；真机连拍验证——静止时逐像素相同，外部改数据后截图变化。
+* 回归：`tools/ui_sig_test.js`（从 `ui.html` 注释真实 `sigOf` 源码测 12 条断言）接进 `test.sh` 的 `ui: 轮询只在数据变化时重绘` 步骤；真机连拍验证——静止时逐像素相同，外部改数据后截图变化。 + 自绘对话框 + 逐级返回（P4 验收后反馈）
+### 修补：底部导航 5 按钮 + 自绘对话框 + 逐级返回（P4 验收后反馈）
+* **“记一笔”进底栏**：`#fab` 从悬浮层移进 `<nav class="tabbar">`，放在「待办」和「附件」中间，形成 5 格：笔记 | 待办 | ＋记一笔 | 附件 | 我的。`.tabbar{align-items:flex-end}`，中间按钮 `flex:0 0 auto;width:96px;height:46px;border-radius:15px`（圆角矩形，不是圆形 FAB）；`body` 底部留白 168px → 96px；`setTab` 用 `FABS[tab] || FABS.notes`，中间按钮常驻可见，文案随页切（笔记=＋记一笔 / 附件=＋加附件）。
+* **指示条不居中**：`.tabbar .ind` 没写 `left`，绝对定位的静态原点是 flex 内容盒，而 `offsetLeft` 从 padding 盒量起，两者差一个 `padding-left:8px`，指示条整体右偏 8px，看起来贴着按钮左对齐。加 `left:0` 后原点统一（真机实测：「我的」文字中心 961，指示条中心 959.5）。
+* **不要原生弹框**：`confirm()`/`alert()` 在 WebView 里顶着一行“网址为 "http://127.0.0.1" 的网页显示：”。新增 `.dlg` 遮罩 + `dialog()/closeDlg()/askDel()`，页面里一处原生调用都不剩；Java 侧 `onJsAlert`/`onJsConfirm` 转发给 `window.uiDialog(title,msg,id)`，结果由 `Bridge.dialogResult(id,ok)` 回传（`static JsResult pendingJs`），第三方页面调 `confirm` 也不会露原生框。
+* **面板关闭按钮**：`sheet()` 注入 `.pclose`（右上角 32px ✕，`panel{position:relative}`、`h2{padding-right:38px}` 避让）。
+* **逐级返回 + 连返两次退出**：返回键原来直接 `finish()` 退出 app。现在 Java `back()` 先问 `window.uiBack()`——关对话框 → 关面板 → 回笔记页，都关不掉才返回 0。`back()` 同时接在 `onKeyDown(KEYCODE_BACK)` 和 `onBackPressed()`（部分 ROM 的侧滑手势只走后者），`backInFlight` + 800ms 超时去重，防止同一次返回被派发两次。已经在笔记页时要**连返两次**（2.2s 内）才退出，第一下弹 toast “再返回一次退出 eNote”。
+* **页面左右留白**：`main#view{padding:0 14px}`，卡片不再贴屏幕边缘；顶栏 / 底栏是整宽条，保持全幅。
+* **“我的”页过度设计**：左滑会拉伸半屏再回弹——那是 WebView 自己的 overscroll，加 `web.setOverScrollMode(View.OVER_SCROLL_NEVER)`；同时删掉 hero/stat 的 `rise` 入场动画和 hero 上两个装饰圆环；“外观主题”行也删了（设置面板里已有，只留一个入口）。
+* **涟漪闪屏**：涟漪选择器里带了 `.li`，而 `.li`、`.tabbar .fab`、`.seg button` 都没有 `position:relative`，水波的定位基准落到 viewport，在“我的”页任意处点一下都会盖出一个满屏灰色圆。现在涟漪只给真按钮，并给 `.tabbar .fab`、`.seg button` 补上 `position:relative` + `overflow:hidden`。
+* 回归：`tools/ui_sig_test.js` 从 12 条扩到 26 条（FAB 在底栏、`left:0`、无原生 `confirm(`/`alert(`、Java 转发、`.pclose`、`uiBack`+`evaluateJavascript`、`onBackPressed`+退出 toast、`OVER_SCROLL_NEVER`、无装饰动画、页面留白、主题单入口、涟漪不溢出），真机验证：`n3` 底栏 5 按钮、`n4` 指示条居中、`n5` 面板 ✕、`n6`/`n7` 返回逐级、`n9` 自绘删除框、`n10` 返回关对话框、`o1` 页面留白、`p2` 退出提示 toast、`p3` 从“我的”返回笔记。
 
 ### P5 我的页 + 设置面板（R5 + R6）
 * `/api/stats`；我的页独立视觉：头像区（应用图标 + 本地数据摘要）、统计卡片（笔记/待办/附件/AI 调用）、近 7 天柱状（纯 CSS）、入口列表（设置、主题、AI 调用记录、导出、导入、关于）。
@@ -257,6 +267,7 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 [x] P2 4 tab + 圆角矩形 FAB + 共用顶栏 + 组件库/动画 token
 [x] P3 搜索 + 排序 + 筛选面板（三页共用，条件持久化）
 [x] P4 附件页（附件模型 + 网格 + 通用文件服务）
+[x] P4b 底栏 5 按钮 + 自绘对话框 + 逐级返回（主页连返两次退出）+ 页面留白 + 去过度动画
 [ ] P5 我的页（统计）+ 全屏设置面板
 [ ] P6 无障碍服务采集 + 常驻通知 + 批量一键解析
 [ ] P7 新图标（竖琴）+ 动效打磨 + 文档 + 全量回归

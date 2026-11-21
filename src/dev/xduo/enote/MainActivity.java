@@ -7,11 +7,15 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.View;
 import android.webkit.ConsoleMessage;
+import android.webkit.JsResult;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -28,6 +32,8 @@ public class MainActivity extends Activity {
     static final int REQ_IMG = 7;
     static final int REQ_FILE = 8;
     WebView web;
+    /** A native alert/confirm forwarded to the page; resolved by Bridge.dialogResult. */
+    static JsResult pendingJs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,6 +66,8 @@ public class MainActivity extends Activity {
         web.getSettings().setCacheMode(android.webkit.WebSettings.LOAD_NO_CACHE);
         web.getSettings().setMediaPlaybackRequiresUserGesture(false);
         web.addJavascriptInterface(new Bridge(), "Android");
+        // 页面没有横向滚动，但 WebView 自己的滑动拉伸效果还在：在“我的”页左滑会拉伸半个屏再弹回
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String u) {
@@ -75,6 +83,21 @@ public class MainActivity extends Activity {
             @Override
             public boolean onConsoleMessage(ConsoleMessage m) {
                 note("web console: " + m.message());
+                return true;
+            }
+
+            /** 原生弹框顶着一行“网址为 http://127.0.0.1 的网页显示：”，全部转发给页面自绘的对话框。 */
+            @Override
+            public boolean onJsAlert(WebView v, String url, String message, JsResult result) {
+                pendingJs = result;
+                v.evaluateJavascript("window.uiDialog && uiDialog('提示', " + quote(message) + ", '')", null);
+                return true;
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView v, String url, String message, JsResult result) {
+                pendingJs = result;
+                v.evaluateJavascript("window.uiDialog && uiDialog('确认', " + quote(message) + ", 'js')", null);
                 return true;
             }
         });
@@ -293,13 +316,50 @@ public class MainActivity extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if (web != null && web.canGoBack()) {
-                web.goBack();
-                return true;
-            }
-            finish();
+            if (event.getRepeatCount() == 0) back();
             return true;
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    /** 侧滑返回在部分 ROM 上不走 onKeyDown，而是直接调 onBackPressed()，两条路都接上。 */
+    @Override
+    public void onBackPressed() {
+        back();
+    }
+
+    private boolean backInFlight;
+    private long lastBackAt;
+
+    private final Runnable backReset = new Runnable() {
+        public void run() { backInFlight = false; }
+    };
+
+    /**
+     * 返回：先关对话框 → 关面板 → 回笔记页；已经在笔记页了就连按两次才退出，
+     * 侧滑一下就直接退 app 不符合操作习惯。
+     */
+    private void back() {
+        if (backInFlight) return;   // 同一次返回可能被按键和手势各派发一次
+        final WebView w = web;
+        if (w == null) { finish(); return; }
+        backInFlight = true;
+        w.postDelayed(backReset, 800);
+        w.evaluateJavascript("window.uiBack ? uiBack() : 0", new ValueCallback<String>() {
+            public void onReceiveValue(String v) {
+                backInFlight = false;
+                w.removeCallbacks(backReset);
+                if ("1".equals(v) || "true".equals(v)) return;
+                long now = System.currentTimeMillis();
+                if (now - lastBackAt < 2200) { finish(); return; }
+                lastBackAt = now;
+                Toast.makeText(MainActivity.this, "再返回一次退出 eNote", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    static String quote(String s) {
+        return "\"" + (s == null ? "" : s).replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "").replace("\t", "\\t") + "\"";
     }
 }

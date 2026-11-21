@@ -41,7 +41,9 @@ html[data-theme=dark]{
 html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
   font:15px/1.55 -apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
   transition:background var(--d2) var(--ease),color var(--d2) var(--ease)}
-body{padding-bottom:calc(168px + env(safe-area-inset-bottom));overscroll-behavior:none}
+body{padding-bottom:calc(96px + env(safe-area-inset-bottom));overscroll-behavior:none}
+/* 页面内容左右留白：卡片不贴屏幕边（顶栏/底栏是通栏条，不归它们管）*/
+main#view{padding:0 14px}
 a{color:var(--acc)}
 .sec{margin:14px 2px 8px;font-size:12px;font-weight:700;color:var(--dim);letter-spacing:1px;
   display:flex;align-items:center;gap:8px}
@@ -147,7 +149,8 @@ pre{background:var(--pre-bg);border:1px solid var(--line);border-radius:10px;pad
 /* 分段控件（主题切换等） */
 .seg{display:flex;gap:4px;background:var(--card2);border:1px solid var(--line);
   border-radius:12px;padding:4px}
-.seg button{flex:1;border:0;background:none;color:var(--dim);padding:8px 6px;border-radius:9px;
+.seg button{flex:1;border:0;background:none;color:var(--dim);padding:8px 6px;border-radius:9px;position:relative;
+  overflow:hidden;
   font-size:13px;font-weight:600;transition:background var(--d1) var(--ease),color var(--d1) var(--ease),transform var(--d1) var(--ease)}
 .seg button.on{background:var(--card);color:var(--fg);box-shadow:var(--sh)}
 .seg button:active{transform:scale(.95)}
@@ -185,8 +188,8 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .strip b{color:var(--acc2)}.strip i{color:var(--bad);font-style:normal}
 .strip .sp{flex:1}
 
-/* --- 底部导航（四页 + 滑动指示条，R2a）--- */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;
+/* --- 底部导航（4 页 + 中间动作按钮 = 5 个，滑动指示条，R2a）--- */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;align-items:flex-end;
   padding:6px 8px calc(6px + env(safe-area-inset-bottom));
   background:var(--nav-bg);backdrop-filter:blur(16px);border-top:1px solid var(--line)}
 .tabbar .tab{flex:1;position:relative;background:none;border:0;color:var(--dim);font-size:11px;
@@ -198,19 +201,18 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .tabbar .tab.on{color:var(--acc)}
 .tabbar .tab.on .ti{filter:none;opacity:1;transform:translateY(-2px) scale(1.08)}
 .tabbar .tab:active{transform:scale(.94)}
-.tabbar .ind{position:absolute;top:0;height:3px;border-radius:0 0 3px 3px;background:var(--grad);
+.tabbar .ind{position:absolute;left:0;top:0;height:3px;border-radius:0 0 3px 3px;background:var(--grad);
   transition:transform var(--d2) var(--ease),width var(--d2) var(--ease);will-change:transform,width}
 
-/* --- 圆角矩形 FAB（R2b）--- */
-.fab{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:29;
-  display:flex;align-items:center;gap:7px;padding:0 18px;height:50px;border:0;border-radius:16px;
-  background:var(--grad);color:var(--on-grad);font-size:15px;font-weight:700;overflow:hidden;
-  box-shadow:0 8px 22px var(--acc-s);animation:fabin var(--d3) var(--ease) both;
-  transition:transform var(--d1) var(--ease),box-shadow var(--d1) var(--ease)}
-.fab .fico{font-size:20px;line-height:1;transition:transform var(--d2) var(--ease)}
-.fab:active{transform:scale(.93) rotate(-4deg)}
-.fab:active .fico{transform:rotate(90deg)}
-.fab.hide{display:none}
+/* --- 中间动作按钮：从右下角的悬浮 FAB 搬进导航栏第三格（R2b）--- */
+.tabbar .fab{flex:0 0 auto;width:96px;height:46px;margin:0 auto 2px;padding:0 6px;gap:5px;position:relative;
+  display:flex;align-items:center;justify-content:center;border:0;border-radius:15px;
+  background:var(--grad);color:var(--on-grad);font-size:13.5px;font-weight:700;overflow:hidden;
+  box-shadow:0 4px 14px var(--acc-s);transition:transform var(--d1) var(--ease)}
+.tabbar .fab .fico{font-size:16px;line-height:1;transition:transform var(--d2) var(--ease)}
+.tabbar .fab:active{transform:scale(.93)}
+.tabbar .fab:active .fico{transform:rotate(90deg)}
+.tabbar .fab.hide{visibility:hidden}
 @keyframes fabin{from{transform:translateY(16px) scale(.9);opacity:0}to{transform:none;opacity:1}}
 
 /* --- 卡片入场（只在切页/首次渲染时逐张浮现，最多 8 张错峰）--- */
@@ -243,26 +245,40 @@ main.enter{animation:fadein var(--d2) var(--ease)}
 .sheet .panel.full{max-height:94vh;height:94vh;border-radius:22px 22px 0 0}
 .sheet.closing .panel{animation:down var(--d1) var(--ease) forwards}
 @keyframes down{to{transform:translateY(30px);opacity:0}}
+/* 面板关闭按钮：没有它就只能点遮罩，手机返回键会直接退出 app */
+.sheet .panel{position:relative}
+.pclose{position:absolute;right:10px;top:10px;z-index:2;width:32px;height:32px;border-radius:50%;
+  border:1px solid var(--line);background:var(--card2);color:var(--dim);font-size:15px;line-height:1;
+  display:flex;align-items:center;justify-content:center}
+.pclose:active{transform:scale(.9)}
+.sheet .panel>h2{padding-right:38px}
+
+/* --- 自绘对话框：原生 confirm() 会带上“网址为 http://127.0.0.1 的网页显示：” --- */
+.dlg{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:none;
+  align-items:center;justify-content:center;padding:26px}
+.dlg.on{display:flex}
+.dlg .dbox{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);
+  border-radius:18px;padding:18px;box-shadow:0 18px 48px rgba(0,0,0,.28);
+  animation:pop var(--d2) var(--ease)}
+.dlg h3{margin:0;font-size:16.5px}
+.dlg .dbody{margin-top:8px;font-size:13px;color:var(--dim);word-break:break-word}
+.dlg .dacts{display:flex;gap:8px;margin-top:16px}
+.dlg .dacts .btn{flex:1;padding:10px 0;text-align:center;border-radius:12px}
+.dlg .dacts .btn.dg{background:var(--bad);color:#fff;border:0}
 
 /* --- 开关 / 勾选动画 --- */
 .cb{animation:none}
 .cb.on{animation:pop var(--d2) var(--ease)}
 @keyframes pop{0%{transform:scale(.7)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
 
-/* --- 我的页头部（R6）--- */
+/* --- 我的页头部（R6）：静态装饰，不做入场动画（过度设计已删）--- */
 .hero{position:relative;overflow:hidden;border-radius:20px;padding:20px 18px 18px;margin:14px 0 10px;
   background:var(--grad);color:var(--on-grad);box-shadow:var(--sh)}
-main.enter .hero{animation:rise var(--d3) var(--ease) both}
 .hero h1{margin:0;font-size:24px;font-weight:800;letter-spacing:.5px}
 .hero p{margin:4px 0 0;font-size:12px;opacity:.85}
-.hero .ring{position:absolute;right:-30px;top:-40px;width:150px;height:150px;border-radius:50%;
-  background:rgba(255,255,255,.14)}
-.hero .ring2{position:absolute;right:14px;top:44px;width:60px;height:60px;border-radius:50%;
-  background:rgba(255,255,255,.12)}
 .statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 8px;text-align:center;
   box-shadow:var(--sh)}
-main.enter .stat{animation:rise var(--d2) var(--ease) both;animation-delay:calc(var(--i,0)*30ms)}
 .stat b{display:block;font-size:20px;background:var(--grad-text);-webkit-background-clip:text;
   background-clip:text;color:transparent;font-weight:800}
 .stat span{font-size:11px;color:var(--dim)}
@@ -282,15 +298,20 @@ main.enter .stat{animation:rise var(--d2) var(--ease) both;animation-delay:calc(
   <button class="iconbtn" id="sortBtn" aria-label="排序与筛选"><span>⇅</span></button>
 </header>
 <main id="view"></main>
-<button class="fab" id="fab"><span class="fico">＋</span><span class="flabel">记一笔</span></button>
 <nav class="tabbar" id="tabbar">
   <span class="ind" id="ind"></span>
   <button class="tab on" data-tab="notes"><span class="ti">📝</span><em>笔记</em></button>
   <button class="tab" data-tab="todos"><span class="ti">✅</span><em>待办</em></button>
+  <button class="fab" id="fab"><span class="fico">＋</span><span class="flabel">记一笔</span></button>
   <button class="tab" data-tab="files"><span class="ti">📎</span><em>附件</em></button>
   <button class="tab" data-tab="mine"><span class="ti">👤</span><em>我的</em></button>
 </nav>
 <div class="sheet" id="sheet"><div class="panel" id="panel"></div></div>
+<!-- 自绘对话框：原生 confirm/alert 会显示“网址为 http://127.0.0.1 的网页显示：” -->
+<div class="dlg" id="dlg"><div class="dbox">
+  <h3 id="dlgT"></h3><div class="dbody" id="dlgB"></div>
+  <div class="dacts"><button class="btn" id="dlgNo">取消</button><button class="btn pri" id="dlgYes">确定</button></div>
+</div></div>
 <div id="toast"></div>
 <script>
 var S = {notes:[], settings:{}, info:{}};
@@ -647,12 +668,12 @@ function openAttach(id){
 async function delAttach(id){
   var a = null;
   FA.items.forEach(function(x){ if(x.id===id) a = x });
-  if(!confirm('删除附件' + (a ? '「'+a.name+'」' : '') + '？文件会从存储中删除。')) return;
-  try{
-    var r = await api('/api/attach/delete', {id:id});
-    toast(r.ok ? '已删除' : ('删除失败: ' + (r.error||'')));
-  }catch(e){ toast('删除失败: '+e) }
-  filesNow(); refresh();
+  askDel('附件「' + (a ? a.name : '') + '」？文件会从存储中删除。', function(){
+    api('/api/attach/delete', {id:id}).then(function(r){
+      toast(r.ok ? '已删除' : ('删除失败: ' + (r.error||'')));
+      filesNow(); refresh();
+    }, function(e){ toast('删除失败: '+e) });
+  });
 }
 function pickFile(){
   if(!window.Android){ toast('文件选择只在 app 内可用'); return; }
@@ -662,17 +683,15 @@ function pickFile(){
 }
 /* ---------- 我的页（R5/R6，P5 完善统计）---------- */
 function renderMine(){
-  var i = S.info, s = S.settings;
-  var themeName = {light:'亮色', dark:'暗色', auto:'跟随系统'}[s.theme||'light'];
-  var h = '<div class="hero"><span class="ring"></span><span class="ring2"></span>'
-    +'<h1>eNote</h1><p>分享即笔记 · 本机离线 OCR · 自带大模型（BYOK）</p></div>';
+  var i = S.info;
+  var h = '<div class="hero"><h1>eNote</h1><p>分享即笔记 · 本机离线 OCR · 自带大模型（BYOK）</p></div>';
   h += '<div class="statgrid">'
     + stat(0, i.notes||0, '笔记') + stat(1, i.todos||0, '待办') + stat(2, i.open||0, '未完成')
     + stat(3, i.overdue||0, '已逾期') + stat(4, i.queue||0, '待解析')
     + stat(5, i.ocrReady?'✓':'…', 'OCR 引擎') + '</div>';
+  // 主题开关在设置面板里，这里不重复列一项
   h += '<div class="card" style="padding:2px 12px">'
-    + li('🎨','外观主题', themeName, 'themeSheet()')
-    + li('⚙️','设置','AI 模型 / 运行状态 / 用法', 'settingsSheet()')
+    + li('⚙️','设置','AI 模型 / 外观 / 运行状态 / 用法', 'settingsSheet()')
     + li('📤','导出 JSON','全量备份笔记', "location.href='/api/export'")
     + li('📜','运行日志','', 'showLog()')
     + li('✨','AI 调用记录','', 'showDebug()')
@@ -689,15 +708,6 @@ function li(ic, t, sub, fn){
     +'<div style="flex:1"><b style="font-size:14.5px">'+t+'</b>'
     +(sub?'<div style="font-size:11px;color:var(--dim2);margin-top:1px">'+sub+'</div>':'')+'</div>'
     +'<span style="color:var(--dim2)">›</span></div>';
-}
-function themeSheet(){
-  var cur = S.settings.theme||'light';
-  sheet('<h2>外观主题</h2><div class="seg" style="margin-top:10px">'
-    + ['light','dark','auto'].map(function(m){
-        return '<button class="'+(m===cur?'on':'')+'" onclick="setTheme(\''+m+'\');themeSheet()">'
-          + ({light:'☀️ 亮色', dark:'🌙 暗色', auto:'🌗 跟随系统'}[m]) + '</button>'}).join('')
-    +'</div><div style="font-size:11px;color:var(--dim);margin-top:10px">默认亮色；' 
-    +'选「跟随系统」时随手机夜间模式切换，状态栏颜色同步变化。</div>', true);
 }
 function settingsSheet(){ sheet(renderSettings(), true); }
 /* ---------- 排序 / 筛选浮层（R3，P3 接服务端）---------- */
@@ -777,8 +787,11 @@ async function toggle(nid,tid){ await api('/api/todo',{action:'toggle',noteId:ni
 async function delTodo(nid,tid){ await api('/api/todo',{action:'delete',noteId:nid,todoId:tid}); refresh(); }
 async function reparse(id){ if(busy[id])return; busy[id]=1; toast('AI 重新解析中…');
   await api('/api/reparse',{id:id}); setTimeout(refresh,600); setTimeout(refresh,4000); }
-async function delNote(id){ if(!confirm('删除这条笔记？'))return;
-  await api('/api/delete',{id:id}); toast('已删除'); refresh(); }
+function delNote(id){
+  askDel('这条笔记？删除后不可恢复。', function(){
+    api('/api/delete', {id:id}).then(function(){ toast('已删除'); refresh(); });
+  });
+}
 function reocr(id){ if(!window.Android){toast('图片识别只在 app 内可用');return;}
   toast('正在识别图片…'); Android.reocr(id); setTimeout(refresh,1500); setTimeout(refresh,5000); }
 function jump(id){ tab='notes'; open[id]=true; setTab(); refresh();
@@ -819,7 +832,8 @@ async function showDebug(){
 function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
 function sheet(html, full){
   $('#panel').className = 'panel' + (full?' full':'');
-  $('#panel').innerHTML = '<div class="grip"></div>' + html;
+  $('#panel').innerHTML = '<div class="grip"></div>'
+    + '<button class="pclose" onclick="closeSheet()" aria-label="关闭">✕</button>' + html;
   $('#sheet').classList.add('on');
 }
 function closeSheet(){
@@ -829,6 +843,46 @@ function closeSheet(){
   setTimeout(function(){ s.classList.remove('on'); s.classList.remove('closing'); }, 110);
 }
 $('#sheet').addEventListener('click', function(e){ if(e.target.id==='sheet') closeSheet(); });
+
+/* ---------- 自绘对话框（代替原生 confirm/alert）----------
+   WebView 的默认弹框会顶着一行“网址为 http://127.0.0.1 的网页显示：”，
+   对用户毫无意义。Java 的 onJsAlert/onJsConfirm 也一律转发到这里。 */
+var dlgCb = null, dlgCancel = null;
+function dialog(o){
+  $('#dlgT').textContent = o.title || '';
+  $('#dlgB').innerHTML = esc(o.body || '');
+  var y = $('#dlgYes'), n = $('#dlgNo');
+  y.textContent = o.ok || '确定';
+  y.className = 'btn ' + (o.danger ? 'dg' : 'pri');
+  n.textContent = o.cancel || '取消';
+  n.style.display = o.noCancel ? 'none' : '';
+  dlgCb = o.onOk || null; dlgCancel = o.onCancel || null;
+  $('#dlg').classList.add('on');
+}
+function closeDlg(ok){
+  $('#dlg').classList.remove('on');
+  var cb = dlgCb, cc = dlgCancel;
+  dlgCb = null; dlgCancel = null;
+  if(ok){ if(cb) cb() } else if(cc) cc();
+}
+$('#dlgYes').onclick = function(){ closeDlg(true) };
+$('#dlgNo').onclick = function(){ closeDlg(false) };
+$('#dlg').addEventListener('click', function(e){ if(e.target.id==='dlg') closeDlg(false) });
+function askDel(what, onOk){ dialog({title:'删除', body:what, ok:'删除', danger:true, onOk:onOk}) }
+/* Java 的 onJsAlert/onJsConfirm 转发到这里（id 非空 = confirm，需要回传结果） */
+window.uiDialog = function(title, msg, id){
+  dialog({title:title, body:msg, noCancel:!id,
+    onOk:function(){ if(id && window.Android) Android.dialogResult(id, true) },
+    onCancel:function(){ if(id && window.Android) Android.dialogResult(id, false) }});
+};
+
+/* 手机返回键：先关对话框/面板，再回笔记页，最后才退 app */
+window.uiBack = function(){
+  if($('#dlg').classList.contains('on')){ closeDlg(false); return 1; }
+  if($('#sheet').classList.contains('on')){ closeSheet(); return 1; }
+  if(tab !== 'notes'){ tab = 'notes'; setTab(); window.scrollTo(0,0); return 1; }
+  return 0;
+};
 function addSheet(){
   sheet('<h2>记一笔</h2>'
    +'<label>文字</label><textarea id="addText" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea>'
@@ -868,13 +922,11 @@ function setTab(anim){
   moveInd();
   var mine = tab==='mine';
   $('#topbar').style.display = mine ? 'none' : 'flex';
-  var f = FABS[tab], fab = $('#fab');
-  if(f){
-    fab.classList.remove('hide');
-    fab.querySelector('.fico').textContent = f.ico;
-    fab.querySelector('.flabel').textContent = f.label;
-    fab.onclick = f.fn;
-  } else fab.classList.add('hide');
+  var f = FABS[tab] || FABS.notes, fab = $('#fab');
+  fab.classList.remove('hide');
+  fab.querySelector('.fico').textContent = f.ico;
+  fab.querySelector('.flabel').textContent = f.label;
+  fab.onclick = f.fn;
   $('#q').placeholder = tab==='todos' ? '搜索待办' : tab==='files' ? '搜索附件' : '搜索笔记与待办';
   q = P().q || '';
   var qi = $('#q'); qi.value = q; $('#searchBox').classList.toggle('has', !!q);
@@ -899,12 +951,13 @@ function moveInd(){
 var FABS = {
   notes:{ico:'＋', label:'记一笔', fn:function(){ addSheet() }},
   todos:{ico:'＋', label:'记待办', fn:function(){ addSheet() }},
-  files:{ico:'📎', label:'添加附件', fn:function(){ pickFile() }},
-  mine:null
+  files:{ico:'📎', label:'加附件', fn:function(){ pickFile() }},
+  mine:{ico:'＋', label:'记一笔', fn:function(){ addSheet() }}
 };
-/* 涟漪（R10）：一个监听器给所有按钮类组件 */
+/* 涟漪（R10）：只给“真按钮”——它们自带 position:relative + overflow:hidden。
+   列表行 .li 不参与：它不是定位容器，水波会跑到 viewport 上，铺满全屏 = 闪屏 */
 document.addEventListener('pointerdown', function(e){
-  var el = e.target.closest ? e.target.closest('.btn,.iconbtn,.tab,.fab,.seg button,.li') : null;
+  var el = e.target.closest ? e.target.closest('.btn,.iconbtn,.tab,.fab,.seg button') : null;
   if(!el) return;
   var r = el.getBoundingClientRect(), d = Math.max(r.width, r.height);
   var s = document.createElement('span');

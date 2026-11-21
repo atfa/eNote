@@ -3,6 +3,7 @@ package dev.xduo.enote;
 import android.content.Context;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
+import android.webkit.JsResult;
 
 import org.json.JSONObject;
 
@@ -142,6 +143,20 @@ public class Bridge {
     @JavascriptInterface
     public void log(String msg) {
         Log.i(TAG, "web: " + msg);
+    }
+
+    /**
+     * window.Android.dialogResult(id, ok): resolves a native alert/confirm that MainActivity
+     * forwarded to the page's own dialog, so the user never sees the "http://127.0.0.1" bar.
+     */
+    @JavascriptInterface
+    public void dialogResult(String id, boolean ok) {
+        JsResult r = MainActivity.pendingJs;
+        MainActivity.pendingJs = null;
+        Log.i(TAG, "dialogResult " + id + " ok=" + ok + " pending=" + (r != null));
+        if (r != null) {
+            if (ok) r.confirm(); else r.cancel();
+        }
     }
 
     /** window.Android.setTheme(mode): keeps the system bars in sync with the CSS theme. */
