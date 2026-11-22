@@ -5,6 +5,8 @@ out/
 go/enotebin
 go/dev.xduo.enote
 go/ui.bundle.js
+# missed.go:21 把「上次打开时间」写在可执行文件旁边，go test 一跑就在 go/ 目录下生成它。
+# 它是运行时状态，不是源码，git add -A 会误收。
 go/lastopen.txt
 .test/shot-t*.png
 __pycache__/

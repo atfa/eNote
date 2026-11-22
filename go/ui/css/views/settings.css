@@ -1,3 +1,13 @@
 /* go/ui/css/views/settings.css — owner: Tony（一个文件一个 owner，见 plan.md §2）
    S1a 建的是空文件：规则还在 css/views.css 里，S2 才按视图搬进来。
    搬动时保持层叠顺序：tokens → base → components → views/* 的加载顺序（见 index.html）。 */
+
+/* 全屏设置面板（R5） */
+.panel.page{top:0;height:100%;max-height:100%;border-radius:0;padding:0;border-top:0}
+/* 二级页面不是底部弹层：不需要拖拽条，头部直接贴屏幕顶部（用户反馈那里不该有留白） */
+.panel.page .grip{display:none}
+.phead{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:var(--s2);padding:var(--s3) var(--s3) var(--s2);
+  background:var(--header-bg);backdrop-filter:blur(14px);border-bottom:var(--hair) solid var(--line);font-size:var(--fs-lg);font-weight:700}
+.pbody{padding:var(--s3) var(--s3) var(--s6)}
+.pgroup{font-size:var(--fs-sm);font-weight:700;color:var(--dim2);margin:var(--s4) var(--s0) var(--s2);letter-spacing:.5px}
+.pgroup:first-child{margin-top:var(--s0)}

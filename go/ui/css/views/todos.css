@@ -1,3 +1,8 @@
 /* go/ui/css/views/todos.css — owner: Austin（一个文件一个 owner，见 plan.md §2）
    S1a 建的是空文件：规则还在 css/views.css 里，S2 才按视图搬进来。
    搬动时保持层叠顺序：tokens → base → components → views/* 的加载顺序（见 index.html）。 */
+
+/* 从到期通知点进来时，那一条待办短暂亮一下 */
+.todo.flash{animation:tokflash 2.6s var(--ease) both}
+@keyframes tokflash{0%,60%{background:var(--acc-s);box-shadow:inset 0 0 0 1px var(--acc)}
+  100%{background:transparent;box-shadow:none}}

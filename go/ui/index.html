@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#0b0f14">
 <title>懒得记</title>
-  <!-- S1a：样式从 go/ui.html 的 <style>（原 8-579 行）机械拆成 4 个文件，加载顺序 = 原层叠顺序 -->
+  <!-- 样式从 go/ui.html 的 <style>（原 8-579 行）拆出：S1a 拆成 4 个文件，S2 把视图层拆成 views/*.css。
+       加载顺序 = 层叠顺序，顺序不能重排（tools/ui_test.js 闸门⑦ 拦跨文件属性冲突）。 -->
   <link rel="stylesheet" href="/css/tokens.css">
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/components.css">
-  <link rel="stylesheet" href="/css/views.css">
-  <!-- S1a 先建好最终布局的空文件（一个视图一个文件、一个 owner），S2 把规则从 views.css 搬进来。
-       加载顺序 = 层叠顺序，新增文件只能追加在 views.css 之后，不能插到前面。 -->
+  <!-- S2：一个视图一个文件、一个 owner（归属表见 docs/css-map.md）。
+       加载顺序 = 层叠顺序，新增文件只能追加在最后，不能插到前面。 -->
   <link rel="stylesheet" href="/css/views/shell.css">
   <link rel="stylesheet" href="/css/views/notes.css">
   <link rel="stylesheet" href="/css/views/todos.css">

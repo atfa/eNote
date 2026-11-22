@@ -1,6 +1,31 @@
-/* go/ui/css/tokens.css — 由 go/ui.html 机械拆分而来（S1a，行为零变化）
-   原文位置：go/ui.html 9-43（设计 token：亮色默认 + html[data-theme=dark] 覆盖）
-   拆分是连续区间，层叠顺序与拆分前逐字节一致；不要在这里重排规则顺序。 */
+/* go/ui/css/tokens.css — 设计 token（S2 起为设计系统的唯一来源）
+   原文位置：go/ui.html 9-43（S1a 机械拆分），S2 在此**新增**刻度 token。
+
+   ── 规则 ──
+   1. 颜色只在这里定义。其它 css 文件出现裸 hex 会被 tools/ui_test.js 的棘轮拦下
+      （基线只许降不许升，见 HEX_BASELINE）。
+   2. 调色板变量名**不改**（改名是纯 churn，且 Theme.java 与 CSS 的一致性已有闸门守着：
+      Theme.java 的 BG_LIGHT/BG_DARK 必须等于下面 --bg 的明/暗两处）。
+   3. 新增的刻度 token（--s* --r* --sh* --fs-* --ic-*）是给 S3~S7 迁移用的目标；
+      旧名（--r --sh）继续有效，迁移一个视图就换一处，避免一次性大爆炸。
+   4. 动画时长沿用 --d1/--d2/--d3：全应用 55 处 transition 已 100% 走这三个变量、
+      0 处字面时长，改名只会制造 55 处无意义 diff。animation 里的 2.6s/3.4s 是进度条
+      关键帧时长，不是交互时长，不并进刻度。
+
+   ── 旧 → 新 映射表（迁移时按这张表替换，别自己发明）──
+   间距（px）：0→(0)  2→--s0  3→--s1  4→--s1  5→--s1  6→--s2  7→--s2  8→--s2
+              10→--s2 12→--s3 14→--s3 16→--s4 18→--s4 20→--s4 22→--s5 24→--s5 28→--s5
+              30→--s6 32→--s6 34→--s6 36→--s6 40→--s6 44→--s6 46→--s6 48→--s6 56→--s6
+              1px 边框统一用 --hair。
+   圆角（px）：6→--r1  8→--r1  9→--r1  10→--r1  12→--r2  14→--r2  16→--r2
+              18→--r3  20→--r3  22→--r3  24→--r3  26→--r3  999→--r-pill
+              旧 --r(=16px) → 卡片用 --r3，输入框/小卡用 --r2。
+   阴影：旧 --sh → --sh1（页面内卡片）；浮层/面板 → --sh2；模态/Toast → --sh3。
+   字号（px）：10→--fs-xs 11→--fs-xs 12→--fs-sm 13→--fs-md 14→--fs-base 15→--fs-base
+              16→--fs-lg 17→--fs-lg 18→--fs-lg 20→--fs-xl 22→--fs-xl 24→--fs-2xl
+              26→--fs-2xl 28→--fs-2xl 44→--fs-display
+   图标（px）：13→--ic-1 16→--ic-2 20→--ic-3 26→--ic-4（其余尺寸就近吸附到这四档）。
+   动画：--d1 微反馈（按下/焦点）--d2 常规过渡 --d3 面板/大面积。 */
 
 /* ============ 设计 token：亮色为默认，html[data-theme=dark] 覆盖 ============ */
 :root{
@@ -17,8 +42,37 @@
   --toast-bg:#131a24; --toast-fg:#ffffff;
   --pre-bg:#f1f4f9; --pre-fg:#2a3a52; --thumb-bg:#eef1f6; --grip:#c9d1de;
   --r:16px; --sh:0 6px 22px rgba(16,24,40,.07);
-  /* 动画 token：全应用只用这三个时长（R10） */
+  /* 动画 token：全应用只用这三个时长（R10）。
+     --spring 是回弹曲线（overshoot）。它以前被 .cb .ic 和 #toast 的 transition 引用
+     但**从未定义**：自定义属性未定义会让整条 transition 在计算值阶段失效，
+     所以勾选和 toast 一直是「瞬间出现」而不是弹出来。S2 补上定义。 */
   --d1:110ms; --d2:180ms; --d3:280ms; --ease:cubic-bezier(.2,.8,.2,1);
+  --spring:cubic-bezier(.34,1.56,.64,1);
+
+  /* ---- S2 新增：间距刻度。基准 4，半档 2 只用于图标与文字的视觉对齐 ---- */
+  --s0:2px; --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --hair:1px;
+
+  /* ---- S2 新增：圆角刻度（三档 + 胶囊）---- */
+  --r1:8px; --r2:12px; --r3:20px; --r-pill:999px;
+
+  /* ---- S2 新增：阴影层级。层级越高越"浮"，只允许这三档 ---- */
+  --sh1:0 1px 2px rgba(16,24,40,.05), 0 4px 14px rgba(16,24,40,.06);
+  --sh2:0 2px 6px rgba(16,24,40,.07), 0 12px 32px rgba(16,24,40,.10);
+  --sh3:0 8px 20px rgba(16,24,40,.12), 0 24px 60px rgba(16,24,40,.16);
+
+  /* ---- S2 新增：字号刻度（8 档，正文 15）---- */
+  --fs-xs:11px; --fs-sm:12px; --fs-md:13px; --fs-base:15px;
+  --fs-lg:17px; --fs-xl:22px; --fs-2xl:28px; --fs-display:44px;
+
+  /* ---- S2 新增：图标尺寸（4 档，行内图标一律 --ic-2）---- */
+  --ic-1:13px; --ic-2:16px; --ic-3:20px; --ic-4:26px;
+
+  /* ---- S2 新增：布局常量与焦点环 ---- */
+  --nav-h:56px;
+  --safe-b:env(safe-area-inset-bottom);
+  --safe-t:env(safe-area-inset-top);
+  --focus:0 0 0 3px rgba(47,107,255,.28);
 }
 html[data-theme=dark]{
   --bg:#0b0f14; --card:#151b23; --card2:#1b232d; --line:rgba(255,255,255,.07);
@@ -34,6 +88,10 @@ html[data-theme=dark]{
   --toast-bg:#22303f; --toast-fg:#ffffff;
   --pre-bg:#0a0e13; --pre-fg:#9fd0ff; --thumb-bg:#000000; --grip:#39424f;
   --sh:0 6px 24px rgba(0,0,0,.35);
+  /* 暗色下阴影几乎不可见，层级靠"更亮的边 + 更深的底"表达 */
+  --sh1:0 1px 2px rgba(0,0,0,.40), 0 4px 14px rgba(0,0,0,.30);
+  --sh2:0 2px 6px rgba(0,0,0,.45), 0 12px 32px rgba(0,0,0,.40);
+  --sh3:0 8px 20px rgba(0,0,0,.55), 0 24px 60px rgba(0,0,0,.50);
+  --focus:0 0 0 3px rgba(108,156,255,.38);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-

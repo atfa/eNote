@@ -275,3 +275,117 @@
      可随时重造；搜索用例的关键词同步从「周会」改成「取快递」（新图里没有周会）。
   静态服务加了 `X-Content-Type-Options: nosniff`，不认识的扩展名从 octet-stream 200 改成 404
   （`vendor/VENDOR.md` 这类给人看的文档不该被 WebView 拉走）。
+
+### 界面（S2：设计刻度 + 密度收紧）
+
+「能跑，但不高级」的根因不是缺组件，是没有刻度：全库 391 处裸 px，间距取值 44 种、
+圆角 22 种、阴影 10 种。这一步建立刻度并把密度收紧。
+
+* **刻度落地**（`go/ui/css/tokens.css`）：间距 `--s0..--s6`（2/4/8/12/16/24/32）、
+  圆角 `--r1 --r2 --r3 --r-pill`（8/12/20/999）、阴影 `--sh1 --sh2 --sh3`（深色各配一档）、
+  字号 `--fs-xs..--fs-display`（11–44，8 档）、图标 `--ic-1..--ic-4`（13/16/20/26）、
+  动效时长 `--d1 --d2 --d3`（120/220/380ms，沿用原变量名）、新增弹性曲线 `--spring`。
+  旧名全部保留，`--sh` = `--sh2`、`--grad` 不动，所以这一步不会改像素。
+* **密度：10px → 8px**（Austin 批准，条件是把每一处映射列出来）。
+  40 处间距（padding 13 / gap 11 / margin 9 / margin-top 4 / margin-bottom 3）换成
+  `var(--s2)`，10 处 `border-radius:10px` 换成 `var(--r1)`。
+  刻意**不动**的：`transform` 2 处、`height` 2 处、`min-height` 1 处、`right`/`top` 各 1 处
+  （几何定位，不是间距）、`font-size:10px` 2 处（映射到 `--fs-xs`=11px，见下）。
+  完整映射（51 行，含一条规则里两处 10px 的展开）：
+
+**`base.css`**
+
+* `.card` :24 — `margin: var(--s2) 0`
+* `.agrid` :57 — `gap: var(--s2)`
+* `.agrid` :57 — `margin-top: var(--s2)`
+* `.athumb` :64 — `border-radius: var(--r1)`
+* `.aglyph` :65 — `border-radius: var(--r1)`
+* `.errbox` :73 — `border-radius: var(--r1)`
+* `.todo` :77 — `gap: var(--s2)`
+* `.facts .fh` :134 — `padding: 7px var(--s2) 5px`
+* `.facts .fr` :137 — `padding: 6px var(--s2)`
+* `.acts` :160 — `margin-top: var(--s2)`
+* `.btn` :161 — `border-radius: var(--r1)`
+* `input,textarea,select` :172 — `padding: var(--s2) 12px`
+* `.empty div` :179 — `margin-bottom: var(--s2)`
+* `.kv` :197 — `gap: var(--s2)`
+* `pre` :200 — `border-radius: var(--r1)`
+* `pre` :200 — `padding: var(--s2)`
+* `#toast` :202 — `padding: var(--s2) 16px`
+* `.seg button:focus-visible` :241 — `border-radius: var(--r1)`
+
+**`components.css`**
+
+* `.topbar` :1 — `padding: calc(8px + env(safe-area-inset-top)) var(--s2) 8px`
+* `.search` :22 — `padding: 0 var(--s2)`
+* `.strip` :32 — `margin: var(--s2) 2px 0`
+* `.clipbanner` :54 — `gap: var(--s2)`
+* `.clipbanner` :54 — `margin: var(--s2) 2px 0`
+* `.missed` :62 — `gap: var(--s2)`
+* `.missed` :62 — `margin: var(--s2) 2px 0`
+* `.shotbanner` :70 — `gap: var(--s2)`
+* `.shotbanner` :70 — `margin: var(--s2) 2px 0`
+* `.shotgrid` :78 — `margin: var(--s2) 0`
+* `.shotitem` :80 — `border-radius: var(--r1)`
+* `.fin` :93 — `border-radius: var(--r1)`
+* `.frow` :97 — `gap: var(--s2)`
+* `.frow` :97 — `padding: var(--s2) 2px`
+* `.frow.on` :103 — `border-radius: var(--r1)`
+* `.owarn` :120 — `padding: var(--s2) 12px`
+* `.msrow` :124 — `gap: var(--s2)`
+* `.cliptop` :130 — `margin-bottom: var(--s2)`
+* `.clipitem` :132 — `gap: var(--s2)`
+* `.clipitem` :132 — `padding: var(--s2)`
+* `.pfoot` :151 — `gap: var(--s2)`
+* `.pfoot` :151 — `padding: var(--s2) 14px calc(12px + env(safe-area-inset-bottom))`
+* `.li` :205 — `gap: var(--s2)`
+* `.li .lico` :210 — `border-radius: var(--r1)`
+* `.skel` :213 — `border-radius: var(--r1)`
+* `.skel.img` :219 — `margin: var(--s2) 0`
+* `.empty .em` :219 — `margin-bottom: var(--s2)`
+* `.dlg .dacts .btn` :251 — `padding: var(--s2) 0`
+
+**`views/settings.css`**
+
+* `.phead` :8 — `padding: 14px 12px var(--s2)`
+
+**`views/stats.css`**
+
+* `.hero` :1 — `margin: 14px 0 var(--s2)`
+* `.statgrid` :25 — `margin: var(--s2) 0`
+* `.legend` :46 — `margin-top: var(--s2)`
+* `.tagrow` :48 — `margin-top: var(--s2)`
+* **修掉一个静默缺陷：`--spring` 从来没定义过。** `base.css` 的 `.cb .ic`（勾选动画）和
+  `#toast` 都写了 `transition:...var(--spring)` 且没有回退值——CSS 变量未定义且无回退时，
+  整条声明在计算值阶段失效，所以勾选动画和 toast 弹出一直是「瞬间出现」，测试全绿看不出来。
+  定义成 `cubic-bezier(.34,1.56,.64,1)` 之后它们才第一次真的动起来。
+* **高级感基础层**（`base.css` 末尾）：`:focus-visible` 焦点环（键盘/遥控器可见，鼠标点按不出现）、
+  控件 `touch-action:manipulation`（去掉 300ms 点击延迟）、控件禁选文字、`::selection` 品牌色、
+  隐藏滚动条、数字列 `tabular-nums`（计数/倒计时不再左右跳）、`text-wrap:pretty`。
+* **CSS 按视图拆文件**：`css/views.css` 的 39 个顶层块按 `docs/css-map.md` 的归属搬进
+  `css/views/{stats,settings,todos,shell}.css` 与 `components.css`，逐字节搬运，
+  规则多重集拆分前后完全相同（349 条，0 差异）。
+* **闸门 7 道 → 8 道**（`tools/ui_test.js`）：新增「每个 `var()` 必须能解析」——
+  就是为 `--spring` 这类坑设的，未定义且无回退直接红；闸门⑦ 的跨文件层叠检查基线清零，
+  扫描范围扩到 `css/views/`（原来只扫一层，S2 之后会完全扫不到 = 假绿）。
+* **棘轮收紧**：裸 px 391 → 341（正好 −50）。
+* **基线截图**：`tools/shots_before.sh` 在 VD 后台屏逐视图截图存 `docs/shots/before/`，
+  自检 7 张 md5 互不相同（全同 = 切 tab 没生效，脚本直接失败）。
+  踩到两个坑：`am start` 不带 `--display` 会把 app 拽回物理屏（7 张全同）；
+  切 tab 必须调 `setTab()`，只改 `tab` 变量会让 tab 栏高亮停在旧 tab（截图看着对、其实是假的）。
+
+### 界面（S2 续：base/components 全量迁移到刻度）
+
+* **274 处裸 px → 刻度 token**（`base.css` 102 / `components.css` 172）：间距、圆角、
+  字号、图标尺寸、1px 边框（→ `var(--hair)`）。几何尺寸不动（装饰圆、图表高度、
+  条形宽度、logo 尺寸、`transform` 位移）。
+  迁移前用脚本量过每个替换的位移量：**没有任何一处超过 4px**——说明这套刻度对现有
+  设计是紧拟合，不是重新设计。
+* **裸 px 棘轮 391 → 57**（−85%）。剩下 57 处是刻意保留的几何值。
+* **`ui_sig_test.js` 5 处断言放宽**：它们写死了 `padding:0 14px 104px`、
+  `font-size:10.5px`、`padding:9px 2px 9px 8px`、`margin-top:2px`、`gap:4px` 这些字面值。
+  这些断言守的是结构契约（三类胶囊共用盒模型所以等高、勾选框对齐、页面有留白），
+  不是那个数字，所以改成「字面值或对应 token 都接受」。
+  胶囊那条断言从 `indexOf` 子串匹配改成断言函数数组，逐条可读。
+  踩坑：给 `.tx small` 的断言加了收尾 `\}` 结果恒假——原断言没有收尾，因为那条规则
+  后面还有声明。放宽断言时「改完变绿」不等于「改对了」，要确认它还能拦住原始缺陷。

@@ -500,6 +500,15 @@ else
   say "  跳过（没有 node）"
 fi
 
+step "ui: 静态闸门（内联 handler 存在性 / 调色板一致性 / hex·px 棘轮）"
+# P12 那类「点了没反应」在真机上测不出来：onclick 里调一个不存在的函数，页面不报错、
+# 端到端全绿。只能静态抓，所以放在这里，跟 ui_sig_test.js 一样是必跑项。
+if command -v node >/dev/null 2>&1; then
+  node "$HERE/tools/ui_test.js" | sed 's/^/  /' || fail "界面静态闸门失败"
+else
+  say "  跳过（没有 node）"
+fi
+
 step "P6.5 常驻后台（前台服务 + 标准电池优化）"
 am_start "$ACTIVITY" "--es hook keepalive --es arg on"
 n=0
