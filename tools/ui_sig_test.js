@@ -538,4 +538,18 @@ const keepGuard = /func \(s \*ShotStore\) dropUnlessKept/.test(goweb)
 console.log((keepGuard ? '  ok   ' : '  FAIL ') + '清理/忽略/裁剪暂存时不删笔记在用的文件');
 if (!keepGuard) bad++;
 
+// API Key 不打码：设置页打开就能看到已保存的 key（用户明确说不在意明文，
+// 打码反而让人以为没存住、反复重填）
+const plainKey = /func maskedSettings\(\) Settings \{\n\treturn config\.get\(\)/.test(goweb)
+  && /id="sKey" value="'\+esc\(s\.apiKey\)\+'"/.test(src)
+  && /class="fhint"/.test(src);
+console.log((plainKey ? '  ok   ' : '  FAIL ') + 'API Key 明文显示在设置里（不再打码）');
+if (!plainKey) bad++;
+
+// settings.json 必须原子写 + .bak 兜底：写到一半被杀掉不能把 key 弄丢
+const atomicCfg = /func \(c \*Config\) set\(s Settings\) error \{[\s\S]{0,1400}os\.Rename\(tmp, c\.path\)/.test(goweb)
+  || /os\.Rename\(tmp, c\.path\)/.test(fs.readFileSync(path.join(root, 'go/config.go'), 'utf8'));
+console.log((atomicCfg ? '  ok   ' : '  FAIL ') + 'settings.json 原子写（.tmp + rename + .bak 兜底）');
+if (!atomicCfg) bad++;
+
 process.exit(bad ? 1 : 0);

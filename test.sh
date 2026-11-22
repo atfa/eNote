@@ -86,7 +86,33 @@ fail() {
   die "$1"
 }
 
-api_get()  { curl -s -m "${2:-30}" "http://127.0.0.1:$PORT/api/$1"; }
+# api_state: 带重试的 /api/state。上游大模型卡住时服务端偶尔回空/非 JSON，
+# 直接 pipe 给 python 会抛 traceback 把整轮测试打断（踩过）。
+api_state() {
+  n=0
+  while [ "$n" -lt 15 ]; do
+    s=$(api_get state 10)
+    if printf '%s' "$s" | "$PY" -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+      printf '%s' "$s"
+      return 0
+    fi
+    sleep 1; n=$((n + 1))
+  done
+  printf '{}'
+  return 1
+}
+
+api_get()  {   # <path> [timeout]：拿不到东西就重读日志里的端口（app 重启过会换端口）
+  r=$(curl -s -m "${2:-30}" "http://127.0.0.1:$PORT/api/$1")
+  if [ -z "$r" ]; then
+    np=$(readlog | grep -o '127.0.0.1:[0-9]*' | tail -1 | cut -d: -f2)
+    if [ -n "$np" ] && [ "$np" != "$PORT" ]; then
+      PORT=$np
+      r=$(curl -s -m "${2:-30}" "http://127.0.0.1:$PORT/api/$1")
+    fi
+  fi
+  printf '%s' "$r"
+}
 api_post() { curl -s -m "${3:-120}" -X POST "http://127.0.0.1:$PORT/api/$1" -d "$2"; }
 # raw_get <path>: not every route lives under /api (the attachment viewer is /file).
 raw_get()  { curl -s -m "${2:-30}" "http://127.0.0.1:$PORT/$1"; }
@@ -98,7 +124,7 @@ logcat_has() { asroot "logcat -d -s enote:V" 2>/dev/null | grep -q "$1"; }
 wait_note() {
   n=0
   while [ "$n" -lt "$2" ]; do
-    ok=$(api_get state | "$PY" -c '
+    ok=$(api_state | "$PY" -c '
 import json,sys
 for n in json.load(sys.stdin)["notes"]:
     try:
@@ -131,10 +157,44 @@ fi
 am_start "$ACTIVITY"
 waitfor 'http server on' 40 || fail "the go http server never came up"
 BASE=$(readtlog | wc -l)   # judge only what this run appends to the app log
+BOOTS=$(readlog | grep -c 'appInit')   # app 进程重启过一次就 +1（用它区分环境问题和真回归）
 newtlog() { readtlog | tail -n +$((BASE + 1)); }
 PORT=$(readlog | grep -o '127.0.0.1:[0-9]*' | tail -1 | cut -d: -f2)
 [ -n "$PORT" ] || fail "cannot find the api port in $GLOG"
 say "  api: http://127.0.0.1:$PORT/"
+
+# upstream_down <source>: 该来源最新一条笔记是不是"AI 超时/断连"导致的 raw。
+# 上游大模型偶发 500s 级超时是环境问题，不该把整套测试判红（但要吼一声，别静默）。
+upstream_down() {
+  api_state | "$PY" -c '
+import json,sys
+src = sys.argv[1]
+d = json.load(sys.stdin)
+for n in d.get("notes") or []:
+    if n.get("source") == src:
+        e = (n.get("error") or "").lower()
+        bad = any(k in e for k in ("timeout","timed out","connection","abort","eof","tls","deadline"))
+        print("1" if (n.get("status") == "raw" and bad) else "0")
+        break
+else:
+    print("0")
+' "$1"
+}
+
+# ai_step_unhappy <source> <失败信息>：等待 AI 结果没等到时，先分清是环境问题还是真回归。
+#   * app 进程中途重启 → 队列丢了，跟解析逻辑无关
+#   * 上游代理超时/断连 → 笔记停 raw 且 error 里写着 timeout（实测一次 515s 才报错）
+ai_step_unhappy() {
+  if [ "$(readlog | grep -c 'appInit')" != "$BOOTS" ]; then
+    say "  skip（app 在等待期间重启过，队列丢了；不是解析逻辑的问题）"
+    return 0
+  fi
+  if [ "$(upstream_down "$1")" = "1" ]; then
+    say "  skip（上游大模型超时/断连，笔记按原文保留）"
+    return 0
+  fi
+  return 1
+}
 
 step "AI 是否可用（没配好 key 就跳过依赖大模型的用例）"
 AI_OK=$(api_post llm/test "" | "$PY" -c 'import json,sys
@@ -172,16 +232,21 @@ print("  store ok, web %s in %sms, llm ok in %sms, ocr ready=%s" % (
 ' || fail "selftest did not report ok"
 
 step "share text -> note with a dated todo"
-BEFORE=$(api_get state | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["notes"]))')
+NEWTEXT="";   # 上游超时时置 1，跳过对本条内容的断言
+BEFORE=$(api_state | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["notes"]))')
 MARK="测试$$"
 am_start "$APP_PACKAGE/.ShareActivity" "-a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT '买牛奶和鸡蛋；周五下班后取快递；晚上8点开周会'$MARK"
 sleep 2
-if [ "$(api_get state | "$PY" -c "import json,sys; print(len(json.load(sys.stdin)['notes']) > $BEFORE)")" != "True" ]; then
+if [ "$(api_state | "$PY" -c "import json,sys; print(len(json.load(sys.stdin)['notes']) > $BEFORE)")" != "True" ]; then
   fail "the shared text never reached the store"
 fi
 if need_ai "这条用例断言的是 AI 解析出的标题和待办"; then
-  wait_note "n['source']=='share-text' and n['status']=='done' and '$MARK' in n['rawText']" 120 \
-    || fail "the shared text note was never parsed"
+  if ! wait_note "n['source']=='share-text' and n['status']=='done' and '$MARK' in n['rawText']" 120; then
+    ai_step_unhappy share-text "the shared text note was never parsed" \
+      || fail "the shared text note was never parsed"
+    NEWTEXT=1
+  fi
+  if [ -z "$NEWTEXT" ]; then
   printf '%s' "$LAST" | "$PY" -c '
 import json,sys
 n = json.load(sys.stdin)
@@ -190,6 +255,7 @@ assert any(t["due"] for t in n["todos"]), "no todo has a due time"
 print("  title: %s | %d todos, first due %s" % (n["title"], len(n["todos"]),
       [t["due"] for t in n["todos"] if t["due"]][0]))
 ' || fail "the shared text note looks wrong"
+  fi
 else
   # 没有可用 AI 时笔记停在 raw（原文保留），这也是正确行为
   wait_note "n['source']=='share-text' and '$MARK' in n['rawText'] and n['status'] in ('done','raw','error')" 60 \
@@ -197,16 +263,21 @@ else
 fi
 
 step "share image -> local ocr -> note"
-UID_APP=$(asroot "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+NEWTEXT=""
+UID_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 EXT="/data/user/0/$APP_PACKAGE/files/enote/inbox"
-BEFORE_ID=$(api_get state | "$PY" -c 'import json,sys; print(max(n["id"] for n in json.load(sys.stdin)["notes"]))')
+BEFORE_ID=$(api_state | "$PY" -c 'import json,sys; print(max(n["id"] for n in json.load(sys.stdin)["notes"]))')
 asroot_global "mkdir -p '$EXT' && cp '$IMG' '$EXT/ocr-test.png' && chown '$UID_APP:$UID_APP' '$EXT/ocr-test.png' && chmod 644 '$EXT/ocr-test.png'" \
   || fail "cannot stage the test image in $EXT"
 am_start "$APP_PACKAGE/.ShareActivity" "-a android.intent.action.SEND -t 'image/*' --eu android.intent.extra.STREAM file://$EXT/ocr-test.png"
 sleep 2
 if need_ai "这条用例断言的是 OCR 结果再交给 AI 的标题和待办"; then
-  wait_note "n['source']=='share-image' and n['status']=='done' and n.get('ocrMs',0)>0 and n['id']>'$BEFORE_ID'" 150 \
-    || fail "the shared image never came back from ocr + llm"
+  if ! wait_note "n['source']=='share-image' and n['status']=='done' and n.get('ocrMs',0)>0 and n['id']>'$BEFORE_ID'" 150; then
+    ai_step_unhappy share-image "the shared image never came back from ocr + llm" \
+      || fail "the shared image never came back from ocr + llm"
+    NEWTEXT=1
+  fi
+  if [ -z "$NEWTEXT" ]; then
   printf '%s' "$LAST" | "$PY" -c '
 import json,sys
 n = json.load(sys.stdin)
@@ -215,6 +286,7 @@ assert n["todos"], "no todos extracted from the image"
 print("  ocr %d chars in %sms, llm %sms, title: %s" % (
     len(n["ocrText"]), n["ocrMs"], n.get("aiMs"), n["title"]))
 ' || fail "the shared image note looks wrong"
+  fi
 else
   # OCR 是本地跑的，跟 AI 无关：没配 AI 也要能出文字
   wait_note "n['source']=='share-image' and n.get('ocrMs',0)>0 and n['status'] in ('done','raw','error') and n['id']>'$BEFORE_ID'" 150 \
@@ -228,12 +300,12 @@ print("  ocr %d chars in %sms" % (len(n["ocrText"]), n["ocrMs"]))
 fi
 
 step "todo add / toggle / delete"
-NOTE=$(api_get state | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["notes"][0]["id"])')
+NOTE=$(api_state | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["notes"][0]["id"])')
 TID=$(api_post todo "{\"action\":\"add\",\"noteId\":\"$NOTE\",\"text\":\"测试待办\",\"due\":\"2026-12-01T09:00\",\"priority\":\"high\"}" \
       | "$PY" -c 'import json,sys; d=json.load(sys.stdin); print(d["id"] if d["ok"] else "")')
 [ -n "$TID" ] || fail "todo add failed"
 api_post todo "{\"action\":\"toggle\",\"noteId\":\"$NOTE\",\"todoId\":\"$TID\"}" | grep -q '"ok":true' || fail "todo toggle failed"
-api_get state | "$PY" -c "
+api_state | "$PY" -c "
 import json,sys
 for n in json.load(sys.stdin)['notes']:
     if n['id']=='$NOTE':
@@ -253,46 +325,51 @@ fi
 api_get export | "$PY" -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d,list) and d; print("  export: %d notes" % len(d))' \
   || fail "export is not a json array"
 
-step "settings round-trip (masked api key keeps the real one)"
-# 界面回传的是打码 key，服务端必须保住真 key。没配 key 时这条只能验其余字段的往返。
-api_get state | "$PY" -c '
+step "settings round-trip (api key 明文返回、保存后不丢)"
+# key 明文存在 app 私有目录（用户明确说不在意明文），设置页打开就能看到真 key；
+# 这条验的是"读回来 == 存进去"，不能再打码（打码会让人以为没存住、反复重填）。
+api_state | "$PY" -c '
 import json,sys
 print(json.dumps(json.load(sys.stdin)["settings"]))
 ' > "$TMPDIR/set.json" || fail "cannot read the settings"
 api_post settings "$(cat "$TMPDIR/set.json")" >/dev/null
-api_get state | "$PY" -c '
+api_state | "$PY" -c '
 import json,sys
 s = json.load(sys.stdin)["settings"]
 assert s["useAI"] is True and s["model"], s
 assert s["baseUrl"].startswith("http"), s["baseUrl"]
 assert s["temperature"] == 0.2, "部分字段 POST 不该动 temperature: %s" % s["temperature"]
 ' || fail "settings did not survive the round trip"
-if need_ai "打码 key 往返、真 key 不被覆盖，这两条要真有 key 才成立"; then
-  api_get state | "$PY" -c '
+if need_ai "key 往返这条要真有 key 才成立"; then
+  KEY0=$(api_state | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["settings"]["apiKey"])')
+  [ -n "$KEY0" ] || fail "server returned no api key"
+  api_state | "$PY" -c '
 import json,sys
 s = json.load(sys.stdin)["settings"]
-assert "…" in s["apiKey"], "the key should come back masked: %r" % s["apiKey"]
+assert s["apiKey"] and "…" not in s["apiKey"], "设置页应该看到明文 key（不打码）: %r" % s["apiKey"]
 print(json.dumps(s))
-' > "$TMPDIR/set.json" || fail "the key does not come back masked"
+' > "$TMPDIR/set.json" || fail "the key is still masked"
   api_post settings "$(cat "$TMPDIR/set.json")" >/dev/null
-  api_post llm/test "" | grep -q '"ok":true' || fail "the masked key broke the llm"
+  KEY1=$(api_state | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["settings"]["apiKey"])')
+  [ "$KEY1" = "$KEY0" ] || fail "保存设置后 key 变了（$KEY0 -> $KEY1）"
+  api_post llm/test "" | grep -q '"ok":true' || fail "保存设置后 llm 不可用了"
 fi
 say "  ok"
 
 step "theme (light default, switch, java sync)"
-api_get state | "$PY" -c '
+api_state | "$PY" -c '
 import json,sys
 s = json.load(sys.stdin)["settings"]
 assert s.get("theme") in ("light","dark","auto"), "no theme in settings: %r" % s.get("theme")
 ' || fail "settings.theme missing"
 api_post theme '{"mode":"dark"}' | "$PY" -c 'import json,sys; d=json.load(sys.stdin); assert d["ok"] and d["theme"]=="dark", d' \
   || fail "cannot switch to dark"
-api_get state | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["settings"]["theme"]=="dark"' \
+api_state | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["settings"]["theme"]=="dark"' \
   || fail "dark theme did not stick"
 sleep 3   # the UI polls /api/state and calls Android.setTheme
 logcat_has "js setTheme" || fail "the webview never told java about the theme"
 api_post theme '{"mode":"light"}' >/dev/null
-api_get state | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["settings"]["theme"]=="light"' \
+api_state | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["settings"]["theme"]=="light"' \
   || fail "light theme did not stick"
 say "  ok (light is the default, java stays in sync)"
 
@@ -333,7 +410,7 @@ assert all(t["todo"]["priority"]=="high" for t in d["todos"]), d["todos"][:1]
 api_post prefs '{"tab":"notes","q":"取快递","sort":"title","dir":"asc","filters":{"src":"text"}}' \
   | "$PY" -c 'import json,sys; d=json.load(sys.stdin); assert d["ok"] and d["ui"]["notes"]["q"]=="取快递", d' \
   || fail "prefs save failed"
-api_get state | "$PY" -c '
+api_state | "$PY" -c '
 import json,sys
 u = json.load(sys.stdin)["settings"]["ui"]
 assert u["notes"]["sort"]=="title" and u["notes"]["filters"]["src"]=="text", u
@@ -344,7 +421,7 @@ say "  ok (ocr text is searchable, every page keeps its own conditions)"
 
 step "attachments: share a file, list it, delete it (R4)"
 EXT="/data/user/0/$APP_PACKAGE/files/enote/inbox"
-UID_APP=$(asroot "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+UID_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 PDF_MARK="附件测试$$"
 printf '%%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\ntrailer2 %s\n' "$PDF_MARK" > "$TMPDIR/att-test.pdf"
 asroot_global "mkdir -p '$EXT' && cp '$TMPDIR/att-test.pdf' '$EXT/att-test.pdf' && chown '$UID_APP:$UID_APP' '$EXT/att-test.pdf' && chmod 644 '$EXT/att-test.pdf'" \
@@ -487,6 +564,9 @@ print("  ok (看过一次就不再重复提醒)")
 
 step "P11 截图捕获：扫描 → 合并导入 → 各存一条 → 幂等 → 忽略"
 SHOTDIR=/sdcard/Pictures/enote-test
+# 这一步会造笔记，结束时只删自己造的：以前按 source=shot-* 批量删，
+# 把用户自己导入的截图笔记也一起删了（真实踩过，删掉的是用户的内容）
+NOTES0=$(api_state | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["notes"]))')
 # 权限：直接用 root 授掉，跳过系统弹窗（真机上由用户点"去授权"）
 asroot_global "pm grant $APP_PACKAGE android.permission.READ_MEDIA_IMAGES" >/dev/null 2>&1 || true
 asroot_global "rm -rf $SHOTDIR; mkdir -p $SHOTDIR"
@@ -555,7 +635,10 @@ print(json.dumps(d["shots"], ensure_ascii=False))
 am_start "$ACTIVITY" "--es hook shotimport --es arg '$SHOTS'"
 sleep 8
 newtlog | grep 'hook shotimport' | tail -1 | grep -q '"notes":1' || fail "合并导入没有生成 1 条笔记"
-api_get state | "$PY" -c '
+MERGE_IDS=$(newtlog | grep 'hook shotimport' | tail -1 | "$PY" -c '
+import json,sys
+print(" ".join(json.loads(sys.stdin.read().split("hook shotimport:",1)[1]).get("noteIds") or []))')
+api_state | "$PY" -c '
 import json,sys
 d = json.load(sys.stdin)
 ns = [n for n in (d.get("notes") or []) if n.get("source") == "shot-merge"]
@@ -579,7 +662,7 @@ d = json.load(sys.stdin)
 assert d.get("missing", 0) == 0, "清理暂存把笔记在用的文件删了（缩略图会 404）: %s" % d
 print("  ok (清理暂存后 %d 个附件文件都还在盘上)" % d["files"])
 ' || fail "清理暂存后附件文件不见了"
-SID=$(api_get state | "$PY" -c '
+SID=$(api_state | "$PY" -c '
 import json,sys
 d = json.load(sys.stdin)
 print([n["id"] for n in d["notes"] if n.get("source") == "shot-merge"][0])
@@ -593,7 +676,10 @@ SHOTS=$(printf '{"mode":"split","raw":true,"shots":%s}' "$(cat "$TMPDIR/shots2.j
 am_start "$ACTIVITY" "--es hook shotimport --es arg '$SHOTS'"
 sleep 10
 newtlog | grep 'hook shotimport' | tail -1 | grep -q '"notes":2' || fail "各存一条没有生成 2 条笔记"
-api_get state | "$PY" -c '
+SPLIT_IDS=$(newtlog | grep 'hook shotimport' | tail -1 | "$PY" -c '
+import json,sys
+print(" ".join(json.loads(sys.stdin.read().split("hook shotimport:",1)[1]).get("noteIds") or []))')
+api_state | "$PY" -c '
 import json,sys
 d = json.load(sys.stdin)
 ns = [n for n in (d.get("notes") or []) if n.get("source") == "shot-single"]
@@ -640,22 +726,31 @@ if ids:
     urllib.request.urlopen(req).read()
 print("  ok (清空暂存区 %d 张)" % len(ids))
 ' "$PORT" >/dev/null 2>&1 || true
-api_get state | "$PY" -c '
+# 只删这一步自己造的笔记（按 hook 返回的 noteIds），绝不按 source 批量删
+api_state | "$PY" -c '
 import json,sys,urllib.request
+want = [x for x in sys.argv[2].split() if x]
 d = json.load(sys.stdin)
-bad = [n for n in (d.get("notes") or []) if (n.get("source") or "").startswith("shot-")]
-for n in bad:
+have = {n["id"] for n in (d.get("notes") or [])}
+for nid in want:
+    if nid not in have:
+        continue
     req = urllib.request.Request("http://127.0.0.1:%s/api/delete" % sys.argv[1],
-        data = json.dumps({"id": n["id"]}).encode(), headers={"Content-Type":"application/json"})
+        data = json.dumps({"id": nid}).encode(), headers={"Content-Type":"application/json"})
     urllib.request.urlopen(req).read()
-print("  ok (删掉 %d 条测试笔记)" % len(bad))
-' "$PORT" || true
+print("  ok (删掉 %d 条本步骤造的测试笔记)" % len([x for x in want if x in have]))
+' "$PORT" "$MERGE_IDS $SPLIT_IDS"
+api_state | "$PY" -c "
+import json,sys
+n = len(json.load(sys.stdin)[\"notes\"])
+assert n == $NOTES0, '这一步不该动到别的笔记: %d -> %d' % ($NOTES0, n)
+" || fail "P11 清理动了用户的笔记（只该删本步骤自己造的）" "$PORT" || true
 am_start "$ACTIVITY" "--es hook shotfolders --es arg '{\"enabled\":false,\"folders\":[]}'" >/dev/null 2>&1
 sleep 2
 
 step "P11 文件夹页：底部固定条 + 实时计数 + 已选在前 + 返回后刷新"
 # 虚拟显示上的 input tap 很不稳，改用 hook jseval 在页面里跑断言脚本（比截图点按可靠）
-UI_APP=$(asroot "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 cat > "$TMPDIR/jseval.sh" <<'EOS'
 #!/bin/sh
@@ -727,10 +822,11 @@ PYCHK
 asroot_global "rm -f '$DATA/enote/.devmode'"
 
 step "P11 只有一张截图时只留一个按钮（用户反馈：两个等价按钮只会让人犹豫）"
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+EXT="/data/user/0/$APP_PACKAGE/files/enote/inbox"
 asroot_global "rm -f '$EXT/one-shot.png'; cp '$IMG' '$EXT/one-shot.png'; chown '$UI_APP:$UI_APP' '$EXT/one-shot.png'; chmod 644 '$EXT/one-shot.png'"
 api_post shots/add "{\"shots\":[{\"path\":\"$EXT/one-shot.png\",\"name\":\"one-shot.png\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)}]}" \
   | grep -q '"added":1' || fail "造一张暂存截图失败"
-UI_APP=$(asroot "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 NT=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(function(){

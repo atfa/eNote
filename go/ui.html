@@ -213,6 +213,8 @@ input,textarea,select{width:100%;background:var(--card2);border:1px solid var(--
   border-radius:11px;color:var(--fg);padding:10px 12px;font-size:15px;font-family:inherit}
 textarea{min-height:110px;resize:vertical}
 label{display:block;font-size:11px;color:var(--dim);margin:12px 0 5px;font-weight:600;letter-spacing:.5px}
+/* 输入框下面的一行说明（比如"key 明文存在本机"） */
+.fhint{font-size:10.5px;color:var(--dim2);margin-top:5px;line-height:1.45}
 .empty{text-align:center;color:var(--dim2);padding:56px 20px;font-size:14px}
 .empty div{font-size:44px;margin-bottom:10px;opacity:.6}
 .sheet{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);display:none;
@@ -1805,6 +1807,7 @@ function renderSettings(){
    +'<div class="sw'+(s.useAI?' on':'')+'" onclick="toggleAI(this)"></div></div>'
    +'<label>API Base URL（OpenAI 兼容）</label><input id="sUrl" value="'+esc(s.baseUrl)+'" placeholder="https://your-server:8080/v1">'
    +'<label>API Key</label><input id="sKey" value="'+esc(s.apiKey)+'" placeholder="sk-...">'
+   +'<div class="fhint">明文存在本机 app 私有目录（别的 app 读不到），这里显示的就是已保存的 key，换 key 直接改这一栏</div>'
    +'<label>模型名</label><input id="sModel" value="'+esc(s.model)+'">'
    +'<div class="grid2"><div><label>超时（秒）</label><input id="sTimeout" value="'+(s.timeoutS||90)+'"></div>'
    +'<div><label>最大 tokens</label><input id="sMax" value="'+(s.maxTokens||2048)+'"></div></div>'

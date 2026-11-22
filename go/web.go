@@ -280,14 +280,11 @@ func handleTodo(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// currentSettings 原样返回（含明文 API Key）。
+// 以前这里打码，结果设置页每次打开都是 sk-l…ellm，用户以为没存住、反复重填；
+// key 本来就明文躺在 app 私有目录（别的 app 读不到），打码只带来麻烦，不打码了。
 func maskedSettings() Settings {
-	s := config.get()
-	if len(s.APIKey) > 8 {
-		s.APIKey = s.APIKey[:4] + "…" + s.APIKey[len(s.APIKey)-4:]
-	} else if s.APIKey != "" {
-		s.APIKey = "****"
-	}
-	return s
+	return config.get()
 }
 
 // settingsPatch 让"只提交一部分字段"的 POST 不会把没提交的字段清成零值。

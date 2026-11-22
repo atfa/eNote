@@ -54,16 +54,25 @@ var config *Config
 
 func openConfig(dir string) (*Config, error) {
 	c := &Config{path: filepath.Join(dir, "settings.json"), Settings: defaultSettings}
-	b, err := os.ReadFile(c.path)
-	if err == nil && len(b) > 0 {
-		var s Settings
-		if err := json.Unmarshal(b, &s); err == nil {
-			if s.BaseURL != "" {
-				c.Settings = s
-			}
-		} else {
-			logf("config: bad json, using defaults: %v", err)
+	// 主文件坏了就退回 .bak：settings.json 里存着 API Key，读不回来就得让用户重填一遍
+	for _, f := range []string{c.path, c.path + ".bak"} {
+		b, err := os.ReadFile(f)
+		if err != nil || len(b) == 0 {
+			continue
 		}
+		var s Settings
+		if err := json.Unmarshal(b, &s); err != nil {
+			logf("config: %s 不是合法 JSON，跳过：%v", filepath.Base(f), err)
+			continue
+		}
+		if s.BaseURL == "" && s.APIKey == "" {
+			continue
+		}
+		if f != c.path {
+			logf("config: 主文件坏了，用 %s 恢复", filepath.Base(f))
+		}
+		c.Settings = s
+		break
 	}
 	c.normalize()
 	return c, nil
@@ -103,7 +112,26 @@ func (c *Config) set(s Settings) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(c.path, b, 0o600)
+	// 原子写：先写 .tmp 再 rename。直接 WriteFile 写到一半被杀就会留下半截 JSON，
+	// 下次启动解析失败回默认值 —— 用户的 Base URL / API Key 就这么丢过一次，
+	// 表现为"每次都得重新填 key"。顺手留一份 .bak 兜底。
+	tmp := c.path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err = f.Write(b); err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	_ = os.WriteFile(c.path+".bak", b, 0o600)
+	return os.Rename(tmp, c.path)
 }
 
 func trimSlash(s string) string {

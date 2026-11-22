@@ -224,6 +224,14 @@ su --mount-master -c 'am start -n dev.xduo.enote/.MainActivity --es hook jseval 
 `test.sh` 里「P11 文件夹页」那段就是这么写的三条断言：底部操作条是 `sticky` 且滚到中间仍在视口内、
 已选数量随勾选实时变化、已选项全部排在前面、返回我的页后数量同步。
 
+## 5.1 API Key 怎么存
+
+* 明文存在 app 私有目录：`/data/data/<包名>/files/enote/settings.json`（`0600`），
+  同时留一份 `settings.json.bak`；写入是「先写 `.tmp` 再 rename」，写到一半被杀也不会把文件写坏。
+* 设置页里显示的就是已保存的原文 key —— 不打码，省得看着像没存住又重填一遍。
+* 主文件万一损坏（手动改坏、磁盘问题），启动时会自动退回 `.bak`。
+  想彻底重置配置就删掉这两个文件。
+
 ## 6. 已知限制（MVP）
 
 * 到期提醒：前台到点能弹通知；本机（vivo/OriginOS）应用一进后台就冻结进程，闹钟直接被
