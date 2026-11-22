@@ -241,6 +241,7 @@
 * **S1a 拆单文件**：`go/ui.html`（2527 行）拆成 `go/ui/`——`index.html` +
   `css/{tokens,base,components,views}.css` + `css/views/*.css`（8 个占位）+ `js/app.js`。
   拆分是**按原始行号的连续区间**，CSS 拼接后与拆分前逐字节一致，层叠顺序没变；
+  `js/app.js` 是非空行逐字节一致（1826 行，多一个空行，无行为影响）；
   这一步行为零变化，70 个内联 handler 全部照旧。
   `go/web.go` 改成 `//go:embed all:ui` + 目录静态服务：Content-Type 写死在代码里
   （Android 没有 `/etc/mime.types`，回落 `text/plain` 会让 WebView 拒绝执行脚本），
@@ -252,3 +253,25 @@
 * **教训固化**：`js/app.js` 头注释写明"加 `type=module` 会让 70 个内联 handler 静默失效"，
   `go/web_test.go` 直接断言首页不许出现 `type="module"`——这是 P12「点了没反应」那一类 bug
   的机器闸门，不靠人记得。
+* **S1a 附带：把验收链路本身修绿**。这台设备第一次真跑 `./test.sh --vd`，一次暴露出六个
+  真实环境/测试缺陷，它们与 UI 无关，但每一个都能让整条验收红掉：
+  1. `lib/config.sh`：`vendor/` 的真实位置是 `.agents/skills/dev-apk-on-android/vendor`（git 跟踪），
+     非交互 shell 里 `SKILL_DIR` 为空 → `vd.sh` 报「missing vd.jar」，--vd 从来没跑通过。
+     现在找不到就回退到 skill 目录，谁 clone 谁可用。
+  2. `vd.sh create`：旧 daemon 退出时把旧 display id 写回状态文件，create 的轮询立刻读到它，
+     拿到一个已死的 id → `am start --display` 报 SecurityException。现在用 `dumpsys display`
+     确认 id 真的存在才算创建成功。
+  3. `test.sh am_start`：root 在虚拟屏上**开新任务**会被 SafeActivityOptions 拒（ShareActivity），
+     MainActivity 只是因intent 投递给现有实例而「没事」。分享入口是 headless 的，不再带 --display。
+  4. P6.6 剪贴板用例在和前台轮询赛跑：`/api/clip/clear` 之后 app 立刻把剪贴板上那条旧文本
+     重新暂存，`count==0` 物理屏上侥幸过、--vd 上必红。现在先 `clipset ' '`（Go 侧 TrimSpace
+     后为空 → clipAdd 直接拒）再删暂存。
+  5. P11 截图用例：测试图从 PIL 生成换成 `tools/make_test_png.py`（纯标准库，这台设备装不上
+     Pillow），路径从写死主仓绝对路径改成 `$HERE`（在 worktree 里跑会污染主仓），步骤开头
+     清空 shots 暂存区（上次失败留下的图会让「合并 2 张」拿到 4 张附件），`shot_scan` 从
+     固定 sleep 6 改成轮询新日志行（固定 sleep 会拿到上一次那行 added=2，报「不幂等」假红）。
+  6. OCR 用例的 `.test/ocr-test.png` 是某台机器上手工放的文件，没进 git，新 worktree 上
+     `test.sh` 直接 die 在第 43 行。现在图进仓库，`tools/crop_png.py`（纯标准库 PNG 裁剪）
+     可随时重造；搜索用例的关键词同步从「周会」改成「取快递」（新图里没有周会）。
+  静态服务加了 `X-Content-Type-Options: nosniff`，不认识的扩展名从 octet-stream 200 改成 404
+  （`vendor/VENDOR.md` 这类给人看的文档不该被 WebView 拉走）。

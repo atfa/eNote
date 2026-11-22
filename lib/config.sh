@@ -6,6 +6,20 @@
 
 SKILL_DIR=${SKILL_DIR:-$(cd "$LIB/.." && pwd)}
 VENDOR=${VENDOR:-$SKILL_DIR/vendor}
+# vendor/ 里装的是 skill 自带的预编译件（vd/vd.jar、android.jar、r8.jar），它在仓库里的
+# 真实位置是 .agents/skills/dev-apk-on-android/vendor。非交互 shell（adb shell、CI、 Duo 的
+# worktree）里 SKILL_DIR 是空的，上面两行就把 VENDOR 指到仓库根，vd.sh 直接报
+# "missing .../vendor/vd/vd.jar - run vd-build.sh"，--vd 整套验收跑不了。
+# 找不到就回退到 skill 目录，谁 clone 谁可用。
+if [ ! -f "$VENDOR/vd/vd.jar" ]; then
+  for _cand in "$SKILL_DIR/.agents/skills/dev-apk-on-android" "$LIB/../.agents/skills/dev-apk-on-android"; do
+    if [ -f "$_cand/vendor/vd/vd.jar" ]; then
+      SKILL_DIR=$(cd "$_cand" && pwd)
+      VENDOR="$SKILL_DIR/vendor"
+      break
+    fi
+  done
+fi
 
 # --- Android platform -------------------------------------------------------------
 # PLATFORM_API is both the build api and the toolchain api: it selects

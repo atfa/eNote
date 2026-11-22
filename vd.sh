@@ -49,6 +49,11 @@ send() {   # send <op> [args...]
 
 display_id() { asroot "cat $ID 2>/dev/null" 2>/dev/null | tr -d ' \n'; }
 
+# 旧 daemon 退出时的 shutdown hook 会把旧 id 写回 $ID，create 的轮询就会拿到一个
+# 已经不存在的 display id（症状：am start --display <id> 报 Permission Denial，
+# 整条 --vd 验收在第一步就红）。用 dumpsys 确认这个 id 真的存在才算数。
+display_live() { asroot "dumpsys display" 2>/dev/null | grep -q "Display Id=$1"; }
+
 # The `[0-9]` keeps the pattern from matching the `su -c "pgrep -f ..."` wrapper itself.
 daemon_pid() { asroot "pgrep -f 'dev.apkdbg.Vd [0-9]'" 2>/dev/null | head -1 | tr -d ' \n'; }
 
@@ -78,11 +83,13 @@ create() {   # create [WxH[@dpi]]
   asroot "CLASSPATH=$JAR setsid app_process /system/bin dev.apkdbg.Vd $W $H $DPI $CMD $ID >> $LOG 2>&1 &"
 
   n=0
+  id=""
   while [ $n -lt 50 ]; do
-    [ -n "$(display_id)" ] && break
+    id=$(display_id)
+    [ -n "$id" ] && display_live "$id" && break
     sleep 0.2; n=$((n+1))
+    id=""
   done
-  id=$(display_id)
   [ -n "$id" ] || { asroot "tail -20 $LOG" ; die "daemon did not come up (see log above)"; }
   asroot "printf 'W=%s\nH=%s\nDPI=%s\nROT=0\n' $W $H $DPI > $CFG"
   say "background display: $id (${W}x${H}@${DPI})"

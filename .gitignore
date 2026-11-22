@@ -6,3 +6,5 @@ go/enotebin
 go/dev.xduo.enote
 go/ui.bundle.js
 go/lastopen.txt
+.test/shot-t*.png
+__pycache__/

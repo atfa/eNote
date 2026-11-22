@@ -607,10 +607,25 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 ### 9.3 S1a 已完成（Austin）
 
 * 拆分是**按原始行号的连续区间**（tokens 9–43 / base 44–261 / components 262–520 / views 521–578），
-  CSS 拼接后与拆分前逐字节一致；`js/app.js` 同样逐字节一致。按视图语义拆是 S2 的活。
+  CSS 拼接后与拆分前逐字节一致；`js/app.js` 非空行逐字节一致（1826 行，多一个空行）。按视图语义拆是 S2 的活。
 * 拆分前置检查：CSS 0 处 `url()`、0 处 `@import`，JS 不含 `</script`，页面引用除 `#i-*` sprite 外全是绝对路径
   ——这三条不成立的话拆完会静默坏，先验证再动手。
 * `go/web_test.go` 新增 7 组断言：首页无 `<style>`/内联 `<script>`/`type="module"`；页面引用的每个 css/js
   必须 200 且 Content-Type 正确且带 `no-store`；`/../../etc/passwd`、目录、不存在的文件必须 404；
   `contentType()` 表；vendor 的 sha256 必须等于 `VENDOR.md`；API 路由没被 `/` 吃掉。
 * `test.sh` 打印设备 WebView UA（VENDOR.md 的 ES2020 基线由此核对）。
+* **验收链路本身修绿**（这台设备第一次真跑 `./test.sh --vd`）：`lib/config.sh` 的 vendor 回退
+  （`vendor/` 在 `.agents/skills/dev-apk-on-android/`，非交互 shell 里 `SKILL_DIR` 为空）、
+  `vd.sh create` 不再拿已死的旧 display id、`am_start` 对 ShareActivity 不带 `--display`
+  （root 在虚拟屏上开新任务被 SafeActivityOptions 拒）、P6.6 不再和剪贴板轮询赛跑、
+  P11 去 PIL / 清暂存区 / `shot_scan` 改轮询、OCR fixture 进仓 + `tools/crop_png.py`。
+  详记 CHANGELOG。验收：`GO_TEST=1 ./build.sh` + `./install.sh` + `./test.sh --vd` 全绿。
+
+### 9.4 记账：本轮发现、后续步骤要收的账
+
+| 项 | 归谁 | 哪步 |
+|---|---|---|
+| 笔记卡片预览里 `.cb` 被左边缘裁一半（明暗两档都有，基线截图里就有） | Austin | S4 |
+| OCR 搜索断言只能证明「命中了」，证明不了「命中来自图片文字」（q=取快递 同时命中分享文本） | Austin | S7 前 |
+| `css/views.css` 已被 S2 删除，`go/web_test.go` 的判空豁免改成按目录（`/css/views/`）而非写死文件名 | Austin | 已做 |
+| S3 转 ES module 时，`window` 导出表要同步进 `ui_test.js` 闸门② | Austin + Tony | S3 |

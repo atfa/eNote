@@ -67,6 +67,13 @@ fi
 
 am_start() {   # am_start <component> [am extras...]   (ACTIVITY from app.env is already a component)
   comp=$1; shift
+  # ShareActivity 不带 --display：它要在目标屏上开新任务，而 root 在虚拟屏上开新任务会被
+  # SafeActivityOptions 拒掉（SecurityException: Permission Denial ... with launchDisplayId=N）。
+  # MainActivity 能“成功”是因为它已经在屏上，intent 直接投递给现有实例，没走 display 启动。
+  # 分享入口是 headless 的（处完就 finish），落哪块屏不影响断言，断言读的是 API 和日志。
+  case "$comp" in
+    *.ShareActivity) asroot "am start -n '$comp' $*" >/dev/null; return ;;
+  esac
   if [ -n "$VDID" ]; then
     asroot "am start --display $VDID -n '$comp' $*" >/dev/null
   else
@@ -388,10 +395,13 @@ import json,sys
 d = json.load(sys.stdin)
 assert d["ok"] and d["notes"] and d["scanned"] >= len(d["notes"]), d
 ' || fail "plain search returns nothing"
-api_get "search?tab=notes&q=%E5%91%A8%E4%BC%9A" | "$PY" -c '
+# q 用「取快递」：它同时出现在分享的文本里和 OCR 出来的图片文字里，
+# 所以断言"命中来自图片文字"才有意义（图片 fixture 见 .test/ocr-test.png，
+# 由 tools/crop_png.py 从 docs/shots 裁出来，换图就要同步这里的关键词）。
+api_get "search?tab=notes&q=%E5%8F%96%E5%BF%AB%E9%80%92" | "$PY" -c '
 import json,sys
 d = json.load(sys.stdin)
-assert d["ok"] and d["total"] >= 1, "q=周会 matched nothing"
+assert d["ok"] and d["total"] >= 1, "q=取快递 matched nothing"
 assert any("来自图片文字" in v for v in (d.get("where") or {}).values()), \
   "no hit came from ocr text: %r" % d.get("where")
 ' || fail "search must match ocr text and label it 来自图片文字"
@@ -550,6 +560,12 @@ step "P6.6 删光剪贴板后首页横幅立刻消失（用户反馈：返回主
 # 所以条数变了页面也不重绘。删光剪贴板是最容易复现的一条路径。
 UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+# 先把系统剪贴板清空（clipset ' ' → Go 侧 TrimSpace 后为空 → clipAdd 直接拒），再删暂存。
+# 不清的话：/api/clip/clear 之后 app 的前台轮询会立刻把剪贴板上那条旧文本重新暂存，
+# 断言 count==0 就变成和轮询赛跑（物理屏上侥幸过，--vd 上真的红）。
+# 这条用例测的是“删光后横幅立刻消失”，不是“和剪贴板轮询赛跑”。
+am_start "$ACTIVITY" "--es hook clipset --es arg ' '"
+sleep 2
 cat > "$TMPDIR/jseval.sh" <<'EOS'
 #!/bin/sh
 am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$(cat "$1")" >/dev/null
@@ -725,31 +741,43 @@ NOTES0=$(api_state | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["
 # 权限：直接用 root 授掉，跳过系统弹窗（真机上由用户点"去授权"）
 asroot_global "pm grant $APP_PACKAGE android.permission.READ_MEDIA_IMAGES" >/dev/null 2>&1 || true
 asroot_global "rm -rf $SHOTDIR; mkdir -p $SHOTDIR"
-# 造两张内容不同的图。每张都掺一个随机数：sha1 去重表会记住上次跑出来的字节，
+# 暂存区也要清：上次跑失败留下的 t1/t2 还躺在里面，「合并 2 张」会拿到 4 张附件（真红过）。
+# 这一步必须可重跑，不然每次失败都要先手动清数据。
+STALE=$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin)["shots"]]))')
+[ "$STALE" != "[]" ] && api_post shots/remove "{\"ids\": $STALE}" >/dev/null
+# 造两张内容不同的图。每张都掺一条随机噪点带：sha1 去重表会记住上次跑出来的字节，
 # 图一样的话第二次跑就「新增 0 张」，测试会假红（这个坑踩过）。
-"$PY" - <<'PYSHOT'
-import os
-from PIL import Image, ImageDraw
-for i in (1, 2):
-    im = Image.new('RGB', (360, 640), (250, 250, 252))
-    d = ImageDraw.Draw(im)
-    d.rectangle([20, 20, 340, 120], fill=(47, 107, 255))
-    d.text((40, 60), 'ENOTE TEST SHOT %d' % i, fill=(255, 255, 255))
-    d.text((40, 200), '3月15日 下午三点 产品评审', fill=(30, 40, 60))
-    d.text((40, 240), '记得带原型和报价单', fill=(30, 40, 60))
-    d.text((40, 300), os.urandom(12).hex(), fill=(120, 130, 150))
-    im.save('/data/data/com.termux/files/home/eNote/.test/shot-t%d.png' % i)
-PYSHOT
+# 用 tools/make_test_png.py 而不是 PIL：这台设备装不上 Pillow，原来整条用例会
+# ModuleNotFoundError 红在最后一步。路径用 $HERE，以前写死主仓绝对路径，
+# 在 worktree 里跑会把图写到主仓去。
 for i in 1 2; do
-  asroot_global "cp /data/data/com.termux/files/home/eNote/.test/shot-t$i.png $SHOTDIR/t$i.png"
+  "$PY" "$HERE/tools/make_test_png.py" "$HERE/.test/shot-t$i.png" 360 640 \
+    || fail "cannot generate the test shot"
+done
+for i in 1 2; do
+  asroot_global "cp '$HERE/.test/shot-t$i.png' $SHOTDIR/t$i.png"
   asroot_global "am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://$SHOTDIR/t$i.png" >/dev/null 2>&1
 done
 sleep 3
 
 shot_scan() {  # shot_scan <rangeDays>
+  # 以前是固定 sleep 6 再 grep。第二次扫（幂等那条）的日志行没在 6s 内落盘时，
+  # tail -1 拿到的是第一次那行 added=2，测试就报「不幂等」——假红。
+  # 现在轮询等新的 shotscan 行（最多 40s），超时也把它打出来，让断言去报错。
+  SHOT_BEFORE=$(newtlog | grep -c 'hook shotscan')
   am_start "$ACTIVITY" "--es hook shotscan --es arg '{\"folders\":[\"Pictures/enote-test\"],\"rangeDays\":$1}'"
-  sleep 6
-  newtlog | grep 'hook shotscan' | tail -1
+  SHOT_N=0
+  while [ "$SHOT_N" -lt 40 ]; do
+    SHOT_OUT=$(newtlog | grep 'hook shotscan' | tail -1)
+    if [ "$(newtlog | grep -c 'hook shotscan')" -gt "$SHOT_BEFORE" ]; then
+      printf '%s\n' "$SHOT_OUT"
+      return 0
+    fi
+    sleep 1
+    SHOT_N=$((SHOT_N + 1))
+  done
+  printf '%s\n' "$SHOT_OUT"
+  return 1
 }
 
 # 1) 第一次扫：两张都该进暂存区

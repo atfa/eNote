@@ -126,18 +126,28 @@ func handleUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
+	// 类型写死了还要防一手：WebView 会探内容，nosniff 让它严格听 Content-Type。
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 
+	ct := contentType(name)
+	if ct == "" {
+		// 不认识的扩展名直接 404，不是 octet-stream 200：vendor/VENDOR.md 这类
+		// 给人看的文档没必要被 WebView 拉走，而 octet-stream 让客户端去猜类型。
+		http.NotFound(w, r)
+		return
+	}
 	b, err := uiFS.ReadFile("ui/" + name)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", contentType(name))
+	w.Header().Set("Content-Type", ct)
 	w.Write(b)
 }
 
 // contentType 只列出本项目会用到的类型：Go 的 mime.TypeByExtension 依赖系统 /etc/mime.types，
 // Android 上没有，会一律回落到 text/plain，WebView 就会拒绝执行脚本和样式表。
+// 返回空串 = 不服务这个扩展名（handleUI 会 404）。
 func contentType(name string) string {
 	ext := strings.ToLower(path.Ext(name))
 	switch ext {
@@ -162,7 +172,7 @@ func contentType(name string) string {
 	case ".map":
 		return "application/json; charset=utf-8"
 	}
-	return "application/octet-stream"
+	return ""
 }
 
 func jsonOut(w http.ResponseWriter, v any) {

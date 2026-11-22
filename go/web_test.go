@@ -90,7 +90,12 @@ func TestUIAssetsResolve(t *testing.T) {
 		if cc := r.Header.Get("Cache-Control"); !strings.Contains(cc, "no-store") {
 			t.Errorf("GET %s 没有 no-store：升级后会是新页面配旧脚本", path)
 		}
-		if len(uiBody(t, r)) == 0 && path != "/css/views.css" {
+		if sn := r.Header.Get("X-Content-Type-Options"); sn != "nosniff" {
+			t.Errorf("GET %s 没有 nosniff：WebView 会探内容，类型写死了也要拦住", path)
+		}
+		// 空文件：css/views/ 下的占位是合法的（S2 才填规则），其余引用到空文件就是坏了。
+		// 不写死文件名：views.css 在 S2 被拆成 views/*.css，写死的名字下次就失效。
+		if len(uiBody(t, r)) == 0 && !strings.Contains(path, "/css/views/") {
 			t.Errorf("GET %s 是空文件", path)
 		}
 		r.Body.Close()
@@ -110,10 +115,10 @@ func TestViewPlaceholdersExist(t *testing.T) {
 }
 
 func TestUIPathTraversalAndMisses(t *testing.T) {
-	for _, p := range []string{"/../../etc/passwd", "/../go.mod", "/css", "/js", "/vendor", "/nope.css", "/css/nope.css", "/favicon.ico"} {
+	for _, p := range []string{"/../../etc/passwd", "/../go.mod", "/css", "/js", "/vendor", "/nope.css", "/css/nope.css", "/favicon.ico", "/vendor/VENDOR.md"} {
 		r := doUI(t, p)
 		if r.StatusCode != http.StatusNotFound {
-			t.Errorf("GET %s = %d，期望 404（目录不能当文件读，.. 不能跳出 ui/）", p, r.StatusCode)
+			t.Errorf("GET %s = %d，期望 404（目录不能当文件读，.. 不能跳出 ui/，不服务的扩展名不许变 octet-stream 200）", p, r.StatusCode)
 		}
 		r.Body.Close()
 	}
@@ -129,7 +134,8 @@ func TestContentTypeMap(t *testing.T) {
 		"a.svg":     "image/svg+xml",
 		"a.png":     "image/png",
 		"a.map":     "application/json; charset=utf-8",
-		"a.weird":   "application/octet-stream",
+		"a.weird":   "",   // 空串 = 不服务，handleUI 会 404
+		"a.md":      "",
 		"a.CSS":     "text/css; charset=utf-8",
 	}
 	for name, ct := range want {
