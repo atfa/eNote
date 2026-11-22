@@ -517,3 +517,9 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * **新增 `hook jseval`（需 `files/enote/.devmode`）**：直接往 WebView 里注入 JS，结果用
   `console.log('JSEVAL …')` 落到 `files/testlog.txt`。虚拟显示的 `input tap` 太不稳，
   界面断言从此脚本化；`test.sh` 的 P11 文件夹页那一段就是这么断言的（sticky、计数、排序、返回刷新）。
+* **缩略图 404 事故（用户反馈）**：`ShotStore.remove` 直接 `os.Remove` 暂存文件，而导入后
+  UI 会立刻清理暂存 —— 删掉的正是刚变成附件的那几张图，笔记首页缩略图全 404。
+  现在 `ShotStore.keepFn` 由 `appInit` 注入（笔记引用集合），remove/ignore/裁剪都走
+  `dropUnlessKept`；`test.sh` 补了「清理暂存后 missing=0 且 /img 返回 200」的断言。
+  教训：测试只数"附件条目数"是不够的，必须验证文件真的在盘上、真的能取到字节。
+* **只有一张截图时只留「创建笔记」一个按钮**（用户反馈：合并/各存是一回事，两个按钮让人犹豫）。

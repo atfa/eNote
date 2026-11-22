@@ -163,7 +163,9 @@ const stats = /api\/stats/.test(src) && /function statsNow\(\)/.test(src)
 console.log((stats ? '  ok   ' : '  FAIL ') + '我的页统计来自 /api/stats，近 7 天为纯 CSS 柱状图');
 if (!stats) bad++;
 const go = fs.readFileSync(path.join(root, 'go/stats.go'), 'utf8');
-const goweb = fs.readFileSync(path.join(root, 'go/web.go'), 'utf8');
+const goweb = fs.readFileSync(path.join(root, 'go/web.go'), 'utf8')
+  + fs.readFileSync(path.join(root, 'go/shots.go'), 'utf8');
+const gopipe = fs.readFileSync(path.join(root, 'go/pipeline.go'), 'utf8');
 const goRoutes = /m\.HandleFunc\("\/api\/stats", handleStats\)/.test(fs.readFileSync(path.join(root, 'go/web.go'), 'utf8'))
   && /func stats\(\) statsRes/.test(go) && /func handleImport/.test(fs.readFileSync(path.join(root, 'go/backup.go'), 'utf8'));
 console.log((goRoutes ? '  ok   ' : '  FAIL ') + 'Go 侧 /api/stats + /api/import + /api/clear 已注册');
@@ -519,5 +521,21 @@ const afterSave = /paneDirty\[tab\] = 1/.test(saveBody)
   && /shotFlags\(function\(\)\{/.test(saveBody);
 console.log((afterSave ? '  ok   ' : '  FAIL ') + '选完文件夹回到我的页立刻刷新统计');
 if (!afterSave) bad++;
+
+// 只有一张截图时不该摆两个等价按钮（用户反馈）：一张只留「创建笔记」
+const oneBtn = /function syncShotBtns\(n\)/.test(src)
+  && /one \? '创建笔记' : '合并成一条笔记'/.test(src)
+  && /id="shotSplit"/.test(src) && /id="shotRaw"/.test(src)
+  && /sp\.style\.display = one \? 'none' : ''/.test(src);
+console.log((oneBtn ? '  ok   ' : '  FAIL ') + '只选一张时只显示「创建笔记」一个按钮');
+if (!oneBtn) bad++;
+
+// 清理暂存不能删掉笔记正在用的文件（缩略图 404 的根因）
+const keepGuard = /func \(s \*ShotStore\) dropUnlessKept/.test(goweb)
+  && /keepFn func\(\) map\[string\]bool/.test(goweb)
+  && /shotStore\.setKeep\(func\(\) map\[string\]bool/.test(gopipe)
+  && /dropUnlessKept\(keep, x\.Path\)/.test(goweb);
+console.log((keepGuard ? '  ok   ' : '  FAIL ') + '清理/忽略/裁剪暂存时不删笔记在用的文件');
+if (!keepGuard) bad++;
 
 process.exit(bad ? 1 : 0);

@@ -235,3 +235,48 @@ func TestShotStoreReopenDropsMissing(t *testing.T) {
 		t.Fatalf("丢失文件的条目该被丢掉, got %+v", got)
 	}
 }
+
+// 导入成笔记之后清理暂存，绝不能把笔记正在用的文件删掉。
+// 踩过：导入成功 → UI 调 /api/shots/remove → 文件没了 → 笔记首页缩略图 404。
+func TestShotRemoveKeepsNoteFiles(t *testing.T) {
+	s, shots := newShotFixture(t, 2)
+	if n, _, _ := s.add(shots); n != 2 {
+		t.Fatalf("add: %d", n)
+	}
+	stored := s.snapshot()
+	taken := stored[0].Path // 第一张已经被笔记接管
+	other := stored[1].Path
+	s.setKeep(func() map[string]bool { return map[string]bool{taken: true} })
+
+	if n := s.remove([]string{stored[0].ID, stored[1].ID}); n != 2 {
+		t.Fatalf("两条记录都该从暂存区移除, got %d", n)
+	}
+	if _, err := os.Stat(taken); err != nil {
+		t.Fatalf("被笔记引用的文件不该被删: %v", err)
+	}
+	if _, err := os.Stat(other); !os.IsNotExist(err) {
+		t.Fatalf("没人引用的文件该删掉, err=%v", err)
+	}
+	if len(s.Shots) != 0 {
+		t.Fatalf("暂存区该空了, got %d", len(s.Shots))
+	}
+}
+
+// ignore 和上限裁剪也一样：笔记在用就不能删。
+func TestShotIgnoreAndCapKeepNoteFiles(t *testing.T) {
+	s, shots := newShotFixture(t, 3)
+	if n, _, _ := s.add(shots); n != 3 {
+		t.Fatalf("add: %d", n)
+	}
+	first := s.snapshot()[0]
+	s.setKeep(func() map[string]bool {
+		return map[string]bool{first.Path: true}
+	})
+	s.ignore([]string{first.ID})
+	if _, err := os.Stat(first.Path); err != nil {
+		t.Fatalf("ignore 不该删被引用的文件: %v", err)
+	}
+	if !s.isIgnored(first.Name, first.Size) {
+		t.Fatalf("ignored 表里该有它")
+	}
+}

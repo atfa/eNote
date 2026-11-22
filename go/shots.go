@@ -37,6 +37,34 @@ type ShotStore struct {
 	// Ignored 是"永远别再提醒"的表，键是 name|size（没有 sha1 时够用，改了名换了大小
 	// 就当新图处理 —— 宁可多问一次，也不要漏掉用户真的想收的图）。
 	Ignored []string `json:"ignored,omitempty"`
+
+	// keepFn 报告"这些文件已经归笔记所有了"：暂存区可以丢记录，但绝不能删文件。
+	// P11 上线后真实踩到过：导入成功后 UI 顺手清理暂存，把刚变成附件的那几张图一起删了，
+	// 结果笔记首页的缩略图全是 404（文件没了，记录还指着它）。
+	keepFn func() map[string]bool
+}
+
+// setKeep 由 appInit 注入：返回所有被笔记引用的文件路径。
+func (s *ShotStore) setKeep(fn func() map[string]bool) { s.keepFn = fn }
+
+// dropUnlessKept 只在没有笔记引用时删文件。
+func (s *ShotStore) dropUnlessKept(keep map[string]bool, p string) {
+	if p == "" {
+		return
+	}
+	if keep[p] {
+		logf("shot: 保留 %s（已有笔记在用）", filepath.Base(p))
+		return
+	}
+	_ = os.Remove(p)
+}
+
+// referenced 取一次"被笔记引用的路径"快照（在拿 s.mu 之前调用，避免锁顺序问题）。
+func (s *ShotStore) referenced() map[string]bool {
+	if s.keepFn == nil {
+		return nil
+	}
+	return s.keepFn()
 }
 
 var shotStore *ShotStore
@@ -175,9 +203,10 @@ func (s *ShotStore) add(shots []Shot) (int, []string, []string) {
 	}
 	// 硬上限：丢最老的（连文件一起删，否则暂存只剩 record 没有实际意义）
 	if len(s.Shots) > shotKeepMax {
+		keep := s.referenced()
 		s.sortNewest()
 		for _, old := range s.Shots[shotKeepMax:] {
-			_ = os.Remove(old.Path)
+			s.dropUnlessKept(keep, old.Path)
 			logf("shot add: 超过上限，丢掉最老的 %s", old.Name)
 		}
 		s.Shots = s.Shots[:shotKeepMax]
@@ -204,13 +233,14 @@ func (s *ShotStore) remove(ids []string) int {
 	for _, id := range ids {
 		want[id] = true
 	}
+	keep := s.referenced()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	kept := make([]*Shot, 0, len(s.Shots))
 	n := 0
 	for _, x := range s.Shots {
 		if want[x.ID] {
-			_ = os.Remove(x.Path)
+			s.dropUnlessKept(keep, x.Path)
 			n++
 			continue
 		}
@@ -229,6 +259,7 @@ func (s *ShotStore) ignore(ids []string) int {
 	for _, id := range ids {
 		want[id] = true
 	}
+	keep := s.referenced()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	kept := make([]*Shot, 0, len(s.Shots))
@@ -242,7 +273,7 @@ func (s *ShotStore) ignore(ids []string) int {
 			if len(s.Ignored) > shotIgnoreMax {
 				s.Ignored = s.Ignored[len(s.Ignored)-shotIgnoreMax:]
 			}
-			_ = os.Remove(x.Path)
+			s.dropUnlessKept(keep, x.Path)
 			n++
 			continue
 		}

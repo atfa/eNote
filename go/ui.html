@@ -1036,9 +1036,9 @@ function shotSheet(){
     + '<div class="pfoot" style="display:block">'
     + '<div class="count" id="shotFoot" style="margin-bottom:8px">已选 0 张</div>'
     + '<div style="display:flex;gap:8px">'
-    + '<button class="btn pri" style="flex:1.6" onclick="doImportShots(\'merge\')">合并成一条笔记</button>'
-    + '<button class="btn" style="flex:1" onclick="doImportShots(\'split\')">各存一条</button>'
-    + '<button class="btn" style="flex:1" onclick="doImportShots(\'raw\')">原样存</button>'
+    + '<button class="btn pri" id="shotGo" style="flex:1.6" onclick="doImportShots(\'merge\')">合并成一条笔记</button>'
+    + '<button class="btn" id="shotSplit" style="flex:1" onclick="doImportShots(\'split\')">各存一条</button>'
+    + '<button class="btn" id="shotRaw" style="flex:1" onclick="doImportShots(\'raw\')">原样存</button>'
     + '</div></div>');
   loadShots();
 }
@@ -1094,6 +1094,20 @@ function shotCountLabel(){
   shotList.forEach(function(x){ if(shotSel[x.id]) n++ });
   var el = $('#shotFoot') || $('#shotCount');
   if(el) el.innerHTML = '<b>' + n + '</b> 张已选 · 共 ' + total + ' 张';
+  syncShotBtns(n);
+}
+/**
+ * 只有一张的时候「合并成一条」和「各存一条」是同一件事，摆两个按钮只会让人犹豫
+ * （用户反馈）—— 一张就只留「创建笔记」，两张以上才出现合并/各存/原样三个选择。
+ */
+function syncShotBtns(n){
+  var go = $('#shotGo'), sp = $('#shotSplit'), rw = $('#shotRaw');
+  if(!go) return;
+  var one = n <= 1;
+  go.textContent = one ? '创建笔记' : '合并成一条笔记';
+  go.style.flex = one ? '1' : '1.6';
+  if(sp) sp.style.display = one ? 'none' : '';
+  if(rw) rw.style.display = one ? 'none' : '';
 }
 function shotPicked(){
   return shotList.filter(function(x){ return !!shotSel[x.id] });

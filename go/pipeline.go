@@ -317,6 +317,21 @@ func appInit(dir string) map[string]any {
 	if shotStore, err = openShotStore(dir + "/enote"); err != nil {
 		return map[string]any{"ok": false, "error": "shot store: " + err.Error()}
 	}
+	// 笔记已经引用的文件不归暂存区管：导入成功后清理暂存时不能把附件删掉
+	shotStore.setKeep(func() map[string]bool {
+		keep := map[string]bool{}
+		for _, n := range store.snapshot() {
+			if n.ImagePath != "" {
+				keep[n.ImagePath] = true
+			}
+			for _, a := range n.Attachments {
+				if a.Path != "" {
+					keep[a.Path] = true
+				}
+			}
+		}
+		return keep
+	})
 	startWorker()
 	bootStats = map[string]any{"ok": true, "dir": dir, "notes": len(store.snapshot()),
 		"go": goVersion()}

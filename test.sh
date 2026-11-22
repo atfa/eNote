@@ -546,6 +546,12 @@ print(json.dumps({"mode":"merge","raw":True,
                   "shots":[{"path":x["path"],"name":x["name"],"mime":"image/png"}
                            for x in d["shots"] if x["name"] in ("t1.png","t2.png")]}))
 ')
+# 2b 会把暂存清空，所以这里先把"要用的那两张"记下来给第 3 步复用
+printf '%s' "$SHOTS" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+print(json.dumps(d["shots"], ensure_ascii=False))
+' > "$TMPDIR/shots2.json" 
 am_start "$ACTIVITY" "--es hook shotimport --es arg '$SHOTS'"
 sleep 8
 newtlog | grep 'hook shotimport' | tail -1 | grep -q '"notes":1' || fail "合并导入没有生成 1 条笔记"
@@ -559,14 +565,31 @@ assert len(n.get("attachments") or []) == 2, "合并笔记该有 2 个附件: %s
 print("  ok (合并成 1 条笔记，%d 个附件，标题 %r)" % (len(n["attachments"]), n["title"][:24]))
 ' || fail "合并导入的附件数不对"
 
-# 3) 各存一条：2 条笔记各 1 个附件
-SHOTS=$(api_get shots/list | "$PY" -c '
+# 2b) 导入完成后界面会清理暂存（/api/shots/remove）——清理绝不能把刚变成附件的文件删掉，
+#     否则笔记首页的缩略图全 404（这个 bug 真发生过：文件没了，记录还指着它）
+IDS=$(api_get shots/list | "$PY" -c '
 import json,sys
 d = json.load(sys.stdin)
-print(json.dumps({"mode":"split","raw":True,
-                  "shots":[{"path":x["path"],"name":x["name"],"mime":"image/png"}
-                           for x in d["shots"] if x["name"] in ("t1.png","t2.png")]}))
+print(json.dumps([x["id"] for x in d["shots"] if x["name"] in ("t1.png","t2.png")]))
 ')
+api_post shots/remove "{\"ids\": $IDS}" | grep -q '"ok":true' || fail "清理暂存失败"
+api_get attachments | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d.get("missing", 0) == 0, "清理暂存把笔记在用的文件删了（缩略图会 404）: %s" % d
+print("  ok (清理暂存后 %d 个附件文件都还在盘上)" % d["files"])
+' || fail "清理暂存后附件文件不见了"
+SID=$(api_get state | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+print([n["id"] for n in d["notes"] if n.get("source") == "shot-merge"][0])
+')
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 10 --noproxy '*' "http://127.0.0.1:$PORT/img?id=$SID")
+[ "$CODE" = "200" ] || fail "笔记首页的缩略图取不到（/img 返回 $CODE）"
+say "  ok (缩略图 /img 能取到字节)"
+
+# 3) 各存一条：2 条笔记各 1 个附件
+SHOTS=$(printf '{"mode":"split","raw":true,"shots":%s}' "$(cat "$TMPDIR/shots2.json")")
 am_start "$ACTIVITY" "--es hook shotimport --es arg '$SHOTS'"
 sleep 10
 newtlog | grep 'hook shotimport' | tail -1 | grep -q '"notes":2' || fail "各存一条没有生成 2 条笔记"
@@ -702,6 +725,48 @@ assert int(re.search(r"(\d+)", mine).group(1)) == n2, "我的页数量该跟选�
 print("  ok (固定条 sticky、计数 %d→%d 实时、已选在前、返回后我的页同步为 %d)" % (n0, n1, n2))
 PYCHK
 asroot_global "rm -f '$DATA/enote/.devmode'"
+
+step "P11 只有一张截图时只留一个按钮（用户反馈：两个等价按钮只会让人犹豫）"
+asroot_global "rm -f '$EXT/one-shot.png'; cp '$IMG' '$EXT/one-shot.png'; chown '$UI_APP:$UI_APP' '$EXT/one-shot.png'; chmod 644 '$EXT/one-shot.png'"
+api_post shots/add "{\"shots\":[{\"path\":\"$EXT/one-shot.png\",\"name\":\"one-shot.png\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)}]}" \
+  | grep -q '"added":1' || fail "造一张暂存截图失败"
+UI_APP=$(asroot "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+NT=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(function(){
+  var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
+  tab="notes"; render(); shotSheet();
+  setTimeout(function(){
+    shotSel={};
+    L("n1_go="+(q("#shotGo")?q("#shotGo").textContent:"?"));
+    L("n1_split="+(q("#shotSplit")?getComputedStyle(q("#shotSplit")).display:"?"));
+    L("n1_raw="+(q("#shotRaw")?getComputedStyle(q("#shotRaw")).display:"?"));
+    shotPick(shotList[0].id);
+    L("n2_go="+(q("#shotGo")?q("#shotGo").textContent:"?"));
+    L("done=1");
+  }, 1200);
+})()' > "$TMPDIR/js.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/js.json'"
+n=0
+while [ "$n" -lt 20 ]; do
+  readtlog | tail -n +$((NT + 1)) | grep -q 'JSEVAL done=1' && break
+  sleep 1; n=$((n + 1))
+done
+readtlog | tail -n +$((NT + 1)) | grep 'JSEVAL ' > "$TMPDIR/one.out"
+"$PY" - "$TMPDIR/one.out" <<'PYONE' || fail "只有一张截图时的按钮没收敛成一个"
+import re, sys
+txt = open(sys.argv[1], encoding="utf-8").read()
+def val(k):
+    m = re.search(r"JSEVAL " + k + r"=(.*)", txt)
+    return m.group(1).strip() if m else ""
+assert val("done") == "1", "jseval 没跑完"
+assert val("n1_go") == "创建笔记", "一张时主按钮文案该是「创建笔记」, got %r" % val("n1_go")
+assert val("n1_split") == "none", "一张时不该出现「各存一条」"
+assert val("n1_raw") == "none", "一张时不该出现「原样存」"
+print("  ok (一张只有「创建笔记」，勾选后文案不变)")
+PYONE
+api_post shots/remove "{\"ids\":$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin)["shots"] if x["name"]=="one-shot.png"]))')}" >/dev/null
+asroot_global "rm -f '$EXT/one-shot.png' '$DATA/enote/.devmode'"
 
 step "前端没有运行时报错（未声明的变量会把点击静默吞掉）"
 if newtlog | grep -q 'SELFCHECK FAIL'; then
