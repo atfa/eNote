@@ -23,7 +23,7 @@ a{color:var(--acc)}
   display:flex;align-items:center;gap:8px}
 .sec:after{content:"";flex:1;height:1px;background:var(--line)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
-  padding:13px 14px;margin:10px 0;box-shadow:var(--sh)}
+  padding:13px 14px;margin:var(--s2) 0;box-shadow:var(--sh)}
 .row{display:flex;align-items:center;gap:8px}
 .between{justify-content:space-between}
 .t{font-size:16.5px;font-weight:700;margin:0 0 5px;letter-spacing:-.2px;line-height:1.35}
@@ -56,15 +56,15 @@ a{color:var(--acc)}
 .hit.img{background:var(--acc2-s);color:var(--acc2);border-color:var(--acc2)}
 @keyframes hitin{from{opacity:0;transform:translateY(-4px) scale(.9)}to{opacity:1;transform:none}}
 /* 附件网格（R4）：图片给缩略图，其他文件给类型图标 */
-.agrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
+.agrid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--s2);margin-top:var(--s2)}
 .acard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px;
   box-shadow:var(--sh);display:flex;flex-direction:column;gap:5px;cursor:pointer;
   transition:transform var(--d1) var(--ease)}
 .acard:active{transform:scale(.97)}
 .acard.gone{opacity:.62}
-.athumb{width:100%;height:96px;object-fit:contain;border-radius:10px;background:var(--card2)}
+.athumb{width:100%;height:96px;object-fit:contain;border-radius:var(--r1);background:var(--card2)}
 .aglyph{height:96px;display:flex;align-items:center;justify-content:center;font-size:38px;
-  border-radius:10px;background:var(--card2)}
+  border-radius:var(--r1);background:var(--card2)}
 .aname{font-size:12.5px;font-weight:600;word-break:break-all;line-height:1.35}
 .ameta{font-size:10.5px;color:var(--dim2)}
 .anote{font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -74,8 +74,8 @@ a{color:var(--acc)}
 /* 错误提示框：类名不能叫 .err，否则和 .chip.err（「重要」小标签）撞车，
    小标签会被套上 12px 字号 + 7px 内边距，比旁边的时间标签大一圈 */
 .errbox{margin-top:8px;font-size:12px;color:var(--bad);background:var(--bad-s);
-  border:1px solid var(--bad);border-radius:10px;padding:7px 9px}
-.todo{display:flex;align-items:flex-start;gap:10px;padding:9px 2px 9px 8px;border-top:1px solid var(--line);
+  border:1px solid var(--bad);border-radius:var(--r1);padding:7px 9px}
+.todo{display:flex;align-items:flex-start;gap:var(--s2);padding:9px 2px 9px 8px;border-top:1px solid var(--line);
   border-left:3px solid transparent;
   max-height:260px;overflow:hidden;
   transition:opacity var(--d3) var(--ease),transform var(--d3) var(--ease),
@@ -132,10 +132,10 @@ a{color:var(--acc)}
 .cd.done{color:var(--dim2);font-weight:500;opacity:.8}
 /* 关键信息（R12）：六问提取出来的事实，问题做 label、答案做正文 */
 .facts{margin:8px 0 2px;border:1px solid var(--line);border-radius:11px;background:var(--card2);overflow:hidden}
-.facts .fh{font-size:11px;font-weight:700;color:var(--dim);letter-spacing:1px;padding:7px 10px 5px;
+.facts .fh{font-size:11px;font-weight:700;color:var(--dim);letter-spacing:1px;padding:7px var(--s2) 5px;
   border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px}
 .facts .fh .ic{width:13px;height:13px;color:var(--acc)}
-.facts .fr{display:flex;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);align-items:baseline}
+.facts .fr{display:flex;gap:8px;padding:6px var(--s2);border-bottom:1px solid var(--line);align-items:baseline}
 .facts .fr:last-child{border-bottom:0}
 .facts .fq{flex:0 0 62px;font-size:11px;color:var(--acc);font-weight:600}
 .facts .fa{flex:1;font-size:12.5px;color:var(--fg);word-break:break-word}
@@ -158,9 +158,9 @@ a{color:var(--acc)}
 .remind:active{transform:scale(.94)}
 .thumb{width:100%;max-height:230px;object-fit:contain;border-radius:12px;margin-top:8px;
   border:1px solid var(--line);background:var(--thumb-bg)}
-.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--s2)}
 .btn{border:1px solid var(--line);background:var(--card2);color:var(--fg);
-  border-radius:10px;padding:7px 12px;font-size:13px;font-weight:600;
+  border-radius:var(--r1);padding:7px 12px;font-size:13px;font-weight:600;
   display:inline-flex;align-items:center;justify-content:center;gap:5px;text-align:center;
   white-space:nowrap;
   transition:transform var(--d1) var(--ease),opacity var(--d1) var(--ease)}
@@ -171,13 +171,13 @@ a{color:var(--acc)}
 .btn.dg{color:var(--bad);border-color:var(--bad)}
 .btn.sm{padding:4px 9px;font-size:12px}
 input,textarea,select{width:100%;background:var(--card2);border:1px solid var(--line);
-  border-radius:11px;color:var(--fg);padding:10px 12px;font-size:15px;font-family:inherit}
+  border-radius:11px;color:var(--fg);padding:var(--s2) 12px;font-size:15px;font-family:inherit}
 textarea{min-height:110px;resize:vertical}
 label{display:block;font-size:11px;color:var(--dim);margin:12px 0 5px;font-weight:600;letter-spacing:.5px}
 /* 输入框下面的一行说明（比如"key 明文存在本机"） */
 .fhint{font-size:10.5px;color:var(--dim2);margin-top:5px;line-height:1.45}
 .empty{text-align:center;color:var(--dim2);padding:56px 20px;font-size:14px}
-.empty div{font-size:44px;margin-bottom:10px;opacity:.6}
+.empty div{font-size:44px;margin-bottom:var(--s2);opacity:.6}
 .sheet{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);display:none;
   align-items:flex-end;justify-content:center}
 .sheet.on{display:flex}
@@ -195,14 +195,14 @@ label{display:block;font-size:11px;color:var(--dim);margin:12px 0 5px;font-weigh
 @keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
 .grip{width:38px;height:4px;border-radius:2px;background:var(--grip);margin:0 auto 12px}
 h2{font-size:17px;margin:0 0 4px}
-.kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.kv{display:flex;justify-content:space-between;gap:var(--s2);padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
 .kv span:first-child{color:var(--dim)}
 .kv span:last-child{text-align:right;word-break:break-all;color:var(--acc)}
-pre{background:var(--pre-bg);border:1px solid var(--line);border-radius:10px;padding:10px;
+pre{background:var(--pre-bg);border:1px solid var(--line);border-radius:var(--r1);padding:var(--s2);
   font-size:11px;overflow:auto;max-height:260px;color:var(--pre-fg);white-space:pre-wrap;word-break:break-word}
 #toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(6px);
   display:flex;align-items:center;gap:7px;
-  background:var(--toast-bg);color:var(--toast-fg);padding:10px 16px;border-radius:999px;font-size:13px;font-weight:500;
+  background:var(--toast-bg);color:var(--toast-fg);padding:var(--s2) 16px;border-radius:999px;font-size:13px;font-weight:500;
   box-shadow:0 8px 28px rgba(12,22,40,.26);opacity:0;
   transition:opacity var(--d2) var(--ease),transform var(--d2) var(--spring);
   pointer-events:none;z-index:60;max-width:86vw}

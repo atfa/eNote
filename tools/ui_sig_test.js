@@ -406,8 +406,10 @@ const panes = /var panes = \{\}, paneBuilt = \{\}/.test(src)
 console.log((panes ? '  ok   ' : '  FAIL ') + '切页复用面板 + 恢复各自的滚动位置');
 if (!panes) bad++;
 
-// 附件页统计行到列表的留白跟笔记页一致（.card margin-top 10px）
-const fileGap = /\.agrid\{display:grid;[^}]*margin-top:10px\}/.test(src);
+// 附件页统计行到列表的留白跟笔记页一致（.agrid margin-top）。
+// S2 密度把 10px 换成 var(--s2)=8px，断言要的是「两页留白一致」，不是那个字面 px，
+// 所以两个都接受；具体数值由 tools/ui_test.js 的刻度棘轮守。
+const fileGap = /\.agrid\{display:grid;[^}]*margin-top:(10px|var\(--s2\))\}/.test(src);
 console.log((fileGap ? '  ok   ' : '  FAIL ') + '附件页统计行到列表的留白和笔记页一致');
 if (!fileGap) bad++;
 

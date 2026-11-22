@@ -8,7 +8,7 @@
 
 /* --- 顶栏（笔记/待办/附件 共用，R3/R6）--- */
 .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;
-  padding:calc(8px + env(safe-area-inset-top)) 10px 8px;
+  padding:calc(8px + env(safe-area-inset-top)) var(--s2) 8px;
   background:var(--header-bg);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
 .iconbtn{flex:0 0 38px;height:38px;padding:0;border-radius:12px;border:1px solid var(--line);background:var(--card);
   display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--fg);position:relative;
@@ -20,7 +20,7 @@
 .iconbtn .dot{position:absolute;right:5px;top:5px;width:7px;height:7px;border-radius:50%;background:var(--ok)}
 .iconbtn .dot.bad{background:var(--bad)}
 .iconbtn .ic{width:17px;height:17px}
-.search{flex:1;display:flex;align-items:center;gap:6px;height:38px;padding:0 10px;
+.search{flex:1;display:flex;align-items:center;gap:6px;height:38px;padding:0 var(--s2);
   background:var(--card);border:1px solid var(--line);border-radius:19px;box-shadow:var(--sh);
   transition:border-color var(--d1) var(--ease),box-shadow var(--d1) var(--ease)}
 .search:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-s)}
@@ -32,7 +32,7 @@
 .search.has .sclr{display:flex}
 
 /* --- 页内小统计条 --- */
-.strip{display:flex;align-items:center;gap:8px;margin:10px 2px 0;padding:9px 12px;border-radius:12px;
+.strip{display:flex;align-items:center;gap:8px;margin:var(--s2) 2px 0;padding:9px 12px;border-radius:12px;
   background:var(--card);border:1px solid var(--line);font-size:12px;color:var(--dim);box-shadow:var(--sh)}
 .strip b{color:var(--acc2)}.strip i{color:var(--bad);font-style:normal}
 .strip .sp{flex:1}
@@ -54,14 +54,14 @@
 .metrics .m.wide.ok{color:var(--ok)}
 
 /* --- 剪贴板暂存（R7/P6）--- */
-.clipbanner{display:flex;align-items:center;gap:10px;margin:10px 2px 0;padding:11px 12px;border-radius:12px;
+.clipbanner{display:flex;align-items:center;gap:var(--s2);margin:var(--s2) 2px 0;padding:11px 12px;border-radius:12px;
   background:linear-gradient(135deg,var(--acc-s),var(--card));border:1px solid var(--acc);
   font-size:13px;color:var(--fg);box-shadow:var(--sh);cursor:pointer}
 .clipbanner b{color:var(--acc)}
 .clipbanner .cbsub{font-size:11px;color:var(--dim)}
 .clipbanner .cbar{color:var(--acc);font-size:12px;white-space:nowrap}
 /* 错过的提醒：后台被冻结时唯一能补救的东西，用 warn 色区分于「剪贴板」横幅 */
-.missed{display:flex;align-items:flex-start;gap:10px;margin:10px 2px 0;padding:11px 12px;border-radius:12px;
+.missed{display:flex;align-items:flex-start;gap:var(--s2);margin:var(--s2) 2px 0;padding:11px 12px;border-radius:12px;
   background:linear-gradient(135deg,var(--warn-s),var(--card));border:1px solid var(--warn);
   font-size:13px;color:var(--fg);box-shadow:var(--sh);cursor:pointer}
 .missed .mi{color:var(--warn);display:flex;margin-top:2px}
@@ -69,7 +69,7 @@
 .missed .cbsub{font-size:11px;color:var(--dim)}
 .missed .cbar{color:var(--warn);font-size:12px;white-space:nowrap}
 /* 截图捕获（P11）：青色系，跟「剪贴板」蓝、「错过提醒」黄区分开 */
-.shotbanner{display:flex;align-items:center;gap:10px;margin:10px 2px 0;padding:11px 12px;border-radius:12px;
+.shotbanner{display:flex;align-items:center;gap:var(--s2);margin:var(--s2) 2px 0;padding:11px 12px;border-radius:12px;
   background:linear-gradient(135deg,var(--teal-s,var(--acc-s)),var(--card));border:1px solid var(--teal,#12b5a5);
   font-size:13px;color:var(--fg);box-shadow:var(--sh);cursor:pointer}
 .shotbanner .si{color:var(--teal,#12b5a5);display:flex}
@@ -77,8 +77,8 @@
 .shotbanner .cbsub{font-size:11px;color:var(--dim)}
 .shotbanner .cbar{color:var(--teal,#12b5a5);font-size:12px;white-space:nowrap}
 /* 截图网格：3 列，选中的盖品牌色边框 + 右下角勾 */
-.shotgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
-.shotitem{position:relative;border-radius:10px;overflow:hidden;background:var(--card2);
+.shotgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:var(--s2) 0}
+.shotitem{position:relative;border-radius:var(--r1);overflow:hidden;background:var(--card2);
   border:2px solid transparent;cursor:pointer;aspect-ratio:9/14}
 .shotitem img{width:100%;height:100%;object-fit:cover;display:block}
 .shotitem.on{border-color:var(--acc)}
@@ -92,17 +92,17 @@
 .shottime{position:absolute;left:0;right:0;bottom:0;padding:2px 6px;font-size:10px;color:#fff;
   background:linear-gradient(180deg,transparent,rgba(0,0,0,.55))}
 /* 文件夹选择：一行一个目录，右侧张数 */
-.fin{width:100%;box-sizing:border-box;padding:9px 12px;border-radius:10px;border:1px solid var(--line);
+.fin{width:100%;box-sizing:border-box;padding:9px 12px;border-radius:var(--r1);border:1px solid var(--line);
   background:var(--card2);color:var(--fg);font-size:13px;font-family:inherit;outline:none}
 .fin:focus{border-color:var(--acc)}
-.frow{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+.frow{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) 2px;border-bottom:1px solid var(--line);cursor:pointer}
 .frow:last-child{border-bottom:0}
 .frow .fname{font-size:13.5px;font-weight:600}
 .frow .fpath{font-size:11px;color:var(--dim2);word-break:break-all}
 .frow .fmeta{font-size:11px;color:var(--dim);white-space:nowrap}
 .frow.gone{opacity:.55}
 /* 已选的文件夹排到最前并轻度上底色，一眼能看出选了哪些 */
-.frow.on{background:var(--acc-s);border-radius:10px;padding-left:8px;padding-right:8px}
+.frow.on{background:var(--acc-s);border-radius:var(--r1);padding-left:8px;padding-right:8px}
 .fcb{flex:0 0 20px;width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line);
   display:flex;align-items:center;justify-content:center;color:#fff}
 .frow.on .fcb{background:var(--acc);border-color:var(--acc)}
@@ -118,19 +118,19 @@
 @keyframes spin{to{transform:rotate(360deg)}}
 .ovlcard b{font-size:15px}
 .ovlcard .osub{font-size:12px;color:var(--dim);margin-top:6px;min-height:16px}
-.owarn{margin-top:14px;padding:10px 12px;border-radius:12px;text-align:left;
+.owarn{margin-top:14px;padding:var(--s2) 12px;border-radius:12px;text-align:left;
   background:var(--warn-s);border:1px solid var(--warn);font-size:12.5px;font-weight:700;
   color:var(--warn);line-height:1.55}
 .owarn .ic{width:14px;height:14px;vertical-align:-2px;margin-right:4px}
-.msrow{display:flex;gap:10px;align-items:flex-start;padding:8px 2px;border-bottom:1px solid var(--line);font-size:13px}
+.msrow{display:flex;gap:var(--s2);align-items:flex-start;padding:8px 2px;border-bottom:1px solid var(--line);font-size:13px}
 .msrow:last-child{border-bottom:0}
 .msrow .mt{flex:1;min-width:0}
 .msrow .mt .mtt{line-height:1.5}
 .msrow .mt .mts{font-size:11px;color:var(--dim2);margin-top:1px}
 .msrow .mcd{font-size:10.5px;color:var(--warn);white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
-.cliptop{display:flex;gap:6px;align-items:center;margin-bottom:10px}
+.cliptop{display:flex;gap:6px;align-items:center;margin-bottom:var(--s2)}
 .cliptop .sp{flex:1}
-.clipitem{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);
+.clipitem{display:flex;gap:var(--s2);align-items:flex-start;padding:var(--s2);border:1px solid var(--line);
   border-radius:11px;background:var(--card);margin-bottom:8px;cursor:pointer}
 .clipitem.on{border-color:var(--acc);background:var(--acc-s)}
 /* 跟待办圆框同一套做法：20px 点击区里画 17px 的方块，未选/已选可见尺寸一致 */
@@ -150,8 +150,8 @@
 .clipacts{display:flex;gap:8px;margin-top:12px}
 .clipacts .btn{flex:1}
 /* 二级页底部固定操作条：列表很长时不用一路滑到底才点得到确定（用户反馈） */
-.pfoot{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:10px;
-  margin:14px -14px -44px;padding:10px 14px calc(12px + env(safe-area-inset-bottom));
+.pfoot{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:var(--s2);
+  margin:14px -14px -44px;padding:var(--s2) 14px calc(12px + env(safe-area-inset-bottom));
   background:var(--header-bg);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
   border-top:1px solid var(--line)}
 .pfoot .sp{flex:1}
@@ -205,19 +205,19 @@
 .btn{position:relative;overflow:hidden}
 
 /* --- 列表项 / 骨架屏 / 空状态 --- */
-.li{display:flex;align-items:center;gap:10px;padding:11px 2px;border-top:1px solid var(--line)}
+.li{display:flex;align-items:center;gap:var(--s2);padding:11px 2px;border-top:1px solid var(--line)}
 .li:first-child{border-top:0}
 .li:active{background:var(--card2)}
-.li .lico{flex:0 0 32px;height:32px;border-radius:10px;display:flex;align-items:center;
+.li .lico{flex:0 0 32px;height:32px;border-radius:var(--r1);display:flex;align-items:center;
   justify-content:center;background:var(--acc-s);color:var(--acc)}
 .li .lico .ic{width:16px;height:16px}
-.skel{border-radius:10px;background:linear-gradient(90deg,var(--card2) 25%,var(--card) 37%,var(--card2) 63%);
+.skel{border-radius:var(--r1);background:linear-gradient(90deg,var(--card2) 25%,var(--card) 37%,var(--card2) 63%);
   background-size:400% 100%;animation:shim 1.2s var(--ease) infinite}
 @keyframes shim{from{background-position:100% 0}to{background-position:0 0}}
 .skel.img{border-radius:14px}
 .skel.l{height:14px}.skel.s{height:10px}
-.skel.l{height:14px;margin:8px 0}.skel.s{height:10px;width:45%}.skel.img{height:120px;margin:10px 0}
-.empty .em{font-size:44px;margin-bottom:10px;opacity:.6;animation:bob 2.6s var(--ease) infinite}
+.skel.l{height:14px;margin:8px 0}.skel.s{height:10px;width:45%}.skel.img{height:120px;margin:var(--s2) 0}
+.empty .em{font-size:44px;margin-bottom:var(--s2);opacity:.6;animation:bob 2.6s var(--ease) infinite}
 .empty .eo{width:76px;height:76px;margin:0 auto 14px;border-radius:26px;display:flex;align-items:center;
   justify-content:center;background:linear-gradient(160deg,var(--acc-s),var(--card));
   border:1px solid var(--line);box-shadow:var(--sh);animation:bob 3.4s var(--ease) infinite}
@@ -249,7 +249,7 @@
 .dlg h3{margin:0;font-size:16.5px}
 .dlg .dbody{margin-top:8px;font-size:13px;color:var(--dim);word-break:break-word}
 .dlg .dacts{display:flex;gap:8px;margin-top:16px}
-.dlg .dacts .btn{flex:1;padding:10px 0;text-align:center;border-radius:12px}
+.dlg .dacts .btn{flex:1;padding:var(--s2) 0;text-align:center;border-radius:12px}
 .dlg .dacts .btn.dg{background:var(--bad);color:#fff;border:0}
 
 /* --- 开关 / 勾选动画 --- */

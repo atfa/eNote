@@ -7,7 +7,7 @@
    拆分是连续区间，层叠顺序与拆分前逐字节一致；不要在这里重排规则顺序。 */
 
 /* --- 我的页头部（R6）：静态装饰，不做入场动画（过度设计已删）--- */
-.hero{position:relative;overflow:hidden;border-radius:20px;padding:20px 18px 18px;margin:14px 0 10px;
+.hero{position:relative;overflow:hidden;border-radius:20px;padding:20px 18px 18px;margin:14px 0 var(--s2);
   background:var(--grad);color:var(--on-grad);box-shadow:var(--sh)}
 .hero:after{content:"";position:absolute;right:-46px;top:-56px;width:190px;height:190px;border-radius:50%;
   background:radial-gradient(circle,rgba(255,255,255,.26),rgba(255,255,255,0) 70%);pointer-events:none}
@@ -23,7 +23,7 @@
   background:rgba(255,255,255,.17);border:1px solid rgba(255,255,255,.26);font-size:11px;
   font-variant-numeric:tabular-nums}
 .hero .hstats .ic{width:12px;height:12px}
-.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:var(--s2) 0}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 8px;text-align:center;
   box-shadow:var(--sh)}
 .stat .si{width:22px;height:22px;margin:0 auto 3px;border-radius:8px;display:flex;align-items:center;
@@ -44,6 +44,6 @@
 .chart .bar.d{background:var(--acc2);opacity:.9}
 .chart .lb{font-size:9.5px;color:var(--dim2);white-space:nowrap}
 @keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
-.legend{display:flex;gap:14px;font-size:11px;color:var(--dim2);margin-top:10px}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--dim2);margin-top:var(--s2)}
 .legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
-.tagrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tagrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:var(--s2)}
