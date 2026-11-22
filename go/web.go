@@ -70,6 +70,10 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/prefs", handlePrefs)
 	m.HandleFunc("/api/attachments", handleAttachments)
 	m.HandleFunc("/api/attach/delete", handleAttachDelete)
+	m.HandleFunc("/api/shots/list", handleShotsList)
+	m.HandleFunc("/api/shots/add", handleShotsAdd)
+	m.HandleFunc("/api/shots/remove", handleShotsRemove)
+	m.HandleFunc("/api/shots/ignore", handleShotsIgnore)
 	m.HandleFunc("/api/stats", handleStats)
 	m.HandleFunc("/api/missed", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, apiMissed())
@@ -100,6 +104,7 @@ func apiMux() *http.ServeMux {
 	})
 	m.HandleFunc("/img", handleImg)
 	m.HandleFunc("/file", handleFile)
+	m.HandleFunc("/shotimg", handleShotImg)
 	return m
 }
 

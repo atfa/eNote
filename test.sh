@@ -440,6 +440,148 @@ assert d.get("count") == 0, "第二次问不该重复报，got %s" % d.get("coun
 print("  ok (看过一次就不再重复提醒)")
 ' || fail "补看提醒没有推进 lastopen，会重复打扰"
 
+step "P11 截图捕获：扫描 → 合并导入 → 各存一条 → 幂等 → 忽略"
+SHOTDIR=/sdcard/Pictures/enote-test
+# 权限：直接用 root 授掉，跳过系统弹窗（真机上由用户点"去授权"）
+asroot_global "pm grant $APP_PACKAGE android.permission.READ_MEDIA_IMAGES" >/dev/null 2>&1 || true
+asroot_global "rm -rf $SHOTDIR; mkdir -p $SHOTDIR"
+# 造两张内容不同的图（同一屏连续 screencap 得到的是同一份字节，会被 sha1 判重）
+"$PY" - <<'PYSHOT'
+from PIL import Image, ImageDraw
+for i in (1, 2):
+    im = Image.new('RGB', (360, 640), (250, 250, 252))
+    d = ImageDraw.Draw(im)
+    d.rectangle([20, 20, 340, 120], fill=(47, 107, 255))
+    d.text((40, 60), 'ENOTE TEST SHOT %d' % i, fill=(255, 255, 255))
+    d.text((40, 200), '3月15日 下午三点 产品评审', fill=(30, 40, 60))
+    d.text((40, 240), '记得带原型和报价单', fill=(30, 40, 60))
+    im.save('/data/data/com.termux/files/home/eNote/.test/shot-t%d.png' % i)
+PYSHOT
+for i in 1 2; do
+  asroot_global "cp /data/data/com.termux/files/home/eNote/.test/shot-t$i.png $SHOTDIR/t$i.png"
+  asroot_global "am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://$SHOTDIR/t$i.png" >/dev/null 2>&1
+done
+sleep 3
+
+shot_scan() {  # shot_scan <rangeDays>
+  am_start "$ACTIVITY" "--es hook shotscan --es arg '{\"folders\":[\"Pictures/enote-test\"],\"rangeDays\":$1}'"
+  sleep 6
+  newtlog | grep 'hook shotscan' | tail -1
+}
+
+# 1) 第一次扫：两张都该进暂存区
+shot_scan 1 | "$PY" -c '
+import json,sys
+line = sys.stdin.read().strip()
+assert "hook shotscan:" in line, "hook 没输出: " + line
+d = json.loads(line.split("hook shotscan:",1)[1])
+assert d.get("granted"), "媒体权限没授上: %s" % d
+assert d.get("added", 0) >= 2, "两张都应该进暂存区: %s" % d
+print("  ok (扫描到 %d 张新截图)" % d["added"])
+' || fail "截图扫描没有收到新图"
+
+api_get shots/list | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d.get("ok"), d
+names = [x["name"] for x in d["shots"]]
+assert "t1.png" in names and "t2.png" in names, names
+assert d["bytes"] > 0, "占用该是正数"
+print("  ok (暂存区 %d 张 / %d 字节)" % (d["total"], d["bytes"]))
+' || fail "截图暂存区内容不对"
+
+# 2) 合并成一条笔记：1 条笔记 + 2 个附件（OCR 在 Java 侧，这里走 hook）
+SHOTS=$(api_get shots/list | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+print(json.dumps({"mode":"merge","raw":True,
+                  "shots":[{"path":x["path"],"name":x["name"],"mime":"image/png"}
+                           for x in d["shots"] if x["name"] in ("t1.png","t2.png")]}))
+')
+am_start "$ACTIVITY" "--es hook shotimport --es arg '$SHOTS'"
+sleep 8
+newtlog | grep 'hook shotimport' | tail -1 | grep -q '"notes":1' || fail "合并导入没有生成 1 条笔记"
+api_get state | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+ns = [n for n in (d.get("notes") or []) if n.get("source") == "shot-merge"]
+assert ns, "没找到 shot-merge 笔记"
+n = ns[0]
+assert len(n.get("attachments") or []) == 2, "合并笔记该有 2 个附件: %s" % n.get("attachments")
+print("  ok (合并成 1 条笔记，%d 个附件，标题 %r)" % (len(n["attachments"]), n["title"][:24]))
+' || fail "合并导入的附件数不对"
+
+# 3) 各存一条：2 条笔记各 1 个附件
+SHOTS=$(api_get shots/list | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+print(json.dumps({"mode":"split","raw":True,
+                  "shots":[{"path":x["path"],"name":x["name"],"mime":"image/png"}
+                           for x in d["shots"] if x["name"] in ("t1.png","t2.png")]}))
+')
+am_start "$ACTIVITY" "--es hook shotimport --es arg '$SHOTS'"
+sleep 10
+newtlog | grep 'hook shotimport' | tail -1 | grep -q '"notes":2' || fail "各存一条没有生成 2 条笔记"
+api_get state | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+ns = [n for n in (d.get("notes") or []) if n.get("source") == "shot-single"]
+assert len(ns) >= 2, "该有 2 条 shot-single: %d" % len(ns)
+assert all(len(n.get("attachments") or []) == 1 for n in ns), "每条只该挂 1 个附件"
+print("  ok (各存一条：%d 条笔记，每条 1 个附件)" % len(ns))
+' || fail "各存一条的结果不对"
+
+# 4) 幂等：同一区间再扫一次不能重复收
+shot_scan 1 | "$PY" -c '
+import json,sys
+d = json.loads(sys.stdin.read().split("hook shotscan:",1)[1])
+assert d.get("added", 0) == 0, "重复扫描不该再收: %s" % d
+print("  ok (重复扫描 0 条，sha1 去重在起作用)")
+' || fail "截图扫描不幂等"
+
+# 5) 忽略：彻底不再提醒
+ID=$(api_get shots/list | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+ids = [x["id"] for x in d["shots"] if x["name"] == "t1.png"]
+print(ids[0] if ids else "")
+')
+if [ -n "$ID" ]; then
+  api_post shots/ignore "{\"ids\":[\"$ID\"]}" >/dev/null
+  api_get shots/list | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert not [x for x in d["shots"] if x["name"] == "t1.png"], "忽略后还在暂存区里"
+print("  ok (忽略后从暂存区消失)")
+' || fail "忽略没有生效"
+fi
+
+# 6) 清理：测试图、测试笔记、暂存区、文件夹配置
+asroot_global "rm -rf $SHOTDIR"
+asroot_global "rm -f /sdcard/Pictures/Screenshots/enote-t*.png"
+api_get shots/list | "$PY" -c '
+import json,sys,urllib.request
+d = json.load(sys.stdin)
+ids = [x["id"] for x in d["shots"]]
+if ids:
+    req = urllib.request.Request("http://127.0.0.1:%s/api/shots/remove" % sys.argv[1],
+        data = json.dumps({"ids": ids}).encode(), headers={"Content-Type":"application/json"})
+    urllib.request.urlopen(req).read()
+print("  ok (清空暂存区 %d 张)" % len(ids))
+' "$PORT" >/dev/null 2>&1 || true
+api_get state | "$PY" -c '
+import json,sys,urllib.request
+d = json.load(sys.stdin)
+bad = [n for n in (d.get("notes") or []) if (n.get("source") or "").startswith("shot-")]
+for n in bad:
+    req = urllib.request.Request("http://127.0.0.1:%s/api/delete" % sys.argv[1],
+        data = json.dumps({"id": n["id"]}).encode(), headers={"Content-Type":"application/json"})
+    urllib.request.urlopen(req).read()
+print("  ok (删掉 %d 条测试笔记)" % len(bad))
+' "$PORT" || true
+am_start "$ACTIVITY" "--es hook shotfolders --es arg '{\"enabled\":false,\"folders\":[]}'" >/dev/null 2>&1
+sleep 2
+
 step "前端没有运行时报错（未声明的变量会把点击静默吞掉）"
 if newtlog | grep -q 'SELFCHECK FAIL'; then
   newtlog | grep 'SELFCHECK FAIL' | tail -2 | sed 's/^/  /'

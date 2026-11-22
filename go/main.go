@@ -122,6 +122,13 @@ func Java_dev_xduo_enote_Bridge_nativeEnqueue(env *C.JNIEnv, cls C.jclass, js C.
 // payload: {"kind":"text|image","text":...,"path":...,"name":...,"mime":...,"app":...}
 // De-dupe happens inside clipAdd; nothing is parsed yet.
 //
+//export Java_dev_xduo_enote_Bridge_nativeShotAdd
+func Java_dev_xduo_enote_Bridge_nativeShotAdd(env *C.JNIEnv, cls C.jclass, js C.jstring) C.jstring {
+	return guard(env, "nativeShotAdd", func() C.jstring {
+		return s2j(env, shotAddJSON(j2s(env, js)))
+	})
+}
+
 //export Java_dev_xduo_enote_Bridge_nativeClipAdd
 func Java_dev_xduo_enote_Bridge_nativeClipAdd(env *C.JNIEnv, cls C.jclass, js C.jstring) C.jstring {
 	return guard(env, "nativeClipAdd", func() C.jstring {

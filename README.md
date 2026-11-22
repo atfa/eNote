@@ -17,10 +17,16 @@
 <img src="docs/shots/ui-d-mine.jpg" width="210" alt="我的">
 <img src="docs/shots/ui-d-dark.jpg" width="210" alt="深色模式">
 </p>
+<p>
+<img src="docs/shots/p11-shots.jpg" width="210" alt="截图暂存">
+<img src="docs/shots/p11-folders.jpg" width="210" alt="选择监控文件夹">
+<img src="docs/shots/p11-progress.jpg" width="210" alt="导入进度">
+</p>
 
 界面是**一个内嵌 HTML**（`go/ui.html`），由 Go 的 HTTP 服务在 `127.0.0.1` 上提供，WebView 加载。
-图标是一整套 24dp 线性 SVG（内嵌 sprite，随 `currentColor` 变色），启动器图标由
-`tools/gen_icon.py` 用同一份几何同时生成矢量 XML 和 app 内 logo，APK 里没有任何 PNG 图标。
+图标是一整套 24dp 线性 SVG（内嵌 sprite，随 `currentColor` 变色）；启动器图标用
+用户自己的一套 PNG（5 个密度 + 自适应图层），`tools/ui_sig_test.js` 会锁住它，
+防止有人又换回矢量重绘。
 
 ---
 
@@ -59,6 +65,17 @@ GO_TEST=1 ./build.sh      # 编译 Go（含单元测试）+ javac + d8 + aapt2 +
   倒计时标签（今天 / 3 天后 / 已逾期 2 天）实时刷新，勾选完成有划线 + 淡出 + 高亮入场动画。
 * 剪贴板暂存：复制过的文本自动攒着（前台采集，去重），横幅上显示条数，打开后勾选 →
   `一键解析` / `原样存为笔记` / `删除所选`。
+* **截图捕获**：首次开启时选要盯的文件夹（默认勾上截图目录，可多选：相机、微信图片、
+  自定义目录都行）。之后新截图自动进暂存区，首页横幅显示「发现 N 张新截图」，点开是
+  3 列缩略图网格，多选后：
+  * `合并成一条笔记`：N 张图 = 1 条笔记、N 个附件，OCR 文本拼接后**只调一次** AI；
+  * `各存一条`：N 张图 = N 条笔记（超过 5 张会先确认，因为那是 N 次 AI 调用）；
+  * `原样存`：不调 AI，直接存原文；
+  * `忽略所选`：永久不再提醒。
+
+  处理期间会弹出不可关掉的进度层，并**真的保持屏幕常亮**——文案明确写了「不要锁屏、
+  不要黑屏、不要退出 App」，因为解析是在前台跑的。首次开启不会回捞历史截图（这台机器
+  存了 2759 张），要看旧的用「我的 → 截图捕获 → 回捞最近 7 天」。
 * 附件页：图片 / PDF / 音频 / 压缩包按类型图标展示，可预览、可转成笔记。
 * 我的页：本地数据摘要（笔记 / 待办 / 附件 / 占用）、近 7 天活动柱状图、笔记状态、常见标签，
   以及设置、运行日志、AI 调用记录、导出 / 导入 JSON、清空数据。
@@ -130,6 +147,10 @@ curl -s "http://127.0.0.1:$P/api/state" | python3 -m json.tool
 | GET | `/api/attachments` | 附件列表（含缺失文件标记） |
 | POST | `/api/attach/delete` | `{id}` |
 | GET | `/api/stats` | 我的页统计（笔记 / 待办 / 附件 / 近 7 天 / 标签） |
+| GET | `/api/shots/list` | 截图暂存区（含占用字节） |
+| POST | `/api/shots/add` | Java 扫到的新截图入库（去重 + 忽略表） |
+| POST | `/api/shots/remove` / `/api/shots/ignore` | 删除所选 / 永不再提醒 |
+| GET | `/shotimg?id=` | 暂存截图的缩略图（还不是笔记附件） |
 | GET | `/api/missed` | 上次打开之后到点、未完成的待办（补看错过的提醒），并把上次时间推到现在 |
 | POST | `/api/import` / `/api/clear` | 按笔记 ID 合并导入 / 清空数据 |
 | POST | `/api/llm/test` | 连通性测试，返回 `{ok, httpCode, ms, reply}` |
@@ -197,7 +218,10 @@ App 自己写 `files/enote/enote.log`。
 * 剪贴板采集只在前台：Android 10+ 禁止非获焦应用读剪贴板，本 ROM 也不给后台窗口投递
   `OnPrimaryClipChangedListener`，所以后台复制的内容采不到。
 * API Key 明文存在 `files/`（App 私有目录，未加密）；导入 JSON 按笔记 ID 合并，没有多设备同步。
-* 一次只解析一张图片；`SEND_MULTIPLE` 会拆成多条笔记。
+* 分享多张图会拆成多条笔记（截图捕获里的「合并成一条笔记」才支持一图一附件挂同一条）。
+* 截图捕获必须授「照片和视频」权限（`READ_MEDIA_IMAGES`），且只在**打开 app 时**扫，
+  不常驻后台扫；首次开启不回捞历史，需要旧图请手动「回捞最近 7 天」。
+* 截图扫描依赖 MediaStore：如果 ROM 把图片放在系统不索引的目录（极少见），列表里看不到。
 * 分享 URL 按纯文本处理，不抓网页正文。
 * 只打包 arm64-v8a。
 

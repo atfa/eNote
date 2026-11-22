@@ -323,6 +323,58 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .missed b{color:var(--warn)}
 .missed .cbsub{font-size:11px;color:var(--dim)}
 .missed .cbar{color:var(--warn);font-size:12px;white-space:nowrap}
+/* 截图捕获（P11）：青色系，跟「剪贴板」蓝、「错过提醒」黄区分开 */
+.shotbanner{display:flex;align-items:center;gap:10px;margin:10px 2px 0;padding:11px 12px;border-radius:12px;
+  background:linear-gradient(135deg,var(--teal-s,var(--acc-s)),var(--card));border:1px solid var(--teal,#12b5a5);
+  font-size:13px;color:var(--fg);box-shadow:var(--sh);cursor:pointer}
+.shotbanner .si{color:var(--teal,#12b5a5);display:flex}
+.shotbanner b{color:var(--teal,#12b5a5)}
+.shotbanner .cbsub{font-size:11px;color:var(--dim)}
+.shotbanner .cbar{color:var(--teal,#12b5a5);font-size:12px;white-space:nowrap}
+/* 截图网格：3 列，选中的盖品牌色边框 + 右下角勾 */
+.shotgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+.shotitem{position:relative;border-radius:10px;overflow:hidden;background:var(--card2);
+  border:2px solid transparent;cursor:pointer;aspect-ratio:9/14}
+.shotitem img{width:100%;height:100%;object-fit:cover;display:block}
+.shotitem.on{border-color:var(--acc)}
+.shotitem.on:after{content:'';position:absolute;inset:0;background:var(--acc-s)}
+.shotck{position:absolute;right:5px;bottom:5px;width:20px;height:20px;border-radius:50%;
+  background:rgba(0,0,0,.45);border:1.5px solid #fff;display:flex;align-items:center;
+  justify-content:center;color:#fff;font-size:11px}
+.shotitem.on .shotck{background:var(--acc);border-color:var(--acc)}
+.shotck .ic{width:12px;height:12px;opacity:0}
+.shotitem.on .shotck .ic{opacity:1}
+.shottime{position:absolute;left:0;right:0;bottom:0;padding:2px 6px;font-size:10px;color:#fff;
+  background:linear-gradient(180deg,transparent,rgba(0,0,0,.55))}
+/* 文件夹选择：一行一个目录，右侧张数 */
+.fin{width:100%;box-sizing:border-box;padding:9px 12px;border-radius:10px;border:1px solid var(--line);
+  background:var(--card2);color:var(--fg);font-size:13px;font-family:inherit;outline:none}
+.fin:focus{border-color:var(--acc)}
+.frow{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+.frow:last-child{border-bottom:0}
+.frow .fname{font-size:13.5px;font-weight:600}
+.frow .fpath{font-size:11px;color:var(--dim2);word-break:break-all}
+.frow .fmeta{font-size:11px;color:var(--dim);white-space:nowrap}
+.frow.gone{opacity:.55}
+.fcb{flex:0 0 20px;width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line);
+  display:flex;align-items:center;justify-content:center;color:#fff}
+.frow.on .fcb{background:var(--acc);border-color:var(--acc)}
+.fcb .ic{width:12px;height:12px;opacity:0}
+.frow.on .fcb .ic{opacity:1}
+/* 长任务进度层：不可点掉，顶部是要求用户"别黑屏/别退出"的醒目提示 */
+.ovl{position:fixed;inset:0;z-index:80;background:rgba(8,12,20,.55);backdrop-filter:blur(3px);
+  display:flex;align-items:center;justify-content:center;padding:24px}
+.ovlcard{width:100%;max-width:340px;background:var(--card);border-radius:18px;padding:20px 18px;
+  box-shadow:var(--sh3,0 18px 48px rgba(0,0,0,.28));text-align:center}
+.ovlcard .orw{width:44px;height:44px;margin:2px auto 12px;border-radius:50%;
+  border:3px solid var(--acc-s);border-top-color:var(--acc);animation:spin 900ms linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ovlcard b{font-size:15px}
+.ovlcard .osub{font-size:12px;color:var(--dim);margin-top:6px;min-height:16px}
+.owarn{margin-top:14px;padding:10px 12px;border-radius:12px;text-align:left;
+  background:var(--warn-s);border:1px solid var(--warn);font-size:12.5px;font-weight:700;
+  color:var(--warn);line-height:1.55}
+.owarn .ic{width:14px;height:14px;vertical-align:-2px;margin-right:4px}
 .msrow{display:flex;gap:10px;align-items:flex-start;padding:8px 2px;border-bottom:1px solid var(--line);font-size:13px}
 .msrow:last-child{border-bottom:0}
 .msrow .mt{flex:1;min-width:0}
@@ -895,6 +947,392 @@ function openTodoFromMissed(nid, tid){
   if(nid) { open[nid] = 1; }
   setTab('notes');
 }
+// ---- 截图捕获（P11）：扫描监控文件夹 → 横幅 → 多选 → 导入笔记 ----
+var SHOTFLAGS = null;    // {enabled, granted, folders:n, watermark}  便宜的状态，每次 refresh 都行
+var shotSel = {};        // 暂存区里被勾选的截图 id
+var shotList = [];       // /api/shots/list 的结果（sheet 用）
+var folderSel = {};      // 文件夹选择里勾中的路径
+var folderAll = [];      // MediaStore 枚举出来的所有目录
+var shotTimer = 0, shotStartAt = 0;
+
+function shotFlags(cb){
+  if(!(window.Android && Android.shotFlags)){ SHOTFLAGS = {enabled:false, granted:false, folders:0}; if(cb) cb(); return }
+  try{
+    var d = JSON.parse(Android.shotFlags() || '{}');
+    SHOTFLAGS = d && typeof d === 'object' ? d : null;
+  }catch(e){ SHOTFLAGS = null }
+  if(cb) cb();
+}
+function shotBanner(){
+  var f = SHOTFLAGS || {};
+  var n = (S.info && S.info.shot) || 0;
+  if(n > 0){
+    return '<div class="shotbanner" onclick="shotSheet()"><span class="si">'+ic('image')+'</span>'
+      + '<div style="flex:1;min-width:0"><b>发现 ' + (n >= 50 ? '50+' : n) + ' 张新截图</b>'
+      + '<div class="cbsub">点开勾选：可以合并成一条笔记，也可以各存一条</div></div>'
+      + '<span class="cbar">整理 ›</span></div>';
+  }
+  if(!f.enabled){
+    return '<div class="shotbanner" onclick="shotSetup()"><span class="si">'+ic('image')+'</span>'
+      + '<div style="flex:1;min-width:0"><b>自动收集截图</b>'
+      + '<div class="cbsub">选几个文件夹盯着，新截图自动变成笔记</div></div>'
+      + '<span class="cbar">开启 ›</span></div>';
+  }
+  if(!f.granted){
+    return '<div class="shotbanner" onclick="askShotPerm()"><span class="si">'+ic('alert')+'</span>'
+      + '<div style="flex:1;min-width:0"><b>需要允许读取照片</b>'
+      + '<div class="cbsub">不给权限就发现不了新截图（只读，不上传）</div></div>'
+      + '<span class="cbar">去授权 ›</span></div>';
+  }
+  if(!f.folders){
+    return '<div class="shotbanner" onclick="folderSheet()"><span class="si">'+ic('folder')+'</span>'
+      + '<div style="flex:1;min-width:0"><b>还没选监控文件夹</b>'
+      + '<div class="cbsub">至少选一个目录（默认会勾上截图目录）</div></div>'
+      + '<span class="cbar">去选择 ›</span></div>';
+  }
+  return '';
+}
+/** 首次开启：开开关 → 要权限 → 选文件夹 */
+function shotSetup(){
+  if(!(window.Android && Android.setShotEnabled)) return toast('截图捕获只在 app 内可用');
+  Android.setShotEnabled(true);
+  if(window.Android && Android.shotGranted && Android.shotGranted()){ folderSheet(); return }
+  askShotPerm();
+}
+function askShotPerm(){
+  if(!(window.Android && Android.askMedia)) return toast('授权只能在 app 内完成');
+  Android.askMedia();
+}
+window.shotPermResult = function(ok){
+  shotFlags(function(){
+    if(ok){ toast('已授权，选一下要盯的文件夹'); folderSheet(); }
+    else toast('没授权就发现不了新截图，可以稍后在「我的 → 截图捕获」里再开');
+    refresh();
+  });
+};
+/** Java 扫完一轮（前台回来时自动扫）→ 有新东西就刷新指标和横幅 */
+window.shotsScanned = function(n){
+  shotFlags(function(){ if(n > 0) refresh(); });
+};
+// ---- 截图暂存页：3 列网格 + 多选 ----
+function shotSheet(){
+  pageSheet('新截图', '<div class="cliptop">'
+    + '<button class="btn sm" onclick="shotSelAll(true)">全选</button>'
+    + '<button class="btn sm" onclick="shotSelAll(false)">全不选</button>'
+    + '<div class="sp"></div><span id="shotCount" style="font-size:12px;color:var(--dim)"></span></div>'
+    + '<div id="shotGrid" class="clipload">加载中…</div>'
+    + '<div class="clipacts" style="display:flex;flex-direction:column;gap:8px">'
+    + '<button class="btn pri" onclick="doImportShots(\'merge\')">'+ic('copy')+' 合并成一条笔记</button>'
+    + '<div style="display:flex;gap:8px">'
+    + '<button class="btn" style="flex:1" onclick="doImportShots(\'split\')">各存一条</button>'
+    + '<button class="btn" style="flex:1" onclick="doImportShots(\'raw\')">原样存</button></div>'
+    + '<button class="btn dg" onclick="shotIgnoreSel()">忽略所选（以后不再提醒）</button>'
+    + '</div>');
+  loadShots();
+}
+async function loadShots(){
+  try{
+    var r = await api('/api/shots/list');
+    shotList = (r && r.shots) || [];
+    if(S.info) S.info.shot = shotList.length;
+    var keep = {};
+    shotList.forEach(function(x){ keep[x.id] = shotSel[x.id] !== undefined ? shotSel[x.id] : true });
+    shotSel = keep;
+    var g = $('#shotGrid');
+    if(!shotList.length){
+      if(g) g.innerHTML = emptyState('image', '没有待整理的截图', '新截图出现时会先在这里排队');
+      shotCountLabel(); return;
+    }
+    var h = '<div class="shotgrid">';
+    shotList.forEach(function(x){
+      var on = !!shotSel[x.id];
+      h += '<div class="shotitem'+(on?' on':'')+'" onclick="shotPick(\''+x.id+'\',this)">'
+        + '<img src="/shotimg?id='+encodeURIComponent(x.id)+'" alt="" loading="lazy">'
+        + '<div class="shottime">'+esc(fmtClock(x.dateAdded || 0))+'</div>'
+        + '<div class="shotck">'+ic('check')+'</div></div>';
+    });
+    h += '</div>';
+    if(g) g.innerHTML = h;
+    shotCountLabel();
+  }catch(e){
+    var g2 = $('#shotGrid'); if(g2) g2.innerHTML = '<div class="empty">加载失败</div>';
+  }
+}
+function fmtClock(sec){
+  if(!sec) return '';
+  var d = new Date(sec * 1000);
+  return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+}
+function shotPick(id, el){
+  shotSel[id] = !shotSel[id];
+  if(el) el.classList.toggle('on', !!shotSel[id]);
+  shotCountLabel();
+}
+function shotSelAll(on){
+  shotList.forEach(function(x){ shotSel[x.id] = !!on });
+  var g = $('#shotGrid');
+  if(g){
+    var items = g.querySelectorAll('.shotitem');
+    for(var i=0;i<items.length;i++) items[i].classList.toggle('on', !!on);
+  }
+  shotCountLabel();
+}
+function shotCountLabel(){
+  var n = 0, total = shotList.length;
+  shotList.forEach(function(x){ if(shotSel[x.id]) n++ });
+  var el = $('#shotCount');
+  if(el) el.textContent = '已选 ' + n + ' / ' + total;
+}
+function shotPicked(){
+  return shotList.filter(function(x){ return !!shotSel[x.id] });
+}
+/**
+ * 导入。merge = 一条笔记多附件（一次 AI），split = 每张一条，raw = 不调 AI 原样存。
+ * split 超过 5 张要先确认：那是 N 次 AI 调用，几分钟起步。
+ */
+function doImportShots(mode){
+  var picks = shotPicked();
+  if(!picks.length) return toast('先勾选要导入的截图');
+  if(mode === 'split' && picks.length > 5){
+    dialog({
+      title: '生成 ' + picks.length + ' 条笔记？',
+      body: '每张截图单独一条笔记，会调用 ' + picks.length + ' 次 AI，可能要等好几分钟。想快一点就选「合并成一条笔记」，那样只调用一次。',
+      ok: '继续',
+      onOk: function(){ runImportShots('split', false, picks) }
+    });
+    return;
+  }
+  runImportShots(mode === 'raw' ? 'merge' : mode, mode === 'raw', picks);
+}
+function runImportShots(mode, raw, picks){
+  if(!(window.Android && Android.importShots)) return toast('导入只在 app 内可用');
+  var shots = picks.map(function(x){ return {path:x.path, name:x.name, mime:x.mime} });
+  shotOverlay(true, picks.length, raw ? '原样保存' :
+    (mode === 'merge' ? '合并成一条笔记' : picks.length + ' 条笔记'));
+  keepShotsLight(true);
+  Android.importShots(JSON.stringify({mode:mode, raw:!!raw, shots:shots}));
+}
+var SHOTOVL_TEXT = '';
+/** 进度层：不可点掉，配一句醒目的"别黑屏/别退出"（用户明确要求） */
+function shotOverlay(on, total, what){
+  var el = $('#shotOvl');
+  if(!on){
+    if(shotTimer){ clearInterval(shotTimer); shotTimer = 0 }
+    SHOTOVL_TEXT = '';
+    if(el && el.parentNode) el.parentNode.removeChild(el);
+    return;
+  }
+  SHOTOVL_TEXT = esc(what || '');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'shotOvl';
+    el.className = 'ovl';
+    document.body.appendChild(el);
+  }
+  shotStartAt = Date.now();
+  el.innerHTML = '<div class="ovlcard"><div class="orw"></div>'
+    + '<b>正在处理 ' + total + ' 张截图</b>'
+    + '<div class="osub" id="shotOvlSub">' + SHOTOVL_TEXT + ' · 已用 0s</div>'
+    + '<div class="owarn">'+ic('alert')+'请保持屏幕常亮：不要锁屏、不要让手机黑屏，'
+    + '也不要退出 App 或切到别的应用，否则解析会中断。</div>'
+    + '<div style="font-size:11px;color:var(--dim2);margin-top:10px">'
+    + '完成后会自动回到列表，不用一直盯着</div></div>';
+  if(shotTimer) clearInterval(shotTimer);
+  shotTimer = setInterval(function(){
+    var sub = $('#shotOvlSub');
+    if(!sub) return;
+    var s = Math.round((Date.now() - shotStartAt) / 1000);
+    sub.textContent = SHOTOVL_TEXT + ' · 已用 ' + s + 's';
+  }, 1000);
+}
+/** 更新进度层副标题（OCR 完 → 进入 AI 解析，或 3/7 这种进度） */
+function shotOvlSub(txt){
+  SHOTOVL_TEXT = esc(txt);
+  var sub = $('#shotOvlSub');
+  if(sub){
+    var s = Math.round((Date.now() - shotStartAt) / 1000);
+    sub.textContent = SHOTOVL_TEXT + ' · 已用 ' + s + 's';
+  }
+}
+/** Java 导完（OCR + 入队）的回调：清暂存 → 进度层继续盯着 AI 解析 → 全部结束才收 */
+window.shotsImported = function(res){
+  if(!res || !res.ok){
+    if(window.Android && Android.keepScreenOn) Android.keepScreenOn(false);
+    shotOverlay(false);
+    toast((res && res.error) || '导入失败');
+    return;
+  }
+  var staged = shotPicked().map(function(x){ return x.id });
+  shotSel = {};
+  Promise.resolve(staged.length ? api('/api/shots/remove', {ids: staged}) : null)
+    .catch(function(){}).then(function(){
+      closeSheet();
+      refresh();
+      if(res.ocrFailed) toast(res.ocrFailed + ' 张没识别到文字，已按原文保存');
+      waitShotsDone(res.noteIds || [], res.notes || 0);
+    });
+};
+/**
+ * AI 解析才是"要等好几分钟"的那段，所以在它结束前不收起进度层、不放开屏幕常亮。
+ * 每 1.5 秒看一次 /api/state，直到这批笔记都不是 queued/parsing。
+ */
+function waitShotsDone(ids, total){
+  if(!ids.length){ keepShotsLight(false); shotOverlay(false); refresh(); return }
+  shotOvlSub('AI 正在解析（' + ids.length + ' 条）');
+  var t0 = Date.now(), iv = 0, stopped = false;
+  function finish(msg){
+    if(stopped) return;
+    stopped = true;
+    if(iv) clearInterval(iv);
+    keepShotsLight(false);
+    shotOverlay(false);
+    refresh();
+    if(msg) toast(msg);
+  }
+  iv = setInterval(function(){
+    api('/api/state').then(function(st){
+      var map = {};
+      ((st && st.notes) || []).forEach(function(n){ map[n.id] = n.status });
+      var done = 0;
+      ids.forEach(function(id){
+        var s = map[id];
+        if(s && s !== 'queued' && s !== 'parsing') done++;
+      });
+      shotOvlSub('AI 正在解析：' + done + ' / ' + ids.length + ' 条完成');
+      if(done >= ids.length) finish('解析完成，' + (total || ids.length) + ' 条笔记');
+    }).catch(function(){});
+    if(Date.now() - t0 > 20 * 60 * 1000) finish('等太久了，先回列表看看（解析还在后台继续）');
+  }, 1500);
+}
+function keepShotsLight(on){
+  if(window.Android && Android.keepScreenOn){ try { Android.keepScreenOn(!!on) } catch(e){} }
+}
+async function shotIgnoreSel(){
+  var picks = shotPicked();
+  if(!picks.length) return toast('先勾选要忽略的截图');
+  var ids = picks.map(function(x){ return x.id });
+  await api('/api/shots/ignore', {ids: ids});
+  shotSel = {};
+  loadShots();
+  refresh();
+  toast('已忽略 ' + ids.length + ' 张，以后不再提醒');
+}
+// ---- 文件夹选择（首次向导 + 设置页共用）----
+function folderSheet(){
+  var h = '<div class="cliptop">'
+    + '<button class="btn sm" onclick="folderSelAll(true)">全选</button>'
+    + '<button class="btn sm" onclick="folderSelAll(false)">全不选</button>'
+    + '<button class="btn sm" onclick="folderPickShots()">只选截图目录</button></div>'
+    + '<div style="margin:8px 0 4px"><input id="folderQ" class="fin" placeholder="搜索文件夹" '
+    + 'oninput="folderFilter(this.value)"></div>'
+    + '<div id="folderList" class="clipload">加载中…</div>'
+    + '<div class="clipacts"><button class="btn pri" onclick="folderSave()">开始监控</button></div>';
+  pageSheet('选择监控文件夹', h);
+  loadFolders();
+}
+function loadFolders(){
+  var raw = '[]';
+  try{ raw = (window.Android && Android.shotFolders) ? Android.shotFolders() : '[]' }catch(e){}
+  try{ folderAll = JSON.parse(raw) || [] }catch(e){ folderAll = [] }
+  var want = {};
+  ((SHOTFLAGS && SHOTFLAGS.list) || []).forEach(function(p){ want[p] = 1 });
+  folderSel = {};
+  folderAll.forEach(function(f){
+    // 首次：默认勾上名字像截图目录的；已经有配置的按配置来
+    if(Object.keys(want).length) folderSel[f.path] = !!want[f.path];
+    else folderSel[f.path] = !!f.shot;
+  });
+  folderRender();
+}
+function folderRender(){
+  var g = $('#folderList');
+  if(!g) return;
+  if(!folderAll.length){
+    g.innerHTML = emptyState('folder', '读不到文件夹', '需要先允许读取照片（我的 → 截图捕获 → 去授权）');
+    return;
+  }
+  var h = '';
+  folderAll.forEach(function(f){
+    var on = !!folderSel[f.path];
+    h += '<div class="frow'+(on?' on':'')+(f.missing?' gone':'')+'" data-path="'+esc(f.path)+'" '
+      + 'onclick="folderPick(\''+esc(f.path)+'\',this)">'
+      + '<div class="fcb">'+ic('check')+'</div>'
+      + '<div style="flex:1;min-width:0"><div class="fname">'+esc(folderLabel(f.path))+'</div>'
+      + '<div class="fpath">'+esc(f.path)+'</div></div>'
+      + '<div class="fmeta">'+(f.missing ? '已不存在' : (f.count||0)+' 张')+'</div></div>';
+  });
+  g.innerHTML = h;
+}
+function folderLabel(path){
+  var seg = String(path||'').replace(/\/$/,'').split('/');
+  var last = seg[seg.length-1] || path;
+  var map = {'Screenshots':'截图','screenshots':'截图','Screenshot':'截图','截图':'截图','截屏':'截屏'};
+  return map[last] || last;
+}
+function folderPick(path, el){
+  folderSel[path] = !folderSel[path];
+  if(el) el.classList.toggle('on', !!folderSel[path]);
+}
+function folderSelAll(on){
+  folderAll.forEach(function(f){ if(!f.missing) folderSel[f.path] = !!on });
+  folderRender();
+}
+function folderPickShots(){
+  folderAll.forEach(function(f){ folderSel[f.path] = !!f.shot && !f.missing });
+  folderRender();
+}
+function folderFilter(t){
+  var q = String(t||'').toLowerCase();
+  var rows = document.querySelectorAll('#folderList .frow');
+  for(var i=0;i<rows.length;i++){
+    var p = (rows[i].getAttribute('data-path')||'').toLowerCase();
+    rows[i].style.display = (!q || p.indexOf(q) >= 0) ? '' : 'none';
+  }
+}
+function folderSave(){
+  var want = folderAll.filter(function(f){ return folderSel[f.path] && !f.missing })
+    .map(function(f){ return f.path });
+  if(!want.length) return toast('至少选一个文件夹');
+  if(!(window.Android && Android.setShotFolders)) return toast('只在 app 内可用');
+  Android.setShotFolders(JSON.stringify(want));
+  Android.setShotEnabled(true);
+  closeSheet();
+  shotFlags(function(){ refresh() });
+  toast('已开始监控 ' + want.length + ' 个文件夹，只看之后的新图');
+}
+function scanShotsNow(){
+  if(!(window.Android && Android.scanShots)) return toast('只在 app 内可用');
+  if(!(SHOTFLAGS && SHOTFLAGS.granted)) return askShotPerm();
+  toast('正在扫描监控文件夹…');
+  Android.scanShots(true);
+}
+function rescanShots(days){
+  if(!(window.Android && Android.rescanShots)) return toast('只在 app 内可用');
+  if(!(SHOTFLAGS && SHOTFLAGS.granted)) return askShotPerm();
+  dialog({
+    title: '回捞最近 ' + days + ' 天的截图？',
+    body: '会重新扫一遍监控文件夹，可能一次冒出上百张。已经见过的不会重复收，觉得太多可以先去文件夹里只保留一个目录。',
+    ok: '开始',
+    onOk: function(){
+      toast('正在回捞最近 ' + days + ' 天…');
+      Android.rescanShots(days);
+    }
+  });
+}
+async function clearShots(){
+  var n = (S.info && S.info.shot) || 0;
+  if(!n) return toast('暂存区是空的');
+  dialog({
+    title: '清空截图暂存', danger: true, ok: '清空',
+    body: '会删掉暂存区里的 ' + n + ' 张副本（系统相册里的原图不受影响）。',
+    onOk: function(){
+      api('/api/shots/list').then(function(r){
+        var ids = ((r && r.shots) || []).map(function(x){ return x.id });
+        return api('/api/shots/remove', {ids: ids});
+      }).then(function(){ shotSel = {}; refresh(); toast('已清空截图暂存') });
+    }
+  });
+}
 function clipBanner(){
   var n = (S.info && S.info.clip) || 0;
   if(!n){
@@ -1145,11 +1583,11 @@ function noteCard(n, k){
 }
 function renderNotes(){
   var list = notesFiltered();
-  if(!S.notes.length) return strip()+missedBanner()+clipBanner() + emptyState('inbox', '还没有笔记',
+  if(!S.notes.length) return strip()+missedBanner()+shotBanner()+clipBanner() + emptyState('inbox', '还没有笔记',
       '在任何 app 里点「分享 → 懒得记」，文字和图片会自动变成笔记与待办');
-  if(!list.length) return strip()+missedBanner()+clipBanner() + emptyState('search', '没有符合条件的笔记',
+  if(!list.length) return strip()+missedBanner()+shotBanner()+clipBanner() + emptyState('search', '没有符合条件的笔记',
       '换个关键词，或点右上角重置筛选');
-  var h = strip()+missedBanner()+clipBanner();
+  var h = strip()+missedBanner()+shotBanner()+clipBanner();
   list.forEach(function(n, k){ h += noteCard(n, k) });
   return h;
 }
@@ -1507,6 +1945,16 @@ function renderMine(){
       + s.tags.map(function(t){return '<span class="chip tag">#'+esc(t.tag)+' · '+t.n+'</span>'}).join('')
       + '</div></div>';
   }
+  var sf = SHOTFLAGS || {};
+  h += '<div class="card"><h2>截图捕获</h2><div style="padding:0 12px 4px">'
+    + li('folder','监控文件夹', sf.enabled
+        ? ((sf.folders||0) + ' 个 · 点这里增删')
+        : '未开启 · 点这里开始', 'folderSheet()')
+    + li('image','截图暂存','当前 ' + ((S.info && S.info.shot) || 0) + ' 张待整理', 'shotSheet()')
+    + li('refresh','现在扫描一次', sf.granted ? '只看上次之后的新图' : '需要先允许读取照片', 'scanShotsNow()')
+    + li('calendar','回捞最近 7 天', '把最近 7 天的截图都收一遍（不会重复）', 'rescanShots(7)')
+    + li('trash','清空截图暂存', '只删副本，不动系统相册', 'clearShots()')
+    + '</div></div>';
   h += '<div class="card" style="padding:2px 12px">'
     + li('settings','设置','AI 模型 / 外观 / 采集 / OCR / 数据', 'settingsSheet()')
     + li('file-text','运行日志','Go 服务、解析队列、OCR 状态', 'showLog()')
@@ -1558,6 +2006,7 @@ function settingsRefresh(){
 }
 /* 从系统设置页回来后重新读一次权限/保活状态；顺便重画，让「剪贴板刚有更新」提示立刻出现 */
 window.onAppResume = function(){
+  shotFlags();
   settingsRefresh();
   if (S && S.notes) render();
 };
@@ -1633,7 +2082,8 @@ function sigOf(d){
         (n.todos ? n.todos.length : 0) + (n.attachments ? n.attachments.length : 0);
     for(j = 0; j < s.length; j++) h = (h*31 + s.charCodeAt(j)) | 0;
   }
-  return [ns.length, h, i.todos, i.open, i.overdue, i.queue, i.clip, i.ocrReady?1:0,
+  // 注意：签名里漏了 i.shot 的话，新截图只改变条数时不会重绘，首页横幅就不会出现（踩过）
+  return [ns.length, h, i.todos, i.open, i.overdue, i.queue, i.clip, i.shot, i.ocrReady?1:0,
           (d && d.settings && d.settings.theme) || ''].join('|');
 }
 async function refresh(quiet){
@@ -1903,6 +2353,8 @@ refresh();
 setTab();
 // 补看「不在的时候错过的提醒」：不挡首屏，拿到再重绘一次
 loadMissed();
+// 截图捕获的轻量状态（横幅要按"未开启/没权限/没选文件夹"分状态显示）
+shotFlags(function(){ render() });
 /* 启动自检（R15）：把各页渲染和「展开详情」这类交互入口真跑一遍。
    起因：expand() 用了从没声明过的 expAnim，点了抛 ReferenceError，界面一动不动，
    而语法检查、结构断言都发现不了 —— 只有真调用才会暴露。 */

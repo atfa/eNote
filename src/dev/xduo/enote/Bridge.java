@@ -9,6 +9,8 @@ import android.webkit.JsResult;
 import org.json.JSONObject;
 
 import java.lang.ref.WeakReference;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * The only Java/Go seam.
@@ -30,6 +32,7 @@ public class Bridge {
     static native String nativeInit(String filesDir, int tzOffsetSec, String tzId);
     static native String nativeStartServer();
     static native String nativeClipAdd(String payloadJson);
+    static native String nativeShotAdd(String payloadJson);
     static native int nativeClipCount();
     static native String nativeEnqueue(String payloadJson);
     static native String nativeStatus();
@@ -112,6 +115,130 @@ public class Bridge {
             return "{\"error\":\"" + e + "\"}";
         }
         return nativeEnqueue(o.toString());
+    }
+
+    // ---------------------------------------------------------------- 截图捕获 (P11)
+
+    /** Java 扫到的新截图交给 Go 的暂存区；shotsJson 是 [{path,name,mime,size,dateAdded}]。 */
+    static String shotAdd(String shotsJson) {
+        if (!loaded) return "{\"ok\":false,\"error\":\"native 未加载\"}";
+        try {
+            JSONObject o = new JSONObject();
+            o.put("shots", new org.json.JSONArray(shotsJson));
+            String r = nativeShotAdd(o.toString());
+            Log.i(TAG, "shotAdd -> " + (r == null ? "null"
+                    : r.length() > 200 ? r.substring(0, 200) : r));
+            return r;
+        } catch (Throwable t) {
+            Log.w(TAG, "shotAdd failed " + t);
+            return "{\"ok\":false}";
+        }
+    }
+
+    /** 首页横幅用的轻量状态（不扫媒体库，可以每帧调）。 */
+    @JavascriptInterface
+    public String shotFlags() {
+        Context c = appCtx;
+        return c == null ? "{}" : Shots.flagsJson(c);
+    }
+
+    /** 设置页 / 向导：{enabled,granted,folders:[{path,count,bytes,shot,missing}],watermark,total} */
+    @JavascriptInterface
+    public String shotState() {
+        Context c = appCtx;
+        return c == null ? "{}" : Shots.stateJson(c);
+    }
+
+    /** 向导：所有含图片的文件夹 [{path,count,bytes,shot}]（需要媒体权限）。 */
+    @JavascriptInterface
+    public String shotFolders() {
+        Context c = appCtx;
+        return c == null ? "[]" : Shots.foldersJson(c);
+    }
+
+    @JavascriptInterface
+    public boolean shotGranted() {
+        Context c = appCtx;
+        return c != null && Shots.mediaGranted(c);
+    }
+
+    @JavascriptInterface
+    public void askMedia() {
+        MainActivity a = current.get();
+        Log.i(TAG, "js askMedia");
+        if (a != null) a.askMediaPermission();
+    }
+
+    /** 保存多选的监控文件夹（json 数组），同时把水位重置为现在。 */
+    @JavascriptInterface
+    public void setShotFolders(String json) {
+        Context c = appCtx;
+        if (c == null) return;
+        Set<String> out = new LinkedHashSet<String>();
+        try {
+            org.json.JSONArray a = new org.json.JSONArray(json == null ? "[]" : json);
+            for (int i = 0; i < a.length(); i++) out.add(a.optString(i));
+        } catch (Throwable t) {
+            Log.w(TAG, "setShotFolders: " + t);
+        }
+        Shots.setFolders(c, out);
+    }
+
+    @JavascriptInterface
+    public void setShotEnabled(boolean on) {
+        Context c = appCtx;
+        if (c != null) Shots.setEnabled(c, on);
+    }
+
+    /** 立刻扫一次（后台线程），扫完回调 window.shotsScanned(n)。 */
+    @JavascriptInterface
+    public void scanShots(final boolean force) {
+        final Context c = appCtx;
+        if (c == null) return;
+        new Thread(new Runnable() {
+            public void run() {
+                int n = Shots.scan(c, force, null, 0);
+                MainActivity a = current.get();
+                if (a != null) a.runJs("window.shotsScanned && shotsScanned(" + n + ")");
+            }
+        }, "shot-scan").start();
+    }
+
+    /** 导入暂存的截图（OCR + 入队），完成后回调 window.shotsImported(result)。 */
+    @JavascriptInterface
+    public void importShots(final String json) {
+        final Context c = appCtx;
+        if (c == null) return;
+        Log.i(TAG, "js importShots");
+        new Thread(new Runnable() {
+            public void run() {
+                final String res = Shots.importShots(c, json);
+                MainActivity a = current.get();
+                if (a != null) a.runJs("window.shotsImported && shotsImported(" + res + ")");
+            }
+        }, "shot-import").start();
+    }
+
+    /** 回捞最近 N 天的截图（忽略水位，仍走 sha1 去重），扫完回调 window.shotsScanned(n)。 */
+    @JavascriptInterface
+    public void rescanShots(final int days) {
+        final Context c = appCtx;
+        if (c == null) return;
+        new Thread(new Runnable() {
+            public void run() {
+                int n = Shots.scan(c, true, null, days <= 0 ? 7 : days);
+                MainActivity a = current.get();
+                if (a != null) a.runJs("window.shotsScanned && shotsScanned(" + n + ")");
+            }
+        }, "shot-rescan").start();
+    }
+
+    /** 导入期间保持屏幕常亮：真的别黑屏，而不只是嘴上说。 */
+    @JavascriptInterface
+    public void keepScreenOn(final boolean on) {
+        MainActivity a = current.get();
+        Log.i(TAG, "js keepScreenOn " + on);
+        if (a != null) a.keepScreenOn(on);
     }
 
     // ---------------------------------------------------------------- clipboard (R7/P6)

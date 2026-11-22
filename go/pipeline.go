@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,18 @@ type ingestReq struct {
 	FileError string `json:"fileError"` // kind=file: the copy failed, keep the reason
 	Raw       bool   `json:"raw"`       // true = store as-is, no LLM call
 	Source    string `json:"source"`    // share-text | share-image | manual-text | manual-image | share-file | manual-file | clipboard-*
+	// Images 只在 kind=images 时用：一次导入的多张截图（合并成一条笔记，P11）。
+	Images []ingestImage `json:"images,omitempty"`
+}
+
+// ingestImage 是"合并成一条笔记"里的单张图：OCR 结果由 Java 侧（ML Kit）给。
+type ingestImage struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+	MIME string `json:"mime,omitempty"`
+	OCR  string `json:"ocr,omitempty"`
+	Ms   int64  `json:"ocrMs,omitempty"`
+	Err  string `json:"err,omitempty"`
 }
 
 var jobs = make(chan string, 256)
@@ -76,6 +89,40 @@ func enqueue(r ingestReq) enqueueResult {
 		if n.Status != stError && n.OCRText == "" {
 			n.Status = stRaw
 			n.Error = "图片里没有识别到文字"
+		}
+	case "images":
+		// 多张截图合成一条笔记（P11 合并模式）：附件按时间顺序全部挂上，
+		// OCR 文本拼接后只调一次 LLM —— 10 张图 = 1 次调用，不是 10 次。
+		if len(r.Images) == 0 {
+			return enqueueResult{Kind: r.Kind, Error: "没有图片"}
+		}
+		var parts []string
+		ocrErr := ""
+		for _, im := range r.Images {
+			name := firstNonEmpty(im.Name, filepath.Base(im.Path))
+			attachTo(n, attachmentFor(n.ID, im.Path, name, im.MIME, n.Source, n.CreatedAt))
+			if n.ImagePath == "" {
+				n.ImagePath, n.ImageName = im.Path, name
+			}
+			if t := strings.TrimSpace(im.OCR); t != "" {
+				parts = append(parts, t)
+			}
+			if im.Err != "" && ocrErr == "" {
+				ocrErr = im.Err
+			}
+			n.OCRMs += im.Ms
+		}
+		n.OCRText = strings.Join(parts, "\n\n---\n\n")
+		n.RawText = n.OCRText
+		n.Content = n.OCRText
+		n.Title = fmt.Sprintf("截图 %d 张 · %s", len(r.Images), time.Now().Format("01-02 15:04"))
+		switch {
+		case ocrErr != "":
+			n.Status, n.Error = stError, ocrErr
+		case n.OCRText == "":
+			n.Status, n.Error = stRaw, "图片里没有识别到文字"
+		case r.Raw:
+			n.Status, n.Error = stRaw, "原样保存，未做 AI 解析"
 		}
 	case "file":
 		// a document (pdf, docx, txt, ...) shared or picked: stored, not sent to the LLM
@@ -267,6 +314,9 @@ func appInit(dir string) map[string]any {
 	if clipStore, err = openClipStore(dir + "/enote"); err != nil {
 		return map[string]any{"ok": false, "error": "clip store: " + err.Error()}
 	}
+	if shotStore, err = openShotStore(dir + "/enote"); err != nil {
+		return map[string]any{"ok": false, "error": "shot store: " + err.Error()}
+	}
 	startWorker()
 	bootStats = map[string]any{"ok": true, "dir": dir, "notes": len(store.snapshot()),
 		"go": goVersion()}
@@ -285,6 +335,7 @@ func appInfo() map[string]any {
 		"open":     0,
 		"overdue":  0,
 		"clip":     clipCount(),
+		"shot":     shotCount(),
 		"server":   srvURL,
 		"go":       goVersion(),
 		"tz":       tzInfo(),

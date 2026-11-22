@@ -19,6 +19,10 @@
          POST_NOTIFICATIONS 是 13+ 的运行时权限；SCHEDULE_EXACT_ALARM 是 31+ 的特殊权限，
          用户可以关掉，关掉后自动降级成 setAndAllowWhileIdle（可能晚几分钟，但不会丢）。 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- P11 截图捕获：读媒体库里的图片（MediaStore）。Android 13+ 分权限，12 及以下用旧的那个。 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <!-- targetSdk 33 上 SCHEDULE_EXACT_ALARM 默认不授予；USE_EXACT_ALARM 是 33+ 给
          闹钟/提醒类应用的自动授予版本，canScheduleExactAlarms() 直接为 true -->

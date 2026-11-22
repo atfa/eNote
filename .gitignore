@@ -3,4 +3,5 @@ out/
 *.apk
 *.apk.idsig
 go/enotebin
+go/dev.xduo.enote
 go/ui.bundle.js

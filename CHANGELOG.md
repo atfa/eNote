@@ -1,7 +1,7 @@
 # 更新日志
 
 版本按开发阶段（Pn）记录，全部在手机上完成。界面改动都经过后台屏截图核对 +
-`tools/ui_sig_test.js`（61 项 UI 结构契约）+ `go test ./...`。
+`tools/ui_sig_test.js`（71 项 UI 结构契约）+ `go test ./...`。
 
 ## 0.1（当前）
 
@@ -55,6 +55,42 @@
     `SELFCHECK FAIL` 直接判失败——这类错误以前只会安静地把点击吞掉。
 * `tools/ui_sig_test.js` 53 → 61 项：新增 `.cb` / `.clicb` 尺寸、`expAnim` 等状态表声明、
   `syncExpand` 显隐规则、`max-height` 截断（并禁止 `-webkit-line-clamp`）等断言。
+
+### 功能（P11 截图捕获）
+
+* **自动发现新截图**：每次打开 app（`onResume`）扫一次用户选定的监控文件夹（MediaStore，
+  可多选；默认勾上名字/路径像截图目录的），新图复制进 `files/enote/inbox/shot-*` 后进暂存区。
+  * 水位存在 `shared_prefs/shots.xml`（`DATE_ADDED` 秒），带 5 分钟重叠窗口 + sha1 去重表
+    （`shotseen.json`，最近 500 条）：改名、移动、重复入库都不会再报。
+  * **首次启用不回捞历史**——这台机器有 2759 张截图，回捞会直接糊满屏；要看旧的用
+    「我的 → 截图捕获 → 回捞最近 7 天」（二次确认，仍走 sha1 去重）。
+  * 单次最多收 50 张，暂存区硬上限 200 张（超出丢最老的并删文件）。
+* **首页横幅**：`错过提醒 → 新截图 → 剪贴板`，青色系。三种状态：未开启（点开走向导）、
+  没权限（点「去授权」才弹系统框）、有新图（`发现 N 张新截图 · 整理 ›`）。
+* **截图暂存页**：3 列缩略图网格 + 多选，`合并成一条笔记`（N 个附件 + 一次 LLM）/
+  `各存一条`（N 条笔记，超过 5 张先确认 N 次 AI 调用）/ `原样存` / `忽略所选（永久不再提醒）`。
+* **文件夹多选向导**：`全选 / 全不选 / 只选截图目录` + 搜索框，列表按张数降序，带张数与字节数，
+  已删除的目录标灰「已不存在」。改完文件夹会把水位重置为现在（同样不倒历史）。
+* **导入进度层**：全屏不可点掉，滚动 elapsed 计时，文案是用户要求的醒目警告——
+  「请保持屏幕常亮：不要锁屏、不要让手机黑屏，也不要退出 App 或切到别的应用」；
+  同时 Java 侧真的加 `FLAG_KEEP_SCREEN_ON`。进度层**一直挂到这批笔记 AI 解析结束**
+  （OCR + 入队只要 1 秒，收早了提示就白写了）。
+* **一句话分工**：OCR 只能在 Java 侧（ML Kit），所以导入由 `Android.importShots` 发起，
+  Go 只负责暂存/去重/忽略表/文件生命周期。合并笔记走新的 `kind=images`：N 个附件、OCR 文本
+  用 `---` 拼接、**只调一次** LLM。
+
+### 工程（P11）
+
+* `Shots.java`：MediaStore 枚举 / 多选配置 / 水位 / sha1 / 复制 / 扫描 / `keepScreenOn`。
+  * 踩坑：`sortOrder` 里不能拼 `LIMIT`（这台机器的 MediaProvider 直接抛
+    `IllegalArgumentException: Invalid token LIMIT`），改成自己数到上限就停。
+* `go/shots.go` + `shots_test.go`（8 个用例）：去重、忽略永久生效、上限裁掉最老的并删文件、
+  缺失文件自动丢弃、`shot.json` 落盘后重启仍在、`nativeShotAdd` 返回形状。
+* 新 hook（测试用）：`shotscan`（`{"folders":[],"rangeDays":1}`）、`shotfolders`、
+  `shotimport`（`{"mode":"merge|split","raw":bool,"shots":[…]}`）。
+* 修 `sigOf` 漏了 `i.shot` 的问题：新截图只改条数时不会重绘，首页横幅根本不出现。
+* `test.sh` 新增 P11 段（造图 → 扫描 → 合并 → 各存一条 → 幂等 → 忽略 → 清理），
+  `ui_sig_test.js` 61 → 71 项（含"别黑屏"文案、进度层收起时机、权限声明、文件夹多选）。
 
 ### 功能
 

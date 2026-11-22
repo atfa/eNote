@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
     static final int REQ_FILE = 8;
     static final int REQ_IMPORT = 9;
     static final int REQ_NOTIFY = 10;
+    static final int REQ_SHOTS = 11;   // P11 截图捕获：读媒体库图片
     /** A note/todo to open once the page is ready (notification tap). */
     static String pendingOpenNote;
     static String pendingOpenTodo;
@@ -181,6 +182,8 @@ public class MainActivity extends Activity {
         clipWaitingFocus = true;
         clipWaitStart = SystemClock.uptimeMillis();
         drainClipboard();
+        // P11 截图捕获：每次回到前台扫一次（只看水位之后的新图，第一次只记水位）
+        scanShotsAsync();
         // 常驻后台：用户在设置里开过就重新拉起（进程被回收后回来也能恢复）
         KeepAlive.resumeIfEnabled(this);
         // 从系统设置页（电池优化 / 通知权限）回来时刷新设置页的状态
@@ -503,7 +506,57 @@ public class MainActivity extends Activity {
             boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
             note("notify: 用户选择 granted=" + ok);
             runJs("window.notifyResult && notifyResult(" + ok + ")");
+        } else if (req == REQ_SHOTS) {
+            boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
+            note("shots: media permission granted=" + ok);
+            runJs("window.shotPermResult && shotPermResult(" + ok + ")");
+            if (ok) scanShotsAsync();
         }
+    }
+
+    // ---------------------------------------------------------------- 截图捕获 (P11)
+
+    void askMediaPermission() {
+        if (Shots.mediaGranted(this)) {
+            note("shots: 已有媒体权限");
+            runJs("window.shotPermResult && shotPermResult(true)");
+            return;
+        }
+        try {
+            requestPermissions(new String[]{Shots.permName()}, REQ_SHOTS);
+        } catch (Throwable t) {
+            note("shots: requestPermissions failed " + t);
+        }
+    }
+
+    /** 后台线程扫一次，扫完把条数推给页面（首页 banner 自己会再拉 /api/shots/list）。 */
+    void scanShotsAsync() {
+        if (!Shots.enabled(this)) return;
+        if (!Shots.mediaGranted(this)) {
+            note("shots: 没权限，先不扫");
+            return;
+        }
+        new Thread(new Runnable() {
+            public void run() {
+                int n = Shots.scan(MainActivity.this, false, null, 0);
+                note("shots: scan -> " + n);
+                runJs("window.shotsScanned && shotsScanned(" + n + ")");
+            }
+        }, "shot-scan").start();
+    }
+
+    /** 导入/解析期间别让屏幕黑掉（用户明确要求"不要黑屏、不要退出"，所以真的做）。 */
+    void keepScreenOn(final boolean on) {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                if (on) {
+                    getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                } else {
+                    getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                }
+                note("shots: keepScreenOn=" + on);
+            }
+        });
     }
 
     /**
@@ -754,6 +807,37 @@ public class MainActivity extends Activity {
                     });
                     try { done.await(3, java.util.concurrent.TimeUnit.SECONDS); } catch (Throwable ignored) {}
                     out = "{\"ok\":true,\"len\":" + t.length() + ",\"written\":" + written[0] + "}";
+                } else if ("shotscan".equals(hook)) {
+                    // 验收用：{"force":true,"folders":["Pictures/Screenshots"],"rangeDays":1}
+                    boolean force = false;
+                    int rangeDays = 0;
+                    org.json.JSONArray fo = null;
+                    try {
+                        org.json.JSONObject o = new org.json.JSONObject(arg == null ? "{}" : arg);
+                        force = o.optBoolean("force", false);
+                        rangeDays = o.optInt("rangeDays", 0);
+                        if (o.has("folders")) fo = o.optJSONArray("folders");
+                    } catch (Throwable ignored) {}
+                    int n = Shots.scan(MainActivity.this, force, fo, rangeDays);
+                    out = "{\"ok\":" + (n >= 0) + ",\"added\":" + n
+                        + ",\"granted\":" + Shots.mediaGranted(MainActivity.this)
+                        + ",\"watermark\":" + Shots.watermark(MainActivity.this) + "}";
+                } else if ("shotfolders".equals(hook)) {
+                    // 验收用：{"folders":["Pictures/Screenshots"]}，不传就只打印状态
+                    try {
+                        org.json.JSONObject o = new org.json.JSONObject(arg == null ? "{}" : arg);
+                        if (o.has("folders")) {
+                            org.json.JSONArray a = o.optJSONArray("folders");
+                            java.util.Set<String> want = new java.util.LinkedHashSet<String>();
+                            for (int i = 0; i < a.length(); i++) want.add(a.optString(i));
+                            Shots.setFolders(MainActivity.this, want);
+                        }
+                        if (o.has("enabled")) Shots.setEnabled(MainActivity.this, o.optBoolean("enabled"));
+                    } catch (Throwable ignored) {}
+                    out = Shots.stateJson(MainActivity.this);
+                } else if ("shotimport".equals(hook)) {
+                    // 验收用：{"mode":"merge","raw":false,"shots":[{path,name,mime}]}
+                    out = Shots.importShots(MainActivity.this, arg == null ? "{}" : arg);
                 } else if ("clipnotify".equals(hook)) {
                     // 验收用：直接发一条剪贴板通知（这台 ROM 后台不投递监听，靠这条测通知本身）
                     KeepAlive.notifyClip(MainActivity.this, Bridge.clipCount());

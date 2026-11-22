@@ -425,4 +425,66 @@ const clampRule = /\.body\.clamp\{max-height:calc\(3 \* 1\.65em \+ 18px\)/.test(
 console.log((clampRule ? '  ok   ' : '  FAIL ') + '正文三行截断用 max-height（line-clamp 对 pre-wrap 无效）');
 if (!clampRule) bad++;
 
+// ---- P11 截图捕获 ----
+const shotsGo = fs.readFileSync(path.join(root, 'go/shots.go'), 'utf8');
+const shotsJava = fs.readFileSync(path.join(root, 'src/dev/xduo/enote/Shots.java'), 'utf8');
+const manifest = fs.readFileSync(path.join(root, 'AndroidManifest.xml'), 'utf8');
+
+const shotBannerOrder = /strip\(\)\+missedBanner\(\)\+shotBanner\(\)\+clipBanner\(\)/.test(src)
+  && /function shotBanner\(\)/.test(src);
+console.log((shotBannerOrder ? '  ok   ' : '  FAIL ') + '首页横幅顺序：错过提醒 → 新截图 → 剪贴板');
+if (!shotBannerOrder) bad++;
+
+const shotGrid = /\.shotgrid\{display:grid;grid-template-columns:repeat\(3,1fr\)/.test(src)
+  && /function shotSheet\(\)/.test(src) && /function loadShots\(\)/.test(src)
+  && /shotSelAll\(true\)/.test(src) && /合并成一条笔记/.test(src) && /各存一条/.test(src);
+console.log((shotGrid ? '  ok   ' : '  FAIL ') + '截图暂存页：3 列网格 + 多选 + 合并/各存/原样存/忽略');
+if (!shotGrid) bad++;
+
+// 处理期间必须明确写"别黑屏、别退出"（用户要求），并且真的保持屏幕常亮
+const shotWarn = /不要锁屏/.test(src) && /不要退出 App|也不要退出 App/.test(src)
+  && /请保持屏幕常亮/.test(src) && /FLAG_KEEP_SCREEN_ON/.test(java)
+  && /keepScreenOn/.test(bridge);
+console.log((shotWarn ? '  ok   ' : '  FAIL ') + '导入进度层有"别黑屏/别退出"提示，且真的保持常亮');
+if (!shotWarn) bad++;
+
+// 进度层一直挂到 AI 解析结束（OCR+入队太快，收早了提示就白写了）
+const shotWait = /function waitShotsDone\(/.test(src) && /AI 正在解析/.test(src)
+  && /noteIds/.test(fs.readFileSync(path.join(root, 'src/dev/xduo/enote/Shots.java'), 'utf8'));
+console.log((shotWait ? '  ok   ' : '  FAIL ') + '进度层等到 AI 解析结束才收起');
+if (!shotWait) bad++;
+
+// 文件夹可多选：首次向导 + 设置页入口，默认勾上截图目录
+const shotFolders = /function folderSheet\(\)/.test(src) && /function folderSave\(\)/.test(src)
+  && /function folderPickShots\(\)/.test(src) && /只能选截图目录|只选截图目录/.test(src)
+  && /setShotFolders/.test(bridge) && /RELATIVE_PATH/.test(shotsJava)
+  && /BUCKET|looksLikeShot/.test(shotsJava);
+console.log((shotFolders ? '  ok   ' : '  FAIL ') + '监控文件夹可多选（MediaStore 枚举，默认勾截图目录）');
+if (!shotFolders) bad++;
+
+// 首次不回捞历史 + 5 分钟重叠窗口 + sha1 去重 + 上限
+const shotWater = /first run, watermark set to now/.test(shotsJava)
+  && /OVERLAP_SEC = 300/.test(shotsJava) && /SHA-1/.test(shotsJava)
+  && /MAX_PER_SCAN = 50/.test(shotsJava) && /shotKeepMax\s+= 200/.test(shotsGo)
+  && /Ignored/.test(shotsGo);
+console.log((shotWater ? '  ok   ' : '  FAIL ') + '水位：首次不回捞 / 5 分钟重叠 / sha1 去重 / 忽略表');
+if (!shotWater) bad++;
+
+// 多张合成一条笔记：kind=images，N 个附件，一次 LLM
+const shotMerge = /case "images":/.test(fs.readFileSync(path.join(root, 'go/pipeline.go'), 'utf8'))
+  && /strings\.Join\(parts/.test(fs.readFileSync(path.join(root, 'go/pipeline.go'), 'utf8'))
+  && /kind", "images"/.test(shotsJava);
+console.log((shotMerge ? '  ok   ' : '  FAIL ') + '合并模式：多附件一条笔记 + 只调一次 LLM');
+if (!shotMerge) bad++;
+
+const shotRoutes = ['/api/shots/list', '/api/shots/add', '/api/shots/remove', '/api/shots/ignore']
+  .every(r => goweb.indexOf(r) >= 0) && /m\.HandleFunc\("\/shotimg"/.test(goweb);
+console.log((shotRoutes ? '  ok   ' : '  FAIL ') + '截图接口齐全（list/add/remove/ignore + /shotimg）');
+if (!shotRoutes) bad++;
+
+const shotPerm = /READ_MEDIA_IMAGES/.test(manifest) && /READ_EXTERNAL_STORAGE/.test(manifest)
+  && /maxSdkVersion="32"/.test(manifest) && /mediaGranted/.test(shotsJava);
+console.log((shotPerm ? '  ok   ' : '  FAIL ') + '存储/媒体权限按版本分开声明');
+if (!shotPerm) bad++;
+
 process.exit(bad ? 1 : 0);

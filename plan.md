@@ -419,6 +419,10 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 [x] P7c 弹层 / 空状态 / 我的页列表 / toast 图标化 + 卡片入场动效（seen 表，轮询不跳）
 [x] P7d 我的页 hero + 指标卡图标 + 图表渐变柱 + 深色模式核对
 [x] P7e 文档（README 重写 + CHANGELOG）+ 全量回归
+[x] P8 补看错过的提醒（lastopen.txt + /api/missed + 首页横幅 + 清单）
+[x] P9 用户反馈的 7 处修正（按钮居中 / 附件留白 / 每 tab 常驻面板 / 勾选框 / 图标还原 / 二级页贴顶 / 冷启动通知）
+[x] P10 展开详情修 bug + 三行截断 + 展开按钮按实测高度显隐
+[x] P11 截图捕获（多选监控文件夹 → 暂存区 → 合并/各存一条 → 进度层 + 屏幕常亮）
 ```
 
 ---
@@ -475,3 +479,28 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 | 图标在小尺寸下发糊 | 启动器观感差 | 母图 1024 生成后缩到 48px 目测；弦数 ≤ 7，线宽 ≥ 母图 1.2%；自适应图标前景留 66dp 安全区 |
 | 动画过多导致低端机卡顿 | 体验下降 | 只用 transform/opacity；stagger ≤ 8 项；`prefers-reduced-motion` 全关 |
 | 单文件 `ui.html` 膨胀到难维护 | 开发变慢 | P2 拆出 `go/ui.css`（组件库）；超过 ~900 行再拆 JS，保留打包步骤 |
+
+---
+
+## 8. P11 截图捕获（已完成，2026-11-22）
+
+设计与决策过程见 `docs/design-shots.md`（§8 是 15 条已确认结论）。落地要点与踩坑：
+
+* **权限**：`READ_MEDIA_IMAGES`（13+）+ `READ_EXTERNAL_STORAGE`（maxSdk 32）。不主动弹框，
+  只在首页横幅/向导里点「去授权」时才弹——避免首屏被系统对话框吓到。
+* **文件夹多选**：MediaStore 枚举 `RELATIVE_PATH`（`Pictures/Screenshots/`、`DCIM/Camera/` …），
+  带张数与字节数、按张数降序、可搜索；默认勾上名字/路径像截图目录的。
+  不用 SAF：媒体库已经索引了共享存储里所有图片，多一条 SAF 路径只多一种"看不到文件"的故障。
+* **水位**：`DATE_ADDED` 秒 + 5 分钟重叠窗口 + sha1 去重表；**首次启用不回捞**（这机器 2759 张），
+  改文件夹也重置水位；回捞走「回捞最近 7 天」并二次确认。
+* **分工**：OCR 只能在 Java（ML Kit），所以导入是 `Android.importShots` 发起，Go 只做暂存区
+  （`shot.json`）、去重、忽略表、上限与文件生命周期。合并笔记走 `kind=images`：
+  N 个附件 + OCR 文本拼接 + 一次 LLM。
+* **进度层**：全屏不可点掉，文案是用户明确要求的「不要锁屏 / 不要黑屏 / 不要退出 App」，
+  同时真的 `FLAG_KEEP_SCREEN_ON`；并且**一直挂到这批笔记 AI 解析结束**才收起
+  （OCR + 入队只要 1 秒，收早了那句提示就是空话）。
+* **踩坑**：
+  * MediaProvider 的 `sortOrder` 里不能拼 `LIMIT`（`IllegalArgumentException: Invalid token LIMIT`），
+    自己数到上限就停。
+  * `sigOf` 忘了把 `info.shot` 算进签名：新截图只改条数时不会重绘，首页横幅压根不出现。
+  * 同一屏连续 `screencap` 得到的是同一份字节，测试造图要用不同内容（否则被 sha1 去重）。
