@@ -552,4 +552,27 @@ const atomicCfg = /func \(c \*Config\) set\(s Settings\) error \{[\s\S]{0,1400}o
 console.log((atomicCfg ? '  ok   ' : '  FAIL ') + 'settings.json 原子写（.tmp + rename + .bak 兜底）');
 if (!atomicCfg) bad++;
 
+// 首页横幅（剪贴板/截图/错过的提醒）不在 /api/search 结果里：
+// 搜索结果没变但条数变了时必须强制重绘，否则删光剪贴板、扫到新截图后横幅都不刷新
+const forcePaint = /async function searchNow\(force\)/.test(src)
+  && /if\(k === SRK && !force\)/.test(src)
+  && /searchNow\(dirty\)/.test(src);
+console.log((forcePaint ? '  ok   ' : '  FAIL ') + '横幅变化会强制重绘（searchNow(force)）');
+if (!forcePaint) bad++;
+
+// 错过的提醒面板：只能看没法处理过（用户反馈），要有「完成」和「我知道了」
+const missedOps = /function missedDone\(/.test(src) && /function missedDismiss\(/.test(src)
+  && /这批我知道了/.test(src) && /class="msdone"/.test(src);
+console.log((missedOps ? '  ok   ' : '  FAIL ') + '错过的提醒面板：每行可完成 + 「这批我知道了」');
+if (!missedOps) bad++;
+
+// 截图要实时：进程一起来就监听 MediaStore，截完图 1~2 秒进暂存区
+const javaApp = fs.readFileSync(path.join(root, 'src/dev/xduo/enote/EnoteApp.java'), 'utf8');
+const javaShots = fs.readFileSync(path.join(root, 'src/dev/xduo/enote/Shots.java'), 'utf8');
+const shotWatch = /Shots\.watch\(this\)/.test(javaApp)
+  && /registerContentObserver\(\s*MediaStore\.Images\.Media\.EXTERNAL_CONTENT_URI/.test(javaShots)
+  && /postDelayed\(wTask, 1200\)/.test(javaShots);
+console.log((shotWatch ? '  ok   ' : '  FAIL ') + '相册变化实时监听（ContentObserver + 1.2s 去抖）');
+if (!shotWatch) bad++;
+
 process.exit(bad ? 1 : 0);

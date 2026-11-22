@@ -545,6 +545,12 @@ public class MainActivity extends Activity {
         }, "shot-scan").start();
     }
 
+    /** 相册监听发现新截图（app 在后台也会扫）：界面在的话立刻刷新横幅，不靠 2s 轮询。 */
+    void shotsFound(final int n) {
+        note("shots: 监听到新截图 " + n + " 张");
+        runJs("window.shotsScanned && shotsScanned(" + n + ")");
+    }
+
     /** 导入/解析期间别让屏幕黑掉（用户明确要求"不要黑屏、不要退出"，所以真的做）。 */
     void keepScreenOn(final boolean on) {
         runOnUiThread(new Runnable() {

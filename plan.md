@@ -531,3 +531,12 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
   就留下半截 JSON → 下次启动解析失败回默认值 → key 丢。现在原子写（`.tmp` + `fsync` + `rename`）
   并留 `.bak`，`openConfig` 坏了自动退回 `.bak`；设置页也不再打码（明文 key，用户不在意）。
   测试：`go test` 的 bak 恢复/原子写两条 + `test.sh` 的"读回来 == 存进去"断言。
+
+## P12（用户反馈三条，已完成）
+* **横幅不刷新**：`searchNow()` 在搜索结果没变时短路 return，而首页横幅不在搜索结果里 →
+  加 `force` 参数，页面签名变了就强制重绘。剪贴板删光、新截图扫到，都是这一个根因。
+* **错过的提醒面板**：加每行 ✓ 完成 + 底部「这批我知道了」（`missedDismiss`，只清横幅不动待办）。
+  面板操作逻辑 = 看上下文 / 做掉 / 承认看过，三条路各有明确后果。
+* **截图要重进两次**：`EnoteApp` 注册 MediaStore `ContentObserver`（去抖 1.2s），
+  截图落盘就扫，不靠 `onResume`。
+* 教训：`refresh()` 不 await `searchNow()`，jseval 断言必须轮询等 DOM，不能 await 完就读。

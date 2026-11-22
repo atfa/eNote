@@ -4,9 +4,12 @@ import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.database.ContentObserver;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
@@ -626,5 +629,51 @@ public final class Shots {
             if (in != null) try { in.close(); } catch (Throwable ignored) {}
             if (out != null) try { out.close(); } catch (Throwable ignored) {}
         }
+    }
+
+    // ---------------------------------------------------------------- 实时监听（P11 用户反馈）
+
+    static ContentObserver watcher;
+    static final Handler wHand = new Handler(Looper.getMainLooper());
+    static Runnable wTask;
+
+    /**
+     * 监听相册变化：截图落盘后 1~2 秒就扫进暂存区。
+     * 以前只在 onResume 扫，用户截完图切回来经常看不到横幅（扫描比界面渲染慢，
+     * 而横幅刷新又被前端短路掉），要退桌面再进来一次才出现。
+     */
+    static void watch(Context c) {
+        if (watcher != null) return;
+        final Context app = c.getApplicationContext();
+        watcher = new ContentObserver(wHand) {
+            @Override public void onChange(boolean selfChange) { scheduleScan(app); }
+            @Override public void onChange(boolean selfChange, Uri uri) { scheduleScan(app); }
+        };
+        try {
+            c.getContentResolver().registerContentObserver(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, watcher);
+            Log.i(TAG, "shots: 已监听相册变化");
+        } catch (Throwable t) {
+            Log.w(TAG, "shots: 相册监听注册失败 " + t);
+        }
+    }
+
+    /** 一次截图系统会连发好几次 onChange：去抖 1.2s 再扫。 */
+    static void scheduleScan(final Context app) {
+        wHand.removeCallbacks(wTask);
+        wTask = new Runnable() {
+            @Override public void run() {
+                new Thread(new Runnable() {
+                    public void run() {
+                        final int n = scan(app, false, null, 0);
+                        if (n <= 0) return;
+                        Log.i(TAG, "shots: 监听到相册变化，新增 " + n + " 张");
+                        MainActivity act = Bridge.current == null ? null : Bridge.current.get();
+                        if (act != null) act.shotsFound(n);
+                    }
+                }, "shot-watch").start();
+            }
+        };
+        wHand.postDelayed(wTask, 1200);
     }
 }

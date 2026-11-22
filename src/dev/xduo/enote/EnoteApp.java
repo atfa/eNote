@@ -28,5 +28,7 @@ public class EnoteApp extends Application {
         Reminders.ensureChannel(app);
         // 常驻后台开关是用户自己开的，进程被回收后要恢复；首启或后台启动失败时会静默忽略。
         KeepAlive.resumeIfEnabled(app);
+        // P11：监听相册变化，截完图 1~2 秒就进暂存区，不用等用户重进 app 才发现有新截图
+        Shots.watch(this);
     }
 }

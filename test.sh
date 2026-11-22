@@ -536,6 +536,59 @@ assert hits, d
 print("  ok (被拒后重试成功，暂存 %d 条：%s)" % (len(hits), hits[0]["text"][:24]))
 ' || fail "剪贴板在窗口拿到焦点后仍未被暂存（焦点重试没生效）"
 
+step "P6.6 删光剪贴板后首页横幅立刻消失（用户反馈：返回主页还提示有暂存）"
+# 真因在前端：refresh → searchNow 在「搜索结果没变」时直接 return，而横幅不在搜索结果里，
+# 所以条数变了页面也不重绘。删光剪贴板是最容易复现的一条路径。
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+cat > "$TMPDIR/jseval.sh" <<'EOS'
+#!/bin/sh
+am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$(cat "$1")" >/dev/null
+EOS
+N0C=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
+  var bt=function(){var b=q(".clipbanner");return b?b.textContent.replace(/\s+/g,""):"none"};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var wait=async function(want){ // 重绘要等 /api/search 回来（refresh 不 await searchNow），所以轮询
+    var i=0;
+    while(i<12){ await refresh(true); if(!!q(".clipbanner")===want) return i; await sleep(250); i++; }
+    return i;
+  };
+  tab="notes";
+  L("count0="+(await api("/api/state")).info.clip);
+  L("tries0="+await wait(true));
+  L("before="+bt());
+  await api("/api/clip/clear",{});
+  L("tries1="+await wait(false));
+  L("after="+bt());
+  L("count="+(await api("/api/state")).info.clip);
+  L("done=1");
+})()' > "$TMPDIR/jsclip.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsclip.json'"
+n=0
+while [ "$n" -lt 20 ]; do
+  readtlog | tail -n +$((N0C + 1)) | grep -q 'JSEVAL done=1' && break
+  sleep 1; n=$((n + 1))
+done
+readtlog | tail -n +$((N0C + 1)) | grep 'JSEVAL ' > "$TMPDIR/jsclip.out"
+grep -q 'done=1' "$TMPDIR/jsclip.out" || fail "jseval 没跑完（剪贴板横幅用例）"
+"$PY" - "$TMPDIR/jsclip.out" <<'PYCHK' || fail "删光剪贴板后首页横幅没消失"
+import re, sys
+txt = open(sys.argv[1], encoding="utf-8").read()
+def val(k):
+    m = re.search(r"JSEVAL " + k + r"=(.*)", txt)
+    return m.group(1).strip() if m else ""
+assert val("count0") not in ("", "0"), "删之前服务端就该有暂存条目: %r" % val("count0")
+assert "剪贴板暂存" in val("before"), "删之前首页应该有剪贴板横幅: %r" % val("before")
+assert "暂存" not in val("after"), "删光之后横幅还在: %r" % val("after")
+assert val("count") == "0", "服务端条数没归零: %r" % val("count")
+assert int(val("tries0")) < 11, "等了 3 秒横幅都没出现（tries0=%s）" % val("tries0")
+assert int(val("tries1")) < 11, "删光之后等了 3 秒横幅还在（tries1=%s）" % val("tries1")
+print("  ok (删光前「%s」→ 删光后「%s」)" % (val("before")[:18], val("after")))
+PYCHK
+asroot_global "rm -f '$DATA/enote/.devmode'"
+
 step "P8 补看错过的提醒（后台被冻结时唯一有意义的补救）"
 # 把「上次打开时间」退到过去，接口就该把这段时间内到点、未完成的待办报出来
 asroot_global "echo -n '2020-01-01T00:00:00+08:00' > /data/data/$APP_PACKAGE/files/enote/lastopen.txt"
@@ -561,6 +614,73 @@ d = json.load(sys.stdin)
 assert d.get("count") == 0, "第二次问不该重复报，got %s" % d.get("count")
 print("  ok (看过一次就不再重复提醒)")
 ' || fail "补看提醒没有推进 lastopen，会重复打扰"
+
+step "P8.5 错过的提醒面板：能勾完成、能「我知道了」清掉横幅（用户反馈：只能看没法处理）"
+asroot_global "echo -n '2020-01-01T00:00:00+08:00' > '$DATA/enote/lastopen.txt'"
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+N0M=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
+  var d=await api("/api/missed"); MISSED=d; S.missed=d; tab="notes"; render();
+  L("count="+d.count);
+  L("banner="+(q(".missed")?q(".missed").textContent.replace(/\s+/g,"").slice(0,10):"-"));
+  missedSheet();
+  L("rows="+document.querySelectorAll(".msdone").length);
+  var f=q("#sheet .pfoot");
+  L("foot="+(f?f.textContent.replace(/\s+/g,""):"-"));
+  var it=(MISSED.items||[])[MISSED.items.length-1];
+  if(!it){L("rowsAfter=-");L("restored=-");L("afterDismiss=-");L("done=1");return}
+  window.__t=it;
+  missedDone(null,it.noteId,it.id);
+  setTimeout(async function(){
+    L("rowsAfter="+document.querySelectorAll(".msdone").length);
+    await api("/api/todo",{action:"toggle",noteId:it.noteId,todoId:it.id});  // 还原，别动用户数据
+    var st=await api("/api/state");
+    var back=false;
+    (st.notes||[]).forEach(function(n){(n.todos||[]).forEach(function(t){if(t.id===it.id&&!t.done)back=true})});
+    L("restored="+(back?1:0));
+    MISSED={count:1,items:[it]}; S.missed=MISSED; render();
+    L("banner2="+(q(".missed")?"1":"0"));
+    missedDismiss();
+    L("afterDismiss="+(q(".missed")?"1":"0"));
+    L("done=1");
+  },1600);
+})()' > "$TMPDIR/jsmiss.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsmiss.json'"
+n=0
+while [ "$n" -lt 30 ]; do
+  readtlog | tail -n +$((N0M + 1)) | grep -q 'JSEVAL done=1' && break
+  sleep 1; n=$((n + 1))
+done
+readtlog | tail -n +$((N0M + 1)) | grep 'JSEVAL ' > "$TMPDIR/jsmiss.out"
+grep -q 'done=1' "$TMPDIR/jsmiss.out" || fail "jseval 没跑完（错过的提醒面板用例）"
+"$PY" - "$TMPDIR/jsmiss.out" <<'PYCHK' || fail "错过的提醒面板操作有问题"
+import re, sys
+txt = open(sys.argv[1], encoding="utf-8").read()
+def val(k):
+    m = re.search(r"JSEVAL " + k + r"=(.*)", txt)
+    return m.group(1).strip() if m else ""
+n0 = int(val("count"))
+assert n0 >= 1, "把水位退到 2020 年后应该有过期的提醒: %s" % n0
+assert "错过" in val("banner"), "首页横幅没出现: %r" % val("banner")
+rows = int(val("rows"))
+assert rows == min(n0, 20), "每行都该有「完成」按钮: %d vs %d" % (rows, n0)
+assert "我知道了" in val("foot"), "面板底部没有「这批我知道了」: %r" % val("foot")
+assert int(val("rowsAfter")) == rows - 1, "勾完成后清单没少一条: %s -> %s" % (rows, val("rowsAfter"))
+assert val("restored") == "1", "测试还原失败（用户的待办被改动）"
+assert val("banner2") == "1", "横幅没渲染出来，没法验证「我知道了」"
+assert val("afterDismiss") == "0", "点了「我知道了」横幅还在"
+print("  ok (错过 %d 条、每行可勾完成、勾后 %d→%d、「我知道了」清掉横幅)" % (n0, rows, rows - 1))
+PYCHK
+asroot_global "rm -f '$DATA/enote/.devmode'"
+asroot_global "echo -n '2020-01-01T00:00:00+08:00' > '$DATA/enote/lastopen.txt'"
+
+step "P11 相册监听已注册（截完图切回来就该看到横幅，不用退桌面重进）"
+# Java 侧的 Log.i 只进 logcat，不进 Go 的 enote.log
+su --mount-master -c "logcat -d -s enote" | grep -q '已监听相册变化' \
+  || fail "相册监听没注册：新截图要等下次打开 app 才扫得到"
+say "  ok (进程一起来就监听 MediaStore 变化，去抖 1.2s 后扫)"
 
 step "P11 截图捕获：扫描 → 合并导入 → 各存一条 → 幂等 → 忽略"
 SHOTDIR=/sdcard/Pictures/enote-test
