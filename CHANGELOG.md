@@ -79,6 +79,15 @@
   Go 只负责暂存/去重/忽略表/文件生命周期。合并笔记走新的 `kind=images`：N 个附件、OCR 文本
   用 `---` 拼接、**只调一次** LLM。
 
+### 修正（P11 附带，都是真实踩出来的）
+
+* **`/api/settings` 部分字段的 POST 会把别的字段清零**：旧实现把请求体直接当成完整
+  `Settings`，于是任何只带 `{"theme":"light"}` 的调用都会把 `temperature` 变 0、
+  `useAI` 变 false、`timeoutS`/`maxTokens` 掉回默认。改成 `settingsPatch`（指针字段），
+  没提交的字段保持原值。`config_test.go` 加了回归用例。
+* **初次运行主动引导**：第一次打开 app（且没开过截图捕获）会弹一次「要不要自动收集截图？」，
+  选「选择文件夹」直接串起 权限 → 文件夹多选向导，选「以后再说」也记下不再打扰。
+
 ### 工程（P11）
 
 * `Shots.java`：MediaStore 枚举 / 多选配置 / 水位 / sha1 / 复制 / 扫描 / `keepScreenOn`。

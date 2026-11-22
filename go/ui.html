@@ -1300,6 +1300,34 @@ function folderSave(){
   shotFlags(function(){ refresh() });
   toast('已开始监控 ' + want.length + ' 个文件夹，只看之后的新图');
 }
+/**
+ * 第一次打开 app 时问一次"要不要盯着截图文件夹"（用户要求：初次运行就让用户选文件夹）。
+ * 只问一次，两个分支都记下来；选「选择文件夹」直接串起 权限 → 文件夹多选 的向导。
+ */
+function shotIntroOnce(){
+  if(!(window.Android && Android.shotFlags)) return;
+  var f = SHOTFLAGS || {};
+  if(f.enabled) return;
+  var asked = false;
+  try{ asked = localStorage.getItem('shotIntro') === '1' }catch(e){}
+  if(asked) return;
+  setTimeout(function(){
+    if(SHOTFLAGS && SHOTFLAGS.enabled) return;   // 这期间用户已经自己开了
+    dialog({
+      title: '要不要自动收集截图？',
+      body: '选几个文件夹盯着（默认就是截图目录），之后新截图会先排队，你勾选后一次性变成笔记。随时可以在「我的 → 截图捕获」里改。',
+      ok: '选择文件夹', cancel: '以后再说',
+      onOk: function(){
+        try{ localStorage.setItem('shotIntro','1') }catch(e){}
+        shotSetup();
+      },
+      onCancel: function(){
+        try{ localStorage.setItem('shotIntro','1') }catch(e){}
+        toast('随时可以在「我的 → 截图捕获」里打开');
+      }
+    });
+  }, 2400);
+}
 function scanShotsNow(){
   if(!(window.Android && Android.scanShots)) return toast('只在 app 内可用');
   if(!(SHOTFLAGS && SHOTFLAGS.granted)) return askShotPerm();
@@ -2354,7 +2382,7 @@ setTab();
 // 补看「不在的时候错过的提醒」：不挡首屏，拿到再重绘一次
 loadMissed();
 // 截图捕获的轻量状态（横幅要按"未开启/没权限/没选文件夹"分状态显示）
-shotFlags(function(){ render() });
+shotFlags(function(){ render(); shotIntroOnce() });
 /* 启动自检（R15）：把各页渲染和「展开详情」这类交互入口真跑一遍。
    起因：expand() 用了从没声明过的 expAnim，点了抛 ReferenceError，界面一动不动，
    而语法检查、结构断言都发现不了 —— 只有真调用才会暴露。 */

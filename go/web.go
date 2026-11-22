@@ -290,27 +290,66 @@ func maskedSettings() Settings {
 	return s
 }
 
+// settingsPatch 让"只提交一部分字段"的 POST 不会把没提交的字段清成零值。
+// 这个坑真踩过：一个只带 {"theme":"light"} 的请求把 temperature 变成 0、useAI 变成 false，
+// 用户的下限值就这么被悄悄改掉了（而且是在他自己没动过设置的情况下）。
+type settingsPatch struct {
+	BaseURL  *string              `json:"baseUrl"`
+	APIKey   *string              `json:"apiKey"`
+	Model    *string              `json:"model"`
+	TimeoutS *int                 `json:"timeoutS"`
+	MaxTok   *int                 `json:"maxTokens"`
+	Temp     *float64             `json:"temperature"`
+	UseAI    *bool                `json:"useAI"`
+	Theme    *string              `json:"theme"`
+	UI       map[string]ViewPrefs `json:"ui"`
+}
+
 func handleSettings(w http.ResponseWriter, r *http.Request) {
-	var s Settings
-	if err := readBody(r, &s); err != nil {
+	var p settingsPatch
+	if err := readBody(r, &p); err != nil {
 		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	old := config.get()
-	if s.APIKey == "" || strings.Contains(s.APIKey, "…") {
-		s.APIKey = old.APIKey // the UI shows a masked key; keep the real one
+	s := config.get()
+	if p.BaseURL != nil {
+		s.BaseURL = *p.BaseURL
+	}
+	if p.APIKey != nil && *p.APIKey != "" && !strings.Contains(*p.APIKey, "…") {
+		s.APIKey = *p.APIKey // 界面显示的是打码 key，回传打码值不能覆盖真 key
+	}
+	if p.Model != nil {
+		s.Model = *p.Model
+	}
+	if p.TimeoutS != nil {
+		s.TimeoutS = *p.TimeoutS
+	}
+	if p.MaxTok != nil {
+		s.MaxTok = *p.MaxTok
+	}
+	if p.Temp != nil {
+		s.Temp = *p.Temp
+	}
+	if p.UseAI != nil {
+		s.UseAI = *p.UseAI
+	}
+	if p.Theme != nil {
+		s.Theme = *p.Theme
+	}
+	if p.UI != nil {
+		s.UI = p.UI
 	}
 	if s.BaseURL == "" {
-		s.BaseURL = old.BaseURL
+		s.BaseURL = config.get().BaseURL
 	}
 	if s.Model == "" {
-		s.Model = old.Model
+		s.Model = config.get().Model
 	}
 	if s.Theme == "" {
-		s.Theme = old.Theme
+		s.Theme = config.get().Theme
 	}
 	if s.UI == nil {
-		s.UI = old.UI
+		s.UI = config.get().UI
 	}
 	if err := config.set(s); err != nil {
 		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})

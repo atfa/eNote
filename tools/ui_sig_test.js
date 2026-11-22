@@ -487,4 +487,12 @@ const shotPerm = /READ_MEDIA_IMAGES/.test(manifest) && /READ_EXTERNAL_STORAGE/.t
 console.log((shotPerm ? '  ok   ' : '  FAIL ') + '存储/媒体权限按版本分开声明');
 if (!shotPerm) bad++;
 
+// 初次运行要主动问一次"选哪些文件夹"，而不是只挂个横幅等用户自己点
+const shotIntro = /function shotIntroOnce\(\)/.test(src)
+  && /localStorage\.getItem\('shotIntro'\)/.test(src)
+  && /setItem\('shotIntro','1'\)/.test(src)
+  && /要不要自动收集截图/.test(src);
+console.log((shotIntro ? '  ok   ' : '  FAIL ') + '初次运行主动引导选监控文件夹（只问一次）');
+if (!shotIntro) bad++;
+
 process.exit(bad ? 1 : 0);
