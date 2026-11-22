@@ -1,11 +1,28 @@
 // 界面轮询的回归测试：ui.html 里的 sigOf 决定“要不要重绘”。
 // 之前 setInterval 无条件 render()，整页每秒重建 + 重播入场动画 = 肉眼可见的闪烁。
 // 跑法：node tools/ui_sig_test.js（test.sh 会调用）
-// 从 go/ui.html 里抽出真实的 sigOf 源码来测，避免复制粘贴走样
+// 从真实源码里抽出 sigOf 来测，避免复制粘贴走样
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');
-const src = fs.readFileSync(path.join(root, 'go/ui.html'), 'utf8');
+
+// S1a 把单文件 go/ui.html 拆成了 go/ui/ 目录。本文件既有 CSS 断言（.pfoot 固定底部、
+// 图标尺寸、WebView 横向拉伸回弹）也有 JS 断言（sigOf、handler 调的函数名），
+// 所以 src 必须是「整 front-end 的拼接视图」而不是单个文件：go/ui/ 下除 vendor/
+// 之外的 css/js/html 按路径排序拼接，等价于拆分前那一个 ui.html。
+// 目录不存在时（拆分之前的提交）回落 go/ui.html，保证任意 HEAD 上都能跑。
+function walkDir(d) {
+  let out = [];
+  for (const f of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const p = path.join(d, f.name);
+    if (f.isDirectory()) { if (f.name !== 'vendor') out = out.concat(walkDir(p)); }
+    else if (/\.(css|js|html)$/.test(f.name)) out.push(fs.readFileSync(p, 'utf8'));
+  }
+  return out;
+}
+const uiDir = path.join(root, 'go/ui');
+const src = fs.existsSync(uiDir) ? walkDir(uiDir).join('\n')
+                                : fs.readFileSync(path.join(root, 'go/ui.html'), 'utf8');
 const m = src.match(/function sigOf\(d\)\{[\s\S]*?\n\}/);
 if (!m) { console.error('sigOf not found'); process.exit(1); }
 const sigOf = eval('(' + m[0] + ')');
