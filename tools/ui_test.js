@@ -25,6 +25,16 @@ function walkDir(d) {
   }
   return out;
 }
+// 带相对路径的版本：闸门③ 要把 tokens.css 从裸 hex 棘轮里排除出去。
+function walkDirPairs(d, base) {
+  let out = [];
+  for (const f of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const p = path.join(d, f.name), rel = base + f.name;
+    if (f.isDirectory()) { if (f.name !== 'vendor') out = out.concat(walkDirPairs(p, rel + '/')); }
+    else if (/\.css$/.test(f.name)) out.push([rel, fs.readFileSync(p, 'utf8')]);
+  }
+  return out;
+}
 const uiDir = path.join(root, 'go/ui');
 const SPLIT = fs.existsSync(uiDir);
 const uiFiles = SPLIT ? walkDir(uiDir) : [fs.readFileSync(path.join(root, 'go/ui.html'), 'utf8')];
@@ -106,19 +116,24 @@ if (jsMissing.length) {
 // 全部 px 是 650 处，其中 259 处是 width/height/top/left 这类布局尺寸，
 // 那些本来就不归间距刻度管，拉进来只会把信号淡掉。
 const RATCHET = {
-  hex: 62,   // go/ui.html 的 <style> 里实测 62 处
+  hex: 12,   // tokens.css 之外的裸 hex。tokens.css 自已是调色板定义，那 50 处必须是字面值，
+             // 把它们算进棘轮会把信号淡掉：新增一个硬编码颜色被新增一个 token 抵消就查不出来。
+             // 62（拆分前全量）→ 12：剩下 #fff 7（彩色底上的白字）、#12b5a5 4（var 回退色）、#000 1（遮罩渐变）。
   px: 57,    // 刻度相关属性里的裸 px：391 →（密度 10px→8px）341 →（stats/settings）292 →（base/components 全量迁移）57
 };
-const cssText = SPLIT
-  ? walkDir(path.join(uiDir, 'css')).join('\n')
-  : (ui.match(/<style>([\s\S]*?)<\/style>/) || [, ''])[1];
+const cssFiles = SPLIT
+  ? walkDirPairs(path.join(uiDir, 'css'), 'css/')
+  : [['ui.html', (ui.match(/<style>([\s\S]*?)<\/style>/) || [, ''])[1]]];
+const cssText = cssFiles.map(x => x[1]).join('\n');
 const cssBody = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
+const leakBody = cssFiles.filter(x => !/tokens\.css$/.test(x[0])).map(x => x[1]).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
 function count(re, s) { const m = s.match(re); return m ? m.length : 0; }
-const hexCount = count(/#[0-9a-fA-F]{3,8}\b/g, cssBody);
+const hexCount = count(/#[0-9a-fA-F]{3,8}\b/g, leakBody);
+const hexTokens = count(/#[0-9a-fA-F]{3,8}\b/g, cssFiles.filter(x => /tokens\.css$/.test(x[0])).map(x => x[1]).join('\n'));
 const scaleDecls = (cssBody.match(/(?:margin|padding|gap|border-radius|font-size)[^;{}]*/g) || []).join('\n');
 const pxCount = count(/\d+px\b/g, scaleDecls);
 if (hexCount > RATCHET.hex) bad('裸 hex 比基线多了', hexCount + ' > ' + RATCHET.hex + '，新样式必须用 token');
-else ok('裸 hex ' + hexCount + ' ≤ 基线 ' + RATCHET.hex);
+else ok('裸 hex ' + hexCount + ' ≤ 基线 ' + RATCHET.hex + '（tokens.css 内 ' + hexTokens + ' 处定义不计）');
 if (pxCount > RATCHET.px) bad('裸 px 比基线多了', pxCount + ' > ' + RATCHET.px + '，新样式必须用 --s*/--r*/--fs-*');
 else ok('裸 px ' + pxCount + ' ≤ 基线 ' + RATCHET.px);
 
