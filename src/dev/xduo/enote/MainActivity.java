@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
     static String pendingOpenNote;
     static String pendingOpenTodo;
     static boolean pendingOpenClip;
+    volatile boolean pageReady;   // onPageFinished 之后页面才认 window.openNote 这些函数
     WebView web;
     /** A native alert/confirm forwarded to the page; resolved by Bridge.dialogResult. */
     static JsResult pendingJs;
@@ -86,6 +87,7 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String u) {
                 note("web: page finished " + u);
+                pageReady = true;
                 flushPendingOpen();
             }
 
@@ -446,8 +448,15 @@ public class MainActivity extends Activity {
         });
     }
 
-    /** Opens the note/todo a reminder notification pointed at, once the page can handle it. */
+    /**
+     * Opens the note/todo a reminder notification pointed at, once the page can handle it.
+     *
+     * 页没加载完就必须原样留着 pending —— 冷启动时 onNewIntent/onCreate 到的 intent 比
+     * onPageFinished 早，以前先清 pending 再 postDelayed，700ms 后那几行 JS 落在
+     * window.openNote 还不存在的时候，通知点进来什么都没发生（实测复现）。
+     */
     void flushPendingOpen() {
+        if (web == null || !pageReady) return;   // 等 onPageFinished 再调一次
         final String id = pendingOpenNote;
         final String todo = pendingOpenTodo;
         final boolean clip = pendingOpenClip;
@@ -455,7 +464,6 @@ public class MainActivity extends Activity {
         pendingOpenTodo = null;
         pendingOpenClip = false;
         if ((id == null || id.isEmpty()) && !clip) return;
-        if (web == null) return;
         web.postDelayed(new Runnable() {
             public void run() {
                 if (clip) {

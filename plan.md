@@ -376,6 +376,31 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
   测试 `go/missed_test.go` 锁死边界：上次打开之前到点的不算、还没到点的不算、已完成的不算、
   首次打开（零值 since）不倒历史、`since == now` 为空、limit 生效。
 
+### P9 用户反馈的 7 处修正（实测截图逐条核对）
+
+1. **按钮文字居中**：`.btn` 是 `inline-flex`，`text-align:center` 对 flex 子项无效 —— 全局加
+   `justify-content:center`。对话框「取消 / 删除」、剪贴板暂存页的三个按钮、设置页「已开启」
+   全部正了；顺带 `white-space:nowrap`，「已开启」不再被挤成两行。
+2. **附件页统计行到列表的留白**：`.agrid` 的 `margin-top` 2px → 10px，跟笔记页 `.card`
+   的 `margin:10px 0` 对齐。
+3. **切页不重绘 + 记住滚动位置**：每个 tab 一个常驻面板（`panes` / `paneBuilt` / `paneDirty`），
+   切页只 `showPane()` 切显示；`tabScroll` 离开时存 `window.scrollY`、回来时还原。
+   数据变了才把其它页标脏（`invalidatePanes`），切过去重建一次。
+   实测：待办页滑到中间 → 去笔记页 → 回待办页，两张截图 md5 完全一致（位置和 DOM 都没变）。
+4. **checklist 圆框** 22px → 18px（勾选图标 13 → 11px，描边 2.8）。
+5. **启动器图标**：还原成用户在 `android-launcher-icons.zip` 里给的那套 PNG（5 套密度的
+   `ic_launcher_{background,foreground}.png` + 5 套 `mipmap-*/ic_launcher.png` + 自适应 XML），
+   与压缩包逐字节一致；`tools/gen_icon.py` 删除，`go/icon.png` 仍是同一份底稿（96×96）。
+   P7a 曾整套换成矢量，是我的错，sig 测试现在锁死「不许再换成矢量」。
+6. **二级页面贴顶**：`pageSheet()` 不再插 `.grip`（那是底部弹层的拖拽条），`.panel.page`
+   去掉 `border-top`，`.panel.page .grip{display:none}`。设置页 / 剪贴板暂存页现在从屏幕最顶上开始。
+7. **剪贴板暂存页同理** —— 同一个 `pageSheet()`，一并修好。
+
+附带修的真 bug：**冷启动点通知丢参数**。`flushPendingOpen()` 以前先清 `pending*` 再
+`postDelayed(700ms)`，冷启动时页面还没 `onPageFinished`，那几行 `window.openNote/openClip`
+落在函数还不存在的时刻，点通知什么都不发生。现在 `pageReady` 标记 + 页没好就原样保留 pending，
+`onPageFinished` 再补一次。
+
 ### 里程碑勾选表
 
 ```

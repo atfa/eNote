@@ -195,19 +195,23 @@ const named = /android:label="懒得记"/.test(man) && !/android:label="eNote"/.
   && /<title>懒得记<\/title>/.test(src);
 console.log((named ? '  ok   ' : '  FAIL ') + '应用名改为「懒得记」');
 if (!named) bad++;
-// 图标：minSdk 26 只需要自适应图层，几何由 tools/gen_icon.py 单源生成（矢量 + 预览 + app 内 logo）
-const icon = ['ic_launcher_background', 'ic_launcher_foreground', 'ic_launcher_monochrome']
-    .every(n => fs.existsSync(path.join(root, 'res/drawable/' + n + '.xml')))
-  && fs.existsSync(path.join(root, 'res/mipmap-anydpi-v26/ic_launcher.xml'))
-  && /<monochrome[^>]*@drawable\/ic_launcher_monochrome/.test(
+// 启动图标：用户自己提供的那套 PNG（android-launcher-icons.zip），不是矢量重绘版。
+// 我一度把整套换成矢量，用户明确要求还原 —— 这里锁死，别再动它。
+const densities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
+const icon = densities.every(d =>
+    fs.existsSync(path.join(root, `res/drawable-${d}/ic_launcher_background.png`)) &&
+    fs.existsSync(path.join(root, `res/drawable-${d}/ic_launcher_foreground.png`)) &&
+    fs.existsSync(path.join(root, `res/mipmap-${d}/ic_launcher.png`)))
+  && !fs.existsSync(path.join(root, 'res/drawable/ic_launcher_background.xml'))   // 别又换成矢量
+  && !fs.existsSync(path.join(root, 'res/drawable/ic_launcher_foreground.xml'))
+  && /@drawable\/ic_launcher_background/.test(
       fs.readFileSync(path.join(root, 'res/mipmap-anydpi-v26/ic_launcher.xml'), 'utf8'))
-  && !fs.existsSync(path.join(root, 'res/mipmap-anydpi-v26/ic_launcher_round.xml'))
-  && !fs.existsSync(path.join(root, 'res/mipmap-hdpi'))     // PNG 全删：矢量自适应图标够用，APK 还小 337KB
+  && /@drawable\/ic_launcher_foreground/.test(
+      fs.readFileSync(path.join(root, 'res/mipmap-anydpi-v26/ic_launcher.xml'), 'utf8'))
   && /android:roundIcon="@mipmap\/ic_launcher"/.test(man)
   && fs.existsSync(path.join(root, 'go/icon.png'))
-  && /\/icon\.png/.test(goweb) && src.includes('src="/icon.png"')
-  && /def star_points/.test(fs.readFileSync(path.join(root, 'tools/gen_icon.py'), 'utf8'));
-console.log((icon ? '  ok   ' : '  FAIL ') + '启动图标：矢量自适应图层 + 主题图标 + app 内 logo（单源生成）');
+  && /\/icon\.png/.test(goweb) && src.includes('src="/icon.png"');
+console.log((icon ? '  ok   ' : '  FAIL ') + '启动图标：用户提供的 PNG 图层（5 套密度 + 自适应 XML）');
 if (!icon) bad++;
 
 // 「重要」标签不能比时间标签高出一截：两者都要 inline-block + 固定行高
@@ -359,5 +363,38 @@ const missedCss2 = /\.missed\{[^}]*var\(--warn-s\)/.test(src)
   && /\.msrow\{/.test(src);
 console.log((missedCss2 ? '  ok   ' : '  FAIL ') + '错过的提醒用 warn 色（区别于剪贴板横幅）');
 if (!missedCss2) bad++;
+
+// 按钮文字必须和按钮居中：.btn 是 inline-flex，text-align 管不到 flex 子项，得用 justify-content
+const btnCenter = /\.btn\{[^}]*display:inline-flex;[^}]*justify-content:center/.test(src)
+  && /\.dlg \.dacts \.btn\{/.test(src);
+console.log((btnCenter ? '  ok   ' : '  FAIL ') + '所有按钮文字居中（inline-flex + justify-content）');
+if (!btnCenter) bad++;
+
+// 二级页面 = 整页，不是底部弹层：不要 grip，也不要有 border-top 的那条缝
+const pageSheetCss = /\.panel\.page\{[^}]*border-top:0/.test(src)
+  && /\.panel\.page \.grip\{display:none\}/.test(src);
+const noGripInPageSheet = !/p\.innerHTML = '<div class="grip"><\/div><div class="phead">/.test(src);
+console.log(((pageSheetCss && noGripInPageSheet) ? '  ok   ' : '  FAIL ') + '二级页面贴顶（无 grip / 无分隔缝）');
+if (!(pageSheetCss && noGripInPageSheet)) bad++;
+
+// 切页不重绘：每个 tab 一个常驻面板 + 各自记住滚动位置
+const panes = /var panes = \{\}, paneBuilt = \{\}/.test(src)
+  && /function paneFor\(t\)/.test(src)
+  && /function invalidatePanes\(keep\)/.test(src)
+  && /tabScroll = \{notes:0, *todos:0, *files:0, *mine:0\}/.test(src)
+  && /if\(fresh\)\{[^}]{0,200}render\(\);\s*\} else \{\s*showPane\(\)/.test(src)
+  && /tabScroll\[lastTab\] = window\.scrollY/.test(src);
+console.log((panes ? '  ok   ' : '  FAIL ') + '切页复用面板 + 恢复各自的滚动位置');
+if (!panes) bad++;
+
+// 附件页统计行到列表的留白跟笔记页一致（.card margin-top 10px）
+const fileGap = /\.agrid\{display:grid;[^}]*margin-top:10px\}/.test(src);
+console.log((fileGap ? '  ok   ' : '  FAIL ') + '附件页统计行到列表的留白和笔记页一致');
+if (!fileGap) bad++;
+
+// checklist 圆框 18px（用户反馈太大）
+const cbSize = /\.cb\{flex:0 0 18px;height:18px/.test(src);
+console.log((cbSize ? '  ok   ' : '  FAIL ') + 'checklist 圆框 18px（不再过大）');
+if (!cbSize) bad++;
 
 process.exit(bad ? 1 : 0);

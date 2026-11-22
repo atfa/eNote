@@ -27,6 +27,16 @@
   tab 切换时清空重跑；正文展开加过渡；`prefers-reduced-motion` 全量降级。
 * **深色模式**：颜色全走 CSS 变量，hero 渐变在深色下自动切浅色版（已截图核对）。
 
+### 修正（P9，用户反馈的 7 处）
+
+* 所有按钮文字居中（`.btn` 加 `justify-content:center`，flex 子项不吃 `text-align`）。
+* 附件页统计行到列表的留白跟笔记页一致（`margin-top` 2px → 10px）。
+* 切页不再重绘整页，且每个 tab 记住自己的滚动位置（常驻面板 + `tabScroll`）。
+* checklist 圆框 22px → 18px。
+* 启动器图标还原成用户提供的 `android-launcher-icons.zip`（PNG 自适应图层，逐字节一致）。
+* 设置页 / 剪贴板暂存页等二级页面贴屏幕顶部（去掉底部弹层用的 drag grip 和 border-top）。
+* 冷启动点通知丢参数（`flushPendingOpen` 在页面就绪前就清掉了 pending）——现在等 `onPageFinished`。
+
 ### 功能
 
 * **补看错过的提醒（P8）**：后台被厂商冻结时闹钟会被系统取消，纯标准 API 无解，于是改成
