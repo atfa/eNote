@@ -118,16 +118,21 @@ api_state() {
   return 1
 }
 
-api_get()  {   # <path> [timeout]：拿不到东西就重读日志里的端口（app 重启过会换端口）
-  r=$(curl -s -m "${2:-30}" "http://127.0.0.1:$PORT/api/$1")
-  if [ -z "$r" ]; then
+api_get() {   # <path> [timeout]：GET 是幂等的，所以可以多试
+  # app 被系统杀掉重启时 Go 服务会换端口、有几秒不可用（实测在 todo 用例里拿到空响应，
+  # 然在 python 里变成 JSONDecodeError，看不出是“服务还没起来”）。
+  # 每次重试都重读日志里的端口；只重试 GET，POST 有副作用（会重复建笔记）。
+  r=""
+  i=0
+  while [ $i -lt 8 ]; do
+    r=$(curl -s -m "${2:-30}" "http://127.0.0.1:$PORT/api/$1")
+    [ -n "$r" ] && { printf '%s' "$r"; return 0; }
     np=$(readlog | grep -o '127.0.0.1:[0-9]*' | tail -1 | cut -d: -f2)
-    if [ -n "$np" ] && [ "$np" != "$PORT" ]; then
-      PORT=$np
-      r=$(curl -s -m "${2:-30}" "http://127.0.0.1:$PORT/api/$1")
-    fi
-  fi
+    [ -n "$np" ] && [ "$np" != "$PORT" ] && PORT=$np
+    i=$((i+1)); sleep 2
+  done
   printf '%s' "$r"
+  return 1
 }
 api_post() { curl -s -m "${3:-120}" -X POST "http://127.0.0.1:$PORT/api/$1" -d "$2"; }
 # raw_get <path>: not every route lives under /api (the attachment viewer is /file).
@@ -461,9 +466,13 @@ a = d['items'][0]
 assert a['name'] == 'att-test.pdf' and a['kind'] == 'pdf', a
 assert not a.get('missing'), a
 assert d['files'] + d['missing'] == d['total'], d
-assert d['diskFiles'] >= d['files'], 'fewer files on disk than in the list: %s' % d
-print('  listed %d attachments, %s on disk, %s' % (d['total'], d['diskFiles'], a['name']))
-" || fail "the shared file never became an attachment"
+# diskFiles 是扫目录得到的**不同文件数**，files 是附件行数。两者可以不相等：
+# 一张截图先进过「各存一条」又被合并进另一条笔记，就是两行共用同一个文件。
+# 断言写成 rows ≤ 文件数会在数据积累后假红（实测 19 行 / 17 个文件）。
+paths = {a['path'] for a in d['items']}
+assert d['diskFiles'] >= len(paths), 'files on disk < 附件引用的不同路径: %s < %s' % (d['diskFiles'], len(paths))
+print('  listed %d attachments (%d distinct files), %s on disk, %s' % (d['total'], len(paths), d['diskFiles'], a['name']))
+" || fail "附件列表断言失败（共享文件的计数见上方 python 输出）"
 api_get "search?tab=notes&file=yes" | "$PY" -c '
 import json,sys
 d = json.load(sys.stdin)
