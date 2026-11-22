@@ -161,9 +161,9 @@ ok('test.sh 依赖的 ' + Object.keys(FROZEN).length + ' 个 class 名全部还�
 // 如果同一个选择器的两条规则被分到两个文件，而它们又设了同一个属性，后写的那条
 // 就不再赢——层叠顺序静默翻转，测试全绿但像素变了。这是拆分最容易踩且最难发现的坑。
 // 不变量：一个选择器的多条规则如果属性集有交集，必须待在同一个文件里。
-// 跟 hex/px 一样用棘轮：S1a 是按原始行号切的，切在 .sheet 中间，这两条先记成基线，
-// 只拦新增的冲突；S2 按视图重排 CSS 时把基线清零。
-const CASCADE_BASELINE = new Set(['.sheet', '.sheet .panel']);
+// 跟 hex/px 一样用棘轮：S1a 是按原始行号切的，切在 .sheet 中间；S2 已把这两条
+// 合并进 css/base.css 并紧邻排列，所以基线清空——现在任何跨文件同名同属性都是红。
+const CASCADE_BASELINE = new Set();
 function rulesOf(text) {
   const body = text.replace(/\/\*[\s\S]*?\*\//g, '');
   const out = [];
@@ -203,10 +203,16 @@ function rulesOf(text) {
 if (SPLIT) {
   const bySelector = new Map();
   const cssDir = path.join(uiDir, 'css');
-  for (const f of fs.readdirSync(cssDir, { withFileTypes: true })) {
-    if (!f.isFile() || !f.name.endsWith('.css')) continue;
-    const rel = 'css/' + f.name;
-    for (const r of rulesOf(fs.readFileSync(path.join(cssDir, f.name), 'utf8'))) {
+  // 递归：S2 后视图层在 css/views/*.css，不递归就完全扫不到（闸门会假绿）。
+  const cssList = [];
+  (function walk(d, rel) {
+    for (const f of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (f.isDirectory()) walk(path.join(d, f.name), rel + f.name + '/');
+      else if (f.name.endsWith('.css')) cssList.push([path.join(d, f.name), rel + f.name]);
+    }
+  })(cssDir, 'css/');
+  for (const [abs, rel] of cssList) {
+    for (const r of rulesOf(fs.readFileSync(abs, 'utf8'))) {
       if (!bySelector.has(r.sel)) bySelector.set(r.sel, []);
       bySelector.get(r.sel).push({ file: rel, props: r.props });
     }
@@ -218,7 +224,7 @@ if (SPLIT) {
     const seen = new Map();
     for (const x of list) {
       for (const p of x.props) {
-        if (seen.has(p) && seen.get(p) !== x.file && !CASCADE_BASELINE.has(sel.replace(/^[^␤]*␤/, ''))) {
+        if (seen.has(p) && seen.get(p) !== x.file && !CASCADE_BASELINE.has(sel)) {
           flips.push(sel + ' 的 ' + p + '：' + seen.get(p) + ' 与 ' + x.file);
         }
         seen.set(p, x.file);

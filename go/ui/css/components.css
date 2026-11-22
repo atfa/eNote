@@ -226,11 +226,7 @@
   margin-left:auto;margin-right:auto}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
 
-/* --- 面板（底部弹出，带弹性）--- */
-.sheet{background:rgba(10,16,26,.42);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-  transition:opacity var(--d2) var(--ease)}
-.sheet .panel{animation:up var(--d2) cubic-bezier(.2,1.08,.28,1);
-  box-shadow:0 -8px 40px rgba(12,22,40,.16)}
+/* --- 面板（底部弹出，带弹性）：.sheet / .sheet .panel 的覆盖样式已并入 css/base.css --- */
 @keyframes up{from{transform:translateY(40px) scale(.98);opacity:.5}to{transform:none;opacity:1}}
 .sheet .panel.full{max-height:94vh;height:94vh;border-radius:22px 22px 0 0}
 .sheet.closing .panel{animation:down var(--d1) var(--ease) forwards}
@@ -261,3 +257,4 @@
 .cb.on{animation:pop var(--d2) var(--ease)}
 @keyframes pop{0%{transform:scale(.7)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
 
+.sw.dis{opacity:.45}

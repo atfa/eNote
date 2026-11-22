@@ -31,12 +31,12 @@ font-size/color，181 设 transition，属性不相交）、`.cb`（118 设几�
 | `base.css` | 36 | Tony | 重置、图标、排版、卡片、chip、输入控件 |
 | `components.css` | 121 | Tony | btn/li/cb/sheet/dlg/toast/tabbar/skel/empty/seg/sw 等原语 |
 | `views/shell.css` | 11 | Tony | 顶栏、底部导航、搜索、通知横幅（`missedSheet`/`.msrow`） |
-| `views/notes.css` | 48 | Austin | 笔记卡、附件卡、指标卡、同步条、AI 解析条 |
+| `views/notes.css` | 30 | Austin | 笔记卡、附件卡、指标卡、同步条、AI 解析条 |
 | `views/todos.css` | 32 | Austin | 待办行、优先级、截止日、倒计时、事实卡 |
 | `views/files.css` | 13 | Austin | 选文件夹页 |
 | `views/shots.css` | 22 | Tony | 截图网格、进度层（`shotOverlay`） |
 | `views/clip.css` | 22 | Tony | 剪贴板导入 |
-| `views/stats.css` | 11 | Tony | 我的页头部、活动柱状图、标签分布 |
+| `views/stats.css` | 29 | Tony | 我的页头部（hero）、计数卡、活动柱状图、标签分布 |
 | `views/settings.css` | 6 | Tony | 全屏设置面板（`pageSheet`） |
 
 合计 324 个选择器（337 条规则）。**Austin 93 条，Tony 231 条**（含 base/components 169 条共享层）。
@@ -232,7 +232,7 @@ textarea
 .msrow:last-child
 ```
 
-### `go/ui/css/views/notes.css` — 48 条规则 — owner Austin
+### `go/ui/css/views/notes.css` — 30 条规则 — owner Austin
 
 ```
 .acard
@@ -249,17 +249,6 @@ textarea
 .arow .btn
 .athumb
 .errbox
-.hero
-.hero .hlogo
-.hero .hlogo img
-.hero .hrow
-.hero .hstats
-.hero .hstats .ic
-.hero .hstats span
-.hero .hver
-.hero h1
-.hero p
-.hero:after
 .metrics
 .metrics .m
 .metrics .m b
@@ -272,12 +261,6 @@ textarea
 .remind
 .remind .ic
 .remind:active
-.stat
-.stat .si
-.stat .si .ic
-.stat b
-.stat span
-.stat.hot .si
 .strip
 .strip .sp
 .strip b
@@ -394,7 +377,11 @@ textarea
 .cliptop .sp
 ```
 
-### `go/ui/css/views/stats.css` — 11 条规则 — owner Tony
+### `go/ui/css/views/stats.css` — 29 条规则 — owner Tony
+
+我的页（`renderMine()` app.js:1381）的全部样式：头部 hero + 计数卡 stat +
+活动柱状图 chart + 标签分布。`.hero`/`.stat` 一开始被归到 notes，查过渲染函数后
+确认是 mine 页 → 归 stats（owner 从 Austin 改成 Tony）。
 
 ```
 .chart
@@ -404,8 +391,25 @@ textarea
 .chart .bars
 .chart .col
 .chart .lb
+.hero
+.hero .hlogo
+.hero .hlogo img
+.hero .hrow
+.hero .hstats
+.hero .hstats .ic
+.hero .hstats span
+.hero .hver
+.hero h1
+.hero p
+.hero:after
 .legend
 .legend i
+.stat
+.stat .si
+.stat .si .ic
+.stat b
+.stat span
+.stat.hot .si
 .statgrid
 .tagrow
 ```
