@@ -9,14 +9,19 @@ import (
 )
 
 func TestStatsCountsMatchStore(t *testing.T) {
-	testStore(t,
-		note("a", "周会", "下午三点评审原型", "", "share-text", stDone, 60,
-			Todo{ID: "t1", Text: "买牛奶", Due: "2020-01-01T15:00", Priority: "high"},
-			Todo{ID: "t2", Text: "取快递", Done: true, DoneAt: time.Now().Format("2006-01-02T15:04")},
-			Todo{ID: "t3", Text: "今天开会", Due: time.Now().Format("2006-01-02") + "T23:00"}),
-		note("b", "购物", "周五取快递", "", "share-image", stRaw, 30),
-		note("c", "坏了", "解析失败", "", "manual-text", stError, 5),
-	)
+	// CreatedAt 必须全落在「今天」这个桶里。note() 的 N 分钟前偏移在午夜附近会跨天
+	//（这台机器 Go 的 time.Local 是 UTC，实测 00:06 跑测试时「60 分钟前」就是昨天），
+	// 于是 7 天图表的「今天」只剩 1 条笔记。统计本身没问题，是固定装置不稳。
+	a := note("a", "周会", "下午三点评审原型", "", "share-text", stDone, 60,
+		Todo{ID: "t1", Text: "买牛奶", Due: "2020-01-01T15:00", Priority: "high"},
+		Todo{ID: "t2", Text: "取快递", Done: true, DoneAt: time.Now().Format("2006-01-02T15:04")},
+		Todo{ID: "t3", Text: "今天开会", Due: time.Now().Format("2006-01-02") + "T23:00"})
+	b := note("b", "购物", "周五取快递", "", "share-image", stRaw, 30)
+	c := note("c", "坏了", "解析失败", "", "manual-text", stError, 5)
+	for _, n := range []*Note{a, b, c} {
+		n.CreatedAt = time.Now().Add(-time.Second) // 今天、且比 DoneAt 早一点点
+	}
+	testStore(t, a, b, c)
 	s := stats()
 	if s.Notes["total"] != 3 || s.Notes["done"] != 1 || s.Notes["raw"] != 1 || s.Notes["error"] != 1 {
 		t.Fatalf("note buckets: %+v", s.Notes)

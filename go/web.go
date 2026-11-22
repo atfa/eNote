@@ -71,6 +71,9 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/attachments", handleAttachments)
 	m.HandleFunc("/api/attach/delete", handleAttachDelete)
 	m.HandleFunc("/api/stats", handleStats)
+	m.HandleFunc("/api/missed", func(w http.ResponseWriter, r *http.Request) {
+		jsonOut(w, apiMissed())
+	})
 	m.HandleFunc("/api/import", handleImport)
 	m.HandleFunc("/api/clear", handleClear)
 	m.HandleFunc("/api/llm/test", handleLLMTest)

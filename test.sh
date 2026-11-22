@@ -414,6 +414,32 @@ assert hits, d
 print("  ok (被拒后重试成功，暂存 %d 条：%s)" % (len(hits), hits[0]["text"][:24]))
 ' || fail "剪贴板在窗口拿到焦点后仍未被暂存（焦点重试没生效）"
 
+step "P8 补看错过的提醒（后台被冻结时唯一有意义的补救）"
+# 把「上次打开时间」退到过去，接口就该把这段时间内到点、未完成的待办报出来
+asroot_global "echo -n '2020-01-01T00:00:00+08:00' > /data/data/$APP_PACKAGE/files/enote/lastopen.txt"
+api_get missed | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d.get("ok"), d
+items = d.get("items") or []
+assert d.get("count", 0) >= len(items), d
+if items:
+    first = items[0]
+    assert first.get("id") and first.get("noteId"), first   # 点得回原笔记
+    assert len(items) <= 20, "清单最多 20 条"
+    assert all(i["due"] <= d["now"][:16] for i in items), "只报已经到点的"
+else:
+    print("  (这台机器没有已到点且未完成的待办，只验证接口形状)")
+print("  ok (错过 %d 条，列出 %d 条，最早一条 %s)" % (d["count"], len(items), items[0]["due"] if items else "-"))
+' || fail "补看错过的提醒接口不对"
+# 看一次就把时间推到现在：紧接着再问一次必须是 0，不能重复打扰
+api_get missed | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d.get("count") == 0, "第二次问不该重复报，got %s" % d.get("count")
+print("  ok (看过一次就不再重复提醒)")
+' || fail "补看提醒没有推进 lastopen，会重复打扰"
+
 step "app alive"
 sh "$HERE/probe.sh" "$APP_PACKAGE" | sed 's/^/  /'
 

@@ -334,7 +334,7 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
   * 前台：闹钟到点 → 系统通知正常弹出（`channel=reminder importance=4`，已有截图）。
   * 后台：本机（vivo/OriginOS）在应用进入后台后冻结进程，**不到 1 分钟** loopback API 就超时，即使已经：①开着前台服务（`curProcState=4 mAdjType=fg-service`）②有常驻通知 ③在 Doze 白名单里（`dumpsys alarm` 的 `Exempted bucket packages` 含 `dev.xduo.enote`）。
   * 冻结状态下到点，系统直接 `Reason=alarm_cancelled` 取消闹钟，广播不投递、通知不出现、`reminders.xml` 的 key 还在 → 属于厂商调度层行为，纯标准 API 已无手段。
-  * 结论：不声称后台可靠。UI 文案改成「尽量不被后台清理」，并提示「打开 app 时未完成的待办都在待办页」。下一步可做的是「打开时补看错过的提醒」横幅，而不是继续加保活手段。
+  * 结论：不声称后台可靠。UI 文案改成「尽量不被后台清理」，并提示「打开 app 时未完成的待办都在待办页」；真正有意义的补救是「打开时补看错过的提醒」（P8，已做），而不是继续加保活手段。
 * **诊断日志**：`Bridge.syncReminders` 里临时的 `a.note("syncReminders: ...")` 已删除（改看 `Reminders.sync` 自己的 `Log.i`）。
 * **验收**：`test.sh` 新增「P6.5 常驻后台」一档：hook 打开开关 → `dumpsys activity services` 有 `KeepAlive` 且 `isForeground=true` → `dumpsys notification` 有 `channel=keepalive` → hook 关掉 → 服务消失。
 
@@ -365,7 +365,16 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
   剪贴板边界、新增踩坑条目）、`CHANGELOG.md` 新建。
 * 无障碍：tab `aria-label`、删除按钮 `aria-label`、点击目标 ≥44px（`.tab` 56px、`.remind` 18px 高但
   外层有 44px 命中区 `.hit`）。
-* 可选（未做）：「打开时补看错过的提醒」横幅（后台被冻结，这是唯一还有意义的补救手段）。
+* **打开时补看错过的提醒（P8，已做）**：厂商冻结后台时闹钟被系统取消，纯标准 API 没有别的办法，
+  所以改成「下次打开时补一遍」。`go/missed.go` 把上次打开时间记在 `files/enote/lastopen.txt`，
+  `/api/missed` 取出「上次到现在之间到点、且未完成」的待办（按到点时间正序，最多列 20 条，
+  另外单独算总数用于「只列出最早的 N 条」），然后把时间推到现在 —— 用户点「查看」或直接忽略
+  都不会被重复打扰。前端 `loadMissed()` 在首屏后异步问一次，笔记页顶部出现 warn 色横幅
+  「错过 N 条提醒」，点开是清单（条目 + 来源笔记 + 逾期多久），点一条跳到对应笔记展开待办。
+  存在独立文件而不是 `settings.json`：settings 只在配了 AI 时才整体生效（BYOK 全新安装
+  `BaseURL` 为空，写进去读不回来），提醒不该依赖它。
+  测试 `go/missed_test.go` 锁死边界：上次打开之前到点的不算、还没到点的不算、已完成的不算、
+  首次打开（零值 since）不倒历史、`since == now` 为空、limit 生效。
 
 ### 里程碑勾选表
 

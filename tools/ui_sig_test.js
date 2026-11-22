@@ -343,4 +343,21 @@ const route = /list\.push\(\{id:n\.id\+'\|'\+t\.id, noteId:n\.id, todoId:t\.id,/
 console.log((route ? '  ok   ' : '  FAIL ') + '通知点击带 noteId/todoId 并定位待办');
 if (!route) bad++;
 
+// P8 补看错过的提醒：横幅只在有内容时出现，点开是清单，点一条能跳回笔记
+const missed = /function missedBanner\(\)/.test(src)
+  && /function missedSheet\(\)/.test(src)
+  && /function loadMissed\(\)/.test(src)
+  && /api\/missed/.test(src)
+  && /if\(!m \|\| !m\.count\) return ''/.test(src);   // 没有就不占位
+console.log((missed ? '  ok   ' : '  FAIL ') + '错过的提醒横幅 + 清单（没有内容时不占位）');
+if (!missed) bad++;
+
+// 横幅用 warn 色跟「剪贴板」横幅区分开；图标顶对齐，两行文案时不会被拉低
+const missedCss2 = /\.missed\{[^}]*var\(--warn-s\)/.test(src)
+  && /\.missed\{[^}]*align-items:flex-start/.test(src)
+  && /\.missed \.mi\{[^}]*margin-top:2px/.test(src)
+  && /\.msrow\{/.test(src);
+console.log((missedCss2 ? '  ok   ' : '  FAIL ') + '错过的提醒用 warn 色（区别于剪贴板横幅）');
+if (!missedCss2) bad++;
+
 process.exit(bad ? 1 : 0);

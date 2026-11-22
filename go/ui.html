@@ -304,6 +304,20 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .clipbanner b{color:var(--acc)}
 .clipbanner .cbsub{font-size:11px;color:var(--dim)}
 .clipbanner .cbar{color:var(--acc);font-size:12px;white-space:nowrap}
+/* 错过的提醒：后台被冻结时唯一能补救的东西，用 warn 色区分于「剪贴板」横幅 */
+.missed{display:flex;align-items:flex-start;gap:10px;margin:10px 2px 0;padding:11px 12px;border-radius:12px;
+  background:linear-gradient(135deg,var(--warn-s),var(--card));border:1px solid var(--warn);
+  font-size:13px;color:var(--fg);box-shadow:var(--sh);cursor:pointer}
+.missed .mi{color:var(--warn);display:flex;margin-top:2px}
+.missed b{color:var(--warn)}
+.missed .cbsub{font-size:11px;color:var(--dim)}
+.missed .cbar{color:var(--warn);font-size:12px;white-space:nowrap}
+.msrow{display:flex;gap:10px;align-items:flex-start;padding:8px 2px;border-bottom:1px solid var(--line);font-size:13px}
+.msrow:last-child{border-bottom:0}
+.msrow .mt{flex:1;min-width:0}
+.msrow .mt .mtt{line-height:1.5}
+.msrow .mt .mts{font-size:11px;color:var(--dim2);margin-top:1px}
+.msrow .mcd{font-size:10.5px;color:var(--warn);white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
 .cliptop{display:flex;gap:6px;align-items:center;margin-bottom:10px}
 .cliptop .sp{flex:1}
 .clipitem{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);
@@ -822,6 +836,48 @@ function emptyState(icon, t, sub){
   return '<div class="empty"><div class="eo"><svg class="ic"><use href="#i-'+icon+'"/></svg></div>'
     + t + (sub ? '<div class="esub">'+sub+'</div>' : '') + '</div>';
 }
+/* 错过的提醒（后台被冻结时到点的那些）：只在有内容时出现，点开看清单 */
+var MISSED = null;   // 服务端只在启动时算一次，之后 refresh 覆盖 S 时要把它贴回去
+function missedBanner(){
+  var m = MISSED;
+  if(!m || !m.count) return '';
+  var more = m.count > (m.items || []).length;
+  return '<div class="missed" onclick="missedSheet()"><span class="mi">'+ic('bell')+'</span>'
+    + '<div style="flex:1;min-width:0"><b>错过 ' + m.count + ' 条提醒</b>'
+    + '<div class="cbsub">' + (more ? '只列出最早到点的 ' + (m.items || []).length + ' 条' : '你不在的时候到点了，闹钟可能没响')
+    + '</div></div>'
+    + '<span class="cbar">查看 ›</span></div>';
+}
+async function loadMissed(){
+  try{
+    var d = await api('/api/missed');
+    if(d && d.count){ MISSED = d; S.missed = d; render(); }
+  }catch(e){}
+}
+function missedSheet(){
+  var m = MISSED || {}, items = m.items || [];
+  var h = '';   // 标题已经在 sheet 头上了，别再重复一行
+  if(!items.length) h += emptyState('bell', '没有错过的提醒', '到点的待办会照常提醒');
+  else {
+    h += '<div class="card">' + items.map(function(t){
+      return '<div class="msrow" onclick="closeSheet();openTodoFromMissed(\''+esc(t.noteId||'')+'\',\''+esc(t.id||'')+'\')">'
+        + '<div class="mt"><div class="mtt">'+esc(t.text||'')+'</div>'
+        + '<div class="mts">'+esc(t.noteTitle||'')+'</div></div>'
+        + '<span class="mcd">'+ic('clock','s')+cdText(t.due)+'</span></div>';
+    }).join('') + '</div>';
+    if(m.count > items.length)
+      h += '<div style="font-size:11px;color:var(--dim2);margin-top:8px">只列出最早到点的 '+items.length+' 条</div>';
+    h += '<div class="acts"><button class="btn gh" onclick="closeSheet();setTab(\'todos\')">'
+      + ic('check-square','s') + '去待办页</button></div>';
+  }
+  pageSheet('错过的提醒', h);
+}
+/* 点清单里的一条：跳到笔记并展开那条待办 */
+function openTodoFromMissed(nid, tid){
+  if(window.Android && Android.openNote) { Android.openNote(nid); return }
+  if(nid) { open[nid] = 1; }
+  setTab('notes');
+}
 function clipBanner(){
   var n = (S.info && S.info.clip) || 0;
   if(!n){
@@ -1072,11 +1128,11 @@ function noteCard(n, k){
 }
 function renderNotes(){
   var list = notesFiltered();
-  if(!S.notes.length) return strip()+clipBanner() + emptyState('inbox', '还没有笔记',
+  if(!S.notes.length) return strip()+missedBanner()+clipBanner() + emptyState('inbox', '还没有笔记',
       '在任何 app 里点「分享 → 懒得记」，文字和图片会自动变成笔记与待办');
-  if(!list.length) return strip()+clipBanner() + emptyState('search', '没有符合条件的笔记',
+  if(!list.length) return strip()+missedBanner()+clipBanner() + emptyState('search', '没有符合条件的笔记',
       '换个关键词，或点右上角重置筛选');
-  var h = strip()+clipBanner();
+  var h = strip()+missedBanner()+clipBanner();
   list.forEach(function(n, k){ h += noteCard(n, k) });
   return h;
 }
@@ -1518,7 +1574,7 @@ function sigOf(d){
 }
 async function refresh(quiet){
   if(Date.now() < animLock){ paintStatus(); return }
-  try{ var d = await api('/api/state'); S = d;
+  try{ var d = await api('/api/state'); S = d; if(MISSED) S.missed = MISSED;
        var dirty = !quiet || !drawn || sigOf(d) !== SIG;
        if(!prefsLoaded && S.settings && S.settings.ui){
          prefsLoaded = true;
@@ -1770,6 +1826,8 @@ window.addEventListener('resize', moveInd);
 setInterval(function(){ if(!document.hidden) refresh(true); }, 2000);
 refresh();
 setTab();
+// 补看「不在的时候错过的提醒」：不挡首屏，拿到再重绘一次
+loadMissed();
 </script>
 
 </body>

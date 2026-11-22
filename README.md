@@ -130,6 +130,7 @@ curl -s "http://127.0.0.1:$P/api/state" | python3 -m json.tool
 | GET | `/api/attachments` | 附件列表（含缺失文件标记） |
 | POST | `/api/attach/delete` | `{id}` |
 | GET | `/api/stats` | 我的页统计（笔记 / 待办 / 附件 / 近 7 天 / 标签） |
+| GET | `/api/missed` | 上次打开之后到点、未完成的待办（补看错过的提醒），并把上次时间推到现在 |
 | POST | `/api/import` / `/api/clear` | 按笔记 ID 合并导入 / 清空数据 |
 | POST | `/api/llm/test` | 连通性测试，返回 `{ok, httpCode, ms, reply}` |
 | GET | `/api/llmlog` | 最近的大模型调用（模型、耗时、HTTP 码、输入、原始返回） |
@@ -191,6 +192,8 @@ App 自己写 `files/enote/enote.log`。
 * 到期提醒：前台到点能弹通知；本机（vivo/OriginOS）应用一进后台就冻结进程，闹钟直接被
   `alarm_cancelled`，即使有前台服务 + 常驻通知 + Doze 白名单。不声称后台可靠，
   UI 文案是「尽量不被后台清理」（纯标准 AOSP 契约，不做品牌分支）。
+  **补救**：下次打开 app 时，笔记页会顶上一条「错过 N 条提醒」，点开是清单（哪条待办、
+  来自哪篇笔记、逾期多久），点一条直接跳到对应笔记；这个机制不依赖厂商也不会打扰第二次。
 * 剪贴板采集只在前台：Android 10+ 禁止非获焦应用读剪贴板，本 ROM 也不给后台窗口投递
   `OnPrimaryClipChangedListener`，所以后台复制的内容采不到。
 * API Key 明文存在 `files/`（App 私有目录，未加密）；导入 JSON 按笔记 ID 合并，没有多设备同步。
@@ -211,7 +214,7 @@ src/dev/xduo/enote/     Java 壳（8 个类）+ com/vivo/aiocr/general（OCR SDK
 go/                     Go 业务层 + ui.html（内嵌 UI）+ icon.png（go:embed）
 res/                    启动器图标（矢量 XML，由 tools/gen_icon.py 生成）
 tools/gen_icon.py       图标几何（矢量 XML + PNG 一起出）
-tools/ui_sig_test.js    UI 结构契约测试（51 项，无浏览器，纯静态断言）
+tools/ui_sig_test.js    UI 结构契约测试（53 项，无浏览器，纯静态断言）
 docs/shots/             README 截图（由 .test/shots/ 缩图生成）
 assets/mdl_ocr/         OCR 模型（9 MB）
 jniLibs/arm64-v8a/      OCR 引擎 .so（6.7 MB）
