@@ -132,8 +132,12 @@ const heroPlain = !/main\.enter \.hero\{animation/.test(src) && !/main\.enter \.
 console.log((heroPlain ? '  ok   ' : '  FAIL ') + '我的页没有装饰性入场动画');
 if (!heroPlain) bad++;
 
+// S2 之后间距/字号/圆角都走刻度 token，断言要守的是结构契约，不是字面 px。
+// tok('14px','--s3') 生成 (14px|var(--s3))：迁移前后都绿，两边都写死会假红。
+function tok(lit, token) { return '(' + lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '|var\\(' + token + '\\))'; }
+
 // 页面内容左右留白（卡片不贴屏幕边）
-const pad = /main#view\{padding:0 14px 104px\}/.test(src);
+const pad = new RegExp('main#view\{padding:0 ' + tok('14px', '--s3') + ' 104px\}').test(src);
 console.log((pad ? '  ok   ' : '  FAIL ') + '页面左右有留白');
 if (!pad) bad++;
 
@@ -239,10 +243,18 @@ function ruleBody(cls) {
   const m = src.match(new RegExp('^\\.' + cls + '\\{([^}]*)\\}', 'm'));
   return m ? m[1] : '';
 }
-const NEED = ['display:inline-flex', 'align-items:center', 'font-size:10.5px',
-  'line-height:1.4', 'padding:1px 7px', 'border:1px solid'];
-const chipH = ['chip', 'due', 'cd'].every(c => NEED.every(k => ruleBody(c).indexOf(k) >= 0))
-  && /^\.tx small\{display:flex;flex-wrap:wrap;align-items:center;gap:4px/m.test(src);
+// 三类胶囊（chip / due / cd）必须共用同一套盒模型，高度才会一致——这是「重要」标签
+// 和时间标签对齐的根因。条目写成断言函数，刻度 token 和旧字面值都接受。
+const NEED = [
+  b => b.includes('display:inline-flex'),
+  b => b.includes('align-items:center'),
+  b => /font-size:(10\.5px|var\(--fs-xs\))/.test(b),
+  b => b.includes('line-height:1.4'),
+  b => /padding:1px (7px|var\(--s2\))/.test(b),
+  b => /border:(1px|var\(--hair\)) solid/.test(b),
+];
+const chipH = ['chip', 'due', 'cd'].every(c => NEED.every(f => f(ruleBody(c))))
+  && /^\.tx small\{display:flex;flex-wrap:wrap;align-items:center;gap:(4px|var\(--s1\))/m.test(src);
 console.log((chipH ? '  ok   ' : '  FAIL ') + '「重要」与时间标签同高（统一盒模型 + flex 居中）');
 if (!chipH) bad++;
 
@@ -347,7 +359,7 @@ if (!cleanTab) bad++;
 // 待办行左侧竖条：所有行统一 3px 透明占位，重要行只改颜色 → checkbox 对齐
 const priBar = /border-left:3px solid transparent/.test(src)
   && /\.pri-high\{border-left-color:var\(--bad\)\}/.test(src)
-  && /padding:9px 2px 9px 8px/.test(src);
+  && new RegExp('padding:9px ' + tok('2px', '--s0') + ' 9px ' + tok('8px', '--s2')).test(src);
 console.log((priBar ? '  ok   ' : '  FAIL ') + '待办竖条统一占位（checkbox 对齐）');
 if (!priBar) bad++;
 
@@ -378,7 +390,7 @@ if (!missed) bad++;
 // 横幅用 warn 色跟「剪贴板」横幅区分开；图标顶对齐，两行文案时不会被拉低
 const missedCss2 = /\.missed\{[^}]*var\(--warn-s\)/.test(src)
   && /\.missed\{[^}]*align-items:flex-start/.test(src)
-  && /\.missed \.mi\{[^}]*margin-top:2px/.test(src)
+  && new RegExp('\.missed \.mi\{[^}]*margin-top:' + tok('2px', '--s0')).test(src)
   && /\.msrow\{/.test(src);
 console.log((missedCss2 ? '  ok   ' : '  FAIL ') + '错过的提醒用 warn 色（区别于剪贴板横幅）');
 if (!missedCss2) bad++;

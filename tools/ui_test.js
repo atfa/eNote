@@ -107,7 +107,7 @@ if (jsMissing.length) {
 // 那些本来就不归间距刻度管，拉进来只会把信号淡掉。
 const RATCHET = {
   hex: 62,   // go/ui.html 的 <style> 里实测 62 处
-  px: 292,   // 刻度相关属性里的裸 px：391 →（S2 密度 10px→8px）341 →（stats/settings 视图迁移）292
+  px: 57,    // 刻度相关属性里的裸 px：391 →（密度 10px→8px）341 →（stats/settings）292 →（base/components 全量迁移）57
 };
 const cssText = SPLIT
   ? walkDir(path.join(uiDir, 'css')).join('\n')
