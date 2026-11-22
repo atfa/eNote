@@ -232,3 +232,23 @@
 * `test.sh` 扩到 P6.5 各档（含常驻后台服务与通知渠道断言）；图片/附件测试改放 app 私有 inbox
   （`/sdcard/Android/data` 被 Scoped Storage 拒读）。
 * 所有脚本在缺 root 时降级并打印提示（`APK_NO_ROOT=1` 可强制无 root 路径）。
+
+### 界面质量重构（P13，进行中）
+
+任务不是加功能，是把界面重做到"高级"：改用 Vue 3 重画 UI，全程仍要在手机上构建，
+所以不引入 npm / bundler。完整计划见 `plan.md` §9。
+
+* **S1a 拆单文件**：`go/ui.html`（2527 行）拆成 `go/ui/`——`index.html` +
+  `css/{tokens,base,components,views}.css` + `css/views/*.css`（8 个占位）+ `js/app.js`。
+  拆分是**按原始行号的连续区间**，CSS 拼接后与拆分前逐字节一致，层叠顺序没变；
+  这一步行为零变化，70 个内联 handler 全部照旧。
+  `go/web.go` 改成 `//go:embed all:ui` + 目录静态服务：Content-Type 写死在代码里
+  （Android 没有 `/etc/mime.types`，回落 `text/plain` 会让 WebView 拒绝执行脚本），
+  每个文件都带 `no-store`。新增 `go/web_test.go`：页面引用的每个资源必须 200 且类型正确、
+  路径穿越/目录必须 404、vendor 内容必须与 `VENDOR.md` 的 sha256 一致。
+* **Vue 3.5.46 vendored**（`go/ui/vendor/vue.global.prod.js`，174KB，MIT）：全局构建自带模板
+  编译器，已实测（`Vue.compile` 可用）。`VENDOR.md` 里 pin 了语言基线 = ES2020（Chrome 80），
+  因为 `MIN_API=26` 的出厂 WebView 是 58/59。
+* **教训固化**：`js/app.js` 头注释写明"加 `type=module` 会让 70 个内联 handler 静默失效"，
+  `go/web_test.go` 直接断言首页不许出现 `type="module"`——这是 P12「点了没反应」那一类 bug
+  的机器闸门，不靠人记得。

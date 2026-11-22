@@ -5,3 +5,4 @@ out/
 go/enotebin
 go/dev.xduo.enote
 go/ui.bundle.js
+go/lastopen.txt

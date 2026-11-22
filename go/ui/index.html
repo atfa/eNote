@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0b0f14">
+<title>懒得记</title>
+  <!-- S1a：样式从 go/ui.html 的 <style>（原 8-579 行）机械拆成 4 个文件，加载顺序 = 原层叠顺序 -->
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/views.css">
+  <!-- S1a 先建好最终布局的空文件（一个视图一个文件、一个 owner），S2 把规则从 views.css 搬进来。
+       加载顺序 = 层叠顺序，新增文件只能追加在 views.css 之后，不能插到前面。 -->
+  <link rel="stylesheet" href="/css/views/shell.css">
+  <link rel="stylesheet" href="/css/views/notes.css">
+  <link rel="stylesheet" href="/css/views/todos.css">
+  <link rel="stylesheet" href="/css/views/files.css">
+  <link rel="stylesheet" href="/css/views/shots.css">
+  <link rel="stylesheet" href="/css/views/clip.css">
+  <link rel="stylesheet" href="/css/views/stats.css">
+  <link rel="stylesheet" href="/css/views/settings.css">
+</head>
+<body>
+<!-- 图标库（P7）：24dp 线性图标，用 <svg class="ic"><use href="#i-xxx"/></svg> 引用 -->
+<svg class="defs" aria-hidden="true"><defs>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M15.8 15.8 20.5 20.5"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="i-clipboard" viewBox="0 0 24 24"><path d="M9 4.6H6.9A1.9 1.9 0 0 0 5 6.5v12.9A1.9 1.9 0 0 0 6.9 21.3h10.2A1.9 1.9 0 0 0 19 19.4V6.5A1.9 1.9 0 0 0 17.1 4.6H15"/><rect x="8.6" y="2.9" width="6.8" height="3.4" rx="1.3"/><path d="M8.6 11.6h6.8M8.6 15.2h4.8"/></symbol>
+<symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4.2v15.6M7 19.8l-3.2-3.4M7 19.8l3.2-3.4M17 19.8V4.2M17 4.2l-3.2 3.4M17 4.2l3.2 3.4"/></symbol>
+<symbol id="i-note" viewBox="0 0 24 24"><path d="M4.6 19.4h4L20 8a2.1 2.1 0 0 0-3-3L5.6 16.4l-1 3Z"/><path d="M14.6 6.6l3 3"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.6l4.6 4.6L19 7"/></symbol>
+<symbol id="i-check-square" viewBox="0 0 24 24"><rect x="3.8" y="3.8" width="16.4" height="16.4" rx="4.6"/><path d="M8 12.2l2.9 2.9L16.2 9.6"/></symbol>
+<symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M8.2 12.2l2.7 2.7 5.1-5.3"/></symbol>
+<symbol id="i-clip" viewBox="0 0 24 24"><path d="M20 11.6l-7.9 7.9a5 5 0 0 1-7.1-7.1l8.4-8.4a3.4 3.4 0 0 1 4.8 4.8l-8.4 8.4a1.8 1.8 0 0 1-2.5-2.5l7.8-7.8"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.7"/><path d="M4.8 20.2c.6-3.7 3.6-5.7 7.2-5.7s6.6 2 7.2 5.7"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.4v13.2M5.4 12h13.2"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.4V12l3.3 2"/></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.4" y="5.4" width="17.2" height="15.2" rx="3.2"/><path d="M8 3.4v4M16 3.4v4M3.4 10h17.2"/></symbol>
+<symbol id="i-alarm" viewBox="0 0 24 24"><circle cx="12" cy="13.2" r="7.2"/><path d="M12 9.6V13.2l2.6 1.6M4.6 4.6 7.6 6.6M19.4 4.6 16.4 6.6"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M6.6 10.6a5.4 5.4 0 0 1 10.8 0c0 4 1.6 5.6 1.6 5.6H5s1.6-1.6 1.6-5.6Z"/><path d="M10 19.2a2.2 2.2 0 0 0 4 0"/></symbol>
+<symbol id="i-tag" viewBox="0 0 24 24"><path d="M11.3 3.6H5.6A2 2 0 0 0 3.6 5.6v5.7l9 9a2 2 0 0 0 2.8 0l5.1-5.1a2 2 0 0 0 0-2.8l-9-9Z"/><circle cx="8" cy="8" r="1.3"/></symbol>
+<symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M11 3.4l1.8 4.6 4.6 1.8-4.6 1.8L11 16.2 9.2 11.6 4.6 9.8 9.2 8 11 3.4Z"/><path d="M18.4 15.2l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2Z"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.6 7h14.8M9.6 7V5.2A1.2 1.2 0 0 1 10.8 4h2.4a1.2 1.2 0 0 1 1.2 1.2V7M6.6 7l.9 12.1A1.6 1.6 0 0 0 9.1 20.6h5.8a1.6 1.6 0 0 0 1.6-1.5L17.4 7"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4.4V9.2h-4.8"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect x="3.4" y="5" width="17.2" height="14" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M4.6 17.4l4.4-4a2 2 0 0 1 2.7 0l4.4 4M14.8 14.6l1.2-1.1a2 2 0 0 1 2.7 0l1.2 1.1"/></symbol>
+<symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.6h3l1.4-2.2h7.2L17 8.6h3a1.6 1.6 0 0 1 1.6 1.6v8A1.6 1.6 0 0 1 20 19.8H4a1.6 1.6 0 0 1-1.6-1.6v-8A1.6 1.6 0 0 1 4 8.6Z"/><circle cx="12" cy="13.6" r="3.4"/></symbol>
+<symbol id="i-mic" viewBox="0 0 24 24"><rect x="9.2" y="3.2" width="5.6" height="10.4" rx="2.8"/><path d="M5.6 11.4a6.4 6.4 0 0 0 12.8 0M12 17.8v3"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.2 2.6 5 13.4h5.4L9.8 21.4 19 10.6h-5.6l-.2-8Z"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.2A8.4 8.4 0 0 1 9.8 4 8.4 8.4 0 1 0 20 14.2Z"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M4.2 12H2M22 12h-2.2M6.3 6.3 4.8 4.8M19.2 19.2l-1.5-1.5M17.7 6.3l1.5-1.5M4.8 19.2l1.5-1.5"/></symbol>
+<symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2.8" y="4.2" width="18.4" height="12.6" rx="2.4"/><path d="M8.6 20.4h6.8M12 16.8v3.6"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.8v10.4M7.6 10.2 12 14.6l4.4-4.4M4.6 19.6h14.8"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15.8" r="3.6"/><path d="M10.6 13.2 19.4 4.4M16.2 7.6l2.2 2.2M13.6 10.2l2.2 2.2"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M12 11v5.4M12 7.8v.2"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.2 5 6v5.6c0 4.2 2.9 7.4 7 9.2 4.1-1.8 7-5 7-9.2V6l-7-2.8Z"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M9.6 14.4 14.4 9.6"/><path d="M12.8 7.2 14.6 5.4a4 4 0 0 1 5.7 5.7l-1.8 1.8M11.2 16.8 9.4 18.6a4 4 0 0 1-5.7-5.7l1.8-1.8"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path d="M6.4 9.4 12 15l5.6-5.6"/></symbol>
+<symbol id="i-chevup" viewBox="0 0 24 24"><path d="M6.4 14.6 12 9l5.6 5.6"/></symbol>
+<symbol id="i-chevr" viewBox="0 0 24 24"><path d="M9.4 6.4 15 12l-5.6 5.6"/></symbol>
+<symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6.6h16M7 12h10M10 17.4h4"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4.2 2.9 19.9h18.2L12 4.2Z"/><path d="M12 10v4.3M12 17.2v.2"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.6 7.4A1.8 1.8 0 0 1 5.4 5.6h3.4l2 2.4h7.8a1.8 1.8 0 0 1 1.8 1.8v8.6a1.8 1.8 0 0 1-1.8 1.8H5.4a1.8 1.8 0 0 1-1.8-1.8V7.4Z"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M13.6 3.6H7a2 2 0 0 0-2 2v12.8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5.4-5.4Z"/><path d="M13.4 3.8V9H19"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M20.6 3.4 3.6 10.2l6.4 2.4 2.4 6.4 8.2-15.6Z"/><path d="M10 12.6l10.6-9.2"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.6" y="8.6" width="11.8" height="11.8" rx="2.6"/><path d="M15.4 5.4H5.8a2 2 0 0 0-2 2v9.6"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.6 12S6 5.8 12 5.8 21.4 12 21.4 12 18 18.2 12 18.2 2.6 12 2.6 12Z"/><circle cx="12" cy="12" r="3.2"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.8 14.5 9l5.7.8-4.1 4 1 5.6-5.1-2.7-5.1 2.7 1-5.6-4.1-4L9.5 9 12 3.8Z"/></symbol>
+<symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2.8 9.2a13 13 0 0 1 18.4 0M6 12.6a8.4 8.4 0 0 1 12 0M9.2 15.9a3.9 3.9 0 0 1 5.6 0"/><path d="M12 19.2v.2"/></symbol>
+<symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.4" ry="2.8"/><path d="M4.6 6v12c0 1.5 3.3 2.8 7.4 2.8s7.4-1.3 7.4-2.8V6"/><path d="M4.6 12c0 1.5 3.3 2.8 7.4 2.8s7.4-1.3 7.4-2.8"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.8" y="10.4" width="14.4" height="9.8" rx="2.6"/><path d="M8.2 10.4V7.8a3.8 3.8 0 0 1 7.6 0v2.6"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.4 18.6 12 8 18.6V5.4Z"/></symbol>
+<symbol id="i-history" viewBox="0 0 24 24"><path d="M3.8 12a8.2 8.2 0 1 0 2.6-6"/><path d="M3.8 4.6v4.8h4.8M12 7.8V12l3 1.9"/></symbol>
+<symbol id="i-idcard" viewBox="0 0 24 24"><rect x="2.8" y="5.4" width="18.4" height="13.2" rx="2.6"/><circle cx="8.6" cy="11" r="2.2"/><path d="M5.4 16c.5-1.7 1.7-2.6 3.2-2.6s2.7.9 3.2 2.6M14.2 10h4M14.2 13.4h3"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><path d="M7.4 3.8 9.6 8 7.8 10a12.6 12.6 0 0 0 6.2 6.2l2-1.8 4.2 2.2v3A1.8 1.8 0 0 1 18.4 21C10 20.4 3.6 14 3 5.6A1.8 1.8 0 0 1 4.4 3.8h3Z"/></symbol>
+<symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5.4" width="18" height="13.2" rx="2.6"/><path d="M4 7.6l7.1 5.2a1.6 1.6 0 0 0 1.8 0l7.1-5.2"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M3.6 12h16.8M12 3.6c2.4 2.4 3.6 5.2 3.6 8.4S14.4 18 12 20.4c-2.4-2.4-3.6-5.2-3.6-8.4S9.6 6 12 3.6Z"/></symbol>
+<symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3.6 13.4h4l1.4 2.6h6l1.4-2.6h4"/><path d="M6.2 4.6h11.6l2.6 8.8v4.4a1.8 1.8 0 0 1-1.8 1.8H5.4a1.8 1.8 0 0 1-1.8-1.8v-4.4L6.2 4.6Z"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M8.4 6.6h12M8.4 12h12M8.4 17.4h12M4 6.6h.2M4 12h.2M4 17.4h.2"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.1"/><path d="M19.3 14.9a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.3a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.9-1.2V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9 2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.6 1.1Z"/></symbol>
+<symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5.6" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="18.4" r="2.6"/><path d="M8.3 10.7 15.7 6.9M8.3 13.3l7.4 3.8"/></symbol>
+<symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.6v8.4"/><path d="M6.9 6.9a7.6 7.6 0 1 0 10.2 0"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M14.6 3.4 20.6 9.4l-3 1-1.2 4.6-5.4-5.4 4.6-1.2-1-3Z"/><path d="M11 13.1 4.6 19.5"/></symbol>
+<symbol id="i-scan" viewBox="0 0 24 24"><path d="M3.6 8.4V6a2.4 2.4 0 0 1 2.4-2.4h2.4M15.6 3.6H18A2.4 2.4 0 0 1 20.4 6v2.4M20.4 15.6V18a2.4 2.4 0 0 1-2.4 2.4h-2.4M8.4 20.4H6A2.4 2.4 0 0 1 3.6 18v-2.4"/><path d="M7 12h10"/></symbol>
+<symbol id="i-mic-slash" viewBox="0 0 24 24"><path d="M9.2 5.9a2.8 2.8 0 0 1 5.6 2.6v3M14.8 14.4a2.8 2.8 0 0 1-5.6-1.9V9"/><path d="M5.6 11.4a6.4 6.4 0 0 0 9.9 5.4M18.4 11.4v.6M12 17.8v3M4 4l16 16"/></symbol>
+<symbol id="i-fire" viewBox="0 0 24 24"><path d="M12 2.8c.6 3-1.4 4.2-2.8 5.7C7.6 10.2 6 11.9 6 14.4A6 6 0 0 0 18 14.4c0-2.2-1-3.6-2.2-5-.6 1-1.3 1.6-2.2 2 .6-2.6.2-6-1.6-8.6Z"/></symbol>
+<symbol id="i-seed" viewBox="0 0 24 24"><path d="M12 21v-7.6"/><path d="M12 13.4C12 9.8 9.2 7 5.6 7c0 3.6 2.8 6.4 6.4 6.4Z"/><path d="M12.6 12.6c0-3.2 2.5-5.7 5.7-5.7 0 3.2-2.5 5.7-5.7 5.7Z"/></symbol>
+<symbol id="i-calendar-check" viewBox="0 0 24 24"><rect x="3.4" y="5" width="17.2" height="15.6" rx="2.6"/><path d="M8 3.4v3.2M16 3.4v3.2M3.4 10h17.2"/><path d="m9 14.6 2.1 2.1 4-4.1"/></symbol>
+<symbol id="i-clipfile" viewBox="0 0 24 24"><path d="M20 9.6 14.4 4H7.6A1.6 1.6 0 0 0 6 5.6v12.8A1.6 1.6 0 0 0 7.6 20h8.8a1.6 1.6 0 0 0 1.6-1.6z"/><path d="M14 4v5.6h5.6"/></symbol>
+<symbol id="i-file-pdf" viewBox="0 0 24 24"><path d="M20 9.6 14.4 4H7.6A1.6 1.6 0 0 0 6 5.6v12.8A1.6 1.6 0 0 0 7.6 20h8.8a1.6 1.6 0 0 0 1.6-1.6z"/><path d="M14 4v5.6h5.6"/><path d="M9 13.4h1.6a1.1 1.1 0 0 1 0 2.2H9zm0 0v4"/></symbol>
+<symbol id="i-file-sheet" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.6h16M4 14.6h16M10 4v16"/></symbol>
+<symbol id="i-file-slides" viewBox="0 0 24 24"><rect x="3.4" y="4.4" width="17.2" height="11.2" rx="2"/><path d="M12 15.6v4M9 19.6h6"/></symbol>
+<symbol id="i-file-text" viewBox="0 0 24 24"><path d="M20 9.6 14.4 4H7.6A1.6 1.6 0 0 0 6 5.6v12.8A1.6 1.6 0 0 0 7.6 20h8.8a1.6 1.6 0 0 0 1.6-1.6z"/><path d="M9 12h6M9 15.4h4"/></symbol>
+<symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V6.4l10-1.8V16"/><circle cx="6.6" cy="18" r="2.4"/><circle cx="16.6" cy="16" r="2.4"/></symbol>
+<symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4.6" width="18" height="14.8" rx="2.4"/><path d="M8 4.6v14.8M16 4.6v14.8M3 12h18"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><rect x="3.4" y="4.4" width="17.2" height="4.4" rx="1.4"/><path d="M5 8.8v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9M10 12.6h4"/></symbol>
+<symbol id="i-warn-tri" viewBox="0 0 24 24"><path d="M10.3 3.9 2.6 17.4A2 2 0 0 0 4.3 20.4h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9.4v4.2M12 17h.01"/></symbol>
+</defs></svg>
+<!-- 顶栏：笔记 / 待办 / 附件 共用（R3、R6）；我的页用自己的 hero 头部 -->
+<header class="topbar" id="topbar">
+  <button class="iconbtn" id="brandBtn" aria-label="我的"><img class="brand" src="/icon.png" alt=""><span class="dot" id="dot"></span></button>
+  <div class="search" id="searchBox">
+    <span class="sico"><svg class="ic"><use href="#i-search"/></svg></span>
+    <input id="q" type="search" placeholder="搜索笔记与待办" autocomplete="off">
+    <button class="sclr" id="qClear" aria-label="清除"><svg class="ic s"><use href="#i-x"/></svg></button>
+  </div>
+  <button class="iconbtn" id="clipBtn" aria-label="从剪贴板导入"><svg class="ic l"><use href="#i-clipboard"/></svg></button>
+  <button class="iconbtn" id="sortBtn" aria-label="排序与筛选"><svg class="ic l"><use href="#i-sort"/></svg></button>
+</header>
+<main id="view"></main>
+<nav class="tabbar" id="tabbar">
+  <span class="ind" id="ind"></span>
+  <button class="tab on" data-tab="notes"><span class="ti"><svg class="ic"><use href="#i-note"/></svg></span><em>笔记</em></button>
+  <button class="tab" data-tab="todos"><span class="ti"><svg class="ic"><use href="#i-check-square"/></svg></span><em>待办</em></button>
+  <button class="fab" id="fab"><span class="fico"><svg class="ic l"><use href="#i-plus"/></svg></span><span class="flabel">记一笔</span></button>
+  <button class="tab" data-tab="files"><span class="ti"><svg class="ic"><use href="#i-clip"/></svg></span><em>附件</em></button>
+  <button class="tab" data-tab="mine"><span class="ti"><svg class="ic"><use href="#i-user"/></svg></span><em>我的</em></button>
+</nav>
+<div class="sheet" id="sheet"><div class="panel" id="panel"></div></div>
+<!-- 自绘对话框：原生 confirm/alert 会显示“网址为 http://127.0.0.1 的网页显示：” -->
+<div class="dlg" id="dlg"><div class="dbox">
+  <h3 id="dlgT"></h3><div class="dbody" id="dlgB"></div>
+  <div class="dacts"><button class="btn" id="dlgNo">取消</button><button class="btn pri" id="dlgYes">确定</button></div>
+</div></div>
+<div id="toast"></div>
+  <!-- S1a：脚本从 go/ui.html 的 <script>（原 683-2524 行）搬出，普通脚本，见 app.js 头注释 -->
+  <script src="/js/app.js"></script>
+
+</body>
+</html>

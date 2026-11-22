@@ -8,7 +8,7 @@ import android.view.Window;
 
 /**
  * Keeps the system bars in sync with the WebView theme. The UI owns the palette (CSS
- * variables in go/ui.html); Java only paints the status/navigation bars to match, so the
+ * variables in go/ui/css/tokens.css); Java only paints the status/navigation bars to match, so the
  * status bar never shows a strip of the wrong colour when the theme changes.
  */
 public class Theme {

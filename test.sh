@@ -42,6 +42,15 @@ have_root || {
   exit 3
 }
 
+# OCR 用例要一张含中文的图。以前它是某台机器上手工放的文件，没进 git：
+# 新设备 / 新 worktree 上 test.sh 直接 die 在第 43 行，1000 行验收一行都跑不到。
+# 现在图进仓库（.test/ocr-test.png，由 tools/crop_png.py 从 docs/shots 裁出来），
+# 丢了就现场重造，不再依赖某台机器的本地文件。
+if [ ! -f "$IMG" ] && [ -f "$HERE/docs/shots/p12-missed-ops.png" ]; then
+  say "regenerating $IMG"
+  "$PY" "$HERE/tools/crop_png.py" "$HERE/docs/shots/p12-missed-ops.png" "$IMG" 120 280 840 660 \
+    || die "cannot regenerate $IMG"
+fi
 [ -f "$IMG" ] || die "missing $IMG (a small PNG with Chinese text; see README)"
 
 VDID=""
@@ -545,6 +554,26 @@ cat > "$TMPDIR/jseval.sh" <<'EOS'
 #!/bin/sh
 am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$(cat "$1")" >/dev/null
 EOS
+
+# 记录设备 WebView 版本。go/ui/vendor/VENDOR.md 把语言基线 pin 在 ES2020（Chrome 80），
+# 这条日志是唯一能证明“这台机器的 WebView 跑得动我们写的语法”的证据；
+# 升级后整页白屏的话先看这里，再看代码。
+N0UA=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' \
+  'console.log("JSEVAL ua="+navigator.userAgent); console.log("JSEVAL uadone=1")' > "$TMPDIR/jsua.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsua.json'"
+n=0
+while [ "$n" -lt 20 ]; do
+  readtlog | tail -n +$((N0UA + 1)) | grep -q 'JSEVAL uadone=1' && break
+  sleep 1; n=$((n + 1))
+done
+readtlog | tail -n +$((N0UA + 1)) | grep 'JSEVAL ua=' | tail -1 | sed 's/.*JSEVAL ua=//' > "$TMPDIR/webview.ua"
+if [ -s "$TMPDIR/webview.ua" ]; then
+  say "  webview ua: $(cat "$TMPDIR/webview.ua")"
+else
+  say "  warn: 没拿到 WebView UA（不判红，但 VENDOR.md 的 ES2020 基线就没法核对）"
+fi
+
 N0C=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};

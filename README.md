@@ -23,7 +23,8 @@
 <img src="docs/shots/p11-progress.jpg" width="210" alt="导入进度">
 </p>
 
-界面是**一个内嵌 HTML**（`go/ui.html`），由 Go 的 HTTP 服务在 `127.0.0.1` 上提供，WebView 加载。
+界面是 `go/ui/` 目录（`index.html` + `css/` + `js/` + `vendor/`），由 Go 的 HTTP 服务在 `127.0.0.1` 上提供，WebView 加载。
+以前是单文件 `go/ui.html`（2527 行），P13 拆成了目录，见 `plan.md` §9。
 图标是一整套 24dp 线性 SVG（内嵌 sprite，随 `currentColor` 变色）；启动器图标用
 用户自己的一套 PNG（5 个密度 + 自适应图层），`tools/ui_sig_test.js` 会锁住它，
 防止有人又换回矢量重绘。
@@ -97,11 +98,13 @@ Java 壳 (src/dev/xduo/enote/)                Go 业务层 (go/, 编成 libenote
   MainActivity WebView 容器            ├──  pipeline.go  队列 + worker + 解析
   Bridge       JNI + WebView 桥        │   llm.go        OpenAI 兼容客户端 + 调用记录
                 ↑ window.Android       │   config.go     settings.json + 日志
-                └──────────────────────┴──  web.go       127.0.0.1 HTTP + ui.html
+                └──────────────────────┴──  web.go       127.0.0.1 HTTP + go/ui/ 静态服务
 ```
 
-* 界面是**一个内嵌 HTML**（`go/ui.html`，`go:embed`），由 Go 的 HTTP 服务在 `127.0.0.1:<随机端口>` 上提供，
-  WebView 加载它。UI ↔ Go 只走 HTTP，JNI 面积极小（7 个导出函数）。
+* 界面是 `go/ui/` 目录（`go:embed all:ui`），由 Go 的 HTTP 服务在 `127.0.0.1:<随机端口>` 上提供，
+  WebView 加载它。静态文件全部 `no-store`（升级后不许新页面配旧脚本），Content-Type 写死在
+  `go/web.go` 的 `contentType()` 里——Android 上没有 `/etc/mime.types`，靠系统探测会回落 `text/plain`，
+  WebView 直接不执行脚本。UI ↔ Go 只走 HTTP，JNI 面积极小（7 个导出函数）。
 * **OCR 在 Java 侧、入库前完成**：`ShareActivity` / 图片选择器 / `重新识别图片` 都会先跑 OCR，
   把识别文本连同图片路径一起交给 Go 的 `enqueue`。Go 的 worker 从不回调 Java，所以不会有跨语言死锁。
 * 解析失败不丢数据：LLM 挂了就把原文存成 `raw` / `error` 状态，卡片上给「重新解析」按钮。
@@ -191,6 +194,15 @@ curl -s "http://127.0.0.1:$P/api/state" | python3 -m json.tool
 ./test.sh --vd            # 后台屏（推荐：不打扰你用手机）
 ```
 
+OCR 用例要一张含中文的图 `.test/ocr-test.png`（已进仓库）。它丢了也能现场重造，
+不依赖某台机器的本地文件：
+
+```bash
+python3 tools/crop_png.py docs/shots/p12-missed-ops.png .test/ocr-test.png 120 280 840 660
+```
+
+（Termux 上没有 PIL / ImageMagick，`tools/crop_png.py` 是纯标准库的 PNG 裁剪。）
+
 手工驱动（root）：
 
 ```bash
@@ -272,7 +284,7 @@ install.sh              pm install -g（--bg 用后台屏）
 test.sh                 端到端验收测试（见上）
 vd.sh / screen.sh / probe.sh / log.sh    后台屏、截图、存活检查、日志
 src/dev/xduo/enote/     Java 壳（8 个类）+ com/vivo/aiocr/general（OCR SDK 封装）
-go/                     Go 业务层 + ui.html（内嵌 UI）+ icon.png（go:embed）
+go/                     Go 业务层 + ui/（内嵌 UI：index.html + css/ + js/ + vendor/）+ icon.png（go:embed）
 res/                    启动器图标（矢量 XML，由 tools/gen_icon.py 生成）
 tools/gen_icon.py       图标几何（矢量 XML + PNG 一起出）
 tools/ui_sig_test.js    UI 结构契约测试（53 项，无浏览器，纯静态断言）
