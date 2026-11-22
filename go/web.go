@@ -8,13 +8,18 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-//go:embed ui.html
+// ui 是整 front-end 的静态资源目录（S1a 把原来 2527 行的单个 ui.html 拆成了目录）。
+// 用 all: 前缀：以 _ 或 . 开头的文件也要进二进制，否则以后放 .css.map 之类会静默丢失。
+// 目录里每个文件都要能被 handleUI 取到，go/web_test.go 会遍历一遍并核对 Content-Type。
+//
+//go:embed all:ui
 var uiFS embed.FS
 
 //go:embed icon.png
@@ -50,7 +55,7 @@ func startWebServer() string {
 
 func apiMux() *http.ServeMux {
 	m := http.NewServeMux()
-	m.HandleFunc("/", handleIndex)
+	m.HandleFunc("/", handleUI)
 	m.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, map[string]any{"ok": true, "info": appInfo(),
 			"settings": maskedSettings(), "notes": store.snapshot()})
@@ -108,23 +113,56 @@ func apiMux() *http.ServeMux {
 	return m
 }
 
-func handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
+// handleUI 服务首页和拆出来的静态文件（css / js / vendor）。
+// 页面里的引用全是绝对路径（/css/…、/js/…、/vendor/…），所以路径直接映射到 ui/ 下的文件。
+func handleUI(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+	if name == "" {
+		name = "index.html"
 	}
-	b, err := uiFS.ReadFile("ui.html")
-	if err != nil {
-		http.Error(w, "ui missing", 500)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// WebView caches aggressively; the UI is embedded in the binary so it only
 	// changes on install - never let a stale page survive an update.
+	// 拆成多文件后这条规则必须覆盖每一个文件，不然升级后是「新页面配旧脚本」这种难查的混合态。
 	w.Header().Set("Cache-Control", "no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
+
+	b, err := uiFS.ReadFile("ui/" + name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", contentType(name))
 	w.Write(b)
+}
+
+// contentType 只列出本项目会用到的类型：Go 的 mime.TypeByExtension 依赖系统 /etc/mime.types，
+// Android 上没有，会一律回落到 text/plain，WebView 就会拒绝执行脚本和样式表。
+func contentType(name string) string {
+	ext := strings.ToLower(path.Ext(name))
+	switch ext {
+	case ".html":
+		return "text/html; charset=utf-8"
+	case ".css":
+		return "text/css; charset=utf-8"
+	case ".js", ".mjs":
+		return "text/javascript; charset=utf-8"
+	case ".json":
+		return "application/json; charset=utf-8"
+	case ".svg":
+		return "image/svg+xml"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	case ".woff2":
+		return "font/woff2"
+	case ".map":
+		return "application/json; charset=utf-8"
+	}
+	return "application/octet-stream"
 }
 
 func jsonOut(w http.ResponseWriter, v any) {

@@ -546,3 +546,71 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
   `setTab`（读全局 tab，不接参数）/`jump`/`pageSheet`。签名测试只查函数存在，不查调用点。
 * 勾 ✓ 改成复用待办页的 `.todo/.cb/.ttx` + `toggle()`，划线淡出动画一致。
 * 测试改成真点击 + 断言动画 class，不再只查 DOM 结构。
+
+## 9. P13 UI 质量重构：改用 Vue 重做界面（进行中，2026-11-23）
+
+人类原话：项目能跑，但"总觉得 UI 不高级"；任务不是加功能，是提高代码质量，允许全部改用 Vue 重做。
+Duo GOAL 双人协作（Austin 驱动 / Tony 验证），共享计划 v3 已签署。
+
+### 9.0 盘点（双方各自复核过的数字）
+
+* `go/ui.html` 单文件 2527 行：CSS 8–579、JS 683–2524，手写 `sigOf`（:2217）指纹防闪烁。
+* **70 个内联 handler**（69 `onclick` + 1 `oninput`），全部在 JS 字符串拼接里，`index.html` 里 0 个。
+  它们按 window 作用域解析函数名——P12/P12.1 的"点了没反应"就是这个模式，测试当时还全绿。
+* JS 方言是 ES5 + `async`（`const/let` 0 次、箭头 4 次、`?.` 0 次）。
+* CSS：38 个变量、66 处裸 hex、font-size 19 个不同值、radius 17 个、spacing 242 处 / 24 个值、
+  box-shadow 24 处 / 1 个变量。**没有间距、字号、层级刻度 = "不高级"的根因。**
+* 调色板是 5 处真相、3 个文件：`css/tokens.css` 明/暗两处、`index.html` 的 `<meta theme-color>`、
+  `js/app.js` 的 `applyTheme()`、`Theme.java:15` 的 `BG_LIGHT/BG_DARK`。改一次背景色要同步 5 处。
+
+### 9.1 决策
+
+* **D1** Vue 3 全局构建 vendored 在 `go/ui/vendor/`（零构建步骤），`VENDOR.md` 记版本/sha256/升级方法，
+  并 pin 语言基线 = **ES2020（Chrome 80）**。
+* **D2** 拆目录：`go/ui/{index.html,css/,js/,vendor/}`；Go 侧 `//go:embed all:ui` + 显式 Content-Type + `no-store`。
+* **D3** Go API 与 Java 桥零改动，只改服务方式 + 新增 `go/web_test.go`。
+* **D4** 测试缝 `window.__enote = {ready, build:{sha,builtAt}, state, api, actions, dom}`；
+  `render()` shim **必须返回 Promise**（Vue 是微任务刷新，同步返回会读到旧 DOM）。
+* **D5** 冻结 class 名：`msrow cb pfoot ttx acard iconbtn brand justdone sheet todo`；
+  `.missedb`/`.missedtop` 今天不存在，冻结成"必须继续不存在"。
+* **D6** 现有 38 个 CSS 变量名**保留**（改名是纯 churn，`--d1..--d3` 55 处全在用、0 处字面时长）；
+  S2 只**新增**刻度 token，`tokens.css` 头注释写 old→new 映射表。裸 hex / 裸 px 用棘轮：只许降不许升。
+  新增一致性检查：`Theme.java` 的 `BG_LIGHT/BG_DARK` 必须等于 `tokens.css` 的 `--bg`（明/暗两处）。
+* **D7** 高级感 = 一套间距刻度 + 一套圆角 + 阴影层级 + 字号刻度（`tabular-nums`）+ 图标尺寸统一 +
+  空状态 + 骨架屏 + `:focus-visible` + safe-area + light/dark/auto 对齐 + `prefers-reduced-motion`。
+  **不加 sepia**（全库 0 命中，那是加功能）。P5.6"切页不要整页入场动画"的结论保留。
+* **D8** `tools/ui_sig_test.js` 活到 S6 才改名 `ui_test.js`，中途不丢防闪烁覆盖；
+  三条新闸门：① 内联 handler 调的函数名必须存在 ② `test.sh` jseval 引用的全局名 ⊆ 导出表
+  ③ 裸 hex 只允许在 `tokens.css`。
+* **D9** ES module 化推到 S3：S1 若转 module，70 个 handler 全静默失效 = 一次性制造 70 个 P12，
+  而测试全绿。`js/app.js` 头注释 + `web_test.go` 断言首页无 `type="module"`。
+* **D10** 旧 WebView 要失败得响亮：feature probe + `test.sh` 打印 `navigator.userAgent`。
+* **D11** 每步验收 = `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd` 全绿 + 截图进 `docs/shots/`；
+  S2 动 CSS 前先截 7 个视图基线进 `docs/shots/before/`。
+
+### 9.2 步骤与分工（一个文件一个 owner）
+
+| 步 | 内容 | owner |
+|---|---|---|
+| S1a | vendor Vue + 目录 embed + `web_test.go` + 拆文件（行为零变化）+ 打印 UA | Austin |
+| S1b | 7 视图基线截图进 `docs/shots/before/` | Tony |
+| S2 | 设计系统 `tokens.css`（刻度 + 映射表 + Theme.java 一致性检查）+ tabular-nums / focus-visible / safe-area / reduced-motion | Tony |
+| S3 | Vue 核心 + 转 ES module + window 导出表 + `__enote` + 闸门①② + Notes 视图 | Austin |
+| S4 | Todos + Files 视图转 Vue | Austin |
+| S5 | Shots + 选文件夹页转 Vue | Tony |
+| S6 | Clip + Stats + Settings 转 Vue；删遗留 JS 与 `sigOf`；改名 `ui_test.js` | Tony |
+| S7 | 全视图复查 + before/after 截图 + 文档 + 完整 `test.sh --vd` + hex 棘轮清零 | 双方 |
+
+Austin 另有 `go/web.go`、`go/web_test.go`、`build.sh`、`css/views/{notes,todos,files}.css`、`__enote`、`test.sh` 的 API 用例；
+Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,stats,settings}.css`、基础组件、`tools/ui_test.js`、`test.sh` 的 UI/jseval 块、文档截图。
+
+### 9.3 S1a 已完成（Austin）
+
+* 拆分是**按原始行号的连续区间**（tokens 9–43 / base 44–261 / components 262–520 / views 521–578），
+  CSS 拼接后与拆分前逐字节一致；`js/app.js` 同样逐字节一致。按视图语义拆是 S2 的活。
+* 拆分前置检查：CSS 0 处 `url()`、0 处 `@import`，JS 不含 `</script`，页面引用除 `#i-*` sprite 外全是绝对路径
+  ——这三条不成立的话拆完会静默坏，先验证再动手。
+* `go/web_test.go` 新增 7 组断言：首页无 `<style>`/内联 `<script>`/`type="module"`；页面引用的每个 css/js
+  必须 200 且 Content-Type 正确且带 `no-store`；`/../../etc/passwd`、目录、不存在的文件必须 404；
+  `contentType()` 表；vendor 的 sha256 必须等于 `VENDOR.md`；API 路由没被 `/` 吃掉。
+* `test.sh` 打印设备 WebView UA（VENDOR.md 的 ES2020 基线由此核对）。

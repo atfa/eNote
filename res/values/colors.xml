@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Mirrors the CSS tokens in go/ui.html; Java paints the system bars with these. -->
+    <!-- Mirrors the bg token in go/ui/css/tokens.css; Java paints the status/navigation bars
+         with these. tools/ui_test.js asserts the two stay equal (light and dark). -->
     <color name="bgLight">#F5F7FB</color>
     <color name="bgDark">#0B0F14</color>
     <color name="navLight">#FFFFFF</color>
