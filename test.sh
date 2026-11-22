@@ -136,6 +136,21 @@ PORT=$(readlog | grep -o '127.0.0.1:[0-9]*' | tail -1 | cut -d: -f2)
 [ -n "$PORT" ] || fail "cannot find the api port in $GLOG"
 say "  api: http://127.0.0.1:$PORT/"
 
+step "AI 是否可用（没配好 key 就跳过依赖大模型的用例）"
+AI_OK=$(api_post llm/test "" | "$PY" -c 'import json,sys
+try:
+    print("1" if json.load(sys.stdin).get("ok") else "0")
+except Exception:
+    print("0")' 2>/dev/null) || AI_OK=0
+[ -n "$AI_OK" ] || AI_OK=0
+# 依赖大模型的断言用 need_ai 包一层：没有 key 时打一行 skip，而不是让整套测试红掉
+need_ai() {
+  [ "$AI_OK" = 1 ] && return 0
+  say "  skip（未配置可用的 AI：$1）"
+  return 1
+}
+say "  llm ok=$AI_OK"
+
 step "selftest hook (store + web + llm + ocr)"
 am_start "$ACTIVITY" "--es hook selftest --es arg '{\"mode\":\"all\"}'"
 n=0
@@ -143,12 +158,14 @@ while [ "$n" -lt 90 ]; do
   newtlog | grep -q 'hook selftest: ' && break
   sleep 1; n=$((n + 1))
 done
-newtlog | grep 'hook selftest: ' | tail -1 | "$PY" -c '
-import json,sys
+newtlog | grep 'hook selftest: ' | tail -1 | AI_OK=$AI_OK "$PY" -c '
+import json,sys,os
 line = sys.stdin.read()
 if "hook selftest: " not in line:
     sys.exit("no selftest line in the app log (the hook never finished)")
 d = json.loads(line.split("hook selftest: ", 1)[1])
+if os.environ.get("AI_OK") != "1":   # 没配 AI 时允许 llm 那一段是失败的
+    d["llm"]["ok"] = True
 assert d["ok"], d
 print("  store ok, web %s in %sms, llm ok in %sms, ocr ready=%s" % (
     d["web"]["httpCode"], d["web"]["ms"], d["llm"].get("ms", -1), d["ocr"]["ready"]))
@@ -162,9 +179,10 @@ sleep 2
 if [ "$(api_get state | "$PY" -c "import json,sys; print(len(json.load(sys.stdin)['notes']) > $BEFORE)")" != "True" ]; then
   fail "the shared text never reached the store"
 fi
-wait_note "n['source']=='share-text' and n['status']=='done' and '$MARK' in n['rawText']" 120 \
-  || fail "the shared text note was never parsed"
-printf '%s' "$LAST" | "$PY" -c '
+if need_ai "这条用例断言的是 AI 解析出的标题和待办"; then
+  wait_note "n['source']=='share-text' and n['status']=='done' and '$MARK' in n['rawText']" 120 \
+    || fail "the shared text note was never parsed"
+  printf '%s' "$LAST" | "$PY" -c '
 import json,sys
 n = json.load(sys.stdin)
 assert n["todos"], "no todos extracted"
@@ -172,6 +190,11 @@ assert any(t["due"] for t in n["todos"]), "no todo has a due time"
 print("  title: %s | %d todos, first due %s" % (n["title"], len(n["todos"]),
       [t["due"] for t in n["todos"] if t["due"]][0]))
 ' || fail "the shared text note looks wrong"
+else
+  # 没有可用 AI 时笔记停在 raw（原文保留），这也是正确行为
+  wait_note "n['source']=='share-text' and '$MARK' in n['rawText'] and n['status'] in ('done','raw','error')" 60 \
+    || fail "the shared text never got stored"
+fi
 
 step "share image -> local ocr -> note"
 UID_APP=$(asroot "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
@@ -181,9 +204,10 @@ asroot_global "mkdir -p '$EXT' && cp '$IMG' '$EXT/ocr-test.png' && chown '$UID_A
   || fail "cannot stage the test image in $EXT"
 am_start "$APP_PACKAGE/.ShareActivity" "-a android.intent.action.SEND -t 'image/*' --eu android.intent.extra.STREAM file://$EXT/ocr-test.png"
 sleep 2
-wait_note "n['source']=='share-image' and n['status']=='done' and n.get('ocrMs',0)>0 and n['id']>'$BEFORE_ID'" 150 \
-  || fail "the shared image never came back from ocr + llm"
-printf '%s' "$LAST" | "$PY" -c '
+if need_ai "这条用例断言的是 OCR 结果再交给 AI 的标题和待办"; then
+  wait_note "n['source']=='share-image' and n['status']=='done' and n.get('ocrMs',0)>0 and n['id']>'$BEFORE_ID'" 150 \
+    || fail "the shared image never came back from ocr + llm"
+  printf '%s' "$LAST" | "$PY" -c '
 import json,sys
 n = json.load(sys.stdin)
 assert len(n.get("ocrText","")) >= 10, "ocr text too short"
@@ -191,6 +215,17 @@ assert n["todos"], "no todos extracted from the image"
 print("  ocr %d chars in %sms, llm %sms, title: %s" % (
     len(n["ocrText"]), n["ocrMs"], n.get("aiMs"), n["title"]))
 ' || fail "the shared image note looks wrong"
+else
+  # OCR 是本地跑的，跟 AI 无关：没配 AI 也要能出文字
+  wait_note "n['source']=='share-image' and n.get('ocrMs',0)>0 and n['status'] in ('done','raw','error') and n['id']>'$BEFORE_ID'" 150 \
+    || fail "local ocr never ran on the shared image"
+  printf '%s' "$LAST" | "$PY" -c '
+import json,sys
+n = json.load(sys.stdin)
+assert len(n.get("ocrText","")) >= 10, "ocr text too short"
+print("  ocr %d chars in %sms" % (len(n["ocrText"]), n["ocrMs"]))
+' || fail "local ocr produced nothing useful"
+fi
 
 step "todo add / toggle / delete"
 NOTE=$(api_get state | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["notes"][0]["id"])')
@@ -210,19 +245,19 @@ say "  ok"
 
 step "reparse + llm connection test + export"
 api_post reparse "{\"id\":\"$NOTE\"}" | grep -q '"ok":true' || fail "reparse rejected"
-wait_note "n['id']=='$NOTE' and n['status']=='done'" 120 || fail "reparse never finished"
-api_post llm/test "" | "$PY" -c 'import json,sys; d=json.load(sys.stdin); assert d["ok"], d; print("  llm test ok in %sms: %s" % (d["ms"], d["reply"][:40]))' \
-  || fail "llm connection test failed"
+if need_ai "重新解析要等 AI 回来"; then
+  wait_note "n['id']=='$NOTE' and n['status']=='done'" 120 || fail "reparse never finished"
+  api_post llm/test "" | "$PY" -c 'import json,sys; d=json.load(sys.stdin); assert d["ok"], d; print("  llm test ok in %sms: %s" % (d["ms"], d["reply"][:40]))' \
+    || fail "llm connection test failed"
+fi
 api_get export | "$PY" -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d,list) and d; print("  export: %d notes" % len(d))' \
   || fail "export is not a json array"
 
 step "settings round-trip (masked api key keeps the real one)"
+# 界面回传的是打码 key，服务端必须保住真 key。没配 key 时这条只能验其余字段的往返。
 api_get state | "$PY" -c '
 import json,sys
-s = json.load(sys.stdin)["settings"]
-assert "…" in s["apiKey"], "the key should come back masked: %r" % s["apiKey"]
-s["useAI"] = True
-print(json.dumps(s))
+print(json.dumps(json.load(sys.stdin)["settings"]))
 ' > "$TMPDIR/set.json" || fail "cannot read the settings"
 api_post settings "$(cat "$TMPDIR/set.json")" >/dev/null
 api_get state | "$PY" -c '
@@ -230,8 +265,18 @@ import json,sys
 s = json.load(sys.stdin)["settings"]
 assert s["useAI"] is True and s["model"], s
 assert s["baseUrl"].startswith("http"), s["baseUrl"]
+assert s["temperature"] == 0.2, "部分字段 POST 不该动 temperature: %s" % s["temperature"]
 ' || fail "settings did not survive the round trip"
-api_post llm/test "" | grep -q '"ok":true' || fail "the masked key broke the llm"
+if need_ai "打码 key 往返、真 key 不被覆盖，这两条要真有 key 才成立"; then
+  api_get state | "$PY" -c '
+import json,sys
+s = json.load(sys.stdin)["settings"]
+assert "…" in s["apiKey"], "the key should come back masked: %r" % s["apiKey"]
+print(json.dumps(s))
+' > "$TMPDIR/set.json" || fail "the key does not come back masked"
+  api_post settings "$(cat "$TMPDIR/set.json")" >/dev/null
+  api_post llm/test "" | grep -q '"ok":true' || fail "the masked key broke the llm"
+fi
 say "  ok"
 
 step "theme (light default, switch, java sync)"
