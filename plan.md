@@ -626,7 +626,36 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 | 项 | 归谁 | 哪步 |
 |---|---|---|
 | 笔记卡片预览里 `.cb` 被左边缘裁一半（明暗两档都有，基线截图里就有） | Austin | S4 |
-| 设备累积状态会让计数类断言假红：附件行数 ≠ 磁盘文件数（一张截图被多条笔记复用）；`pm clear` 能清但 LLM 配置也在 app prefs 里，清了必红 | Austin | 断言已改成按唯一路径数比；S7 给 test.sh 加「跑前重置数据 + 回写测试配置」 |
+| 设备累积状态会让计数类断言假红：附件行数 ≠ 磁盘文件数（一张截图被多条笔记复用）；`pm clear` 能清但 LLM 配置也在 app prefs 里，清了必红 | Austin | 断言已改成按唯一路径数比；**已做**：S8 步骤 1 给 test.sh 加了「跑前重置数据 + 回写测试配置」（见 §9.5） |
 | OCR 搜索断言只能证明「命中了」，证明不了「命中来自图片文字」（q=取快递 同时命中分享文本） | Austin | S7 前 |
 | `css/views.css` 已被 S2 删除，`go/web_test.go` 的判空豁免改成按目录（`/css/views/`）而非写死文件名 | Austin | 已做 |
 | S3 转 ES module 时，`window` 导出表要同步进 `ui_test.js` 闸门② | Austin + Tony | S3 |
+| 闸门② 的闭集是 15 个全局（10 函数 + 5 状态），不是纯函数名；状态桥 `__enote.state` 要可写（`tab="notes"`） | Austin | S3 |
+| 重置基线后 OCR 搜索断言的固定装置（`one-shot.png` 的忽略表）已随 shot.json 一起清，P11 不再依赖上轮状态 | Austin | S8 步骤 1 已做 |
+
+### 9.5 S8 步骤 1 已完成（Austin，D18：跑前重置数据 + 回写测试配置）
+
+`test.sh` 新增默认开启的跑前重置，`--no-reset` 关掉。分两段，**顺序是硬要求**：
+
+1. **文件级（`pm install` 之后、`am_start` 之前）**：删 `files/enote/shot.json`（暂存记录 +
+   「永远别再提醒」表）、`shotseen.json`（「已扫过」表）、`inbox/`（暂存图）。app 只在启动时读
+   这三样，启动后再删会被内存里的旧表写回来。
+2. **API 级（拿到端口之后）**：抓 settings → `POST /api/clear`（笔记 + 附件文件）→
+   `POST /api/clip/clear` → `POST /api/shots/remove`（全部 id）→ 原样回写 settings 并把
+   `theme` 归一到 `light`（theme 用例断言默认值就是 light）。apiKey 服务端对打码值是忽略的
+   （`web.go:363`），所以用户的真 key 不会被覆盖。
+3. **断言基线**：`notes=0 todos=0 clip=0 theme=light base=yes att=0 shots=0`，不符就 fail。
+
+不用 `pm clear`：LLM 的 base URL / key / 目标文件夹存在 app 私有 prefs 里，`test.sh` 全程不写它们，
+清了必红，而且这是用户的真机。
+
+重置基线当场暴露两处「靠设备历史数据才绿」的用例，都已改成自带固定装置：
+
+* `go/stats_test.go`：`t3` 的 due 写 `T23:00`，而 overdue 是 `t.Due < now` 的字符串比较，这台机器
+  Go 的 `time.Local` 是 UTC（设备本地 CST+8）→ 本地 00:00–08:00 这 8 小时里每天固定红。
+  改成 `T23:59`（同一天内恒大于任何 HH:MM）。
+* P8.5 提醒面板点的是 `.msrow[1]`（第二行）来验证「点整行跳笔记」，重置后只剩 1 条逾期项 →
+  `row[1]` 不存在 → `jumped=0` 假红。现在用例自己 `POST /api/todo` 造 2 条已到点的待办。
+
+验收：`node tools/ui_test.js`（13 闸门）+ `node tools/ui_sig_test.js`（84 项）+ `go test ./...`
++ `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd`（25 步）全绿。

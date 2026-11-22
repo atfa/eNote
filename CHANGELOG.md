@@ -5,6 +5,17 @@
 
 ## 0.1（当前）
 
+### 测试基线（P13 S8 步骤 1，D18）
+
+* **`test.sh` 跑前重置数据**（默认开，`--no-reset` 关）：先删 `shot.json` / `shotseen.json` /
+  `inbox/`（暂存记录、「永远别再提醒」表、「已扫过」表，app 只在启动时读，所以必须赶在
+  `am_start` 前），再走 API 清空笔记+附件、剪贴板暂存、截图暂存，然后原样回写 settings 并把
+  主题归一到 light。不用 `pm clear`：LLM 的 base URL / key / 目标文件夹存在 app 私有 prefs 里，
+  测试全程不写它们，清了必红。基线断言 `notes=0 todos=0 clip=0 theme=light base=yes att=0 shots=0`。
+* **重置基线当场揪出两个靠设施历史数据才绿的用例**：`go/stats_test.go` 的 due 写 `T23:00`，
+  而这台机器 Go 的 `time.Local` 是 UTC（设备 CST+8），本地 00:00–08:00 每天固定红 8 小时（改 `T23:59`）；
+  P8.5 面板点的是第二行，重置后只剩 1 条逾期项就假红（现在用例自己造 2 条固定装置）。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome

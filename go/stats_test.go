@@ -15,7 +15,11 @@ func TestStatsCountsMatchStore(t *testing.T) {
 	a := note("a", "周会", "下午三点评审原型", "", "share-text", stDone, 60,
 		Todo{ID: "t1", Text: "买牛奶", Due: "2020-01-01T15:00", Priority: "high"},
 		Todo{ID: "t2", Text: "取快递", Done: true, DoneAt: time.Now().Format("2006-01-02T15:04")},
-		Todo{ID: "t3", Text: "今天开会", Due: time.Now().Format("2006-01-02") + "T23:00"})
+		// 23:59 不是随手写的：overdue 是 `t.Due < now` 的字符串比较，而这台机器 Go 的
+		// time.Local 是 UTC（设备本地是 CST+8）。写 T23:00 时，本地 00:00–08:00 这一整段
+		// 里 UTC 的「今天」已经过了 23:00，t3 会被算成逾期（overdue:2），测试每天固定红 8 小时。
+		// T23:59 在同一天里恒大于任何 HH:MM，所以「今天且未逾期」在两种时区下都成立。
+		Todo{ID: "t3", Text: "今天开会", Due: time.Now().Format("2006-01-02") + "T23:59"})
 	b := note("b", "购物", "周五取快递", "", "share-image", stRaw, 30)
 	c := note("c", "坏了", "解析失败", "", "manual-text", stError, 5)
 	for _, n := range []*Note{a, b, c} {

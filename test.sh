@@ -8,6 +8,7 @@
 #   ./test.sh --keep         leave the app installed (default: keep, uninstall with --clean)
 #   ./test.sh --clean        uninstall the app afterwards
 #   ./test.sh --vd           run the UI on the invisible background display (root)
+#   ./test.sh --no-reset     keep the data on the device (default: reset to a known baseline)
 #
 # Needs root for: am start (share intents, hooks), reading app data files.
 set -eu
@@ -30,11 +31,13 @@ for a in "$@"; do
     --skip-build) SKIP_BUILD=1 ;;
     --clean) CLEAN=1 ;;
     --vd) VD=1 ;;
+    --no-reset) RESET=0 ;;
   esac
 done
 SKIP_BUILD=${SKIP_BUILD:-0}
 CLEAN=${CLEAN:-0}
 VD=${VD:-0}
+RESET=${RESET:-1}
 
 have_root || {
   say "SKIP: test.sh needs root to start activities and read app data."
@@ -169,6 +172,13 @@ fi
 step "install + start"
 asroot "am force-stop '$APP_PACKAGE'" >/dev/null 2>&1 || true
 asroot "pm install -g '$APK'" >/dev/null || die "pm install failed"
+if [ "$RESET" = 1 ]; then
+  # 截图相关的三张表是跨轮状态：shot.json 是暂存记录 +「永远别再提醒」表，shotseen.json 是
+  # 「已扫过」表，inbox/ 是暂存图。上一轮忽略过 one-shot.png，这一轮扫描就直接跳过它，
+  # P11 的用例必红（plan.md §9.4 记的累积状态）。app 只在启动时读这三样，所以必须赶在
+  # am_start 之前删——启动后再删，内存里的旧表会被写回来。
+  asroot "rm -rf '$DATA/enote/shot.json' '$DATA/enote/shotseen.json' '$DATA/enote/inbox'" >/dev/null 2>&1 || true
+fi
 if [ "$VD" = 1 ]; then
   say "  on background display $VDID"
 else
@@ -183,6 +193,51 @@ newtlog() { readtlog | tail -n +$((BASE + 1)); }
 PORT=$(readlog | grep -o '127.0.0.1:[0-9]*' | tail -1 | cut -d: -f2)
 [ -n "$PORT" ] || fail "cannot find the api port in $GLOG"
 say "  api: http://127.0.0.1:$PORT/"
+
+# 跑前重置数据（D18）。设备上的累积状态会让计数类断言假红：上轮附件断言就是被
+# 「一张截图被 23 条笔记复用」搞红的（plan.md §9.4）。pm clear 不可用——LLM 的
+# base URL / key / 目标文件夹存在 app 私有 prefs 里，test.sh 全程不写它们，清了必红，
+# 而且这是用户的真机。所以只清数据（notes.json / clip.json / shot.json），不碰 settings.json。
+# 变量名注意：BASE 已被上面的日志行偏移占用（newtlog 用它做 tail -n +），这里一律用 BASELINE。
+step "跑前重置数据（确定基线）"
+if [ "$RESET" = 1 ]; then
+  # 先把测试要用的配置抓下来（apiKey 服务端返回的是打码值，回传时服务端会忽略，
+  # 所以用户的真 key 不会被覆盖），清完数据再原样写回，顺带把主题归一到 light——
+  # 下面的 theme 用例断言默认值就是 light，用户手动调过暗色就会让那一歩假红。
+  CFG0=$(api_state | "$PY" -c '
+import json, sys
+s = json.load(sys.stdin).get("settings") or {}
+out = {k: s[k] for k in ("baseUrl", "model", "timeoutS", "maxTokens", "temperature", "useAI") if k in s}
+out["theme"] = "light"
+print(json.dumps(out))' 2>/dev/null) || CFG0=""
+  api_post clear "" >/dev/null 2>&1 || true
+  api_post clip/clear "" >/dev/null 2>&1 || true
+  SHOTIDS=$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps({"ids":[x["id"] for x in json.load(sys.stdin).get("shots") or []]}))' 2>/dev/null) || SHOTIDS=""
+  case "$SHOTIDS" in ''|'{"ids":[]}') ;; *) api_post shots/remove "$SHOTIDS" >/dev/null 2>&1 || true ;; esac
+  [ -n "$CFG0" ] && api_post settings "$CFG0" >/dev/null 2>&1
+
+  BASELINE=$(api_state | "$PY" -c '
+import json, sys
+d = json.load(sys.stdin)
+notes = d.get("notes") or []
+todos = sum(len(n.get("todos") or []) for n in notes)
+info = d.get("info") or {}
+s = d.get("settings") or {}
+print("notes=%d todos=%d clip=%d theme=%s base=%s" % (
+    len(notes), todos, info.get("clip", -1), s.get("theme", "?"),
+    "yes" if s.get("baseUrl") else "no"))' 2>/dev/null) || BASELINE=""
+  ATT=$(api_get attachments | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("total", -1))' 2>/dev/null) || ATT=-1
+  SHOTS=$(api_get shots/list | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin).get("shots") or []))' 2>/dev/null) || SHOTS=-1
+  say "  baseline: $BASELINE att=$ATT shots=$SHOTS"
+  case "$BASELINE" in
+    "notes=0 todos=0 clip=0 theme=light base=yes") ;;
+    *) fail "重置后基线不对（应为 notes=0 todos=0 clip=0 theme=light base=yes）：$BASELINE" ;;
+  esac
+  [ "$ATT" = 0 ] || fail "重置后附件数不是 0：$ATT"
+  [ "$SHOTS" = 0 ] || fail "重置后截图暂存不是 0：$SHOTS"
+else
+  say "  --no-reset：设各数据不重置，计数类断言可能因累积状态假红"
+fi
 
 # upstream_down <source>: 该来源最新一条笔记是不是"AI 超时/断连"导致的 raw。
 # 上游大模型偶发 500s 级超时是环境问题，不该把整套测试判红（但要吼一声，别静默）。
@@ -680,6 +735,13 @@ print("  ok (看过一次就不再重复提醒)")
 
 step "P8.5 错过的提醒面板：能勾完成、能跳笔记、能「我知道了」（用户反馈三条）"
 su --mount-master -c "echo -n '2020-01-01T00:00:00+08:00' > $DATA/enote/lastopen.txt"
+# 面板用例点的是第二行（.msrow[1]）来验证「点整行跳笔记」，所以固定造 2 条已到点的待办。
+# 以前它隐式依赖设施上恰好有 ≥2 条逾期项：重置数据后只剩 1 条，row[1] 不存在→没点击→
+# jumped=0，用例假红（步骤 1 重置基线暴露出来的）。固定装置自己造，不碰设施历史数据。
+MNOTE=$(api_state | "$PY" -c 'import json,sys; ns=json.load(sys.stdin)["notes"]; print(ns[0]["id"] if ns else "")')
+[ -n "$MNOTE" ] || fail "P8.5 需要至少一条笔记做固定装置"
+api_post todo "{\"action\":\"add\",\"noteId\":\"$MNOTE\",\"text\":\"面板固定装置 A\",\"due\":\"2020-01-02T10:00\"}" >/dev/null
+api_post todo "{\"action\":\"add\",\"noteId\":\"$MNOTE\",\"text\":\"面板固定装置 B\",\"due\":\"2020-01-03T10:00\"}" >/dev/null
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 N0C=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
