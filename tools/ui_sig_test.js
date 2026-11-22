@@ -392,9 +392,37 @@ const fileGap = /\.agrid\{display:grid;[^}]*margin-top:10px\}/.test(src);
 console.log((fileGap ? '  ok   ' : '  FAIL ') + '附件页统计行到列表的留白和笔记页一致');
 if (!fileGap) bad++;
 
-// checklist 圆框 18px（用户反馈太大）
-const cbSize = /\.cb\{flex:0 0 18px;height:18px/.test(src);
+// checklist 圆框：未勾选的圈直径要跟勾选后的实心圆一样大（以前 border 画圈是整 18px，偏大）
+const cbSize = /\.cb\{flex:0 0 18px;height:18px/.test(src)
+  && /\.cb:before\{[^}]*width:15px;height:15px/.test(src)     // 圈和实心圆都是 15px
+  && /\.cb\.on:before\{background:var\(--grad\)/.test(src)
+  && !/\.cb\{[^}]*border:1\.5px solid var\(--dim2\)/.test(src);
 console.log((cbSize ? '  ok   ' : '  FAIL ') + 'checklist 圆框 18px（不再过大）');
 if (!cbSize) bad++;
+
+// 交互入口用到的状态表必须真的声明过（expand 曾因 expAnim 未声明而静默失效）
+const decl = /var expAnim = \{\}/.test(src)
+  && /var tab = 'notes', open = \{\}/.test(src)
+  && /var seen = \{\}/.test(src);
+console.log((decl ? '  ok   ' : '  FAIL ') + 'expAnim / open / seen 都有声明（点击不再静默失效）');
+if (!decl) bad++;
+
+// 启动自检：真跑一遍各页渲染 + 展开详情，出错打到控制台（test.sh 会因此失败）
+const selfCheck = /function selfCheck\(\)/.test(src) && /SELFCHECK FAIL/.test(src)
+  && /probe\('expand'/.test(src);
+console.log((selfCheck ? '  ok   ' : '  FAIL ') + '启动自检覆盖各页渲染与「展开详情」');
+if (!selfCheck) bad++;
+
+// 正文三行以内不显示「展开详情」：按钮靠实测高度决定显隐
+const expRule = /function syncExpand\(\)/.test(src) && /full - three > 1/.test(src)
+  && /btn\.exp/.test(src) && /syncExpand\(\);/.test(src) && /\.exp/.test(src);
+console.log((expRule ? '  ok   ' : '  FAIL ') + '展开按钮只在正文超过三行时出现');
+if (!expRule) bad++;
+
+// 三行截断必须是 max-height（pre-wrap 下 line-clamp 不生效，正文会整段显示）
+const clampRule = /\.body\.clamp\{max-height:calc\(3 \* 1\.65em \+ 18px\)/.test(src)
+  && !/-webkit-line-clamp:3/.test(src) && /\.body:not\(\.clamp\)\{max-height:none/.test(src);
+console.log((clampRule ? '  ok   ' : '  FAIL ') + '正文三行截断用 max-height（line-clamp 对 pre-wrap 无效）');
+if (!clampRule) bad++;
 
 process.exit(bad ? 1 : 0);

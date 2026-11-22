@@ -70,7 +70,12 @@ a{color:var(--acc)}
 .body{font-size:13.5px;color:var(--dim);white-space:pre-wrap;word-break:break-word;margin-top:9px;
   padding:9px 11px;border-radius:0 11px 11px 0;background:var(--card2);
   border-left:3px solid var(--acc);line-height:1.65}
-.body.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+/* 三行截断用 max-height，不能用 -webkit-line-clamp：那套要求正常换行，
+   而正文是 white-space:pre-wrap（要保留用户写的换行），line-clamp 直接不生效，
+   于是正文从来没被截断过、每张卡都挂着一个点了没反应的「展开详情」。
+   3 行 = 3 * 1.65em，再加 18px 的上下内边距。 */
+.body.clamp{max-height:calc(3 * 1.65em + 18px);overflow:hidden;
+  -webkit-mask-image:linear-gradient(180deg,#000 68%,rgba(0,0,0,.08))}
 .chip{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.4;padding:1px 7px;
   border-radius:999px;
   border:1px solid var(--line);color:var(--dim);background:var(--card2);white-space:nowrap;
@@ -116,12 +121,16 @@ a{color:var(--acc)}
              max-height var(--d3) var(--ease),padding var(--d3) var(--ease),
              border-color var(--d3) var(--ease)}
 .todo:first-child{border-top:0}
-.cb{flex:0 0 18px;height:18px;margin-top:2px;border-radius:50%;border:1.5px solid var(--dim2);
-  background:transparent;display:flex;align-items:center;justify-content:center;color:var(--on-grad);
-  transition:all var(--d1) var(--ease);cursor:pointer}
+/* 一个 18px 的点击区，里面画一个 15px 的圆：未勾选是细圈，勾选后是实心渐变圆。
+   两种状态的可见直径完全一样（以前圈是整个 18px，看起来比勾选后大一圈）。 */
+.cb{flex:0 0 18px;height:18px;margin-top:2px;position:relative;border:0;background:none;
+  display:flex;align-items:center;justify-content:center;color:var(--on-grad);cursor:pointer}
+.cb:before{content:'';position:absolute;left:1.5px;top:1.5px;width:15px;height:15px;border-radius:50%;
+  border:1.5px solid var(--dim2);box-sizing:border-box;transition:background var(--d1) var(--ease)}
+.cb .ic{position:relative;z-index:1}
 .cb .ic{width:11px;height:11px;stroke-width:2.8;opacity:0;transform:scale(.4);
   transition:opacity var(--d1) var(--ease),transform var(--d2) var(--spring)}
-.cb.on{background:var(--grad);border-color:transparent;box-shadow:0 2px 8px var(--acc-s)}
+.cb.on:before{background:var(--grad);border-color:transparent;box-shadow:0 2px 8px var(--acc-s)}
 .cb.on .ic{opacity:1;transform:scale(1)}
 @keyframes cbpop{0%{transform:scale(1)}45%{transform:scale(1.34)}100%{transform:scale(1)}}
 .tx{flex:1;font-size:14.5px}
@@ -178,6 +187,7 @@ a{color:var(--acc)}
 @keyframes factin{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
 /* 展开 / 收起：正文高度变化用动画，不用硬跳 */
 .body{transition:max-height var(--d2) var(--ease)}
+.body:not(.clamp){max-height:none; -webkit-mask-image:none}
 
 /* 到期提醒入口（R13-A/B）：有 due 才出现，交给系统日历/闹钟 */
 .remind{display:inline-flex;align-items:center;justify-content:center;gap:3px;font-size:10.5px;
@@ -324,12 +334,15 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .clipitem{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);
   border-radius:11px;background:var(--card);margin-bottom:8px;cursor:pointer}
 .clipitem.on{border-color:var(--acc);background:var(--acc-s)}
-.clicb{flex:0 0 20px;width:20px;height:20px;border-radius:7px;border:1.5px solid var(--line);
-  display:flex;align-items:center;justify-content:center;color:#fff;margin-top:2px;
+/* 跟待办圆框同一套做法：20px 点击区里画 17px 的方块，未选/已选可见尺寸一致 */
+.clicb{flex:0 0 20px;width:20px;height:20px;position:relative;border:0;background:none;
+  display:flex;align-items:center;justify-content:center;color:#fff;margin-top:2px}
+.clicb:before{content:'';position:absolute;left:1.5px;top:1.5px;width:17px;height:17px;border-radius:6px;
+  border:1.5px solid var(--line);box-sizing:border-box;
   transition:background var(--d1) var(--ease),border-color var(--d1) var(--ease)}
-.clicb .ic{width:12px;height:12px;stroke-width:2.6;opacity:0;transform:scale(.4);
+.clicb .ic{position:relative;z-index:1;width:11px;height:11px;stroke-width:2.6;opacity:0;transform:scale(.4);
   transition:opacity var(--d1) var(--ease),transform var(--d2) var(--spring)}
-.clipitem.on .clicb{background:var(--acc);border-color:var(--acc)}
+.clipitem.on .clicb:before{background:var(--acc);border-color:var(--acc)}
 .clipitem.on .clicb .ic{opacity:1;transform:scale(1)}
 .clipbody{flex:1;min-width:0;text-align:left}
 .cliprev{font-size:13px;color:var(--fg);white-space:pre-wrap;word-break:break-word}
@@ -605,6 +618,7 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 var S = {notes:[], settings:{}, info:{}};
 var tab = 'notes', open = {}, busy = {};
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
+var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
 var curTheme = '';
 var q = '';
 /* 每个页签自己的搜索/排序/筛选条件（P3 会持久化到服务端） */
@@ -1120,7 +1134,7 @@ function noteCard(n, k){
     h += '<div style="margin-top:10px">'+n.todos.map(function(t){return todoRow(t,n,true)}).join('')+'</div>';
   }
   h += '<div class="acts">';
-  h += '<button class="btn sm gh" onclick="expand(\''+n.id+'\')">'+ic(exp?'chevup':'chev')+(exp?'收起':'展开详情')+'</button>';
+  h += '<button class="btn sm gh exp" onclick="expand(\''+n.id+'\')">'+ic(exp?'chevup':'chev')+(exp?'收起':'展开详情')+'</button>';
   if(n.status==='done'||n.status==='raw')
     h += '<button class="btn sm" onclick="reparse(\''+n.id+'\')">'+ic('refresh')+'重新解析</button>';
   if(n.imagePath) h += '<button class="btn sm" onclick="reocr(\''+n.id+'\')">'+ic('scan')+'重新识别图片</button>';
@@ -1342,6 +1356,24 @@ function render(){
   paintStatus();
   clearEnter();
   syncReminders();
+  syncExpand();
+}
+
+/* 「展开详情」只在正文真的超过三行时才出现：先去掉 clamp 量整段高度，再加上 clamp 量三行高度，
+   两者一样就说明没被截断，按钮没意义，直接藏起来（否则每张短笔记都挂一个点了没反应的按钮）。 */
+function syncExpand(){
+  var cards = document.querySelectorAll('#view .card');
+  for(var i=0;i<cards.length;i++){
+    var b = cards[i].querySelector('.body'), btn = cards[i].querySelector('.btn.exp');
+    if(!b || !btn) continue;
+    var was = b.classList.contains('clamp');
+    b.classList.remove('clamp');
+    var full = Math.round(b.getBoundingClientRect().height);
+    b.classList.add('clamp');
+    var three = Math.round(b.getBoundingClientRect().height);
+    if(!was) b.classList.remove('clamp');
+    btn.style.display = (full - three > 1) ? '' : 'none';
+  }
 }
 function strip(){
   var i = S.info;
@@ -1871,6 +1903,29 @@ refresh();
 setTab();
 // 补看「不在的时候错过的提醒」：不挡首屏，拿到再重绘一次
 loadMissed();
+/* 启动自检（R15）：把各页渲染和「展开详情」这类交互入口真跑一遍。
+   起因：expand() 用了从没声明过的 expAnim，点了抛 ReferenceError，界面一动不动，
+   而语法检查、结构断言都发现不了 —— 只有真调用才会暴露。 */
+function selfCheck(){
+  var errs = [], probe = function(name, fn){
+    try { fn() } catch(e){ errs.push(name + ': ' + ((e && e.message) || e)) }
+  };
+  probe('renderNotes', renderNotes); probe('renderTodos', renderTodos);
+  probe('renderFiles', renderFiles); probe('renderMine', renderMine);
+  var n = (S.notes || [])[0];
+  if(n){
+    probe('expand', function(){
+      var was = !!open[n.id];
+      expand(n.id);            // 打开
+      if(!open[n.id]) throw new Error('点了没展开');
+      expand(n.id);            // 收回原状
+      open[n.id] = was;
+    });
+  }
+  if(errs.length) console.log('SELFCHECK FAIL ' + errs.join(' | '));
+  else console.log('SELFCHECK OK');
+}
+setTimeout(selfCheck, 1200);
 </script>
 
 </body>

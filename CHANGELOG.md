@@ -1,7 +1,7 @@
 # 更新日志
 
 版本按开发阶段（Pn）记录，全部在手机上完成。界面改动都经过后台屏截图核对 +
-`tools/ui_sig_test.js`（53 项 UI 结构契约）+ `go test ./...`。
+`tools/ui_sig_test.js`（61 项 UI 结构契约）+ `go test ./...`。
 
 ## 0.1（当前）
 
@@ -36,6 +36,25 @@
 * 启动器图标还原成用户提供的 `android-launcher-icons.zip`（PNG 自适应图层，逐字节一致）。
 * 设置页 / 剪贴板暂存页等二级页面贴屏幕顶部（去掉底部弹层用的 drag grip 和 border-top）。
 * 冷启动点通知丢参数（`flushPendingOpen` 在页面就绪前就清掉了 pending）——现在等 `onPageFinished`。
+
+### 修正（P10，用户反馈「展开详情点了没反应」）
+
+* **点了没反应的真因**：`expand()` 用了从没声明过的 `expAnim`，点一下先抛
+  `ReferenceError`，界面一动不动。语法检查、结构断言都看不出来，只有真调用才暴露。
+* **三行截断其实一直没生效**：`.body.clamp` 用的是 `-webkit-line-clamp`，而那套要求正常
+  换行，正文是 `white-space:pre-wrap`（要保留用户写的换行），于是正文整段显示、每张卡
+  都挂着一个没意义的「展开详情」。改成 `max-height:calc(3 * 1.65em + 18px)` + 底部淡出遮罩。
+* **「展开详情」只在正文真的超过三行时出现**：渲染后实测（去掉 clamp 量整段高度、
+  加上 clamp 量三行高度），一样高就说明没被截断，按钮直接隐藏；展开后显示「收起」。
+* **勾选框尺寸统一**：待办圆框改成 18px 点击区里画 15px 圆，未勾选细圈和勾选后实心圆
+  可见直径一致；剪贴板选择框同样处理（20px 区里 17px 方框），勾选前后不再一大一小。
+* **加了两道防回归**：
+  * `ui.html` 启动 1.2s 后跑 `selfCheck()`，把各页渲染和「展开详情」真跑一遍，
+    出错打 `SELFCHECK FAIL`；
+  * `test.sh` 新增「前端没有运行时报错」一步：本次运行出现 `web console: Uncaught` 或
+    `SELFCHECK FAIL` 直接判失败——这类错误以前只会安静地把点击吞掉。
+* `tools/ui_sig_test.js` 53 → 61 项：新增 `.cb` / `.clicb` 尺寸、`expAnim` 等状态表声明、
+  `syncExpand` 显隐规则、`max-height` 截断（并禁止 `-webkit-line-clamp`）等断言。
 
 ### 功能
 

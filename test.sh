@@ -440,6 +440,17 @@ assert d.get("count") == 0, "第二次问不该重复报，got %s" % d.get("coun
 print("  ok (看过一次就不再重复提醒)")
 ' || fail "补看提醒没有推进 lastopen，会重复打扰"
 
+step "前端没有运行时报错（未声明的变量会把点击静默吞掉）"
+if newtlog | grep -q 'SELFCHECK FAIL'; then
+  newtlog | grep 'SELFCHECK FAIL' | tail -2 | sed 's/^/  /'
+  fail "前端启动自检失败（上面的函数抛异常了）"
+fi
+if newtlog | grep -q 'web console: Uncaught'; then
+  newtlog | grep 'web console: Uncaught' | tail -3 | sed 's/^/  /'
+  fail "前端抛了未捕获异常：对应的按钮点了不会有反应"
+fi
+say "  ok (自检通过，没有 Uncaught)"
+
 step "app alive"
 sh "$HERE/probe.sh" "$APP_PACKAGE" | sed 's/^/  /'
 
