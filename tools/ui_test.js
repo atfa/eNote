@@ -317,6 +317,37 @@ if (SPLIT) {
   else ok('笔记正文 / 剪贴板文本可长按复制（未被 user-select:none 覆盖）');
 }
 
+// ---------- 闸门⑩ 定义了却没人用的 token（棘轮）----------
+// 闸门⑧ 的镜像：⑧ 查「用了没定义」（声明静默失效），这里查「定义了没人用」。
+// 真实事故：--focus-ring 加进 tokens.css 后 base.css 那一笔没提交上去，
+// token 定义了、0 处引用，闸门⑧ 全绿——因为⑧ 只看引用侧。没有这条闸门，
+// 「加了个 token」和「这个 token 真的在起作用」在测试里长得一模一样。
+{
+  // 当前 11 个是 S2 先建好刻度、S5/S6/S7 迁移视图时才用上的，只许降不许升。
+  const UNUSED_BASELINE = 11;
+  const files = [];
+  (function walk(d) {
+    for (const f of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, f.name);
+      if (f.isDirectory()) { if (f.name !== 'vendor') walk(p); }
+      else if (/\.(css|js)$/.test(f.name)) files.push(p);
+    }
+  })(uiDir);
+  const defined = new Set(), used = new Set();
+  for (const p of files) {
+    const src = fs.readFileSync(p, 'utf8');
+    if(p.endsWith('.css')) for (const m of src.matchAll(/(--[\w-]+)\s*:/g)) defined.add(m[1]);
+    for (const m of src.matchAll(/var\((--[\w-]+)/g)) used.add(m[1]);
+    for (const m of src.matchAll(/setProperty\(\s*['"](--[\w-]+)/g)) used.add(m[1]);
+  }
+  const unused = [...defined].filter(n => !used.has(n));
+  if (unused.length > UNUSED_BASELINE) {
+    bad('新增定义了却没人用的 token（棘轮 ' + unused.length + ' > ' + UNUSED_BASELINE + '）', unused);
+  } else {
+    ok('无新增闲置 token（' + unused.length + ' ≤ 基线 ' + UNUSED_BASELINE + '，均为 S5-S7 待接入的刻度）');
+  }
+}
+
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);
 for (const s of fails) console.log('FAIL ' + s);

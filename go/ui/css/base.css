@@ -219,12 +219,14 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
    所以 S1a 的层叠顺序不受影响（tools/ui_test.js 闸门⑦ 会拦跨文件属性冲突）。 */
 
 /* 1. 键盘焦点环。触屏设备不显示（:focus-visible 的语义），外接键盘/遥控器能看见。
-      今天全站 0 处 focus 样式，键盘用户完全看不到焦点在哪。 */
-:focus-visible{outline:none;box-shadow:var(--focus)}
+      今天全站 0 处 focus 样式，键盘用户完全看不到焦点在哪。
+      通用规则用 outline 而不是 box-shadow：.card/.acard/.sheet 靠 box-shadow 做层级，
+      写成 box-shadow 的焦点环会在聚焦时把层级阴影顶掉（Austin 审查发现）。 */
+:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
 .tab:focus-visible,.iconbtn:focus-visible,.chip:focus-visible,.ib:focus-visible{
-  box-shadow:var(--focus);border-radius:var(--r-pill)}
-.seg button:focus-visible{box-shadow:var(--focus);border-radius:var(--r1)}
-input:focus-visible,textarea:focus-visible,select:focus-visible{box-shadow:var(--focus);border-color:var(--acc)}
+  outline:none;box-shadow:var(--focus);border-radius:var(--r-pill)}
+.seg button:focus-visible{outline:none;box-shadow:var(--focus);border-radius:var(--r1)}
+input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box-shadow:var(--focus);border-color:var(--acc)}
 
 /* 2. 点按手感：去掉 WebView 的 300ms 双击缩放判定（页面本来就不该缩放正文），
       并禁掉控件文字选中——长按按钮弹出"复制"菜单是这类 app 最掉价的地方。 */

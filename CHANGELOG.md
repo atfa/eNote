@@ -398,3 +398,20 @@
 `user-select:none` 列表，闸门⑨ 立刻红。
 
 `tools/ui_test.js` 10 → **12** 道闸门，全绿；`ui_sig_test.js` 84 ok；`go test` ok。
+
+### 更正：上面第 2 条在 a5158c9→fc781b5 里其实没生效
+
+`fc781b5` 的文件清单是 `CHANGELOG.md / components.css / tokens.css / tools/ui_test.js`——
+**`base.css` 不在里面**。写闸门⑨ 的负向测试时我用了 `git checkout go/ui/css/base.css` 还原，
+它把 base.css 整个退回 HEAD，顺手抹掉了同一文件里那笔未提交的焦点环修改。
+于是交付物里 `--focus-ring` 定义了、0 处引用，焦点环仍是全局 `box-shadow`，
+而 CHANGELOG 已经宣称它修好了。闸门⑧ 查不出来：它只看引用侧「用了没定义」，
+不看定义侧「定义了没人用」。
+
+补法：焦点环修改重新落进 `base.css`，并新增**闸门⑩**——定义了却没人用的 token 走棘轮
+（基线 11 个，都是 S2 先建好、S5/S6/S7 迁移视图时才接入的刻度，只许降不许升）。
+负向测试：把 `--focus-ring` 的引用撤掉，闸门⑩ 立刻红并点名它。
+`tools/ui_test.js` 12 → **13** 道闸门。
+
+教训写在这里：**负向测试还原文件要用备份，不能用 `git checkout`**——后者还原到 HEAD，
+会连带丢掉同文件里其他未提交的改动。这个坑本轮踩了两次。
