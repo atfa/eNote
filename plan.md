@@ -626,6 +626,7 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 | 项 | 归谁 | 哪步 |
 |---|---|---|
 | 笔记卡片预览里 `.cb` 被左边缘裁一半（明暗两档都有，基线截图里就有） | Austin | S4 |
+| 设备累积状态会让计数类断言假红：附件行数 ≠ 磁盘文件数（一张截图被多条笔记复用）；`pm clear` 能清但 LLM 配置也在 app prefs 里，清了必红 | Austin | 断言已改成按唯一路径数比；S7 给 test.sh 加「跑前重置数据 + 回写测试配置」 |
 | OCR 搜索断言只能证明「命中了」，证明不了「命中来自图片文字」（q=取快递 同时命中分享文本） | Austin | S7 前 |
 | `css/views.css` 已被 S2 删除，`go/web_test.go` 的判空豁免改成按目录（`/css/views/`）而非写死文件名 | Austin | 已做 |
 | S3 转 ES module 时，`window` 导出表要同步进 `ui_test.js` 闸门② | Austin + Tony | S3 |
