@@ -948,42 +948,45 @@ async function loadMissed(){
    横幅本身是"上次打开 app 之后到点的未完成待办"，服务端记的水位；点过「我知道了」
    之后水位已推进，同一批不会再来烦你（下一批要等新的到点提醒）。 */
 function missedSheet(){
-  var m = MISSED || {}, items = m.items || [];
-  var h = '';   // 标题已经在 sheet 头上了，别再重复一行
-  if(!items.length) h += emptyState('bell', '没有错过的提醒', '到点的待办会照常提醒');
-  else {
-    h += '<div class="card">' + items.map(function(t){
-      return '<div class="msrow" onclick="openTodoFromMissed(\''+esc(t.noteId||'')+'\',\''+esc(t.id||'')+'\')">'
-        + '<button class="msdone" onclick="missedDone(event,\''+esc(t.noteId||'')+'\',\''+esc(t.id||'')+'\')" '
-        + 'aria-label="标记完成" title="标记完成">'+ic('check','s')+'</button>'
-        + '<div class="mt"><div class="mtt">'+esc(t.text||'')+'</div>'
-        + '<div class="mts">'+esc(t.noteTitle||'')+'</div></div>'
-        + '<span class="mcd">'+ic('clock','s')+cdText(t.due)+'</span></div>';
-    }).join('') + '</div>';
-    if(m.count > items.length)
-      h += '<div style="font-size:11px;color:var(--dim2);margin-top:8px">只列出最早到点的 '+items.length+' 条</div>';
-    h += '<div class="pfoot"><div class="count">点整行看上下文<br>勾 ✓ 直接完成</div>'
-      + '<button class="btn gh" onclick="closeSheet();setTab(\'todos\')">'
-      + ic('check-square','s') + '去待办页</button>'
-      + '<button class="btn pri" onclick="missedDismiss()">'+ic('check','s')+'这批我知道了</button></div>';
+  var m = MISSED || S.missed;
+  if(!m) return;
+  var items = m.items || [];
+  var h = '';
+  if(!items.length){
+    h = emptyState('check-circle', '这批处理完了', '到点的待办会照常提醒');
+  } else {
+    // 行结构直接复用待办页的 .todo/.cb/.ttx，划线淡出动画和样式就都是那一套
+    h = '<div class="list card">';
+    items.forEach(function(t){
+      h += '<div class="todo msrow" onclick="closeSheet();jump(\''+t.nid+'\')">'
+        + '<div class="cb" onclick="missedDone(event,\''+t.nid+'\',\''+t.id+'\',this)">'+ic('check')+'</div>'
+        + '<div class="tx"><span class="ttx">'+esc(t.text)
+        + '<small><span class="due over">'+ic('calendar')+fmtTime(t.due)+'</span>'+cdChip(t)
+        + '<a href="#" onclick="jump(\''+t.nid+'\');return false">'+esc(t.ntitle||'查看笔记')+'</a></small>'
+        + '</span></div></div>';
+    });
+    h += '</div>';
   }
+  h += '<div class="pfoot"><div class="count">点整行看笔记上下文<br>勾 ✓ 直接完成</div>'
+    + '<button class="btn" onclick="missedGoTodos()">去待办页</button>'
+    + '<button class="btn pri" onclick="missedDismiss()">'+ic('check')+'这批我知道了</button></div>';
   pageSheet('错过的提醒', h);
 }
-/** 勾掉一条：真的标完成，并从这份清单里摘掉；清空了就顺手关掉面板。 */
-async function missedDone(ev, nid, tid){
-  if(ev && ev.stopPropagation) ev.stopPropagation();
-  var m = MISSED || {};
-  try{
-    await api('/api/todo', {action:'toggle', noteId:nid, todoId:tid});
-    m.items = (m.items || []).filter(function(t){ return t.id !== tid });
-    m.count = Math.max(0, (m.count || 1) - 1);
-    MISSED = m; S.missed = m;
-    render();
-    if(!m.items.length){ closeSheet(); toast('都处理完了'); return }
-    missedSheet();
-  }catch(e){ toast('操作失败') }
+function missedDone(ev, nid, tid, el){
+  ev.stopPropagation();
+  toggle(nid, tid, el);          // 复用待办页：划线 → 原位淡出 → 新位置高亮入场
+  setTimeout(function(){         // 动画跑完再把这条从清单里摘掉
+    if(!MISSED) return;
+    var n0 = (MISSED.items || []).length;
+    MISSED.items = (MISSED.items || []).filter(function(t){ return t.id !== tid });
+    MISSED.count = (MISSED.items || []).length;
+    if(S.missed) S.missed = MISSED;
+    if((MISSED.items || []).length === n0) return;
+    render();                 // 背后的横幅条数
+    if(MISSED.items.length) missedSheet(); else closeSheet();
+  }, 900);
 }
-/** 「这批我知道了」：待办一条不动，只是承认看过了 → 横幅消失（服务端水位已推进）。 */
+function missedGoTodos(){ closeSheet(); tab = 'todos'; setTab(true); }
 function missedDismiss(){
   MISSED = null;
   if(S) S.missed = null;

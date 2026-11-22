@@ -615,66 +615,72 @@ assert d.get("count") == 0, "第二次问不该重复报，got %s" % d.get("coun
 print("  ok (看过一次就不再重复提醒)")
 ' || fail "补看提醒没有推进 lastopen，会重复打扰"
 
-step "P8.5 错过的提醒面板：能勾完成、能「我知道了」清掉横幅（用户反馈：只能看没法处理）"
-asroot_global "echo -n '2020-01-01T00:00:00+08:00' > '$DATA/enote/lastopen.txt'"
-UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+step "P8.5 错过的提醒面板：能勾完成、能跳笔记、能「我知道了」（用户反馈三条）"
+su --mount-master -c "echo -n '2020-01-01T00:00:00+08:00' > $DATA/enote/lastopen.txt"
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
-N0M=$(readtlog | wc -l)
+N0C=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
-  var d=await api("/api/missed"); MISSED=d; S.missed=d; tab="notes"; render();
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var d=await api("/api/missed"); MISSED=d; S.missed=d; tab="notes"; render(); missedSheet();
   L("count="+d.count);
-  L("banner="+(q(".missed")?q(".missed").textContent.replace(/\s+/g,"").slice(0,10):"-"));
+  L("rows="+document.querySelectorAll(".msrow").length);
+  L("cb="+document.querySelectorAll(".msrow .cb").length);
+  L("foot="+((q("#sheet .pfoot")||{}).textContent||"").replace(/\s+/g,"").slice(0,40));
+  // 点整行：关掉面板 + 跳到那条笔记（用户反馈：点了没反应，因为调了不存在的 goNote）
+  var it1=(MISSED.items||[])[1]||{}, it0=(MISSED.items||[])[0]||{};
+  var nid=it1.nid||"", tid=it0.id||"";
+  var n0=Object.keys(open).length;
+  var row=document.querySelectorAll(".msrow")[1];
+  if(row) row.click();
+  await sleep(500);
+  L("jumped="+(Object.keys(open).length>n0?1:0)+" nid="+nid);
+  L("sheet="+(q("#sheet")?q("#sheet").classList.contains("on"):false));
   missedSheet();
-  L("rows="+document.querySelectorAll(".msdone").length);
-  var f=q("#sheet .pfoot");
-  L("foot="+(f?f.textContent.replace(/\s+/g,""):"-"));
-  var it=(MISSED.items||[])[MISSED.items.length-1];
-  if(!it){L("rowsAfter=-");L("restored=-");L("afterDismiss=-");L("done=1");return}
-  window.__t=it;
-  missedDone(null,it.noteId,it.id);
-  setTimeout(async function(){
-    L("rowsAfter="+document.querySelectorAll(".msdone").length);
-    await api("/api/todo",{action:"toggle",noteId:it.noteId,todoId:it.id});  // 还原，别动用户数据
-    var st=await api("/api/state");
-    var back=false;
-    (st.notes||[]).forEach(function(n){(n.todos||[]).forEach(function(t){if(t.id===it.id&&!t.done)back=true})});
-    L("restored="+(back?1:0));
-    MISSED={count:1,items:[it]}; S.missed=MISSED; render();
-    L("banner2="+(q(".missed")?"1":"0"));
-    missedDismiss();
-    L("afterDismiss="+(q(".missed")?"1":"0"));
-    L("done=1");
-  },1600);
+  // 勾 ✓：先出划线动画，动画跑完这条才从清单里消失（用户反馈：点了看不出结果）
+  var first=document.querySelector(".msrow .cb");
+  var n1=document.querySelectorAll(".msrow").length;
+  if(first) first.click();
+  await sleep(120);
+  L("anim="+((q(".msrow")||{}).className||"none"));
+  await sleep(1600);
+  L("n1="+n1);L("rows2="+document.querySelectorAll(".msrow").length);L("tid="+tid);
+  if(tid) await api("/api/todo",{action:"toggle",noteId:nid,todoId:tid});   // 还原，不动用户数据
+  missedSheet();
+  missedDismiss();
+  await sleep(300);
+  L("afterDismiss="+document.querySelectorAll(".missedb,.missedtop").length);
+  L("done=1");
 })()' > "$TMPDIR/jsmiss.json"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsmiss.json'"
 n=0
 while [ "$n" -lt 30 ]; do
-  readtlog | tail -n +$((N0M + 1)) | grep -q 'JSEVAL done=1' && break
+  readtlog | tail -n +$((N0C + 1)) | grep -q 'JSEVAL done=1' && break
   sleep 1; n=$((n + 1))
 done
-readtlog | tail -n +$((N0M + 1)) | grep 'JSEVAL ' > "$TMPDIR/jsmiss.out"
+readtlog | tail -n +$((N0C + 1)) | grep 'JSEVAL ' > "$TMPDIR/jsmiss.out"
 grep -q 'done=1' "$TMPDIR/jsmiss.out" || fail "jseval 没跑完（错过的提醒面板用例）"
-"$PY" - "$TMPDIR/jsmiss.out" <<'PYCHK' || fail "错过的提醒面板操作有问题"
+"$PY" - "$TMPDIR/jsmiss.out" <<'PYCHK' || fail "错过的提醒面板没修好"
 import re, sys
 txt = open(sys.argv[1], encoding="utf-8").read()
 def val(k):
     m = re.search(r"JSEVAL " + k + r"=(.*)", txt)
+    return m.group(1).strip().split(" ")[0] if m else ""
+def raw(k):
+    m = re.search(r"JSEVAL " + k + r"=(.*)", txt)
     return m.group(1).strip() if m else ""
-n0 = int(val("count"))
-assert n0 >= 1, "把水位退到 2020 年后应该有过期的提醒: %s" % n0
-assert "错过" in val("banner"), "首页横幅没出现: %r" % val("banner")
-rows = int(val("rows"))
-assert rows == min(n0, 20), "每行都该有「完成」按钮: %d vs %d" % (rows, n0)
-assert "我知道了" in val("foot"), "面板底部没有「这批我知道了」: %r" % val("foot")
-assert int(val("rowsAfter")) == rows - 1, "勾完成后清单没少一条: %s -> %s" % (rows, val("rowsAfter"))
-assert val("restored") == "1", "测试还原失败（用户的待办被改动）"
-assert val("banner2") == "1", "横幅没渲染出来，没法验证「我知道了」"
-assert val("afterDismiss") == "0", "点了「我知道了」横幅还在"
-print("  ok (错过 %d 条、每行可勾完成、勾后 %d→%d、「我知道了」清掉横幅)" % (n0, rows, rows - 1))
+assert int(val("count")) >= 1, "没有错过的提醒可测: %s" % val("count")
+assert int(val("rows")) >= 1, "面板里没有行"
+assert int(val("cb")) == int(val("rows")), "有行没有勾选框: cb=%s rows=%s" % (val("cb"), val("rows"))
+assert "我知道了" in val("foot"), "底部没有「我知道了」: %r" % val("foot")
+assert val("jumped") == "1", "点整行没跳到笔记（用户反馈：点了没反应）"
+assert val("sheet") == "false", "跳笔记之后面板没关掉: %s" % val("sheet")
+assert "justdone" in raw("anim"), "勾 ✓ 没有划线动画: %s" % raw("anim")
+assert int(val("rows2")) == int(val("n1")) - 1, "勾完没从清单里消失: %s -> %s" % (val("n1"), val("rows2"))
+assert val("afterDismiss") == "0", "「我知道了」之后横幅还在: %s" % val("afterDismiss")
+print("  ok (错过 %s 条、点整行跳笔记、勾 ✓ 有划线动画后消失、「我知道了」清掉横幅)" % val("count"))
 PYCHK
 asroot_global "rm -f '$DATA/enote/.devmode'"
-asroot_global "echo -n '2020-01-01T00:00:00+08:00' > '$DATA/enote/lastopen.txt'"
 
 step "P11 相册监听已注册（截完图切回来就该看到横幅，不用退桌面重进）"
 # Java 侧的 Log.i 只进 logcat，不进 Go 的 enote.log

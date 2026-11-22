@@ -540,3 +540,9 @@ Java 侧新增：`ClipWatchService`（无障碍服务，后台读剪贴板 + 常
 * **截图要重进两次**：`EnoteApp` 注册 MediaStore `ContentObserver`（去抖 1.2s），
   截图落盘就扫，不靠 `onResume`。
 * 教训：`refresh()` 不 await `searchNow()`，jseval 断言必须轮询等 DOM，不能 await 完就读。
+
+## P12.1（提醒面板点了没反应，已完成）
+* 三条都是"调了不存在的函数"：`goTab`/`goNote`/`openSheet` 都不存在，真名是
+  `setTab`（读全局 tab，不接参数）/`jump`/`pageSheet`。签名测试只查函数存在，不查调用点。
+* 勾 ✓ 改成复用待办页的 `.todo/.cb/.ttx` + `toggle()`，划线淡出动画一致。
+* 测试改成真点击 + 断言动画 class，不再只查 DOM 结构。

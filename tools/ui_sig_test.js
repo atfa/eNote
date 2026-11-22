@@ -562,9 +562,20 @@ if (!forcePaint) bad++;
 
 // 错过的提醒面板：只能看没法处理过（用户反馈），要有「完成」和「我知道了」
 const missedOps = /function missedDone\(/.test(src) && /function missedDismiss\(/.test(src)
-  && /这批我知道了/.test(src) && /class="msdone"/.test(src);
+  && /这批我知道了/.test(src) && /class="todo msrow"/.test(src);
 console.log((missedOps ? '  ok   ' : '  FAIL ') + '错过的提醒面板：每行可完成 + 「这批我知道了」');
 if (!missedOps) bad++;
+
+// 面板里的跳转必须用真存在的函数：goTab/goNote 不存在，点了没反应（用户反馈）
+const missedJump = /function missedGoTodos\(\)\{\s*closeSheet\(\); tab = 'todos'; setTab\(true\)/.test(src)
+  && /onclick="jump\(\\''\+t\.nid/.test(src) && !/function goTab\(/.test(src) && !/function goNote\(/.test(src);
+console.log((missedJump ? '  ok   ' : '  FAIL ') + '错过的提醒面板：跳转用真存在的函数（setTab / jump）');
+if (!missedJump) bad++;
+
+// 勾 ✓ 要复用待办页那套划线 + 淡出动画，不能静默改状态（用户反馈：看不出点到没有）
+const missedAnim = /function missedDone\(ev, nid, tid, el\)[\s\S]{0,240}toggle\(nid, tid, el\)/.test(src);
+console.log((missedAnim ? '  ok   ' : '  FAIL ') + '错过的提醒面板：勾 ✓ 复用待办页动画（划线 + 淡出）');
+if (!missedAnim) bad++;
 
 // 截图要实时：进程一起来就监听 MediaStore，截完图 1~2 秒进暂存区
 const javaApp = fs.readFileSync(path.join(root, 'src/dev/xduo/enote/EnoteApp.java'), 'utf8');
