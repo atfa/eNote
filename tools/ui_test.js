@@ -229,6 +229,41 @@ if (SPLIT) {
   else ok('CSS 拆分无新增层叠冲突（基线内 ' + CASCADE_BASELINE.size + ' 条，共 ' + bySelector.size + ' 个选择器）');
 }
 
+// ---------- 闸门⑧ CSS 变量必须能解析 ----------
+// 自定义属性未定义时，引用它的整条声明在计算值阶段失效（不是只丢一个属性）。
+// 真实事故：--spring 被 .cb .ic 和 #toast 的 transition 引用但从未定义，
+// 所以勾选和 toast 一直是「瞬间出现」而不是弹出来，而测试全绿。
+{
+  const files = [];
+  (function walk(d) {
+    for (const f of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, f.name);
+      if (f.isDirectory()) { if (f.name !== 'vendor') walk(p); }
+      else if(/\.(css|js)$/.test(f.name)) files.push(p);
+    }
+  })(uiDir);
+
+  const defined = new Set(), jsSet = new Set(), used = new Map();
+  for (const p of files) {
+    const src = fs.readFileSync(p, 'utf8'), rel = path.relative(root, p);
+    if (p.endsWith('.css')) {
+      for (const m of src.matchAll(/(--[\w-]+)\s*:/g)) defined.add(m[1]);
+      for (const m of src.matchAll(/var\((--[\w-]+)\s*(,)?/g)) {
+        // 有 fallback 的（var(--x, 兜底)）算安全；后面的 var 不会覆盖前面已记的 fallback
+        if (!used.has(m[1]) || !m[2])
+          used.set(m[1], { rel, line: src.slice(0, m.index).split('\n').length, fb: !!m[2] });
+      }
+    } else {
+      // JS 里内联 style 设的（'--k:'+ki）也算定义
+      for (const m of src.matchAll(/['"](--[\w-]+)\s*:/g)) jsSet.add(m[1]);
+    }
+  }
+  const undef = [...used].filter(([n, v]) => !defined.has(n) && !v.fb && !jsSet.has(n))
+    .map(([n, v]) => n + ' @ ' + v.rel + ':' + v.line);
+  if (undef.length) bad('CSS 里有 var() 解析不了（整条声明会静默失效）', undef);
+  else ok('CSS 里 ' + used.size + ' 个 var() 全部能解析（含 JS 内联设的 ' + jsSet.size + ' 个）');
+}
+
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);
 for (const s of fails) console.log('FAIL ' + s);

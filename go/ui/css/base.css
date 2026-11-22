@@ -220,3 +220,40 @@ pre{background:var(--pre-bg);border:1px solid var(--line);border-radius:10px;pad
 /* 主题切换时整页交叉淡入（R10） */
 html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 
+
+/* ============ S2 高级感基础层 ============
+   这一节解决的是"能跑，但不高级"里最底层的几件事：键盘焦点、点按手感、滚动条、
+   选区颜色、数字对齐。全部是新增选择器（:focus-visible 变体），不改写已有规则，
+   所以 S1a 的层叠顺序不受影响（tools/ui_test.js 闸门⑦ 会拦跨文件属性冲突）。 */
+
+/* 1. 键盘焦点环。触屏设备不显示（:focus-visible 的语义），外接键盘/遥控器能看见。
+      今天全站 0 处 focus 样式，键盘用户完全看不到焦点在哪。 */
+:focus-visible{outline:none;box-shadow:var(--focus)}
+.tab:focus-visible,.iconbtn:focus-visible,.chip:focus-visible,.ib:focus-visible{
+  box-shadow:var(--focus);border-radius:var(--r-pill)}
+.seg button:focus-visible{box-shadow:var(--focus);border-radius:var(--r1)}
+input:focus-visible,textarea:focus-visible,select:focus-visible{box-shadow:var(--focus);border-color:var(--acc)}
+
+/* 2. 点按手感：去掉 WebView 的 300ms 双击缩放判定（页面本来就不该缩放正文），
+      并禁掉控件文字选中——长按按钮弹出"复制"菜单是这类 app 最掉价的地方。 */
+button,.tab,.iconbtn,.chip,.ib,.todo,.row,.acard,.seg button,.swi,.tgl{
+  touch-action:manipulation;-webkit-user-select:none;user-select:none}
+[onclick]{cursor:pointer}
+
+/* 3. 选区颜色跟主题走，默认蓝在暗色下刺眼。 */
+::selection{background:var(--acc-s);color:var(--fg)}
+
+/* 4. 隐藏滚动条：桌面 WebView 会画出 15px 灰色滚动条，把卡片右边压掉一块。 */
+*::-webkit-scrollbar{width:0;height:0;background:transparent}
+
+/* 5. 字体渲染：Android 8 的 WebView 默认灰度反锯齿偏薄，这两行让 13px 小字更实。 */
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+
+/* 6. 数字对齐。已验证 Chrome 58 支持 font-variant-numeric，所以直接写标准属性。
+      计数、时间戳、统计数字必须等宽，否则列表每行的数字右边缘是锯齿。 */
+.metrics .m b,.metrics .m .v,.cnt,.num,.statgrid b,.chart .v,.ts time,time,
+.strip b,.hit b,.fbar b,.sum b,.stat b{font-variant-numeric:tabular-nums}
+
+/* 7. 段落换行：避免最后一行只剩一两个字的"孤字行"，中文段落观感提升明显。
+      Chrome 58 不认 text-wrap 会整条忽略，无害降级。 */
+.note p,.ntx,p,.tx{text-wrap:pretty}
