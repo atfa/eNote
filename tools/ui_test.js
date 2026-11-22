@@ -156,6 +156,79 @@ for (const cls of Object.keys(FROZEN)) {
 }
 ok('test.sh 依赖的 ' + Object.keys(FROZEN).length + ' 个 class 名全部还在');
 
+// ---------- 闸门⑦ CSS 拆分的层叠安全 ----------
+// 按视图拆 css/*.css 后，加载顺序变成 tokens → base → components → views/*。
+// 如果同一个选择器的两条规则被分到两个文件，而它们又设了同一个属性，后写的那条
+// 就不再赢——层叠顺序静默翻转，测试全绿但像素变了。这是拆分最容易踩且最难发现的坑。
+// 不变量：一个选择器的多条规则如果属性集有交集，必须待在同一个文件里。
+// 跟 hex/px 一样用棘轮：S1a 是按原始行号切的，切在 .sheet 中间，这两条先记成基线，
+// 只拦新增的冲突；S2 按视图重排 CSS 时把基线清零。
+const CASCADE_BASELINE = new Set(['.sheet', '.sheet .panel']);
+function rulesOf(text) {
+  const body = text.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  // 递归而不是扫平：@media 的上下文必须随块关闭而失效，
+  // 否则后面所有顶层规则都会被错标成在那条 @media 里，跳文件比对就漏。
+  function parseBlock(text, media) {
+    let i = 0;
+    while (i < text.length) {
+      const at = text.indexOf('{', i);
+      if (at < 0) break;
+      const head = text.slice(i, at).trim();
+      let end = at + 1, depth = 1;
+      while (end < text.length && depth > 0) {
+        if (text[end] === '{') depth++;
+        else if (text[end] === '}') depth--;
+        end++;
+      }
+      const inner = text.slice(at + 1, end - 1);
+      if (/^@(media|supports)/.test(head)) {
+        parseBlock(inner, head.replace(/\s+/g, ' '));
+      } else if (!/^@/.test(head)) {   // keyframes 等不参与层叠
+        const props = new Set();
+        for (const d of inner.split(';')) {
+          const p = d.match(/^\s*([-a-zA-Z]+)\s*:/);
+          if (p) props.add(p[1].toLowerCase());
+        }
+        for (const sel of head.split(',').map(s => s.replace(/\s+/g, ' ').trim())) {
+          if (sel) out.push({ sel: media + '␤' + sel, props });
+        }
+      }
+      i = end;
+    }
+  }
+  parseBlock(body, '');
+  return out;
+}
+if (SPLIT) {
+  const bySelector = new Map();
+  const cssDir = path.join(uiDir, 'css');
+  for (const f of fs.readdirSync(cssDir, { withFileTypes: true })) {
+    if (!f.isFile() || !f.name.endsWith('.css')) continue;
+    const rel = 'css/' + f.name;
+    for (const r of rulesOf(fs.readFileSync(path.join(cssDir, f.name), 'utf8'))) {
+      if (!bySelector.has(r.sel)) bySelector.set(r.sel, []);
+      bySelector.get(r.sel).push({ file: rel, props: r.props });
+    }
+  }
+  const flips = [];
+  for (const [sel, list] of bySelector) {
+    const files = new Set(list.map(x => x.file));
+    if (files.size < 2) continue;
+    const seen = new Map();
+    for (const x of list) {
+      for (const p of x.props) {
+        if (seen.has(p) && seen.get(p) !== x.file && !CASCADE_BASELINE.has(sel.replace(/^[^␤]*␤/, ''))) {
+          flips.push(sel + ' 的 ' + p + '：' + seen.get(p) + ' 与 ' + x.file);
+        }
+        seen.set(p, x.file);
+      }
+    }
+  }
+  if (flips.length) bad('CSS 拆分造成层叠顺序翻转', flips.slice(0, 6).join('；'));
+  else ok('CSS 拆分无新增层叠冲突（基线内 ' + CASCADE_BASELINE.size + ' 条，共 ' + bySelector.size + ' 个选择器）');
+}
+
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);
 for (const s of fails) console.log('FAIL ' + s);
