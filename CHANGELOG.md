@@ -421,3 +421,25 @@
 `user-select:none` 列表，闸门⑨ 立刻红。
 
 `tools/ui_test.js` 10 → **12** 道闸门，全绿；`ui_sig_test.js` 84 ok；`go test` ok。
+
+### 集成（S1a + S2 合并到同一棵树）
+
+两边分头改了同一批文件，集成时暴露的问题全部在测试侧，产品代码零冲突：
+
+* **唯一冲突是 `CHANGELOG.md`**：两边各自在 P13 段落下追加，按时间线保留双方（S1a 在前、S2 在后）。
+  `go/ui/css/views.css` 是 Tony 删、我加，git 判定为删除——合并树里 `index.html` 引用的
+  11 个 css 文件（tokens/base/components + views/*8）全部存在，层叠顺序不变。
+* **附件用例的断言假设不成立**（合并树第一次跑 --vd 红在这里）：
+  `diskFiles(17) >= files(19)`。一张截图先「各存一条」再被「合并进另一条笔记」时，
+  两行附件共用同一个 inbox 文件，所以「行数 > 磁盘上不同文件数」是合法状态。
+  改成按**唯一路径数**比。fail 文案也改了：原来任何断言失败都打印
+  "the shared file never became an attachment"，而这次文件确实成了附件，把人往错方向带。
+* **`api_get` 不抗 app 重启**（第二次跑红在更早的 todo 用例）：app 被系统杀掉重启后 Go 服务换端口，
+  `api_get` 拿到空响应，python 里变成 `JSONDecodeError`，看不出真因是「服务还没起来」。
+  现在 GET 最多试 8 次、每次重读日志里的端口；POST 不重试（有副作用，重试会重复建笔记）。
+* **不用 `pm clear` 清设备数据**：Tony 建议清掉累积状态，实测不可行——LLM 的 base URL / key /
+  目标文件夹存在 app 私有 prefs 里，`test.sh` 全程没有写入这些配置的步骤（它假设设备已配好）。
+  清空后所有依赖大模型的用例会红，而且这是用户的真机数据。累积状态用上面的断言修正解决。
+* 合并树上验证：`ui_test.js` 12 道闸门全绿（hex 棘轮 12→8）、`ui_sig_test.js` 84 ok、
+  `go test` ok、`GO_TEST=1 ./build.sh` + `./install.sh` + `./test.sh --vd` **24 步全绿**，
+  含 P8.5 错过提醒面板、P11 截图/文件夹页、WebView 无 Uncaught。
