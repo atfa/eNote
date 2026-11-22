@@ -807,6 +807,27 @@ public class MainActivity extends Activity {
                     });
                     try { done.await(3, java.util.concurrent.TimeUnit.SECONDS); } catch (Throwable ignored) {}
                     out = "{\"ok\":true,\"len\":" + t.length() + ",\"written\":" + written[0] + "}";
+                } else if ("jseval".equals(hook)) {
+                    // 验收专用：{"js":"表达式"} 直接在页面里跑，返回值用 console.log 打到 testlog.txt。
+                    // 虚拟显示上的 input tap 很不稳，脚本化的 UI 断言比截图点按可靠得多。
+                    // 只在私有目录里有 .devmode 时可用：否则任何 app 都能发 intent 借 WebView 读笔记。
+                    java.io.File dev = new java.io.File(getFilesDir(), "enote/.devmode");
+                    if (!dev.exists()) {
+                        out = "{\"ok\":false,\"error\":\"jseval disabled: no .devmode\"}";
+                    } else {
+                        String js = "";
+                        try {
+                            org.json.JSONObject o = new org.json.JSONObject(arg == null ? "{}" : arg);
+                            js = o.optString("js", "");
+                        } catch (Throwable ignored) {}
+                        if (js.isEmpty()) {
+                            out = "{\"ok\":false,\"error\":\"empty js\"}";
+                        } else {
+                            final String code = js;
+                            runJs(code);
+                            out = "{\"ok\":true,\"queued\":" + code.length() + "}";
+                        }
+                    }
                 } else if ("shotscan".equals(hook)) {
                     // 验收用：{"force":true,"folders":["Pictures/Screenshots"],"rangeDays":1}
                     boolean force = false;

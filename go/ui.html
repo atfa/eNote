@@ -356,6 +356,8 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .frow .fpath{font-size:11px;color:var(--dim2);word-break:break-all}
 .frow .fmeta{font-size:11px;color:var(--dim);white-space:nowrap}
 .frow.gone{opacity:.55}
+/* 已选的文件夹排到最前并轻度上底色，一眼能看出选了哪些 */
+.frow.on{background:var(--acc-s);border-radius:10px;padding-left:8px;padding-right:8px}
 .fcb{flex:0 0 20px;width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line);
   display:flex;align-items:center;justify-content:center;color:#fff}
 .frow.on .fcb{background:var(--acc);border-color:var(--acc)}
@@ -402,6 +404,14 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .climeta{font-size:11px;color:var(--dim);margin-top:4px}
 .clipacts{display:flex;gap:8px;margin-top:12px}
 .clipacts .btn{flex:1}
+/* 二级页底部固定操作条：列表很长时不用一路滑到底才点得到确定（用户反馈） */
+.pfoot{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:10px;
+  margin:14px -14px -44px;padding:10px 14px calc(12px + env(safe-area-inset-bottom));
+  background:var(--header-bg);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border-top:1px solid var(--line)}
+.pfoot .sp{flex:1}
+.pfoot .count{font-size:12px;color:var(--dim);line-height:1.35}
+.pfoot .count b{color:var(--acc);font-size:15px;font-weight:700;margin-right:2px}
 .clipdel{background:none;border:none;color:var(--dim);font-size:15px;padding:2px 6px;cursor:pointer}
 .clipdel:active{color:var(--acc)}
 .clipload{color:var(--dim);padding:20px 0}
@@ -1016,18 +1026,20 @@ window.shotsScanned = function(n){
 };
 // ---- 截图暂存页：3 列网格 + 多选 ----
 function shotSheet(){
+  // 缩略图最多 50 张，操作按钮同样固定在底部条里（跟文件夹页一致）
   pageSheet('新截图', '<div class="cliptop">'
     + '<button class="btn sm" onclick="shotSelAll(true)">全选</button>'
     + '<button class="btn sm" onclick="shotSelAll(false)">全不选</button>'
-    + '<div class="sp"></div><span id="shotCount" style="font-size:12px;color:var(--dim)"></span></div>'
+    + '<div class="sp"></div>'
+    + '<button class="btn sm dg" onclick="shotIgnoreSel()">忽略所选</button></div>'
     + '<div id="shotGrid" class="clipload">加载中…</div>'
-    + '<div class="clipacts" style="display:flex;flex-direction:column;gap:8px">'
-    + '<button class="btn pri" onclick="doImportShots(\'merge\')">'+ic('copy')+' 合并成一条笔记</button>'
+    + '<div class="pfoot" style="display:block">'
+    + '<div class="count" id="shotFoot" style="margin-bottom:8px">已选 0 张</div>'
     + '<div style="display:flex;gap:8px">'
+    + '<button class="btn pri" style="flex:1.6" onclick="doImportShots(\'merge\')">合并成一条笔记</button>'
     + '<button class="btn" style="flex:1" onclick="doImportShots(\'split\')">各存一条</button>'
-    + '<button class="btn" style="flex:1" onclick="doImportShots(\'raw\')">原样存</button></div>'
-    + '<button class="btn dg" onclick="shotIgnoreSel()">忽略所选（以后不再提醒）</button>'
-    + '</div>');
+    + '<button class="btn" style="flex:1" onclick="doImportShots(\'raw\')">原样存</button>'
+    + '</div></div>');
   loadShots();
 }
 async function loadShots(){
@@ -1080,8 +1092,8 @@ function shotSelAll(on){
 function shotCountLabel(){
   var n = 0, total = shotList.length;
   shotList.forEach(function(x){ if(shotSel[x.id]) n++ });
-  var el = $('#shotCount');
-  if(el) el.textContent = '已选 ' + n + ' / ' + total;
+  var el = $('#shotFoot') || $('#shotCount');
+  if(el) el.innerHTML = '<b>' + n + '</b> 张已选 · 共 ' + total + ' 张';
 }
 function shotPicked(){
   return shotList.filter(function(x){ return !!shotSel[x.id] });
@@ -1219,6 +1231,7 @@ async function shotIgnoreSel(){
 }
 // ---- 文件夹选择（首次向导 + 设置页共用）----
 function folderSheet(){
+  // 确定按钮放底部固定条里：文件夹可能有几十个，滚到底才能点确定太难用了（用户反馈）
   var h = '<div class="cliptop">'
     + '<button class="btn sm" onclick="folderSelAll(true)">全选</button>'
     + '<button class="btn sm" onclick="folderSelAll(false)">全不选</button>'
@@ -1226,7 +1239,9 @@ function folderSheet(){
     + '<div style="margin:8px 0 4px"><input id="folderQ" class="fin" placeholder="搜索文件夹" '
     + 'oninput="folderFilter(this.value)"></div>'
     + '<div id="folderList" class="clipload">加载中…</div>'
-    + '<div class="clipacts"><button class="btn pri" onclick="folderSave()">开始监控</button></div>';
+    + '<div class="pfoot"><div class="count" id="folderCount">已选 0 个</div>'
+    + '<div class="sp"></div>'
+    + '<button class="btn pri" onclick="folderSave()">开始监控</button></div>';
   pageSheet('选择监控文件夹', h);
   loadFolders();
 }
@@ -1249,19 +1264,46 @@ function folderRender(){
   if(!g) return;
   if(!folderAll.length){
     g.innerHTML = emptyState('folder', '读不到文件夹', '需要先允许读取照片（我的 → 截图捕获 → 去授权）');
+    folderCountLabel();
     return;
   }
+  // 已选的排最前（组内仍按张数多的优先），这样一边勾一边看，选中的不会跑丢
+  var rows = folderAll.slice().sort(function(a, b){
+    var sa = (folderSel[a.path] && !a.missing) ? 1 : 0;
+    var sb = (folderSel[b.path] && !b.missing) ? 1 : 0;
+    if(sa !== sb) return sb - sa;
+    if((b.count||0) !== (a.count||0)) return (b.count||0) - (a.count||0);
+    return a.path < b.path ? -1 : (a.path > b.path ? 1 : 0);
+  });
   var h = '';
-  folderAll.forEach(function(f){
+  rows.forEach(function(f){
     var on = !!folderSel[f.path];
     h += '<div class="frow'+(on?' on':'')+(f.missing?' gone':'')+'" data-path="'+esc(f.path)+'" '
-      + 'onclick="folderPick(\''+esc(f.path)+'\',this)">'
+      + 'onclick="folderPick(\''+esc(f.path)+'\')">'
       + '<div class="fcb">'+ic('check')+'</div>'
       + '<div style="flex:1;min-width:0"><div class="fname">'+esc(folderLabel(f.path))+'</div>'
       + '<div class="fpath">'+esc(f.path)+'</div></div>'
       + '<div class="fmeta">'+(f.missing ? '已不存在' : (f.count||0)+' 张')+'</div></div>';
   });
+  // 重排会让列表高度变化：先记住滚动位置，画完再放回去，别让手指下面的内容跳走
+  var panel = $('#sheet .panel'), top = panel ? panel.scrollTop : 0;
   g.innerHTML = h;
+  if(panel) panel.scrollTop = top;
+  folderFilter(($('#folderQ') || {}).value || '');
+  folderCountLabel();
+}
+/** 已选数量实时显示在底部固定条上（勾一个变一次） */
+function folderCountLabel(){
+  var n = 0, total = 0;
+  folderAll.forEach(function(f){
+    if(f.missing) return;
+    total++;
+    if(folderSel[f.path]) n++;
+  });
+  var el = $('#folderCount');
+  if(el) el.innerHTML = '<b>' + n + '</b> 个已选 · 共 ' + total + ' 个';
+  var b = $('#sheet .pfoot .btn.pri');
+  if(b) b.textContent = n ? '开始监控这 ' + n + ' 个' : '开始监控';
 }
 function folderLabel(path){
   var seg = String(path||'').replace(/\/$/,'').split('/');
@@ -1269,9 +1311,9 @@ function folderLabel(path){
   var map = {'Screenshots':'截图','screenshots':'截图','Screenshot':'截图','截图':'截图','截屏':'截屏'};
   return map[last] || last;
 }
-function folderPick(path, el){
+function folderPick(path){
   folderSel[path] = !folderSel[path];
-  if(el) el.classList.toggle('on', !!folderSel[path]);
+  folderRender();          // 重排 + 刷新计数：选中的浮到最上面
 }
 function folderSelAll(on){
   folderAll.forEach(function(f){ if(!f.missing) folderSel[f.path] = !!on });
@@ -1297,7 +1339,13 @@ function folderSave(){
   Android.setShotFolders(JSON.stringify(want));
   Android.setShotEnabled(true);
   closeSheet();
-  shotFlags(function(){ refresh() });
+  // 回到「我的」要马上看到新的文件夹数和权限状态：清掉签名强制重画一次
+  // 我的页/首页横幅都要立刻反映新的文件夹数与权限状态：强制重建当前页
+  shotFlags(function(){
+    paneDirty[tab] = 1;
+    setTab();
+    if(tab === 'mine') statsNow();
+  });
   toast('已开始监控 ' + want.length + ' 个文件夹，只看之后的新图');
 }
 /**
@@ -1389,15 +1437,19 @@ window.onClipRead = function(n, added){
   else toast(n > 0 ? '剪贴板里没有新文字（已暂存 '+n+' 条）' : '剪贴板是空的');
 };
 function clipSheet(){
+  // 暂存条数可能很多：操作按钮固定到底部，别让人滚到底才看得见（跟文件夹页一致）
   pageSheet('剪贴板暂存', '<div class="cliptop">'
     +'<button class="btn sm" onclick="clipSelAll(true)">全选</button>'
     +'<button class="btn sm" onclick="clipSelAll(false)">全不选</button>'
-    +'<div class="sp"></div><span id="clipCount" style="font-size:12px;color:var(--dim)"></span></div>'
+    +'</div>'
     +'<div id="clipList" class="clipload">加载中…</div>'
-    +'<div class="clipacts">'
-    +'<button class="btn" onclick="clipDelSel()">删除所选</button>'
-    +'<button class="btn" onclick="clipParse(false)">原样存为笔记</button>'
-    +'<button class="btn pri" onclick="clipParse(true)">一键解析</button></div>');
+    +'<div class="pfoot" style="display:block">'
+    +'<div class="count" id="clipFoot" style="margin-bottom:8px"></div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button class="btn" style="flex:1" onclick="clipDelSel()">删除所选</button>'
+    +'<button class="btn" style="flex:1.2" onclick="clipParse(false)">原样存为笔记</button>'
+    +'<button class="btn pri" style="flex:1.2" onclick="clipParse(true)">一键解析</button>'
+    +'</div></div>');
   loadClips();
 }
 async function loadClips(){
@@ -1408,7 +1460,7 @@ async function loadClips(){
     if(!clips.length){
       var el = $('#clipList');
       if(el) el.innerHTML = emptyState('inbox', '暂存区是空的');
-      var cc = $('#clipCount'); if(cc) cc.textContent = '0 条';
+      var cc = $('#clipFoot') || $('#clipCount'); if(cc) cc.innerHTML = '<b>0</b> 条已选';
       return;
     }
     var h = '';
@@ -1455,8 +1507,10 @@ function clipCount(){
   var items = document.querySelectorAll('.clipitem');
   var n = 0;
   for(var i=0;i<items.length;i++){ if(items[i].classList.contains('on')) n++; }
-  var el = $('#clipCount');
-  if(el) el.textContent = items.length ? '已选 '+n+' / '+items.length+' 条' : '0 条';
+  var el = $('#clipFoot') || $('#clipCount');
+  if(el) el.innerHTML = '<b>' + n + '</b> 条已选 · 共 ' + items.length + ' 条';
+  var b = $('#sheet .pfoot .btn.pri');
+  if(b) b.textContent = n > 1 ? ('一键解析 ' + n + ' 条') : '一键解析';
 }
 function clipSelected(){
   return Object.keys(clipSel).filter(function(k){return clipSel[k]});
@@ -2111,8 +2165,11 @@ function sigOf(d){
     for(j = 0; j < s.length; j++) h = (h*31 + s.charCodeAt(j)) | 0;
   }
   // 注意：签名里漏了 i.shot 的话，新截图只改变条数时不会重绘，首页横幅就不会出现（踩过）
+  var sf = (typeof SHOTFLAGS === 'object' && SHOTFLAGS) || {};   // 启动早期还没有 flags
   return [ns.length, h, i.todos, i.open, i.overdue, i.queue, i.clip, i.shot, i.ocrReady?1:0,
-          (d && d.settings && d.settings.theme) || ''].join('|');
+          (d && d.settings && d.settings.theme) || '',
+          // 截图开关/文件夹数也进签名：配置改了界面必须跟着变（踩过：选完文件夹我的页还显示旧数字）
+          (sf.enabled?1:0) + '' + (sf.folders||0) + (sf.granted?1:0)].join('|');
 }
 async function refresh(quiet){
   if(Date.now() < animLock){ paintStatus(); return }

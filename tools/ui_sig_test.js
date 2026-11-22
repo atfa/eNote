@@ -495,4 +495,29 @@ const shotIntro = /function shotIntroOnce\(\)/.test(src)
 console.log((shotIntro ? '  ok   ' : '  FAIL ') + '初次运行主动引导选监控文件夹（只问一次）');
 if (!shotIntro) bad++;
 
+// 长列表页的确定按钮必须固定在底部（用户反馈：滚到底才能点确定太难用）
+const stickyFoot = /\.pfoot\{position:sticky;bottom:0/.test(src)
+  && /id="folderCount"/.test(src)
+  && (src.match(/class="pfoot"/g) || []).length >= 3;   // 文件夹 / 截图 / 剪贴板
+console.log((stickyFoot ? '  ok   ' : '  FAIL ') + '文件夹页/截图页/剪贴板页的操作按钮固定在底部');
+if (!stickyFoot) bad++;
+
+// 已选数量实时显示 + 已选项排到最前（勾一个立刻重排并改数字）
+const pickBody = (src.split('function folderPick')[1] || '').slice(0, 200);
+const liveCount = /function folderCountLabel\(\)/.test(src)
+  && /个已选 · 共 /.test(src)
+  && /已选的排最前/.test(src)
+  && /folderRender\(\)/.test(pickBody);
+console.log((liveCount ? '  ok   ' : '  FAIL ') + '文件夹页实时显示已选数量、已选项排到最前');
+if (!liveCount) bad++;
+
+// 选完文件夹回到「我的」要立刻看到新统计：强制重建当前页 + 重算统计
+const saveBody = (src.split('function folderSave')[1] || '').slice(0, 900);
+const afterSave = /paneDirty\[tab\] = 1/.test(saveBody)
+  && /setTab\(\)/.test(saveBody)
+  && /statsNow\(\)/.test(saveBody)
+  && /shotFlags\(function\(\)\{/.test(saveBody);
+console.log((afterSave ? '  ok   ' : '  FAIL ') + '选完文件夹回到我的页立刻刷新统计');
+if (!afterSave) bad++;
+
 process.exit(bad ? 1 : 0);

@@ -490,8 +490,10 @@ SHOTDIR=/sdcard/Pictures/enote-test
 # 权限：直接用 root 授掉，跳过系统弹窗（真机上由用户点"去授权"）
 asroot_global "pm grant $APP_PACKAGE android.permission.READ_MEDIA_IMAGES" >/dev/null 2>&1 || true
 asroot_global "rm -rf $SHOTDIR; mkdir -p $SHOTDIR"
-# 造两张内容不同的图（同一屏连续 screencap 得到的是同一份字节，会被 sha1 判重）
+# 造两张内容不同的图。每张都掺一个随机数：sha1 去重表会记住上次跑出来的字节，
+# 图一样的话第二次跑就「新增 0 张」，测试会假红（这个坑踩过）。
 "$PY" - <<'PYSHOT'
+import os
 from PIL import Image, ImageDraw
 for i in (1, 2):
     im = Image.new('RGB', (360, 640), (250, 250, 252))
@@ -500,6 +502,7 @@ for i in (1, 2):
     d.text((40, 60), 'ENOTE TEST SHOT %d' % i, fill=(255, 255, 255))
     d.text((40, 200), '3月15日 下午三点 产品评审', fill=(30, 40, 60))
     d.text((40, 240), '记得带原型和报价单', fill=(30, 40, 60))
+    d.text((40, 300), os.urandom(12).hex(), fill=(120, 130, 150))
     im.save('/data/data/com.termux/files/home/eNote/.test/shot-t%d.png' % i)
 PYSHOT
 for i in 1 2; do
@@ -626,6 +629,79 @@ print("  ok (删掉 %d 条测试笔记)" % len(bad))
 ' "$PORT" || true
 am_start "$ACTIVITY" "--es hook shotfolders --es arg '{\"enabled\":false,\"folders\":[]}'" >/dev/null 2>&1
 sleep 2
+
+step "P11 文件夹页：底部固定条 + 实时计数 + 已选在前 + 返回后刷新"
+# 虚拟显示上的 input tap 很不稳，改用 hook jseval 在页面里跑断言脚本（比截图点按可靠）
+UI_APP=$(asroot "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+cat > "$TMPDIR/jseval.sh" <<'EOS'
+#!/bin/sh
+am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$(cat "$1")" >/dev/null
+EOS
+N0T=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(function(){
+  var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
+  var rows=function(){return [].slice.call(document.querySelectorAll("#folderList .frow"))};
+  tab="mine"; render(); folderSheet();
+  L("count0="+q("#folderCount").textContent.replace(/\s+/g," "));
+  var first=rows()[0].getAttribute("data-path");
+  L("first="+first);
+  folderPick(first);
+  var r2=rows(),seenUn=false,ok=true;
+  r2.forEach(function(r){var on=r.classList.contains("on");if(!on)seenUn=true;else if(seenUn)ok=false;});
+  L("count1="+q("#folderCount").textContent.replace(/\s+/g," "));
+  L("firstAfter="+r2[0].getAttribute("data-path"));
+  L("orderOK="+(ok?1:0));
+  var panel=q("#sheet .panel"); panel.scrollTop=Math.round(panel.scrollHeight/2);
+  setTimeout(function(){
+    var f=q("#sheet .pfoot"),b=f.getBoundingClientRect();
+    L("sticky="+getComputedStyle(f).position);
+    L("footVisible="+((b.bottom<=window.innerHeight+2&&b.top>=0&&b.height>20)?1:0));
+    folderPick(first);
+    L("count2="+q("#folderCount").textContent.replace(/\s+/g," "));
+    folderSave();
+    var tries=0,probe=function(){
+      var p=document.querySelector(".pane[data-tab=mine]");
+      var m=(p?p.textContent:"").match(/监控文件夹\s*\d+\s*个/);
+      if(m||tries>10){L("mine="+(m?m[0].replace(/\s+/g,""):"?"));L("done=1");return}
+      tries++; setTimeout(probe,400);
+    };
+    setTimeout(probe,400);
+  },260);
+})()' > "$TMPDIR/js.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/js.json'"
+n=0
+while [ "$n" -lt 20 ]; do
+  readtlog | tail -n +$((N0T + 1)) | grep -q 'JSEVAL done=1' && break
+  sleep 1; n=$((n + 1))
+done
+readtlog | tail -n +$((N0T + 1)) | grep 'JSEVAL ' > "$TMPDIR/js.out"
+grep -q 'done=1' "$TMPDIR/js.out" || fail "jseval 没跑完（页面里 console 没有输出）"
+"$PY" - "$TMPDIR/js.out" <<'PYCHK' || fail "文件夹页的固定条/计数/排序/刷新有问题"
+import re, sys
+txt = open(sys.argv[1], encoding="utf-8").read()
+def val(k):
+    m = re.search(r"JSEVAL " + k + r"=(.*)", txt)
+    return m.group(1).strip() if m else ""
+c0, c1 = val("count0"), val("count1")
+first, after = val("first"), val("firstAfter")
+assert re.match(r"^\d+ 个已选 · 共 \d+ 个$", c0), "底部计数格式不对: %r" % c0
+assert re.match(r"^\d+ 个已选 · 共 \d+ 个$", c1), "计数没更新: %r" % c1
+n0 = int(c0.split(" 个")[0]); n1 = int(c1.split(" 个")[0])
+assert n1 == n0 - 1, "勾掉一个之后计数该 -1: %s -> %s" % (n0, n1)
+assert after != first, "取消勾选的文件夹应该沉下去，还在第一位说明没重排"
+assert val("orderOK") == "1", "已选的文件夹没有全部排在前面"
+assert val("sticky") == "sticky", "底部操作条不是固定的: %r" % val("sticky")
+assert val("footVisible") == "1", "滚到中间时底部操作条不在视口里"
+c2 = val("count2")
+n2 = int(c2.split(" 个")[0])
+assert n2 == n0, "勾回来之后应该回到 %d: %r" % (n0, c2)
+mine = val("mine")
+assert re.match(r"^监控文件夹\d+个$", mine), "我的页数量没刷新: %r" % mine
+assert int(re.search(r"(\d+)", mine).group(1)) == n2, "我的页数量该跟选择一致: %r vs %s" % (mine, n2)
+print("  ok (固定条 sticky、计数 %d→%d 实时、已选在前、返回后我的页同步为 %d)" % (n0, n1, n2))
+PYCHK
+asroot_global "rm -f '$DATA/enote/.devmode'"
 
 step "前端没有运行时报错（未声明的变量会把点击静默吞掉）"
 if newtlog | grep -q 'SELFCHECK FAIL'; then

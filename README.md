@@ -208,6 +208,22 @@ su -c "am start -n dev.xduo.enote/.MainActivity --es hook selftest --es arg '{\"
 `su --mount-master -c "..."`（普通 `su -c` 看到的是影子 `/data/data`）；logcat 默认被系统静音，
 App 自己写 `files/enote/enote.log`。
 
+### 界面断言的正确姿势：`jseval` hook
+
+虚拟屏上的 `input tap` 很不稳（有时静默无效），所以界面相关的断言改成脚本驱动：
+
+```sh
+# 开关：私有目录里有 .devmode 才启用（防止任意 app 发个 intent 就借 WebView 读笔记）
+su --mount-master -c "touch /data/user/0/dev.xduo.enote/files/enote/.devmode"
+
+su --mount-master -c 'am start -n dev.xduo.enote/.MainActivity --es hook jseval \
+  --es arg '\''{"js":"console.log(\"JSEVAL \" + document.querySelector(\"#folderCount\").textContent)"}'\'''
+# 输出在 /data/user/0/dev.xduo.enote/files/testlog.txt（形如 `web console: JSEVAL 3 个已选 · 共 73 个`）
+```
+
+`test.sh` 里「P11 文件夹页」那段就是这么写的三条断言：底部操作条是 `sticky` 且滚到中间仍在视口内、
+已选数量随勾选实时变化、已选项全部排在前面、返回我的页后数量同步。
+
 ## 6. 已知限制（MVP）
 
 * 到期提醒：前台到点能弹通知；本机（vivo/OriginOS）应用一进后台就冻结进程，闹钟直接被
