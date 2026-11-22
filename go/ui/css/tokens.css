@@ -33,6 +33,9 @@
   --fg:#131a24; --dim:#5c6878; --dim2:#8a94a3;
   --acc:#2f6bff; --acc2:#0fae88; --warn:#c77700; --bad:#e0453a; --ok:#0fae88; --tag:#7a5af0;
   --acc-s:rgba(47,107,255,.10); --acc2-s:rgba(15,174,136,.10);
+  /* 截图横幅的专色。以前它只活在 4 处 var(--teal,#12b5a5) 的 fallback 里、全仓 0 定义，
+     于是暗色模式调不到它。亮色取原来 fallback 的值，外观零变化。 */
+  --teal:#12b5a5; --teal-s:rgba(18,181,165,.10);
   --warn-s:rgba(199,119,0,.12); --bad-s:rgba(224,69,58,.10); --tag-s:rgba(122,90,240,.10);
   --grad:linear-gradient(135deg,#2f6bff,#0fae88);
   --grad-text:linear-gradient(90deg,#2f6bff,#0fae88);
@@ -73,12 +76,16 @@
   --safe-b:env(safe-area-inset-bottom);
   --safe-t:env(safe-area-inset-top);
   --focus:0 0 0 3px rgba(47,107,255,.28);
+  /* 焦点环的实色版，给 outline 用（box-shadow 焦点环会顶掉卡片自己的层级阴影）。 */
+  --focus-ring:rgba(47,107,255,.7);
 }
 html[data-theme=dark]{
   --bg:#0b0f14; --card:#151b23; --card2:#1b232d; --line:rgba(255,255,255,.07);
   --fg:#e8eef6; --dim:#8b98a9; --dim2:#5f6b7a;
   --acc:#6c9cff; --acc2:#39d0a3; --warn:#ffb454; --bad:#ff6b6b; --ok:#39d0a3; --tag:#c8b6ff;
   --acc-s:rgba(108,156,255,.12); --acc2-s:rgba(57,208,163,.12);
+  /* 暗色下提亮一档：亮色那个 #12b5a5 在 #0b0f14 上对比不够，以前被 fallback 锁死调不到。 */
+  --teal:#2fd6c4; --teal-s:rgba(47,214,196,.14);
   --warn-s:rgba(255,180,84,.12); --bad-s:rgba(255,107,107,.12); --tag-s:rgba(200,182,255,.12);
   --grad:linear-gradient(135deg,#6c9cff,#39d0a3);
   --grad-text:linear-gradient(90deg,#8ab4ff,#39d0a3);
@@ -93,5 +100,6 @@ html[data-theme=dark]{
   --sh2:0 2px 6px rgba(0,0,0,.45), 0 12px 32px rgba(0,0,0,.40);
   --sh3:0 8px 20px rgba(0,0,0,.55), 0 24px 60px rgba(0,0,0,.50);
   --focus:0 0 0 3px rgba(108,156,255,.38);
+  --focus-ring:rgba(108,156,255,.75);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
