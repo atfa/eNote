@@ -389,3 +389,35 @@
   胶囊那条断言从 `indexOf` 子串匹配改成断言函数数组，逐条可读。
   踩坑：给 `.tx small` 的断言加了收尾 `\}` 结果恒假——原断言没有收尾，因为那条规则
   后面还有声明。放宽断言时「改完变绿」不等于「改对了」，要确认它还能拦住原始缺陷。
+
+## S2 补充：Austin 审查后的 3 条修正（a5158c9 之后）
+
+审查提出 3 条非阻塞建议，全部核实为真，其中 2 条是缺陷，这里一起收掉。
+
+**1. `--teal` 是幽灵 token（缺陷）**
+`components.css` 4 处写 `var(--teal,#12b5a5)`、1 处 `var(--teal-s,var(--acc-s))`，
+全仓 **0 处定义**。旧闸门⑧ 的判据是「有 fallback 就算安全」，所以全部放行——
+但那个颜色实际活在 5 个 fallback 里，暗色模式永远调不到它。这和 `--spring`
+是同一类问题：不是崩，是静默地不受控。
+现在 `tokens.css` 明暗各定义一档，5 处 fallback 删掉：
+明色 `#12b5a5`（= 原 fallback，外观零变化），暗色 `#2fd6c4`
+（原值在 `#0b0f14` 上对比不足，以前被 fallback 锁死调不动）。
+裸 hex 棘轮 **12 → 8**。
+
+**2. 焦点环顶掉层级阴影（缺陷）**
+`:focus-visible{outline:none;box-shadow:var(--focus)}` 是全局规则，
+而 `.card`/`.acard`/`.sheet` 靠 `box-shadow:var(--sh)` 做层级——一聚焦阴影就被焦点环换掉。
+改成通用规则用 `outline:2px solid var(--focus-ring);outline-offset:2px`（新增 `--focus-ring` token，
+明暗各一档），`box-shadow` 焦点环只留给胶囊控件 `.tab/.iconbtn/.chip/.ib/.seg button` 和输入框。
+
+**3. 可复制文本的回归闸门（建议）**
+`user-select:none` 覆盖控件是对的，但笔记正文 `.body` 和剪贴板文本 `.clipbody`
+是用户唯一要长按复制的东西。新增**闸门⑨**：任何带 `user-select:none` 的规则都不许覆盖
+`.body`/`.clipbody`/`pre`。今天没有覆盖，这条闸门是防止后续 Vue 迁移顺手把它们加进去——
+加进去不报错，只是长按没反应。
+
+**闸门⑧ 同步加强**：新增幽灵 token 检查——`var()` 的名字在 `tokens.css` 里没有定义就判红，
+**有 fallback 也判红**。fallback 是应急兜底，不是定义。负向测试：把 `.body` 加进
+`user-select:none` 列表，闸门⑨ 立刻红。
+
+`tools/ui_test.js` 10 → **12** 道闸门，全绿；`ui_sig_test.js` 84 ok；`go test` ok。

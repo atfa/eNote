@@ -65,11 +65,11 @@
 .missed .cbar{color:var(--warn);font-size:var(--fs-sm);white-space:nowrap}
 /* 截图捕获（P11）：青色系，跟「剪贴板」蓝、「错过提醒」黄区分开 */
 .shotbanner{display:flex;align-items:center;gap:var(--s2);margin:var(--s2) var(--s0) 0;padding:11px var(--s3);border-radius:var(--r2);
-  background:linear-gradient(135deg,var(--teal-s,var(--acc-s)),var(--card));border:var(--hair) solid var(--teal,#12b5a5);font-size:var(--fs-md);color:var(--fg);box-shadow:var(--sh);cursor:pointer}
-.shotbanner .si{color:var(--teal,#12b5a5);display:flex}
-.shotbanner b{color:var(--teal,#12b5a5)}
+  background:linear-gradient(135deg,var(--teal-s),var(--card));border:var(--hair) solid var(--teal);font-size:var(--fs-md);color:var(--fg);box-shadow:var(--sh);cursor:pointer}
+.shotbanner .si{color:var(--teal);display:flex}
+.shotbanner b{color:var(--teal)}
 .shotbanner .cbsub{font-size:var(--fs-xs);color:var(--dim)}
-.shotbanner .cbar{color:var(--teal,#12b5a5);font-size:var(--fs-sm);white-space:nowrap}
+.shotbanner .cbar{color:var(--teal);font-size:var(--fs-sm);white-space:nowrap}
 /* 截图网格：3 列，选中的盖品牌色边框 + 右下角勾 */
 .shotgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2);margin:var(--s2) 0}
 .shotitem{position:relative;border-radius:var(--r1);overflow:hidden;background:var(--card2);

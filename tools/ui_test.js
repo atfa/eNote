@@ -116,9 +116,10 @@ if (jsMissing.length) {
 // 全部 px 是 650 处，其中 259 处是 width/height/top/left 这类布局尺寸，
 // 那些本来就不归间距刻度管，拉进来只会把信号淡掉。
 const RATCHET = {
-  hex: 12,   // tokens.css 之外的裸 hex。tokens.css 自已是调色板定义，那 50 处必须是字面值，
+  hex: 8,    // tokens.css 之外的裸 hex。tokens.css 自已是调色板定义，那 55 处必须是字面值，
              // 把它们算进棘轮会把信号淡掉：新增一个硬编码颜色被新增一个 token 抵消就查不出来。
-             // 62（拆分前全量）→ 12：剩下 #fff 7（彩色底上的白字）、#12b5a5 4（var 回退色）、#000 1（遮罩渐变）。
+             // 62（拆分前全量）→ 12（只统计 tokens.css 之外）→ 8（--teal 从 fallback 转正）。
+             // 剩下 8 处是刻意保留的字面值：#fff 7（彩色底上的白字，不随主题变）、#000 1（遮罩渐变）。
   px: 57,    // 刻度相关属性里的裸 px：391 →（密度 10px→8px）341 →（stats/settings）292 →（base/components 全量迁移）57
 };
 const cssFiles = SPLIT
@@ -283,6 +284,37 @@ if (SPLIT) {
     .map(([n, v]) => n + ' @ ' + v.rel + ':' + v.line);
   if (undef.length) bad('CSS 里有 var() 解析不了（整条声明会静默失效）', undef);
   else ok('CSS 里 ' + used.size + ' 个 var() 全部能解析（含 JS 内联设的 ' + jsSet.size + ' 个）');
+
+  // 幽灵 token：只在 var() 的 fallback 里出现、全仓 0 处定义。
+  // 它不会让声明失效（fallback 兑了），但调色板里根本没有这个颜色：
+  // 真实事故是 --teal 被 .shotbanner 4 处 var(--teal,#12b5a5) 引用、从未定义，
+  // 于是那个颜色活在 4 个 fallback 里，暗色模式调不到它，而旧版闸门⑧ 因为
+  // 「有 fallback 就安全」全部放行。fallback 是应急兼底，不是定义。
+  const ghost = [...used].filter(([n, v]) => v.fb && !defined.has(n) && !jsSet.has(n))
+    .map(([n, v]) => n + ' @ ' + v.rel + ':' + v.line);
+  if (ghost.length) bad('幽灵 token：只在 fallback 里出现、全仓无定义（调色板调不到它）', ghost);
+  else ok('无幽灵 token（每个 var() 的名字都在 tokens.css 里有定义）');
+}
+
+// ---------- 闸门⑨ 可复制的文本不许被 user-select:none 盖到 ----------
+// 控件禁选中是对的（长按按钮弹“复制”菜单很掉价），但笔记正文和剪贴板文本是
+// 用户唯一要复制的东西。它们今天没被盖到，而 user-select 的选择器列表是一行长选择器，
+// 后续迁移很容易顺手把 .body/.clipbody 加进去——加了不会报错，只是长按没反应。
+{
+  const COPYABLE = ['.body', '.clipbody', 'pre'];
+  const hits = [];
+  for (const [rel, text] of cssFiles) {
+    for (const m of text.matchAll(/([^{}]+)\{([^}]*user-select:\s*none[^}]*)\}/g)) {
+      const sels = m[1].split(',').map(s => s.trim()).filter(Boolean);
+      for (const c of COPYABLE) {
+        if (sels.some(s => s === c || s.endsWith(' ' + c) || s.includes(c + ':'))) {
+          hits.push(rel + ' 的 ' + sels.find(s => s.includes(c)) + ' 禁了选中');
+        }
+      }
+    }
+  }
+  if (hits.length) bad('用户要复制的文本被 user-select:none 盖住了', hits);
+  else ok('笔记正文 / 剪贴板文本可长按复制（未被 user-select:none 覆盖）');
 }
 
 // ---------- 输出 ----------
