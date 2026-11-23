@@ -659,3 +659,57 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 
 验收：`node tools/ui_test.js`（13 闸门）+ `node tools/ui_sig_test.js`（84 项）+ `go test ./...`
 + `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd`（25 步）全绿。
+
+### 9.6 S8 步骤 2 已完成（Austin + Tony，D12 原子防线 + D21 状态桥）
+
+`index.html` 的 `<script>` 加 `type="module"`，与导出表、闸门① **同批**落地（中间态不能存在）：
+
+* `app.js` 末尾单处对象字面量 `window.__enoteActions = { … }`，**57 个 key** =
+  内联 handler 调用的 54 个 ∪ jseval 载荷独有的 `api refresh render`。紧跟
+  `Object.assign(window, window.__enoteActions)` —— 这是「70 处 handler 逐字不动」的唯一办法。
+* 状态桥 `window.__enote.state`：`tab S MISSED open shotSel shotList` 六个，全部 get+set
+  （`tab`/`MISSED`/`shotSel` 在载荷里是整体赋值，**没 setter 就会假绿**：赋值只新建 window 上的
+  同名全局变量，模块里的变量一动不动，测试全绿而界面没动）。
+* `test.sh` 的 5 个 jseval 载荷改用状态桥；函数名保持裸调用（靠 `Object.assign`）。
+* `go/web_test.go` 的 D9 断言**反向**：从「不许有 type="module"」改成「必须有 module +
+  导出表 + `Object.assign` + 状态桥」，缺任一项判红。
+
+双方独立扫描得到的两个结论（互为验证）：
+
+* **strict mode 安全**：module 默认严格模式，隐式全局赋值会抛 ReferenceError。Austin 与 Tony
+  各扫一遍 app.js，命中候选 6 个（`shotStartAt stopped iv stBusy prefsLoaded animLock`），
+  逐个查过全是**逗号声明列表的后续名字**（如 `var shotTimer = 0, shotStartAt = 0;`），
+  扫描器只抓得到 `var` 后第一个。没有真的隐式全局。
+* **jseval 闭集是 16 不是 15**：Tony 的 15（10 函数 + 5 状态）漏了 `shotList`
+  （`test.sh:1102` 的 `shotPick(shotList[0].id)`）。状态是 6 个。步骤 4 的闸门② 按 16 写死。
+
+记账两条：
+
+* 注释里不能出现 `onclick="…"` 这种字面量：`ui_sig_test.js`（和新闸门①）是按文本扫 handler 的，
+  会把注释里的例子当成真 handler，报「调了不存在的函数」。已踩一次。
+* **module 把 WebView 地板从 Chrome 58 抬到 61**：app.js 现在 0 处 `?.`/`??`，转 module 前实际能跑在
+  Android 8.0 出厂 WebView 上；feature probe（D16）排在步骤 3，所以步骤 2→3 之间有一个
+  「老 WebView 白屏无提示」的窗口。不判红（VENDOR.md 的语言基线是 ES2020/Chrome 80，61 在基线以下），
+  步骤 3 落地即闭合。
+
+步骤 2 追加（Austin + Tony 实测，两条都是「静态全绿而运行时已死」这一类）：
+
+* **步骤 2 的验收必须包含全量 `test.sh --vd`**，静态闸门 + 签名 84 全绿不能算过。Tony 的
+  scratch module 版就是这个组合：13 闸门 + 84 条全绿，P6.6 直接 exit 1。
+* **D21 状态桥的落点从步骤 4 提到步骤 2**，和 module 化同批（证据同上）。步骤 4 只剩
+  闸门② + `render()`→Promise + 3 处 `await`。
+* **运行时防线**（`test.sh` P6.6 载荷之前）：jseval 打印 `typeof __enote` /
+  `Object.keys(__enote.actions)` / `typeof window.delNote` / `typeof window.open` /
+  `typeof __enote.state.tab`，断言 key 名单与 `app.js` 里的导出表**逐项相等**（名单从 app.js
+  现取，不在测试里重复钉数字，两边不会漂移）。三个哨兵各盯一种失效：module 没加载（白屏）、
+  `Object.assign` 没跑（70 个 handler 全废，P12 那一类）、状态桥没接上。
+* **`open` 是最阴的一个**（Tony 发现）：`app.js:6` 的 `var open = {}` 在非 module 树上把原生
+  `window.open` 盖掉了，所以裸 `open` 拿到的是 app 的对象；module 化后 `window.open` 恢复成
+  原生函数，载荷里 `Object.keys(open).length` **恒为 0，不抛异常**，`jumped=` 断言静默变假。
+  已迁移到 `__enote.state.open`，并加 `typeof window.open === "object"` 当哨兵。
+* **闸门② 扫描器必须跳过字符串字面量和注释**：Tony 的扫描在 `test.sh:1045` 的
+  `.pane[data-tab=mine]` 上假红（`tab` 是 CSS 选择器里的文本）。注释同一类：Austin 在 app.js
+  注释里写的例子 `onclick="foo()"` 让 `ui_sig_test.js` 判红。
+* **测试可追溯性**：`test.sh` 的 install 步骤打印 APK sha256 + `git rev-parse --short HEAD` +
+  分支名。设备是共享的，两个 worktree 轮流装，被对方 force-stop 时日志能自证跑的是谁的树
+  （本轮被对方的安装打断过两次）。

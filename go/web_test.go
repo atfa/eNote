@@ -40,7 +40,7 @@ func TestIndexServedFromDirectory(t *testing.T) {
 		t.Errorf("首页 Content-Type = %q，期望 text/html", ct)
 	}
 	body := uiBody(t, resp)
-	for _, want := range []string{`<link rel="stylesheet" href="/css/tokens.css">`, `<script src="/js/app.js"></script>`} {
+	for _, want := range []string{`<link rel="stylesheet" href="/css/tokens.css">`, `<script type="module" src="/js/app.js"></script>`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("首页缺少 %s", want)
 		}
@@ -54,10 +54,18 @@ func TestIndexServedFromDirectory(t *testing.T) {
 	if regexp.MustCompile(`<script>`).MatchString(code) {
 		t.Errorf("首页还有内联 <script>，脚本没拆干净")
 	}
-	// D9：app.js 必须是普通脚本。加 type="module" 会让顶层 function 变成模块作用域，
-	// 页面里 70 个内联 handler 全部静默失效（P12 那一类"点了没反应"）。
-	if strings.Contains(body, `type="module"`) {
-		t.Errorf("首页出现 type=\"module\"：转 module 必须与 window 导出表 + handler 存在性检查同批（S3）")
+	// D9（S3 后反向）：app.js 必须是 ES module，而且必须带导出表。
+	// 页面里 70 个内联 handler 按全局作用域解析函数名；转 module 后顶层 function 变成
+	// 模块作用域，少了 window.__enoteActions + Object.assign(window, …) 就是 70 个 handler
+	// 全部静默失效（P12 那一类「点了没反应」）。这三样必须同批存在，中间态不能存在。
+	if !strings.Contains(body, `type="module"`) {
+		t.Errorf("首页的 app.js 没加 type=\"module\"（S3 已转 ES module）")
+	}
+	appjs := uiBody(t, doUI(t, "/js/app.js"))
+	for _, want := range []string{"window.__enoteActions = {", "Object.assign(window, window.__enoteActions)", "window.__enote.state = {"} {
+		if !strings.Contains(appjs, want) {
+			t.Errorf("app.js 缺少 %s：转 module 与导出表/状态桥必须同批（D12/D21）", want)
+		}
 	}
 }
 

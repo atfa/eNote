@@ -78,7 +78,22 @@ am_start() {   # am_start <component> [am extras...]   (ACTIVITY from app.env is
     *.ShareActivity) asroot "am start -n '$comp' $*" >/dev/null; return ;;
   esac
   if [ -n "$VDID" ]; then
-    asroot "am start --display $VDID -n '$comp' $*" >/dev/null
+    # display id 会在跑测途中换号：vd daemon 重启后 id 递增，而 VDID 是开跑时抓的。
+    # 旧 id 上 am start 报 Permission Denial 并退 255（症状：整条验收在 P6.5 红）。
+    # 拿 dumpsys 里的真 id 重试一次，顺手把 VDID 更新掉，后面所有步骤跟着新 id。
+    out=$(asroot "am start --display $VDID -n '$comp' $*" 2>&1) || true
+    case "$out" in
+      "*ermission*enial*"|"*does not exist*"|"*Invalid display*")
+        live=$(sh "$HERE/vd.sh" id 2>/dev/null | tr -dc '0-9')
+        if [ -n "$live" ] && [ "$live" != "$VDID" ]; then
+          say "  display id $VDID 已失效，改用 $live"
+          VDID=$live
+          asroot "am start --display $VDID -n '$comp' $*" >/dev/null
+        else
+          printf '%s\n' "$out"
+          die "am start 在 display $VDID 上起不来（sh vd.sh status 看 daemon）"
+        fi ;;
+    esac
   else
     asroot "am start -n '$comp' $*" >/dev/null
   fi
@@ -170,6 +185,9 @@ fi
 [ -f "$APK" ] || die "no apk: $APK (run ./build.sh)"
 
 step "install + start"
+# 设备是共享的（两个 worktree 轮流装），日志里必须能证明「这次跑的是谁的树」：
+# 被对方 force-stop / 重装时，事后争「你装的是你那版」没有证据。sha256 + HEAD + 分支三样一起打。
+say "  apk sha256=$(sha256sum "$APK" 2>/dev/null | cut -c1-16)  head=$(git -C "$HERE" rev-parse --short HEAD 2>/dev/null)  branch=$(git -C "$HERE" rev-parse --abbrev-ref HEAD 2>/dev/null)"
 asroot "am force-stop '$APP_PACKAGE'" >/dev/null 2>&1 || true
 asroot "pm install -g '$APK'" >/dev/null || die "pm install failed"
 if [ "$RESET" = 1 ]; then
@@ -663,6 +681,51 @@ else
   say "  warn: 没拿到 WebView UA（不判红，但 VENDOR.md 的 ES2020 基线就没法核对）"
 fi
 
+# 运行时防线（D12/D21）：静态闸门能证明源码里写了导出表，证明不了它在真机 WebView 里活着。
+# module 加载失败（MIME / 语法 / 老 WebView 不认 module）时页面白屏，而第一个碰到 app 符号
+# 的载荷才炸——症状就是「P6.6 静默 exit 1」（实测：静态 13 闸门 + 签名 84 全绿，载荷输出全空）。
+# 三个哨兵（Austin + Tony 各自要求）：
+#   1) key 名单与 app.js 里的导出表**逐项相等**（名单从 app.js 现取，不重复钉数字，两边不会漂移）
+#   2) typeof window.delNote === "function"：P12 那一类「点了没反应」的直接证据
+#   3) module 作用域隔离真的生效：`window.open` 是原生函数（function），而 app 的 `var open = {}`
+#      只能从状态桥拿到（`__enote.state.open` 是 object）。这正是 Tony 发现的那个陷阱：非 module
+#      树上 `var open` 把原生 `window.open` 盖掉了，载荷里裸 `open` 拿到 app 的对象；module 化后
+#      裸 `open` 变成原生函数，`Object.keys(open).length` **恒为 0 不抛异常**，`jumped=` 断言
+#      静默变假。所以载荷里一律走 `__enote.state.open`，这里把两边各钉一个断言。
+N0B=$(readtlog | wc -l)
+EXPECT_KEYS=$(node -e 'const s=require("fs").readFileSync("go/ui/js/app.js","utf8");const m=/window\.__enoteActions = \{([\s\S]*?)\n\};/.exec(s);if(!m)process.exit(1);console.log(m[1].split(",").map(x=>x.trim()).filter(Boolean).sort().join(","))') \
+  || fail "导出表扫不出来（app.js 里找不到 window.__enoteActions = { … };）"
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' \
+  '(function(){var A=(typeof __enote==="object"&&__enote.actions)?Object.keys(__enote.actions):[];var ST=(typeof __enote==="object"&&__enote.state)?__enote.state:{};console.log("JSEVAL bridge enote="+(typeof __enote)+" n="+A.length+" delNote="+(typeof window.delNote)+" winopen="+(typeof window.open)+" openmap="+(typeof ST.open)+" state="+(typeof (__enote&&__enote.state))+" tabtype="+(typeof (__enote&&__enote.state?__enote.state.tab:"NA")));console.log("JSEVAL bridgekeys "+A.sort().join(",")+" bdone=1")})()' > "$TMPDIR/jsbridge.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsbridge.json'"
+n=0
+while [ "$n" -lt 20 ]; do
+  readtlog | tail -n +$((N0B + 1)) | grep -q 'JSEVAL bdone=1' && break
+  sleep 1; n=$((n + 1))
+done
+readtlog | tail -n +$((N0B + 1)) | grep 'JSEVAL bridge' | tail -2 \
+  | EXPECT_KEYS="$EXPECT_KEYS" "$PY" -c '
+import os, sys
+lines = sys.stdin.read().splitlines()
+flag = [l for l in lines if "JSEVAL bridge " in l]
+keyl = [l for l in lines if "JSEVAL bridgekeys " in l]
+if not flag or not keyl:
+    sys.exit("运行时桥检查载荷没跑起来（页面没加载？）")
+d = dict(kv.split("=", 1) for kv in
+         keyl[0].split("JSEVAL bridgekeys ", 1)[1].split() +
+         flag[0].split("JSEVAL bridge ", 1)[1].split() if "=" in kv)
+assert d.get("enote") == "object", "window.__enote 不存在：app.js 这个 module 没加载（白屏）"
+assert d.get("state") == "object" and d.get("tabtype") == "string", "状态桥没接上：%s" % d
+assert d.get("delNote") == "function", "window.delNote 不是函数：Object.assign 没跑（70 个 handler 全废）"
+assert d.get("winopen") == "function", "window.open 是 %s：module 顶层的 var open 不该往 window 上挂东西" % d.get("winopen")
+assert d.get("openmap") == "object", "__enote.state.open 是 %s 不是 object：载荷里裸 open 会拿到原生函数，Object.keys(open) 恒为 0" % d.get("openmap")
+got = keyl[0].split("JSEVAL bridgekeys ", 1)[1].split()[0].split(",")
+want = os.environ["EXPECT_KEYS"].split(",")
+assert got == want, "运行时导出表与 app.js 不一致：缺 %s / 多 %s" % (
+    sorted(set(want) - set(got))[:5], sorted(set(got) - set(want))[:5])
+print("  ok 运行时导出表 %d key（与 app.js 逐项相等）+ 状态桥活着" % len(got))
+' || fail "运行时导出表/状态桥检查失败"
+
 N0C=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
@@ -673,7 +736,7 @@ N0C=$(readtlog | wc -l)
     while(i<12){ await refresh(true); if(!!q(".clipbanner")===want) return i; await sleep(250); i++; }
     return i;
   };
-  tab="notes";
+  __enote.state.tab="notes";
   L("count0="+(await api("/api/state")).info.clip);
   L("tries0="+await wait(true));
   L("before="+bt());
@@ -747,19 +810,19 @@ N0C=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
-  var d=await api("/api/missed"); MISSED=d; S.missed=d; tab="notes"; render(); missedSheet();
+  var d=await api("/api/missed"); __enote.state.MISSED=d; __enote.state.S.missed=d; __enote.state.tab="notes"; render(); missedSheet();
   L("count="+d.count);
   L("rows="+document.querySelectorAll(".msrow").length);
   L("cb="+document.querySelectorAll(".msrow .cb").length);
   L("foot="+((q("#sheet .pfoot")||{}).textContent||"").replace(/\s+/g,"").slice(0,40));
   // 点整行：关掉面板 + 跳到那条笔记（用户反馈：点了没反应，因为调了不存在的 goNote）
-  var it1=(MISSED.items||[])[1]||{}, it0=(MISSED.items||[])[0]||{};
+  var it1=((__enote.state.MISSED.items)||[])[1]||{}, it0=((__enote.state.MISSED.items)||[])[0]||{};
   var nid=it1.nid||"", tid=it0.id||"";
-  var n0=Object.keys(open).length;
+  var n0=Object.keys(__enote.state.open).length;
   var row=document.querySelectorAll(".msrow")[1];
   if(row) row.click();
   await sleep(500);
-  L("jumped="+(Object.keys(open).length>n0?1:0)+" nid="+nid);
+  L("jumped="+(Object.keys(__enote.state.open).length>n0?1:0)+" nid="+nid);
   L("sheet="+(q("#sheet")?q("#sheet").classList.contains("on"):false));
   missedSheet();
   // 勾 ✓：先出划线动画，动画跑完这条才从清单里消失（用户反馈：点了看不出结果）
@@ -1023,7 +1086,7 @@ N0T=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(function(){
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
   var rows=function(){return [].slice.call(document.querySelectorAll("#folderList .frow"))};
-  tab="mine"; render(); folderSheet();
+  __enote.state.tab="mine"; render(); folderSheet();
   L("count0="+q("#folderCount").textContent.replace(/\s+/g," "));
   var first=rows()[0].getAttribute("data-path");
   L("first="+first);
@@ -1094,13 +1157,13 @@ asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enot
 NT=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(function(){
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
-  tab="notes"; render(); shotSheet();
+  __enote.state.tab="notes"; render(); shotSheet();
   setTimeout(function(){
-    shotSel={};
+    __enote.state.shotSel={};
     L("n1_go="+(q("#shotGo")?q("#shotGo").textContent:"?"));
     L("n1_split="+(q("#shotSplit")?getComputedStyle(q("#shotSplit")).display:"?"));
     L("n1_raw="+(q("#shotRaw")?getComputedStyle(q("#shotRaw")).display:"?"));
-    shotPick(shotList[0].id);
+    shotPick(__enote.state.shotList[0].id);
     L("n2_go="+(q("#shotGo")?q("#shotGo").textContent:"?"));
     L("done=1");
   }, 1200);

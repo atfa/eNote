@@ -123,8 +123,10 @@
   <div class="dacts"><button class="btn" id="dlgNo">取消</button><button class="btn pri" id="dlgYes">确定</button></div>
 </div></div>
 <div id="toast"></div>
-  <!-- S1a：脚本从 go/ui.html 的 <script>（原 683-2524 行）搬出，普通脚本，见 app.js 头注释 -->
-  <script src="/js/app.js"></script>
+  <!-- S1a：脚本从 go/ui.html 的 <script>（原 683-2524 行）搬出。
+       S3 起是 ES module：顶层声明不再是全局，内联 handler 靠 app.js 末尾的
+       window.__enoteActions + Object.assign(window, …) 解析（D12 原子防线，闸门① 守）。 -->
+  <script type="module" src="/js/app.js"></script>
 
 </body>
 </html>

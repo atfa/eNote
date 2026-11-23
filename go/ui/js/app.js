@@ -1,7 +1,9 @@
 // go/ui/js/app.js — 由 go/ui.html 684-2523 机械拆分而来（S1a，行为零变化）。
-// 这是**普通脚本，不是 ES module**：页面里 69 处 onclick + 1 处 oninput 按 window 作用域解析函数名，
-// 一旦加上 type="module"，顶层 function 变成模块作用域，70 个 handler 会全部静默失效（P12 那一类 bug）。
-// 转 module 发生在 S3，必须和 window 导出表 + tools 的 handler 存在性检查同批落地。
+// S3 起是 **ES module**（index.html 的 <script type="module">）。模块顶层声明不再是全局，
+// 页面里 69 处 onclick + 1 处 oninput 按 window 作用域解析函数名，所以文件末尾必须有
+// window.__enoteActions 导出表 + Object.assign(window, …)（见文件末尾 D12）。
+// 转 module 与导出表、tools/ui_test.js 闸门① 同批落地，中间态不能存在：
+// 少了任何一环，70 个 handler 会全部静默失效（P12 那一类「点了没反应」）。
 var S = {notes:[], settings:{}, info:{}};
 var tab = 'notes', open = {}, busy = {};
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
@@ -128,11 +130,12 @@ function statusChip(n){
 /* ---------- 到期倒计时（R11）----------
    每个未完成待办显示距截止的剩余时间：不足2天 / 不足3小时 / 不足15分钟，过期则「逾期N…」。
    文本由 tickCD() 每 20 秒就地改写 textContent，不重建 DOM（整页重绘会闪）。 */
-function dueMs(due){
-  var m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(due||'');
-  if(!m) return 0;
-  return new Date(+m[1], +m[2]-1, +m[3], +(m[4]||0), +(m[5]||0)).getTime();
-}
+/* 这里原来还有一个 dueMs（正则解析 `YYYY-MM-DD[ HH:MM]`）。它在旧版普通脚本里是**死代码**：
+   同名 function 声明提升时后者覆盖前者，:970 那个 `new Date(iso)` 版本才是真正生效的。
+   ES module 不允许顶层同名 function 声明（直接 SyntaxError：Identifier 'dueMs' has already been
+   declared，整个模块不执行 = 白屏），所以 S3 转 module 时删掉它。行为零变化：所有调用点
+   （tickCD / 逐期待办）本来拿的就是 :970 那份。tools/ui_test.js 现在有一条「顶层声明不得重名」
+   的闸门守着，这类遮蔽不会再静默活下来。 */
 function spanText(m){
   m = Math.max(1, m);
   if(m >= 1440) return Math.ceil(m/1440)+'天';
@@ -1842,3 +1845,44 @@ function selfCheck(){
   else console.log('SELFCHECK OK');
 }
 setTimeout(selfCheck, 1200);
+
+/* ---------- S3（D12）：ES module 导出表 ----------
+   页面里 70 处内联 handler（69 onclick + 1 oninput）按**全局**作用域解析函数名。
+   加上 type="module" 后顶层 function 变成模块作用域，70 个 handler 会全部静默失效——
+   点了没反应、控制台什么都不说（P12 那一类 bug，语法检查和结构断言都发现不了）。
+   所以「转 module」和这张表必须同批落地，中间态不能存在；tools/ui_test.js 闸门① 是这条
+   防线的执行者：handler 里调用的函数名必须 ⊆ 本表 key ∪ 内建，少一个就报出函数名和次数。
+   Object.assign(window, …) 是「70 处 handler 逐字不动」的唯一办法：内联 handler 里的函数名走全局查找。
+   （注：这段注释里不能写 onclick="…" 这种字面量，ui_sig_test.js 会把它当成真 handler 扫。）
+   表必须是**单处对象字面量**（闸门① 用配对括号扫 key），别拆成多处 __enoteActions.foo = foo。
+   成员 = 内联 handler 调用的 54 个 ∪ jseval 载荷独有的 api/refresh/render = 57。 */
+window.__enoteActions = {
+  addNote, addTodo, addTodoSheet, api, askBattery, askExact,
+  askNotify, askShotPerm, clearAllNotes, clipDel, clipDelSel, clipParse,
+  clipPick, clipSelAll, clipSheet, closeSheet, delAttach, delNote,
+  delTodo, doImportShots, expand, folderFilter, folderPick, folderPickShots,
+  folderSave, folderSelAll, folderSheet, importClip, importJSON, jump,
+  missedDismiss, missedDone, missedGoTodos, missedSheet, openAttach, pickImage,
+  refresh, render, reocr, reparse, resetPrefs, saveSettings,
+  setPref, setTheme, shotIgnoreSel, shotPick, shotSelAll, shotSetup,
+  shotSheet, showDebug, showLog, testLLM, toAlarm, toCalendar,
+  toggle, toggleAI, toggleKeepAlive
+};
+Object.assign(window, window.__enoteActions);
+
+/* ---------- S3（D21）：状态桥 ----------
+   jseval 测试载荷跑在 module 外面，拿不到模块作用域里的变量。tab / MISSED / shotSel
+   在载荷里是**整体赋值**（tab="notes"），必须有 setter：否则赋值只是在 window 上新建一个
+   同名全局变量，模块里的 tab 一动不动，测试会「绿着骗过去」——这正是最难查的一类假绿。
+   S / open / shotList 载荷只读或只改属性，getter 就够；一并给 setter 免得以后踩同一个坑。
+   闸门②（步骤 4）按「载荷引用的名字 ⊆ 导出表 ∪ 状态桥 ∪ 内建 ∪ 载荷局部名」判红。 */
+window.__enote = window.__enote || {};
+window.__enote.actions = window.__enoteActions;
+window.__enote.state = {
+  get tab(){ return tab }, set tab(v){ tab = v },
+  get S(){ return S }, set S(v){ S = v },
+  get MISSED(){ return MISSED }, set MISSED(v){ MISSED = v },
+  get open(){ return open }, set open(v){ open = v },
+  get shotSel(){ return shotSel }, set shotSel(v){ shotSel = v },
+  get shotList(){ return shotList }, set shotList(v){ shotList = v }
+};

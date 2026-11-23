@@ -47,11 +47,22 @@ send() {   # send <op> [args...]
   asroot "printf '%s' '$seq $*' > $CMD"
 }
 
-display_id() { asroot "cat $ID 2>/dev/null" 2>/dev/null | tr -d ' \n'; }
+display_id() {
+  id=$(display_id_live)
+  [ -n "$id" ] || id=$(asroot "cat $ID 2>/dev/null" 2>/dev/null | tr -d ' \n')
+  printf '%s' "$id"
+}
 
-# 旧 daemon 退出时的 shutdown hook 会把旧 id 写回 $ID，create 的轮询就会拿到一个
-# 已经不存在的 display id（症状：am start --display <id> 报 Permission Denial，
-# 整条 --vd 验收在第一步就红）。用 dumpsys 确认这个 id 真的存在才算数。
+# daemon 把 display 命名为 apkdbg，dumpsys 是「现在真的活着的那个 id」的唯一权威来源。
+# id 文件会滞后：旧 daemon 的 shutdown hook 是异步的，它会在**新** daemon 写完新 id 之后
+# 把自己的旧 id 写回去（症状：am start --display <id> 报 Permission Denial、
+# input -d <id> 点了没反应，整条 --vd 验收在第一个用 display 的步骤就红）。
+display_id_live() {
+  asroot "dumpsys display" 2>/dev/null \
+    | sed -n "s/.*displayId=\([0-9]*\), uniqueId='virtual:android,0,apkdbg.*/\1/p" | head -1
+}
+
+# 旧 daemon 退出时写的 id 可能还在 dumpsys 里，所以 create 必须先等它消失。
 display_live() { asroot "dumpsys display" 2>/dev/null | grep -q "Display Id=$1"; }
 
 # The `[0-9]` keeps the pattern from matching the `su -c "pgrep -f ..."` wrapper itself.
@@ -79,16 +90,18 @@ create() {   # create [WxH[@dpi]]
 
   asroot "cp '$JAR_SRC' '$JAR' && chmod 644 '$JAR'" || die "cannot stage $JAR"
   asroot "rm -f '$LOG' '$ID'; echo 0 > '$CMD'; chmod 666 '$CMD'"
+  # 先等旧 display 从 dumpsys 里消失，否则下面的轮询会把旧 id 当成新 display。
+  n=0
+  while [ $n -lt 25 ] && [ -n "$(display_id_live)" ]; do sleep 0.2; n=$((n + 1)); done
   say "starting daemon: ${W}x${H}@${DPI}"
   asroot "CLASSPATH=$JAR setsid app_process /system/bin dev.apkdbg.Vd $W $H $DPI $CMD $ID >> $LOG 2>&1 &"
 
   n=0
   id=""
   while [ $n -lt 50 ]; do
-    id=$(display_id)
-    [ -n "$id" ] && display_live "$id" && break
+    id=$(display_id_live)
+    [ -n "$id" ] && break
     sleep 0.2; n=$((n+1))
-    id=""
   done
   [ -n "$id" ] || { asroot "tail -20 $LOG" ; die "daemon did not come up (see log above)"; }
   asroot "printf 'W=%s\nH=%s\nDPI=%s\nROT=0\n' $W $H $DPI > $CFG"

@@ -16,6 +16,62 @@
   而这台机器 Go 的 `time.Local` 是 UTC（设备 CST+8），本地 00:00–08:00 每天固定红 8 小时（改 `T23:59`）；
   P8.5 面板点的是第二行，重置后只剩 1 条逾期项就假红（现在用例自己造 2 条固定装置）。
 
+### 界面（P13 S8 步骤 2，D12 / D21）：转 ES module + 导出表 + 状态桥
+
+* **`index.html` 的 `<script>` 加 `type="module"`**，与导出表、闸门① 同批落地（D12：中间态
+  不能存在）。页面里 70 处内联 handler（69 onclick + 1 oninput）按**全局**作用域解析函数名，
+  转 module 后顶层 function 变成模块作用域 —— 少了导出表就是 70 个 handler 全部静默失效，
+  点了没反应、控制台什么都不说（P12 那一类）。
+* `app.js` 末尾新增**单处对象字面量** `window.__enoteActions = { … }`，57 个 key
+  = 内联 handler 调用的 54 个 ∪ jseval 载荷独有的 `api refresh render`；紧跟
+  `Object.assign(window, window.__enoteActions)` —— 这是「70 处 handler 逐字不动」的唯一办法。
+* **状态桥 `window.__enote.state`**（D21）：`tab S MISSED open shotSel shotList` 六个，全部 get+set。
+  `tab` / `MISSED` / `shotSel` 在测试载荷里是整体赋值，**没 setter 就会假绿**：赋值只在 window 上
+  新建一个同名全局变量，模块里的变量一动不动，测试全绿而界面没动。`test.sh` 的 5 个 jseval 载荷
+  已全部改走状态桥（函数名保持裸调用，靠 `Object.assign`）。
+* `go/web_test.go` 的 D9 断言**反向**：从「不许有 type="module"」改成「必须有 module + 导出表 +
+  `Object.assign` + 状态桥」，缺任一项判红；`tools/ui_test.js` 闸门①（Tony）按
+  「handler 调用的函数名 ⊆ 导出表 key ∪ 内建」判红，能单独报出 module 无表 / 有表缺
+  `Object.assign` / 表缺 key 三种失效。
+* **重复顶层声明 `dueMs` 是转 module 的拦路虎**（真机跑出来的）：`app.js:133`（正则解析
+  `YYYY-MM-DD[ HH:MM]`）与 `app.js:970`（`new Date(iso)`）同名。普通脚本里 function 声明提升时
+  **后者覆盖前者**，:133 那份从写下来就没执行过；ES module 不允许顶层同名 function 声明，
+  直接 `Uncaught SyntaxError: Identifier 'dueMs' has already been declared`，**整个模块不执行**。
+  症状很隐蔽：index.html 正常加载（`script type=module`）、`/js/app.js` 正常取到 82306 字节且
+  内容含导出表，但 `typeof api === "undefined"`，页面全空。已删死代码那份（行为零变化），
+  并要闸门加一条「顶层声明不得重名」（闸门③）：只抽顶层 `function`/`let`/`const`/`var` 声明名，
+  `var+var` 重复合法，`function` 参与的重名才判红（实测全文件只 `dueMs` 一处）。
+* **运行时防线**（`test.sh` P6.6 载荷之前）：静态闸门能证明源码里写了导出表，证明不了它在真机
+  WebView 里活着（实测：静态 13 闸门 + 签名 84 全绿，P6.6 直接 exit 1）。新载荷挨个打印
+  `typeof __enote` / `Object.keys(__enote.actions)` / `typeof window.delNote` /
+  `typeof window.open` / `typeof __enote.state.tab`，断言 key 名单与 app.js 里的导出表**逐项相等**
+  （名单从 app.js 现取，不在测试里重复钉数字），三个哨兵各盯一种失效：module 没加载（白屏）、
+  `Object.assign` 没跑（70 个 handler 全废，P12 那一类）、状态桥没接上。
+* **`open` 是最阴的一个**（Tony 发现，方向和我第一版哨兵相反）：`app.js:6` 的 `var open = {}`
+  在非 module 树上把原生 `window.open` 盖掉了，所以载荷里裸 `open` 拿到的是 app 的对象；
+  module 作用域不是全局作用域，module 化后 `var open` **不再往 window 上挂**，裸 `open` 变回原生
+  函数，`Object.keys(open).length` **恒为 0 不抛异常**，`jumped=` 断言静默变假。已迁到
+  `__enote.state.open`，哨兵也钉成两条：`typeof window.open === "function"`（证明模块作用域隔离
+  生效）+ `typeof __enote.state.open === "object"`（证明 app 那份 open 映射从桥上拿得到）。
+  实测这条闸门第一版就写反了（断言 `window.open` 是 object），是运行时防线当场抓出来的。
+* **测试可追溯性**：`test.sh` 的 install 步骤打印 APK sha256 + HEAD + 分支名。设备是共享的，
+  两个 worktree 轮流装，本轮被对方的安装 / force-stop 打断过两次，事后得能自证跑的是谁的树。
+* `vd.sh` 修一个竞态：`id` 读的是启动时写的文件，而旧 app 退出时的异步钩子会把**自己的旧
+  display id** 写回去（实测新 VD 是 36，文件里是旧的 37）→ `am start --display 37` 报
+  `Permission Denial ... launchDisplayId=37`，整轮测试在启动那步就 exit 255。现在按
+  `dumpsys display` 的 uniqueId 现查活着的 id，文件只当兼容回退；`create` 还等旧命名 display
+  真的消失（旧 app 退出钩子会 `removeVirtualDisplay` 把新建的拆掉）。
+* 两个实测结论（Austin / Tony 各扫一遍，互为验证）：strict mode **安全**，6 个隐式全局候选
+  （`shotStartAt stopped iv stBusy prefsLoaded animLock`）全是逗号声明列表的后续名字；
+  jseval 闭集是 **16 不是 15**（状态是 6 个，`shotList` 被 `test.sh:1102` 用到）。
+* 记账：注释里不能写 `onclick="…"` 这种字面量（闸门按文本扫 handler，会把注释里的例子当真）；
+  module 把 WebView 地板从 Chrome 58 抬到 61，feature probe 在步骤 3，中间有一个「老 WebView
+  白屏无提示」的窗口（不判红：VENDOR.md 的语言基线是 ES2020/Chrome 80）。
+* **测试设施**：`vd.sh` 的 display id 改以 `dumpsys display` 里名为 `apkdbg` 的 display 为权威
+  （id 文件会被旧 daemon 的异步 shutdown hook 写回旧值），`create` 先等旧 display 消失；
+  `test.sh` 的 `am_start` 遇到 Permission Denial 会用真 id 重试并更新 `VDID`。
+  症状：跑测途中 display 换号后，P6.5 的 `am start --display 37` 直接退 255。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome
