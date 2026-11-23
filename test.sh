@@ -1318,6 +1318,89 @@ assert d.get("same"), "Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  �
 print("  ok (规范化后 DOM 逐字一致，长度 %s)" % d.get("len"))
 '
 
+step "Notes 交互在 Vue 路径上真的生效（tick 链断则点了没反应）"
+# 上面的夹具只证明「画出来一样」，不证明「点了会动」。Vue 迁移最阴的失效是：computed 读的是
+# 普通模块变量（S / open / MISSED），没有响应式依赖 → 永远缓存 → 界面纹丝不动，
+# 而签名 84 项和 DOM 夹具都是绿的。Austin 在真机首跑就踩到（ClipBanner 的 computed），
+# 这条用真点击把四类交互钉住：展开 / 空态 / 三横幅 / 删除。
+NIN=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("NINT "+m)};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var q=function(s){return document.querySelector(s)};
+  var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
+  var P=".pane[data-tab=notes]";
+  var cards=function(){return qa(P+" .card").length};
+  __enote.state.tab="notes";
+  await render();
+  L("cards="+cards());
+  // 1) 展开详情：open 是模块状态，computed 不依赖 tick 就永远缓存
+  var before=qa(P+" .body.clamp").length;
+  var eb=q(P+" .exp");
+  L("expBtn="+(eb?eb.textContent.trim():"none"));
+  if(eb){ eb.click(); await sleep(400); }
+  L("clampBefore="+before);
+  L("clampAfter="+qa(P+" .body.clamp").length);
+  var eb2=q(P+" .exp");
+  L("expAfter="+(eb2?eb2.textContent.trim():"none"));
+  if(eb2){ eb2.click(); await sleep(400); }
+  // 2) 空态：笔记清空后必须出 .empty（Vue 的 v-if 分支）
+  var saved=__enote.state.S.notes;
+  __enote.state.S.notes=[]; await render();
+  L("empty="+String(!!q(P+" .empty")));
+  __enote.state.S.notes=saved; await render();
+  L("restored="+cards());
+  // 3) 三横幅同时出现且顺序对
+  __enote.state.MISSED={count:2,items:[{id:"t1",nid:"n1",title:"x",at:Date.now()-60000}]};
+  __enote.state.S.info.clip=3;
+  await render();
+  var h=q(P).innerHTML;
+  L("missed="+String(!!q(P+" .missed")));
+  L("clip="+String(!!q(P+" .clipbanner")));
+  L("order="+((h.indexOf("missed")>=0 && h.indexOf("missed")<h.indexOf("clipbanner"))?"ok":"bad"));
+  __enote.state.MISSED=null; __enote.state.S.info.clip=0; await render();
+  // 4) 删除：delNote → 对话框确认 → 卡片数必须掉（tick 链 + 对话框两条链一起测）
+  var n0=cards(), id=(__enote.state.S.notes[0]||{}).id;
+  // 走 __enote.actions 而不是裸全局 delNote：闸门② 的闭集只给 10 个函数，
+  // 多一个裸全局就要改一次闸门，而桥就在边上，没理由扩它。
+  if(id){ __enote.actions.delNote(id); await sleep(300);
+    var yes=q("#dlgYes"); L("dlg="+(yes?yes.textContent.trim():"none"));
+    if(yes) yes.click();
+    for(var i=0;i<40;i++){ await sleep(150); if(cards()<n0) break; }
+  }
+  L("delBefore="+n0); L("delAfter="+cards());
+  L("ndone=1");
+})()' > "$TMPDIR/jsnint.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsnint.json'"
+for i in $(seq 1 60); do
+  newtlog | grep -q 'NINT ndone=1' && break
+  sleep 0.5
+done
+newtlog | tail -n +$((NIN + 1)) | grep 'NINT' | "$PY" -c '
+import sys, re
+d = {}
+for l in sys.stdin:
+    m = re.search(r"NINT (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+assert d.get("ndone") == "1", "NINT 载荷没跑完（无 ndone）：前端抛异常了？已收到=%s" % sorted(d)
+n = int(d["cards"])
+assert n > 0, "Notes 页没卡片，本步断言会是空跑"
+# 展开：clamp 类必须少一个，按钮文案必须翻成「收起」
+assert int(d["clampAfter"]) < int(d["clampBefore"]), \
+  "点「展开详情」后正文仍是收起态（clamp %s→%s）：tick 链断了，Vue 没重渲染" % (
+    d["clampBefore"], d["clampAfter"])
+assert d["expAfter"] == "收起", "展开后按钮文案该是「收起」, got %r" % d["expAfter"]
+assert d["empty"] == "True", "笔记清空后没出空态块（.empty）：Vue 的 v-if 分支没生效"
+assert int(d["restored"]) == n, "恢复笔记后卡片数不对（%s→%s）" % (n, d["restored"])
+assert d["missed"] == "True", "造了 MISSED 数据但 .missed 横幅没渲染"
+assert d["clip"] == "True", "造了 clip 计数但 .clipbanner 横幅没渲染（live() 没包？）"
+assert d["order"] == "ok", "首页横幅顺序不对：该是错过提醒 → 新截图 → 剪贴板"
+assert d["dlg"] == "删除", "delNote 没弹确认框, got %r" % d["dlg"]
+assert int(d["delAfter"]) == int(d["delBefore"]) - 1, \
+  "删除后卡片数没掉（%s→%s）：删除走了但视图没重绘" % (d["delBefore"], d["delAfter"])
+print("  ok (展开/空态/三横幅/删除四条交互在 Vue 路径上都真生效，卡片 %d→%d)" % (n, int(d["delAfter"])))
+'
+
 step "前端没有运行时报错（未声明的变量会把点击静默吞掉）"
 if newtlog | grep -q 'SELFCHECK FAIL'; then
   newtlog | grep 'SELFCHECK FAIL' | tail -2 | sed 's/^/  /'
