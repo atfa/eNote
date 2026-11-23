@@ -1669,7 +1669,7 @@ js = r'''(async function(){
     document.querySelectorAll("#sheet .cliptop .btn.sm")[1].click();    // 全不选
     await new Promise(function(r){setTimeout(r,300)});
     L("on3="+on()); L("foot3="+foot());
-    q()[0].click();                       // 只选 1 张：三个导入按钮塔成
+    q()[0].click();                       // 只选 1 张：三个导入按钮塌成
     await new Promise(function(r){setTimeout(r,300)});
     var vis=function(id){ var e=document.querySelector("#sheet #"+id); return (e&&e.style.display!=="none")?1:0 };
     L("btnGo="+vis("shotGo")); L("btnSplit="+vis("shotSplit")); L("btnRaw="+vis("shotRaw"));
@@ -1733,8 +1733,8 @@ assert d.get("foot1") != d.get("foot0"), "点一张卡片后计数文案没变�
 assert d.get("on2") == d.get("n"), "全选后应全部勾中（on2=%s n=%s）" % (d.get("on2"), d.get("n"))
 assert d.get("on3") == "0", "全不选后应一个不剩（on3=%s）" % d.get("on3")
 assert d.get("btnSplit") == "0" and d.get("btnRaw") == "0" and d.get("btnGo") == "1", \
-  "只选 1 张时按钮没塔成（go=%s split=%s raw=%s）" % (d.get("btnGo"), d.get("btnSplit"), d.get("btnRaw"))
-assert "创建笔记" in d.get("goLabel", ""), "塔成后主按钮文案应变成「创建笔记」（实际 %r）" % d.get("goLabel")
+  "只选 1 张时按钮没塌成（go=%s split=%s raw=%s）" % (d.get("btnGo"), d.get("btnSplit"), d.get("btnRaw"))
+assert "创建笔记" in d.get("goLabel", ""), "塌成后主按钮文案应变成「创建笔记」（实际 %r）" % d.get("goLabel")
 # 导入进度层：SHOTPROG + ShotProgress 组件，body 级容器，要活过 closeSheet()
 assert d.get("ovlMounted") == "1", "进度层没挂到 __enote.vue.sheets.progress（mountSheet 没走？）"
 assert d.get("ovlBody") == "1", "进度层不在 body 级的 #shotOvlRoot 里（挂弹层里会被 closeSheet 清掉）"
@@ -1745,7 +1745,7 @@ assert d.get("ovlAfterClose") == "1", "截图弹层一关进度层就没了（�
 assert "1 / 2" in d.get("ovlSub2", ""), "shotOvlSub 更新没反映到进度层（实际 %r）" % d.get("ovlSub2")
 assert d.get("ovlLeft") == "0", "关掉之后 #shotOvl 还留在 DOM 里（透明遮罩吃掉点击）"
 assert d.get("ovlUnmounted") == "0", "关掉之后进度层 app 还在 __enote.vue.sheets 里（unmountSheet 没调）"
-print("  ok (真点击 %s 张：勾选 %s→%s、计数跟变、全选/全不选、单张时按钮塔成 %r；"
+print("  ok (真点击 %s 张：勾选 %s→%s、计数跟变、全选/全不选、单张时按钮塌成 %r；"
       "进度层 body 级、活过 closeSheet、shotOvlSub 实时更新、关掉后零残留)" % (
     d.get("n"), d.get("on0"), d.get("on1"), d.get("foot1")))
 '
