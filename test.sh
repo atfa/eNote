@@ -1354,7 +1354,10 @@ step "Notes 交互在 Vue 路径上真的生效（tick 链断则点了没反应�
 # 普通模块变量（S / open / MISSED），没有响应式依赖 → 永远缓存 → 界面纹丝不动，
 # 而签名 84 项和 DOM 夹具都是绿的。Austin 在真机首跑就踩到（ClipBanner 的 computed），
 # 这条用真点击把四类交互钉住：展开 / 空态 / 三横幅 / 删除。
-NIN=$(readtlog | wc -l)
+# 日志窗口：newtlog 已经按 BASE 切过一层（newtlog = readtlog | tail -n +$((BASE+1))），
+# 下面只要 grep token。这里不能再 tail -n +$((NIN+1))：NIN 是整份日志的绝对行号，
+# 对已经切短的流再切一次直接切空，症状就是「已收到=[]」，看着像载荷没跑。
+# （真机首跑踩过：先误判成 .devmode，补了 touch 依旧红，根因在这里。）
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("NINT "+m)};
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
@@ -1410,7 +1413,7 @@ for i in $(seq 1 60); do
   newtlog | grep -q 'NINT ndone=1' && break
   sleep 0.5
 done
-newtlog | tail -n +$((NIN + 1)) | grep 'NINT' | "$PY" -c '
+newtlog | grep 'NINT' | "$PY" -c '
 import sys, re
 d = {}
 for l in sys.stdin:
@@ -1424,10 +1427,10 @@ assert int(d["clampAfter"]) < int(d["clampBefore"]), \
   "点「展开详情」后正文仍是收起态（clamp %s→%s）：tick 链断了，Vue 没重渲染" % (
     d["clampBefore"], d["clampAfter"])
 assert d["expAfter"] == "收起", "展开后按钮文案该是「收起」, got %r" % d["expAfter"]
-assert d["empty"] == "True", "笔记清空后没出空态块（.empty）：Vue 的 v-if 分支没生效"
+assert d["empty"] == "true", "笔记清空后没出空态块（.empty）：Vue 的 v-if 分支没生效"
 assert int(d["restored"]) == n, "恢复笔记后卡片数不对（%s→%s）" % (n, d["restored"])
-assert d["missed"] == "True", "造了 MISSED 数据但 .missed 横幅没渲染"
-assert d["clip"] == "True", "造了 clip 计数但 .clipbanner 横幅没渲染（live() 没包？）"
+assert d["missed"] == "true", "造了 MISSED 数据但 .missed 横幅没渲染"
+assert d["clip"] == "true", "造了 clip 计数但 .clipbanner 横幅没渲染（live() 没包？）"
 assert d["order"] == "ok", "首页横幅顺序不对：该是错过提醒 → 新截图 → 剪贴板"
 assert d["dlg"] == "删除", "delNote 没弹确认框, got %r" % d["dlg"]
 assert int(d["delAfter"]) == int(d["delBefore"]) - 1, \
