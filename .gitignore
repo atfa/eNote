@@ -13,3 +13,5 @@ __pycache__/
 # build.sh 每次构建重写（git sha + 构建时间），是构建产物不是源码；
 # 不忽略的话每次构建都把工作区弄脏，Duo 的 EXECUTE 签名就没法签。
 go/ui/build.json
+# test.sh 的 VDIFF 后继夹具：每次跑套件现造（make_test_png.py 掺随机噪点带），是运行时产物不是源码。
+.test/vds-*.png
