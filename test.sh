@@ -1270,8 +1270,13 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
   var L=function(m){console.log("VDIFF "+m)};
   var E=window.__enote||{};
   if(!E.legacy||!E.legacy.notes){ L("skip=no-legacy"); L("done=1"); return; }
+  /* 上一版夹具「一条 VDIFF 也没打出来」：Vue 分支里某个组件渲染抛异常时，nextTick 的
+     promise 永不兑现，await render() 挂死，症状就是「载荷没跑完」。所以 render() 加 4s
+     兜底 + 全程 try/catch 把异常打进日志——夹具本身要永远给结论，不能跟着一起挂。 */
+  try {
   __enote.state.tab="notes";
-  await render();
+  await Promise.race([render(), new Promise(function(r){ setTimeout(r, 4000) })]);
+  L("rendered=1");
   var pane=document.querySelector(".pane[data-tab=notes]");
   if(!pane){ L("skip=no-pane"); L("done=1"); return; }
   var vueHtml=pane.innerHTML, oldHtml=E.legacy.notes();
@@ -1296,6 +1301,7 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
     L("old="+JSON.stringify(A.slice(Math.max(0,i-80),i+80)));
     L("vue="+JSON.stringify(B.slice(Math.max(0,i-80),i+80)));
   }
+  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
   L("done=1");
 })()' > "$TMPDIR/jsvdiff.json"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsvdiff.json'"
