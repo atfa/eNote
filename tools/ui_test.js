@@ -199,6 +199,64 @@ if (missing.size) {
   ok('内联 handler ' + handlerCount + ' 处引用的函数全部存在（页面顶层声明 ' + declared.size + ' 个）');
 }
 
+// ---------- 闸门①b Vue 模板的 @click / v-on: 同样必须在导出表里（步骤 5 起）----------
+// 视图转 Vue 后 handler 从 onclick="foo()" 变成 @click="foo()"，上面的 handlerRe 抓不到。
+// 不补这条的话，闸门① 验的集合会随迁移**静默缩小**：模板里把 delNote 打成 delNot，
+// 页面不报错、端到端全绿，正是 P12 那一类。迁移期两种写法并存，所以两条都要跑，
+// 并且断言「两者之和」不低于迁移前的基线——视图迁移时把按钮整条丢掉也会红。
+const VUE_BUILTIN = new Set(['$event', '$emit', '$props', '$slots', '$refs', '$el', '$attrs',
+  '$nextTick', '$forceUpdate', '$index', '$id', '$watch', '$data', '$options', '$parent']);
+const vueHandlerRe = /(?:@|v-on:)(click|input|change|keyup|keydown|focus|blur|submit|click\.stop|click\.prevent|input\.change|keyup\.enter)="([^"]*)"/g;
+
+const vueMissing = new Map();
+let vueCount = 0;
+for (const m of uiUnescaped.matchAll(vueHandlerRe)) {
+  vueCount++;
+  for (const stmt of m[2].split(/;\s*/)) {
+    const t = stmt.trim();
+    if (!t) continue;
+    // 模板里允许内联箭头：@click="() => delNote(n.id)"，先剥掉箭头前缀再取调用名
+    const body = t.replace(/^\(?[\w$,\s{}\[\]'"]*\)?\s*=>\s*/, '');
+    const call = body.match(/^([A-Za-z_$][\w$]*)\s*\(/);
+    if (!call) continue;
+    const name = call[1];
+    if (BUILTIN.has(name) || VUE_BUILTIN.has(name) || domain.has(name)) continue;
+    vueMissing.set(name, (vueMissing.get(name) || 0) + 1);
+  }
+}
+if (vueMissing.size) {
+  bad('Vue 模板里的 @click/v-on 调了导出表里没有的函数（点了没反应）',
+    [...vueMissing].map(([k, v]) => k + '×' + v).join(', '));
+}
+
+// 迁移期基线：步骤 4 实测 69 处内联 handler（onclick 68 + oninput 1）。
+// 视图转 Vue 后内联的减少、模板的增加，总数不该掉——掉了就是迁移时把控件丢了。
+const HANDLER_BASELINE = 70;   // 闸门① 同一次扫描实测的内联数，不是 python 数的 69（那个漏了 oninput="event…"）
+const total = handlerCount + vueCount;
+if (STRICT && total < HANDLER_BASELINE) {
+  bad('handler 总数从 ' + HANDLER_BASELINE + ' 掉到 ' + total
+    + '（内联 ' + handlerCount + ' + Vue 模板 ' + vueCount + '）',
+    '迁移视图时整条控件被丢掉是静默的：老 handler 删了，新模板里那一条没写上');
+} else if (STRICT) {
+  ok('handler 总数 ' + total + '（内联 ' + handlerCount + ' + Vue 模板 ' + vueCount
+    + '）≥ 基线 ' + HANDLER_BASELINE + (vueCount ? '，Vue 模板部分已解析' : '，尚无 Vue 模板'));
+}
+
+// ---------- 闸门①c 组件必须真的会重绘（V.tick 拉模型的前提）----------
+// 组件不持有数据、直接读模块状态（S/SR/P()/open），靠 V.tick 这个响应式计数触发重算。
+// 渲染 effect 只跟踪响应式依赖：组件的渲染路径没读到 V.tick 的话，点了删除 → render()
+// → tick++ → 视图一动不动，而且不报错。这条是上面那套拉模型的存在前提，必须静态钉住。
+const viewFiles = jsSources.filter(([f]) => /(^|\/)views\/[\w-]+\.js$/.test(f));
+if (viewFiles.length) {
+  const noTick = viewFiles.filter(([, s]) => !/\bV\.tick\b|\btick\b/.test(s)).map(([f]) => f);
+  if (noTick.length) {
+    bad('Vue 视图文件里没有任何 tick 引用：' + noTick.join(', '),
+      '组件读的是非响应式的模块状态，渲染期不读 V.tick 就永远不重算（点了没反应，且不报错）');
+  } else {
+    ok('Vue 视图 ' + viewFiles.length + ' 个，渲染路径都引用了 tick（重绘有触发源）');
+  }
+}
+
 // ---------- 闸门③ 顶层声明不得重名（module 化是颗解析期炸弹）----------
 // 真事：app.js 有两份 function dueMs（:131 / :968）。普通脚本里 function 声明提升，
 // 后者覆盖前者，:131 那份从写下来就没跑过——静默遮蔽，测试全绿。ES module 不允许顶层
