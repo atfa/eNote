@@ -90,8 +90,8 @@ export const FoldersView = {
   },
   template: `
 <div class="cliptop">
-  <button class="btn sm" @click="H.folderSelAll(true)">全选</button>
-  <button class="btn sm" @click="H.folderSelAll(false)">全不选</button>
+  <button class="btn sm" id="folderSelAll" @click="H.folderSelAll(true)">全选</button>
+  <button class="btn sm" id="folderSelNone" @click="H.folderSelAll(false)">全不选</button>
   <button class="btn sm" @click="H.folderPickShots()">只选截图目录</button>
 </div>
 <div style="margin:8px 0 4px"><input id="folderQ" class="fin" placeholder="搜索文件夹" @input="H.folderFilter($event.target.value)"></div>

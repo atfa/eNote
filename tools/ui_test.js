@@ -377,11 +377,15 @@ function stripJsLiterals(src) {
 const CLOSED_FN = ['api', 'refresh', 'render', 'missedDismiss', 'missedSheet', 'folderPick',
   'folderSave', 'folderSheet', 'shotPick', 'shotSheet', 'folderFilter', 'closeSheet',
   // 步骤 8：进度层的入口/出口（测试直接调它们，比等一次真 AI 导入稳定）
-  'shotOverlay', 'shotOvlSub'];
+  'shotOverlay', 'shotOvlSub',
+  // 步骤 9：剪贴板页交互用例的入口（其余动作靠真点击 .clipitem / 按钮，不调函数）
+  'clipSheet'];
 const STATE_NAMES = ['tab', 'S', 'MISSED', 'open', 'shotSel', 'shotList', 'SR',
   // 步骤 8：文件夹页夹具要整体注入 folderAll/folderSel/folderQ（闭合集 17 → 20，
   // 与 app.js 的 __enote.state、go/web_test.go 的名单三处同步）。
-  'folderAll', 'folderSel', 'folderQ'];
+  // 步骤 9 再加 CLIPS / clipSel（闭合集 20 → 22）：剪贴板页夹具走真钩子，但交互用例
+  // 要读这两个名字断言勾选态。
+  'folderAll', 'folderSel', 'folderQ', 'clipList', 'clipSel'];
 const JS_WORDS = new Set(['var', 'let', 'const', 'if', 'else', 'for', 'while', 'do', 'return',
   'function', 'await', 'async', 'new', 'typeof', 'instanceof', 'in', 'of', 'try', 'catch', 'finally',
   'throw', 'break', 'continue', 'switch', 'case', 'default', 'class', 'extends', 'super', 'void',

@@ -14,6 +14,8 @@ import FilesView from './views/files.js'
 /* 步骤 8：截图暂存页 + 选文件夹页 + 导入进度层 */
 import { ShotsView, ShotProgress } from './views/shots.js'
 import FoldersView from './views/folders.js'
+/* 步骤 9：剪贴板暂存页 */
+import ClipSheetView from './views/clip.js'
 var tab = 'notes', open = {}, busy = {};
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
@@ -253,7 +255,12 @@ function askBattery(){
 }
 /** 通知点按后打开对应笔记（Java 侧调用）*/
 // ---- 剪贴板暂存（R7/P6）：横幅 + 批量勾选 + 一键解析 ----
+/* 步骤 9 转 Vue：clipList 是 /api/clip/list 的结果，clipLoading / clipError 是加载三态。
+   三个都会被整体赋值，进 setHost 必须走 getter（同 shotList / FA 的教训：传值的话
+   Vue 拿的是装配时那份快照，症状是「数据变了界面不动」）。 */
 var clipSel = {};
+var clipList = [];
+var clipLoading = false, clipError = '';
 function emptyState(icon, t, sub){
   return '<div class="empty"><div class="eo"><svg class="ic"><use href="#i-'+icon+'"/></svg></div>'
     + t + (sub ? '<div class="esub">'+sub+'</div>' : '') + '</div>';
@@ -451,8 +458,8 @@ function shotSheetHTML(){
   shotList.forEach(function(x){ if(shotSel[x.id]) n++ });
   var one = n <= 1;
   return '<div class="cliptop">'
-    + '<button class="btn sm" onclick="shotSelAll(true)">全选</button>'
-    + '<button class="btn sm" onclick="shotSelAll(false)">全不选</button>'
+    + '<button class="btn sm" id="shotSelAll" onclick="shotSelAll(true)">全选</button>'
+    + '<button class="btn sm" id="shotSelNone" onclick="shotSelAll(false)">全不选</button>'
     + '<div class="sp"></div>'
     + '<button class="btn sm dg" onclick="shotIgnoreSel()">忽略所选</button></div>'
     + '<div id="shotGrid" class="clipload">' + shotGridHTML() + '</div>'
@@ -474,8 +481,8 @@ function shotSheet(){
   }
   // 缩略图最多 50 张，操作按钮同样固定在底部条里（跟文件夹页一致）
   pageSheet('新截图', '<div class="cliptop">'
-    + '<button class="btn sm" onclick="shotSelAll(true)">全选</button>'
-    + '<button class="btn sm" onclick="shotSelAll(false)">全不选</button>'
+    + '<button class="btn sm" id="shotSelAll" onclick="shotSelAll(true)">全选</button>'
+    + '<button class="btn sm" id="shotSelNone" onclick="shotSelAll(false)">全不选</button>'
     + '<div class="sp"></div>'
     + '<button class="btn sm dg" onclick="shotIgnoreSel()">忽略所选</button></div>'
     + '<div id="shotGrid" class="clipload">加载中…</div>'
@@ -759,8 +766,8 @@ function folderSaveText(){
 /** VDIFF 的遗留侧：加载完之后 .pbody 应该长什么样（一次给出最终 DOM） */
 function folderSheetHTML(){
   return '<div class="cliptop">'
-    + '<button class="btn sm" onclick="folderSelAll(true)">全选</button>'
-    + '<button class="btn sm" onclick="folderSelAll(false)">全不选</button>'
+    + '<button class="btn sm" id="folderSelAll" onclick="folderSelAll(true)">全选</button>'
+    + '<button class="btn sm" id="folderSelNone" onclick="folderSelAll(false)">全不选</button>'
     + '<button class="btn sm" onclick="folderPickShots()">只选截图目录</button></div>'
     + '<div style="margin:8px 0 4px"><input id="folderQ" class="fin" placeholder="搜索文件夹" '
     + 'oninput="folderFilter(this.value)"></div>'
@@ -778,8 +785,8 @@ function folderSheet(){
   }
   // 确定按钮放底部固定条里：文件夹可能有几十个，滚到底才能点确定太难用了（用户反馈）
   var h = '<div class="cliptop">'
-    + '<button class="btn sm" onclick="folderSelAll(true)">全选</button>'
-    + '<button class="btn sm" onclick="folderSelAll(false)">全不选</button>'
+    + '<button class="btn sm" id="folderSelAll" onclick="folderSelAll(true)">全选</button>'
+    + '<button class="btn sm" id="folderSelNone" onclick="folderSelAll(false)">全不选</button>'
     + '<button class="btn sm" onclick="folderPickShots()">只选截图目录</button></div>'
     + '<div style="margin:8px 0 4px"><input id="folderQ" class="fin" placeholder="搜索文件夹" '
     + 'oninput="folderFilter(this.value)"></div>'
@@ -977,73 +984,135 @@ window.onClipRead = function(n, added){
   if(added) clipSheet();
   else toast(n > 0 ? '剪贴板里没有新文字（已暂存 '+n+' 条）' : '剪贴板是空的');
 };
+/* ---------- 步骤 9：剪贴板暂存页的叶子片段（遗留渲染器与 views/clip.js 共用） ----------
+   两条路径共用同一批函数，VDIFF 才逐字比得过（模式见 views/clip.js 顶部注释）。
+   esc 的分工（步骤 5 定的契约）：这些函数产出 HTML 字符串（遗留侧用），Vue 模板里用
+   原始值 + {{ }}（Vue 自己转义），所以模板侧不调 esc —— 调了就双重转义。
+   需要转义的片段因此有两个版本：*HTML 给遗留，*Text 给 Vue。 */
+function clipItemCls(c){ return 'clipitem' + (clipSel[c.id] ? ' on' : '') }
+function clipPrevHTML(c){
+  var t = String(c.text || '')
+  return esc(t.slice(0, 160)) + (c.text && c.text.length > 160 ? '…' : '')
+}
+function clipPrevText(c){
+  var t = String(c.text || '')
+  return t.slice(0, 160) + (c.text && c.text.length > 160 ? '…' : '')
+}
+/* 剪贴板里的图片没有缩略图（只有名字），画一个图标 + 「图片 · 名字」。
+   整段是一个字符串 → 解析后是一个文本节点；Vue 侧用 v-html 同一个字符串才等价。 */
+function clipThumbHTML(c){ return ic('image') + ' 图片' + (c.name ? ' · ' + esc(c.name) : '') }
+function clipThumbText(c){ return ' 图片' + (c.name ? ' · ' + c.name : '') }
+function clipMetaHTML(c){ return esc(c.app || '剪贴板') + ' · ' + relTime(c.createdAt) }
+function clipMetaText(c){ return (c.app || '剪贴板') + ' · ' + relTime(c.createdAt) }
+function clipItemHTML(c){
+  var on = !!clipSel[c.id]
+  var body = c.kind === 'image'
+    ? '<div class="climthumb">' + clipThumbHTML(c) + '</div>'
+    : '<div class="cliprev">' + clipPrevHTML(c) + '</div>'
+  return '<div class="clipitem' + (on ? ' on' : '') + '" onclick="clipPick(\'' + c.id + '\',this)">'
+    + '<div class="clicb">' + ic('check') + '</div>'
+    + '<div class="clipbody">' + body
+    + '<div class="climeta">' + clipMetaHTML(c) + '</div></div>'
+    /* 这里原来写的是 JSON.stringify(c.id)，双引号套在双引号属性里：浏览器在第一个内层
+       引号处就截断，DOM 里得到 onclick="clipDel(event,"（半个表达式，点一下抛 SyntaxError，
+       删除按钮从来没生效过）外加一个以 id 命名的野属性。步骤 9 的 VDIFF 一比就红。
+       id 由 newID() 生成，只含 [0-9a-z]，用单引号插值（与上面 clipPick 一致）。 */
+    + '<button class="clipdel" onclick="clipDel(event,\'' + c.id + '\')"'
+    + ' aria-label="删除这条">' + ic('x') + '</button></div>'
+}
+/** #clipList 里的内容：加载中 / 加载失败 / 空 / 列表（判定顺序与 loadClips 一致） */
+function clipListHTML(){
+  if(clipLoading) return '加载中…'
+  if(clipError) return '<div class="empty">加载失败</div>'
+  if(!clipList.length) return emptyState('inbox', '暂存区是空的')
+  var h = ''
+  clipList.forEach(function(c){ h += clipItemHTML(c) })
+  return h
+}
+/** 底部计数条：空暂存时是「<b>0</b> 条已选」（loadClips 的空态分支），有条目才是全式 */
+function clipCountHTML(){
+  if(!clipList.length) return '<b>0</b> 条已选'
+  var n = 0
+  clipList.forEach(function(c){ if(clipSel[c.id]) n++ })
+  return '<b>' + n + '</b> 条已选 · 共 ' + clipList.length + ' 条'
+}
+/** clipCount() 里那句按钮文案：只选一条时不带数字（一条没什么可「一键」的） */
+function clipParseText(n){ return n > 1 ? ('一键解析 ' + n + ' 条') : '一键解析' }
+/** VDIFF 的遗留侧：一次调用给出「加载完之后 .pbody 里应该长什么样」（同 shotSheetHTML） */
+function clipSheetHTML(){
+  var n = 0
+  clipList.forEach(function(c){ if(clipSel[c.id]) n++ })
+  return '<div class="cliptop">'
+    + '<button class="btn sm" id="clipSelAll" onclick="clipSelAll(true)">全选</button>'
+    + '<button class="btn sm" id="clipSelNone" onclick="clipSelAll(false)">全不选</button></div>'
+    + '<div id="clipList" class="clipload">' + clipListHTML() + '</div>'
+    + '<div class="pfoot" style="display:block">'
+    + '<div class="count" id="clipFoot" style="margin-bottom:8px">' + clipCountHTML() + '</div>'
+    + '<div style="display:flex;gap:8px">'
+    + '<button class="btn" style="flex:1" id="clipDelSel" onclick="clipDelSel()">删除所选</button>'
+    + '<button class="btn" style="flex:1.2" id="clipRaw" onclick="clipParse(false)">原样存为笔记</button>'
+    + '<button class="btn pri" style="flex:1.2" id="clipParseBtn" onclick="clipParse(true)">'
+    + clipParseText(n) + '</button>'
+    + '</div></div>'
+}
 function clipSheet(){
   // 暂存条数可能很多：操作按钮固定到底部，别让人滚到底才看得见（跟文件夹页一致）
+  if(VUE_SHEETS.clip){
+    clipLoading = true; clipError = ''
+    pageSheetVue('clip', '剪贴板暂存')
+    loadClips()
+    return
+  }
   pageSheet('剪贴板暂存', '<div class="cliptop">'
-    +'<button class="btn sm" onclick="clipSelAll(true)">全选</button>'
-    +'<button class="btn sm" onclick="clipSelAll(false)">全不选</button>'
+    +'<button class="btn sm" id="clipSelAll" onclick="clipSelAll(true)">全选</button>'
+    +'<button class="btn sm" id="clipSelNone" onclick="clipSelAll(false)">全不选</button>'
     +'</div>'
     +'<div id="clipList" class="clipload">加载中…</div>'
     +'<div class="pfoot" style="display:block">'
     +'<div class="count" id="clipFoot" style="margin-bottom:8px"></div>'
     +'<div style="display:flex;gap:8px">'
-    +'<button class="btn" style="flex:1" onclick="clipDelSel()">删除所选</button>'
-    +'<button class="btn" style="flex:1.2" onclick="clipParse(false)">原样存为笔记</button>'
-    +'<button class="btn pri" style="flex:1.2" onclick="clipParse(true)">一键解析</button>'
+    +'<button class="btn" style="flex:1" id="clipDelSel" onclick="clipDelSel()">删除所选</button>'
+    +'<button class="btn" style="flex:1.2" id="clipRaw" onclick="clipParse(false)">原样存为笔记</button>'
+    +'<button class="btn pri" style="flex:1.2" id="clipParseBtn" onclick="clipParse(true)">一键解析</button>'
     +'</div></div>');
   loadClips();
 }
 async function loadClips(){
   try{
     var r = await api('/api/clip/list');
-    var clips = (r && r.clips) || [];
-    S.info.clip = clips.length;
-    if(!clips.length){
-      var el = $('#clipList');
-      if(el) el.innerHTML = emptyState('inbox', '暂存区是空的');
-      var cc = $('#clipFoot') || $('#clipCount'); if(cc) cc.innerHTML = '<b>0</b> 条已选';
-      return;
-    }
-    var h = '';
+    clipList = (r && r.clips) || [];
+    S.info.clip = clipList.length;
     // clipSel 是全局的，只增不减的话「已选 N 条」会把早就处掉的旧 id 也算进去
     var keep = {};
-    clips.forEach(function(c){
-      keep[c.id] = clipSel[c.id] !== undefined ? clipSel[c.id] : true;
-      var on = !!clipSel[c.id];
-      var body = c.kind==='image'
-        ? '<div class="climthumb">'+ic('image')+' 图片'+(c.name?' · '+esc(c.name):'')+'</div>'
-        : '<div class="cliprev">'+esc(String(c.text||'').slice(0,160))+(c.text&&c.text.length>160?'…':'')+'</div>';
-      h += '<div class="clipitem'+(on?' on':'')+'" onclick="clipPick(\''+c.id+'\',this)">'
-        +'<div class="clicb">'+ic('check')+'</div>'
-        +'<div class="clipbody">'+body
-        +'<div class="climeta">'+esc(c.app||'剪贴板')+' · '+relTime(c.createdAt)+'</div></div>'
-        +'<button class="clipdel" onclick="clipDel(event,'+JSON.stringify(c.id)+')" aria-label="删除这条">'+ic('x')+'</button></div>';
-    });
+    clipList.forEach(function(c){ keep[c.id] = clipSel[c.id] !== undefined ? clipSel[c.id] : true });
     clipSel = keep;
-    var el2 = $('#clipList'); if(el2) el2.innerHTML = h;
+    clipLoading = false; clipError = '';
+    if(sheetApps.clip){ return sheetPaint() }   // Vue 路径：数据写完 bump tick 就够
+    var el2 = $('#clipList'); if(el2) el2.innerHTML = clipListHTML();
     clipCount();
   }catch(e){
+    clipError = String(e);
+    // Vue 路径：#clipList 的子节点是 Vue 管的，直接写 innerHTML 会与它的虚拟 DOM 抢；
+    // bump tick 让 clipListHTML 的三态判定重算就够了。
+    if(sheetApps.clip){ return sheetPaint() }
     var el3 = $('#clipList'); if(el3) el3.innerHTML = '<div class="empty">加载失败</div>';
   }
 }
 function clipPick(id, el){
   clipSel[id] = !clipSel[id];
+  if(sheetApps.clip){ return sheetPaint() }
   el.classList.toggle('on', !!clipSel[id]);
-  var cb = el.querySelector('.clicb');
-  if(cb) cb.classList.toggle('on', !!clipSel[id]);
   clipCount();
 }
 function clipSelAll(v){
   Object.keys(clipSel).forEach(function(k){ clipSel[k]=v; });
+  if(sheetApps.clip){ return sheetPaint() }
   var items = document.querySelectorAll('.clipitem');
-  for(var i=0;i<items.length;i++){
-    items[i].classList.toggle('on', v);
-    var cb = items[i].querySelector('.clicb');
-    if(cb) cb.classList.toggle('on', v);
-  }
+  for(var i=0;i<items.length;i++){ items[i].classList.toggle('on', v); }
   clipCount();
 }
 function clipCount(){
+  if(sheetApps.clip){ return sheetPaint() }   // Vue：计数与按钮文案都是 computed，bump tick 即可
   // 以页面上真正列出来的条目为准，不拿全局 map 计数
   var items = document.querySelectorAll('.clipitem');
   var n = 0;
@@ -1051,7 +1120,7 @@ function clipCount(){
   var el = $('#clipFoot') || $('#clipCount');
   if(el) el.innerHTML = '<b>' + n + '</b> 条已选 · 共 ' + items.length + ' 条';
   var b = $('#sheet .pfoot .btn.pri');
-  if(b) b.textContent = n > 1 ? ('一键解析 ' + n + ' 条') : '一键解析';
+  if(b) b.textContent = clipParseText(n);
 }
 function clipSelected(){
   return Object.keys(clipSel).filter(function(k){return clipSel[k]});
@@ -1454,7 +1523,7 @@ var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView };
    删掉一行就退回字符串路径。progress 不是弹层而是 body 级的进度层，生死与 sheet 一致
    （导入开始挂、导入结束销），共用 mountSheet 那张表。
    闸门⑮ 会查完整性：views/ 里 export const *View 必须出现在 VUE_VIEWS ∪ VUE_SHEETS。 */
-var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, progress: ShotProgress };
+var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, progress: ShotProgress, clip: ClipSheetView };
 /* 弹层开启序号（步骤 8）。closeSheet 的收起动画是 110ms，期间重开同一个弹层时迟到的
    回调会把刚 mountSheet 出来的新实例卸掉：DOM 还在 .panel 里但 app 已死，弹层空白且
    点了没反应。三个开启入口 bump，回调发现序号变了就直接放弃。 */
@@ -1946,7 +2015,7 @@ function closeSheet(){
        AI 解析完，进度层必须活过弹层。 */
     if(gen !== sheetGen) return;
     s.classList.remove('on'); s.classList.remove('closing');
-    unmountSheet('shots'); unmountSheet('folders');
+    unmountSheet('shots'); unmountSheet('folders'); unmountSheet('clip');
   }, 110);
 }
 $('#sheet').addEventListener('click', function(e){ if(e.target.id==='sheet') closeSheet(); });
@@ -2142,7 +2211,15 @@ var HOST = setHost({
   shotPick: shotPick, shotSelAll: shotSelAll, shotIgnoreSel: shotIgnoreSel,
   doImportShots: doImportShots,
   folderPick: folderPick, folderSelAll: folderSelAll, folderPickShots: folderPickShots,
-  folderFilter: folderFilter, folderSave: folderSave
+  folderFilter: folderFilter, folderSave: folderSave,
+  /* 步骤 9 加：ClipSheetView 的宿主接口（同上，漏一个就是静默回退字符串渲染器）。
+     clipList / clipSel 会被整体赋值（loadClips / clipParse），必须走 getter。 */
+  get clipList(){ return clipList }, get clipSel(){ return clipSel },
+  get clipLoading(){ return clipLoading }, get clipError(){ return clipError },
+  clipPick: clipPick, clipSelAll: clipSelAll, clipDel: clipDel,
+  clipDelSel: clipDelSel, clipParse: clipParse, relTime: relTime,
+  clipItemCls: clipItemCls, clipPrevText: clipPrevText, clipThumbText: clipThumbText,
+  clipMetaText: clipMetaText, clipCountHTML: clipCountHTML, clipParseText: clipParseText
 });
 
 /* Vue 路径的观测缝（步骤 6 加，步骤 5 就没写过）。
@@ -2165,6 +2242,7 @@ window.__enote.vue = { app:null, views:VUE_VIEWS, apps:apps,
                        folderPaint:function(){ return sheetApps.folders ? sheetPaint() : folderRender() },
                        /* 进度层夹具用：直接驱动一次进度层（不跑真导入也能验 DOM） */
                        shotPaint:function(){ return sheetPaint() },
+                       clipPaint:function(){ return sheetPaint() },
                        /* 步骤 7 加：宿主接口对象本身。jseval 载荷只能碰 window，而
                           filesNow / setTab 这类「刷新某一页」的函数不在导出表里（导出表
                           只服务内联 handler，加一个 key 就要动 Tony 的基线），测试要刷新
@@ -2253,6 +2331,10 @@ window.__enote.state = {
   get folderAll(){ return folderAll }, set folderAll(v){ folderAll = v },
   get folderSel(){ return folderSel }, set folderSel(v){ folderSel = v },
   get folderQ(){ return folderQ }, set folderQ(v){ folderQ = v },
+  /* 步骤 9 加：剪贴板页夹具与交互用例要读 clipList / clipSel（闭合集 20 → 22 名，
+     app.js / go/web_test.go / tools/ui_test.js 三处名单同步）。 */
+  get clipList(){ return clipList }, set clipList(v){ clipList = v },
+  get clipSel(){ return clipSel }, set clipSel(v){ clipSel = v },
   /* 步骤 5 加：SR 是 notesFiltered() 的第一优先级输入（if(SR.notes) return SR.notes），
      不暴露它，夹具把 S.notes 改成 [] 也画不出空态 —— 画的是服务端搜索结果那 2 条，
      症状是「Vue 视图的 computed 冻住了」，实测在这里烧了两轮探针才定位。
@@ -2288,7 +2370,9 @@ Object.assign(window.__enote, {
   legacy: { notes: renderNotes, todos: renderTodos, files: renderFiles,
             /* 步骤 8：弹层的遗留侧（VDIFF 的基准）。它们渲染的是「加载完之后」的 DOM，
                因为夹具比的是加载完的状态；shotSheet()/folderSheet() 写壳时是「加载中…」。 */
-            shots: shotSheetHTML, folders: folderSheetHTML },
+            shots: shotSheetHTML, folders: folderSheetHTML,
+            /* 步骤 9：剪贴板页的遗留侧（同样渲染「加载完之后」的形态）。 */
+            clip: clipSheetHTML },
   /* 夹具要在插入遗留字符串后跑一遍和 render() 相同的收尾（syncExpand 会按正文高度隐藏
      「展开详情」按钮），否则比的是「raw 字符串」对「收尾后的 DOM」。缝在 D17 上，步骤 11 一起删。 */
   afterPaint: afterPaint

@@ -79,8 +79,8 @@ export const ShotsView = {
   },
   template: `
 <div class="cliptop">
-  <button class="btn sm" @click="H.shotSelAll(true)">全选</button>
-  <button class="btn sm" @click="H.shotSelAll(false)">全不选</button>
+  <button class="btn sm" id="shotSelAll" @click="H.shotSelAll(true)">全选</button>
+  <button class="btn sm" id="shotSelNone" @click="H.shotSelAll(false)">全不选</button>
   <div class="sp"></div>
   <button class="btn sm dg" @click="H.shotIgnoreSel()">忽略所选</button>
 </div>

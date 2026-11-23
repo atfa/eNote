@@ -93,8 +93,32 @@ shoot vue-shots-dark "setTheme('dark'); await render(); shotSheet();"
 shoot vue-folders-light "setTheme('light'); await render(); folderSheet();"
 # 进度层：组件根带 v-if，未挂载时必须零残留（透明遮罩吃掉点击是用户能直接碰到的 bug）。
 shoot vue-progress "setTheme('light'); await render(); shotOverlay(true,3,'AI 正在解析：1 / 3 条完成');"
+# ---------- 步骤 9：剪贴板暂存页 ----------
+# 暂存条目只能由系统剪贴板产生（Go 侧只暴露 list/remove/parse/clear），所以夹具走
+# clipset 钩子：写剪贴板 → app 前台读取收进暂存区。三条文本必须互不相同（按内容去重）。
+# 要看的是勾选框、删除图标、底部计数条与主按钮文案在两条主题下都正常。
+# 三条之间隔 >5s：Go 侧 clipAdd 有「同来源 5s 内 → 覆盖最新一条」的规则（go/clip.go:124，
+# 钩子写进来的 app 都是 "hook"），连发会塌成一条，截图就只有一条可看。6s = 5s 去抖 + 1s 余量。
+IFI=0
+for t in "标题：周五采购 内容：牛奶、面包、电池" "https://example.com/very/long/path/for/clip/preview/truncation/$(date +%s)" "一键解析演示：这行会被原样存为笔记"; do
+  [ "$IFI" -gt 0 ] && sleep 6
+  asroot_global "am start --display $VDID -n $ACTIVITY --es hook clipset --es arg '$t'" >/dev/null
+  IFI=$((IFI + 1))
+done
+CN=0
+i=0
+while [ "$i" -lt 20 ]; do
+  CN=$(curl -s -m 30 "http://127.0.0.1:$PORT/api/clip/list" | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin).get("clips") or []))' 2>/dev/null || echo 0)
+  [ "$CN" -ge 3 ] && break
+  i=$((i + 1)); sleep 1
+done
+[ "$CN" -ge 3 ] || die "造剪贴板夹具只到 $CN 条（剪贴板页只能截到空态）"
+say "  剪贴板夹具已就位（$CN 条）"
+shoot vue-clip-light "setTheme('light'); await render(); clipSheet();"
+shoot vue-clip-dark "setTheme('dark'); await render(); clipSheet();"
 # 收干净：进度层关掉、弹层关掉、暂存夹具删掉，别让下一轮测试接到脏状态
 asroot_global "am start --display $VDID -n $ACTIVITY --es hook jseval --es arg '{\"js\":\"(async function(){ shotOverlay(false); closeSheet(); console.log(\\\"SHOT cleanup ok=1\\\") })()\"}'" >/dev/null
+curl -s -m 30 -X POST "http://127.0.0.1:$PORT/api/clip/clear" >/dev/null 2>&1 || true
 IDS=$(curl -s -m 30 "http://127.0.0.1:$PORT/api/shots/list" | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin).get("shots") or []]))')
 [ "$IDS" != "[]" ] && curl -s -m 60 -X POST "http://127.0.0.1:$PORT/api/shots/remove" -d "{\"ids\": $IDS}" >/dev/null
 # 恢复现场：补回刚删的笔记、主题回明色，别让下一轮测试接到脏状态。
@@ -110,3 +134,6 @@ say "唯一图片数：$n / 4"
 m=$(md5sum vue-shots-*.png vue-folders-*.png vue-progress.png 2>/dev/null | awk '{print $1}' | sort -u | wc -l)
 say "步骤 8 图片唯一数：$m / 4"
 [ "$m" -ge 4 ] || die "步骤 8 截图重复/缺失：弹层注入没生效（shots/folders/progress）"
+c=$(md5sum vue-clip-*.png 2>/dev/null | awk '{print $1}' | sort -u | wc -l)
+say "步骤 9 图片唯一数：$c / 2"
+[ "$c" -ge 2 ] || die "步骤 9 截图重复/缺失：clipSheet 注入没生效或剪贴板夹具没到位"

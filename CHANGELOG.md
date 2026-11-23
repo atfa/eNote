@@ -361,6 +361,62 @@
   模板 handler 11→20 个、`H.xxx` 40→59 个、暴露 `H` 的组件 6 个、导出表 60 key、状态桥 10 名、
   jseval 载荷 12→15 个、VDIFF 3 tab + 4 弹层遍、真机套件 54→59 项 ok。
 
+### 界面（P13 S3 步骤 9）：剪贴板暂存页转 Vue
+
+* **新增 `go/ui/js/views/clip.js`**（`ClipItem` / `ClipSheetView`），注册表加
+  `clip: ClipSheetView`，`clipSheet()` 走 `pageSheetVue('clip','剪贴板暂存')`，`closeSheet()`
+  的世代号收尾补 `unmountSheet('clip')`。遗留侧的 innerHTML 拼接抽成两条路径共用的叶子
+  函数：`clipItemCls` / `clipPrevText` / `clipThumbText` / `clipMetaText` / `clipItemHTML` /
+  `clipListHTML` / `clipCountHTML` / `clipParseText` / `clipSheetHTML`（VDIFF 基准，挂
+  `__enote.legacy.clip`）。
+* **模块变量 `clipList`（+ `clipLoading` / `clipError`）**取代「loadClips 直接写 innerHTML」；
+  状态桥加 `clipList` / `clipSel`（闭集 20→22 名，app.js / `go/web_test.go` /
+  `tools/ui_test.js` 三处名单同步）；`clipPick` / `clipSelAll` / `clipCount` 在 Vue 路径
+  `return sheetPaint()`。
+* **删掉遗留路径给 `.clicb` 加 `on` 的那次 class 切换**：CSS 里没有 `.clicb.on` 规则
+  （勾选态由 `.clipitem.on .clicb` 驱动），它一直是空操作；留着就是两条路径的 DOM 差一个类名。
+* **`loadClips()` 的 `clipSel` 清理不再在空列表分支提前 return**：旧代码 `clips.length===0`
+  时留着上一批的 id 不删（计数以页面条目为准所以看不出来，`clipDelSel` 会去删已经不存在的 id）。
+* **`clipDel` 的 HTML 引号 bug（VDIFF 抓出来的真 bug）**：遗留字符串写
+  `onclick="clipDel(event," + JSON.stringify(id) + ")"`，双引号套在双引号属性里，浏览器在第一
+  个内层引号就截断 → DOM 里是 `onclick="clipDel(event,"`（半个表达式，点一下抛 SyntaxError，
+  **剪贴板页每条的删除按钮从来没生效过**）外加一个以 id 命名的野属性。改成单引号插值
+  （id 由 `newID()` 生成，只含 `[0-9a-z]`）。
+* **稳定 id（Tony 步骤 8 的账）**：`#clipSelAll`/`#clipSelNone`、`#shotSelAll`/`#shotSelNone`、
+  `#folderSelAll`/`#folderSelNone`，clip 底部三按钮 `#clipDelSel`/`#clipRaw`/`#clipParseBtn`；
+  遗留字符串与 Vue 模板逐字同 id（VDIFF 比属性）。test.sh 里四处按下标选按钮全换成 id
+  （`querySelectorAll("#sheet .cliptop .btn.sm")[1]` 那种写法，加一个按钮就静默点错）。
+* **VDIFF 扩到 3 tab + 6 弹层遍**：`clip grid`（夹具走 clipset 钩子，轮询断言 ≥3 条，
+  不到位直接 fail 不 skip）+ `clip empty`（断言 `.empty`）。新增 **CIT** 真点击用例：
+  点 `.clipitem` 勾选数与 `#clipFoot` 同步、全选/全不选、主按钮文案随勾选数收敛、
+  点 `.clipdel` 删一条不顺手勾选（stopPropagation）、删除所选后就地换空态（弹层不关，与遗留一致）。
+* **`skip` 分支从「打印 ok 并跳过」改成判红**（Tony 提，本步收掉）：`vdiff_tab` / `vdiff_sheet` /
+  CIT / SIT 四处 python 侧原来见到 `skip=no-legacy` / `no-pane` / `no-sheet` / `no-vue-*` /
+  `no-items` 就 `print("  ok …")` + `exit 0`。混合期早就结束，五个 tab + 四个弹层的遗留基准
+  全在，缺任何一个都是「比较对象没了」，这一遍等于没测。改完 N6 反向实验（删
+  `__enote.legacy.clip`）从全绿变红。
+* **两个夹具坑（真机跑出来的）**：
+  1. `go/clip.go:124`「同来源 5s 内 → 覆盖最新一条」——钩子写进来的 app 都是 `hook`，
+     1s 连发三条实测塌成 1 条，网格那一遍没条目可比（第一次真机跑 fail 在这里）。三条夹具
+     改成间隔 6s，文本互不相同（完全相同的那条会被直接丢弃）。
+  2. `/api/clip/clear` 之后前台轮询会立刻把系统剪贴板上那条旧文本重新暂存，空态那一遍比的是
+     1 条列表 —— 先把剪贴板写成空格再 clear。
+  3. 计数条初始值不是「0 条已选」：`clipSel` 的冻结语义是首次见到某 id **默认选中**，所以
+     刚加载完是「N 条已选 · 共 N 条」、主按钮带条数（CIT 第一版按「默认全不选」写断言，
+     真机跑出来才发现）。三条 clipset 给套件带来 +12s（6s = `go/clip.go:124` 的 5s 去抖 + 1s 余量）。
+* **反向实验六条（全部在真机 / 静态闸门上实测过）**：删注册表 `clip: ClipSheetView` →
+  `go/web_test.go` FAIL；删状态桥 `clipList` → `go/web_test.go` FAIL；`ClipItem` 不暴露 `H` →
+  闸门⑮ 红；删 `:tick="tick"` → 闸门⑮ 红；`computed` 不包 `live()` → 闸门⑮ 红；
+  删 `__enote.legacy.clip` → **改 skip 分支前全绿**（真机 VDIFF 只打印
+  `ok (skip=no-legacy)`），改完判红：`AssertionError: clip 这一遍没比成（no-legacy）：
+  VDIFF 的基准/挂载点缺失，不许绿`。
+* **视觉**：`tools/shots_vue.sh` 扩到 10 张（新增 `vue-clip-light` / `vue-clip-dark`，夹具走
+  clipset 钩子 + 轮询断言 ≥3 条，自检明暗两张不同）。
+* 数字：Vue 模板 15→17 个（⑮ 扫 13→15）、注册表 3 视图 + 3→4 弹层、组件 tick prop 10→11、
+  模板 handler 20→24、`H.xxx` 59→74、暴露 `H` 的组件 6→8、导出表 60 key、状态桥 10→12 名、
+  jseval 载荷 15→16 个、VDIFF 4→6 弹层遍、真机套件 59→63 项 ok（新增夹具 + clip grid /
+  clip empty 两遍 VDIFF + CIT 真点击），套件时长 +约 15s（三条 clipset 夹具各隔 6s）。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome

@@ -1223,11 +1223,11 @@ N0T=$(readtlog | wc -l)
     // 真点一下 全选：上面全是直接调函数，而模板里的 H.xxx 要组件在 setup() 里返回 H 才能
     // 解析（Vue 把模板表达式编成 _ctx.H.xxx(...)），没返回时渲染期不碰它就不报错，
     // 点一下才抛 undefined —— 只有真点击能抓到（步骤 8 实测：截图页 全选 就这么死的）。
-    var ab=q("#sheet .cliptop .btn.sm");
+    var ab=q("#sheet #folderSelAll");
     L("allBtn="+(ab?ab.textContent:"?"));
     if(ab){ ab.click(); await new Promise(function(r){ setTimeout(r,300) });
       L("allSel="+document.querySelectorAll("#folderList .frow.on").length); }
-    var nb=document.querySelectorAll("#sheet .cliptop .btn.sm")[1];
+    var nb=q("#sheet #folderSelNone");
     if(nb){ nb.click(); await new Promise(function(r){ setTimeout(r,300) });
       L("noneSel="+document.querySelectorAll("#folderList .frow.on").length); }
     // 恢复成测试开头那个目录选中，folderSave 写回后「我的」页计数才能对上
@@ -1403,6 +1403,7 @@ js = r'''(async function(){
   var TAB="__TAB__";
   var L=function(m){console.log("VDIFF "+m)};
   var E=window.__enote||{};
+  // 这些 skip 现在都会被 python 侧判红（比较对象缺失 = 没测）
   if(!E.legacy||!E.legacy[TAB]){ L("skip=no-legacy"); L("done=1"); return; }
   /* 上一版夹具「一条 VDIFF 也没打出来」：Vue 分支里某个组件渲染抛异常时，nextTick 的
      promise 永不兑现，await render() 挂死，症状就是「载荷没跑完」。所以 render() 加 4s
@@ -1412,6 +1413,7 @@ js = r'''(async function(){
   await Promise.race([render(), new Promise(function(r){ setTimeout(r, 4000) })]);
   L("rendered=1");
   var pane=document.querySelector(".pane[data-tab="+TAB+"]");
+  // 这些 skip 现在都会被 python 侧判红（比较对象缺失 = 没测）
   if(!pane){ L("skip=no-pane"); L("done=1"); return; }
   var vueHtml=pane.innerHTML, oldHtml=E.legacy[TAB]();
   /* 遗留字符串要过一遍和 render() 相同的收尾再比：syncExpand 会按正文高度把「展开详情」
@@ -1477,8 +1479,11 @@ d = {}
 for l in lines:
     m = re.search(r"VDIFF (\w+)=(.*)", l)
     if m: d[m.group(1)] = m.group(2).strip()
+# skip 一律算红：混合期早就结束，五个 tab / 四个弹层的遗留基准全在，缺任何一个都是
+# 「比较对象没了」——这一遍等于没测。反向实验：删掉 __enote.legacy.clip 后整套全绿，
+# 就是被这里的 ok 分支骗过去的（Tony 提出，步骤 9 收掉）。
 if d.get("skip"):
-    print("  ok (%s：%s 尚未转 Vue，混合期正常)" % (d["skip"], tab)); sys.exit(0)
+    raise AssertionError("%s 这一遍没比成（%s）：VDIFF 的基准/挂载点缺失，不许绿" % (tab, d["skip"]))
 assert d.get("done") == "1", "VDIFF 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
 assert d.get("same"), "%s：Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  旧: %s\n  Vue: %s" % (
     tab, d.get("at"), d.get("old", "")[:200], d.get("vue", "")[:200])
@@ -1507,6 +1512,7 @@ js = r'''(async function(){
   var NAME="__NAME__", MODE="__MODE__";
   var L=function(m){console.log("VDS "+m)};
   var E=window.__enote||{};
+  // 这些 skip 现在都会被 python 侧判红（比较对象缺失 = 没测）
   if(!E.legacy||!E.legacy[NAME]){ L("skip=no-legacy"); L("done=1"); return }
   try{
     L("isvue="+(E.vue.isVueSheet(NAME)?1:0));
@@ -1528,6 +1534,15 @@ js = r'''(async function(){
       } else if(MODE==="empty"){ E.state.folderAll=[]; E.state.folderSel={}; }
       E.vue.folderPaint();
       await new Promise(function(r){setTimeout(r,200)});
+    } else if(NAME==="clip"){
+      /* 剪贴板页的夹具来自系统剪贴板（shell 侧用 clipset 钩子预先造好，Go 侧没有
+         「建暂存」的 HTTP 接口），这里只负责开页并等 loadClips() 画完。 */
+      clipSheet();
+      await new Promise(function(res){ var t=0;(function probe(){
+        var b=document.querySelector("#sheet .pbody");
+        if((b&&(b.querySelector(".clipitem")||b.querySelector(".empty")))||t>20){res();return}
+        t++; setTimeout(probe,200);
+      })(); });
     } else {
       shotSheet();
       await new Promise(function(res){ var t=0;(function probe(){
@@ -1537,6 +1552,7 @@ js = r'''(async function(){
       })(); });
     }
     var body=document.querySelector("#sheet .pbody");
+    // 弹层容器不在（#sheet .pbody）→ 没对象可比，python 侧判红
     if(!body){ L("skip=no-sheet"); L("done=1"); return }
     L("mounted="+(E.vue.sheets[NAME]?1:0));
     L("items="+body.querySelectorAll(".shotitem").length);
@@ -1545,6 +1561,8 @@ js = r'''(async function(){
     L("empty="+(body.querySelector(".empty")?1:0));
     L("foot="+(body.querySelector("#shotFoot")?body.querySelector("#shotFoot").textContent.replace(/\s+/g," "):""));
     L("count="+(body.querySelector("#folderCount")?body.querySelector("#folderCount").textContent.replace(/\s+/g," "):""));
+    L("clips="+body.querySelectorAll(".clipitem").length);
+    L("cfoot="+(body.querySelector("#clipFoot")?body.querySelector("#clipFoot").textContent.replace(/\s+/g," "):""));
     var vueHtml=body.innerHTML, oldHtml=E.legacy[NAME]();
     function ser(n){
       if(n.nodeType===3) return (n.nodeValue||"").replace(/\s+/g," ").trim();
@@ -1594,8 +1612,11 @@ d = {}
 for l in lines:
     m = re.search(r"VDS (\w+)=(.*)", l)
     if m: d[m.group(1)] = m.group(2).strip()
+# skip 一律算红：混合期早就结束，五个 tab / 四个弹层的遗留基准全在，缺任何一个都是
+# 「比较对象没了」——这一遍等于没测。反向实验：删掉 __enote.legacy.clip 后整套全绿，
+# 就是被这里的 ok 分支骗过去的（Tony 提出，步骤 9 收掉）。
 if d.get("skip"):
-    print("  ok (%s：%s 尚未转 Vue，混合期正常)" % (d["skip"], name)); sys.exit(0)
+    raise AssertionError("%s 这一遍没比成（%s）：VDIFF 的基准/挂载点缺失，不许绿" % (name, d["skip"]))
 assert d.get("done") == "1", "VDS 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
 assert d.get("ERR") is None, "%s：浮层页前端抛异常：%s" % (name, d.get("ERR"))
 # 正向断言「这一页真的由 Vue 挂载」：VDIFF 比 DOM，而两条路径的 DOM 按设计逐字相同，
@@ -1604,18 +1625,29 @@ assert d.get("isvue") == "1", "%s：不在 VUE_SHEETS 注册表里，这一页�
 assert d.get("mounted") == "1", "%s：注册表有但 app 没挂载（pageSheetVue 没调到 mountSheet？）" % name
 assert d.get("same"), "%s %s：Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  旧: %s\n  Vue: %s" % (
     name, mode, d.get("at"), d.get("old", "")[:200], d.get("vue", "")[:200])
-if mode == "grid":
+if mode == "grid" and name == "shots":
     assert int(d.get("items", 0)) >= 2, "截图页网格那一遍没卡片（items=%s）：夹具没到位，这一遍是空跑" % d.get("items")
+if mode == "grid" and name == "clip":
+    assert int(d.get("clips", 0)) >= 2, "剪贴板页那一遍没条目（clips=%s）：clipset 夹具没到位，这一遍是空跑" % d.get("clips")
+    # 冻结语义：clipSel 首次见到某 id 默认**选中**，所以刚加载完是全选，计数条是
+    # 「N 条已选 · 共 N 条」（不是 0 条已选）。
+    assert d.get("cfoot") == "%s 条已选 · 共 %s 条" % (d.get("clips"), d.get("clips")), \
+      "剪贴板页计数条不对（实际 %r）：默认全选中，计数条应是「N 条已选 · 共 N 条」" % d.get("cfoot")
 if mode == "empty" and name == "shots":
     assert d.get("empty") == "1" and int(d.get("items", 0)) == 0, \
       "截图页空态那一遍没比到空态（empty=%s items=%s）" % (d.get("empty"), d.get("items"))
+if mode == "empty" and name == "clip":
+    assert d.get("empty") == "1" and int(d.get("clips", 0)) == 0, \
+      "剪贴板页空态那一遍没比到空态（empty=%s clips=%s）：系统剪贴板上那条旧文本会被前台轮询重新暂存" % (d.get("empty"), d.get("clips"))
+    assert d.get("cfoot") == "0 条已选", \
+      "剪贴板页空态的计数条不对（实际 %r）：空暂存时是「<b>0</b> 条已选」，不带「· 共 N 条」" % d.get("cfoot")
 if mode == "fake":
     assert int(d.get("rows", 0)) == 3, "文件夹页夹具该有 3 行（rows=%s）" % d.get("rows")
 if mode == "empty" and name == "folders":
     assert d.get("empty") == "1" and int(d.get("rows", 0)) == 0, \
       "文件夹页空态那一遍没比到空态（empty=%s rows=%s）" % (d.get("empty"), d.get("rows"))
-print("  ok (%s %s 规范化后 DOM 逐字一致，长度 %s；items=%s rows=%s empty=%s)" % (
-    name, mode, d.get("len"), d.get("items"), d.get("rows"), d.get("empty")))
+print("  ok (%s %s 规范化后 DOM 逐字一致，长度 %s；items=%s rows=%s clips=%s empty=%s)" % (
+    name, mode, d.get("len"), d.get("items"), d.get("rows"), d.get("clips"), d.get("empty")))
 ' "$VD_NAME" "$VD_MODE"
 asroot_global "rm -f '$DATA/enote/.devmode'"
 }
@@ -1638,6 +1670,173 @@ vdiff_sheet folders fake
 vdiff_sheet folders empty
 asroot_global "rm -f '$VDS_EXT/vds-a.png' '$VDS_EXT/vds-b.png'"
 
+# ---- 步骤 9：剪贴板暂存页（clipSheet）的 VDIFF + 真点击交互 ----
+# 暂存条目只能由系统剪贴板产生：Go 侧只暴露 list/remove/parse/clear，写入走 JNI
+# nativeClipAdd（前台轮询 / clipset 钩子）。三条文本必须互不相同：clipAdd 按内容
+# 签名去重，重复文本只留一条，夹具就永远凑不到 3 条。
+step "剪贴板页 Vue 与遗留渲染逐字一致（有内容 / 空态）"
+api_post clip/clear '' >/dev/null 2>&1 || true
+CLIPFIX=$(date +%s)
+# 三条之间必须隔 >5s：Go 侧 clipAdd 有「同来源 5s 内 → 覆盖最新一条」的规则
+# （go/clip.go:124，钩子写进来的 app 都是 "hook"），1s 间隔连发三条会塌成一条（实测夹具
+# 只到 1 条，网格那一遍没条目可比）。6s = 那 5s 去抖窗口 + 1s 余量；三条夹具给整套
+# 增加约 12s（步骤 9 记账）。文本也要互不相同，完全相同的那条会被直接丢弃。
+IFI=0
+for t in "VDIFF 甲 $CLIPFIX" "VDIFF 乙 $CLIPFIX" "VDIFF 丙 $CLIPFIX"; do
+  [ "$IFI" -gt 0 ] && sleep 6
+  am_start "$ACTIVITY" "--es hook clipset --es arg '$t'"
+  IFI=$((IFI + 1))
+done
+n=0
+while [ "$n" -lt 25 ]; do
+  CN=$(api_get clip/list | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin).get("clips") or []))')
+  [ "$CN" -ge 3 ] && break
+  sleep 1; n=$((n + 1))
+done
+api_get clip/list | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+clips = d.get("clips") or []
+assert len(clips) >= 3, "剪贴板夹具只到 %d 条（需要 ≥3）：clipset 钩子没被前台读取收进暂存区" % len(clips)
+print("  ok (剪贴板夹具 %d 条)" % len(clips))
+' || fail "造剪贴板暂存夹具失败（剪贴板页网格那一遍没条目可比）"
+vdiff_sheet clip grid
+
+step "剪贴板页交互在 Vue 路径上真的生效（勾选/全选/计数/单条删除/删除所选）"
+# 同截图页：DOM 夹具比的是「画出来一样」，computed 读普通模块变量时签名与夹具全绿
+# 而界面纹丝不动（步骤 6 的 ClipBanner）。这里全部走真点击，包括 .clipdel 的
+# stopPropagation（点删除顺手把这条勾上是最容易漏的回归）。
+# 未覆盖的一支：clipError（#clipList 里的「加载失败」）要 /api/clip/list 抛错才进得去，
+# 测试侧没有让 Go 报错的通道（fetch 在 WebView 里，钩子改不了它）。这一支目前只由
+# clipListHTML() 与 Vue 模板共用同一份字符串保证一致（VDIFF 的 empty 那遍比的是空态，
+# 不是失败态）；步骤 11 删掉遗留路径后要用「注入假 fetch」补。
+NCIT=$(readtlog | wc -l)
+"$PY" - > "$TMPDIR/js_clip_int.json" <<'PYCIT'
+import json
+js = r'''(async function(){
+  var L=function(m){console.log("CIT "+m)};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
+  var E=window.__enote||{};
+  var q=function(){ return qa("#sheet .clipitem") };
+  var on=function(){ var n=0; q().forEach(function(x){ if(x.classList.contains("on")) n++ }); return n };
+  var foot=function(){ var e=document.querySelector("#clipFoot"); return e?e.textContent.replace(/\s+/g,""):"" };
+  var pri=function(){ var e=qa("#sheet .pfoot .btn.pri")[0]; return e?e.textContent.replace(/\s+/g,""):"" };
+  var top=function(){ return [document.querySelector("#sheet #clipSelAll"),
+      document.querySelector("#sheet #clipSelNone")] };
+  // 注册表没注册 clip / 弹层没挂 Vue → 这一遍没东西可点，python 侧判红（不许静默 skip）
+  if(!E.vue||!E.vue.isVueSheet||!E.vue.isVueSheet("clip")){ L("skip=no-vue-clip"); L("done=1"); return }
+  try{
+    clipSheet();
+    for(var t=0;t<20 && !q().length;t++) await sleep(200);
+    L("isvue=1"); L("mounted="+(E.vue.sheets.clip?1:0));
+    L("n="+q().length);
+    // 夹具没到位（列表空）→ 断言全空跑，python 侧判红
+    if(!q().length){ L("skip=no-items"); L("done=1"); return }
+    // 冻结语义：clipSel 首次见到某 id 默认**选中**（keep[id] = clipSel[id] !== undefined
+    // ? clipSel[id] : true），所以刚开页是全选，不是全不选。
+    L("on0="+on()); L("foot0="+foot()); L("pri0="+pri());
+    q()[0].click();                       // 真点击一条：勾选 + 计数 + 按钮文案三处同步动
+    await sleep(300);
+    L("on1="+on()); L("foot1="+foot()); L("pri1="+pri());
+    top()[1].click();                     // 全不选
+    await sleep(300);
+    L("on2="+on()); L("foot2="+foot()); L("pri2="+pri());
+    top()[0].click();                     // 全选
+    await sleep(300);
+    L("on3="+on()); L("foot3="+foot()); L("pri3="+pri());
+    // 单条删除：先全选（勾选数 = 行数），再点第一条的 .clipdel。stopPropagation 失效时
+    // 这一次点击会先被 clipPick 收到，症状是「删一条掉两条」（行数 -1、勾选 -2），
+    // 所以行数与勾选数都要断言。
+    top()[0].click();
+    await sleep(250);
+    var n0=q().length, onb=on();
+    var did=q()[0].querySelector(".clipdel");
+    var did0=E.state.clipList[0]&&E.state.clipList[0].id;
+    did.click();
+    for(var t2=0;t2<25 && q().length>=n0;t2++) await sleep(200);
+    L("beforeDel="+n0); L("onBeforeDel="+onb);
+    for(var t2b=0;t2b<25 && on()>=onb;t2b++) await sleep(200);
+    L("afterDel="+q().length); L("onAfterDel="+on());
+    L("selAfterDel="+(E.state.clipSel[did0]?1:0));
+    // 删除所选：全选 → 点「删除所选」→ 删完后弹层不关，就地换成空态（遗留行为：
+    // clipRemove 只重拉列表，loadClips 的空态分支把 #clipList 换成 emptyState）
+    top()[0].click();
+    await sleep(250);
+    L("onBeforeDelAll="+on());
+    document.querySelector("#sheet #clipDelSel").click();
+    for(var t3=0;t3<30 && q().length;t3++) await sleep(200);
+    await sleep(300);
+    L("afterDelAll="+q().length);
+    L("emptyAfterDel="+(document.querySelector("#sheet .empty")?1:0));
+    L("footAfterDel="+foot());
+    L("sheetMounted="+(E.vue.sheets.clip?1:0));
+  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
+  try{ closeSheet() }catch(e){}
+  L("done=1");
+})()'''
+print(json.dumps({"js": js}))
+PYCIT
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/js_clip_int.json'"
+for i in $(seq 1 40); do
+  readtlog | tail -n +$((NCIT + 1)) | grep -q 'CIT done=1' && break
+  sleep 0.5
+done
+readtlog | tail -n +$((NCIT + 1)) | grep 'CIT' | "$PY" -c '
+import sys, re
+lines = [l.strip() for l in sys.stdin if "CIT" in l]
+d = {}
+for l in lines:
+    m = re.search(r"CIT (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+# skip 算红（同 vdiff_*）：clip 页没挂 Vue 或夹具没到位，这一遍就是空跑
+if d.get("skip"):
+    raise AssertionError("剪贴板页交互这一遍没跑成（%s）：Vue 没挂载或夹具没到位" % d["skip"])
+assert d.get("done") == "1", "CIT 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+assert d.get("ERR") is None, "剪贴板页交互：前端抛异常：%s" % d.get("ERR")
+assert d.get("isvue") == "1" and d.get("mounted") == "1", \
+  "剪贴板页没走 Vue（isvue=%s mounted=%s）：这一遍比的是遗留路径" % (d.get("isvue"), d.get("mounted"))
+n = int(d.get("n", 0))
+assert n >= 2, "剪贴板页没条目（n=%s）：夹具没到位，这一遍是空跑" % d.get("n")
+assert int(d.get("on0", 0)) == n, "开页应默认全选中（on0=%s n=%s）：clipSel 的「首次见到默认选中」是冻结语义" % (d.get("on0"), n)
+assert d.get("foot0") == "%s条已选·共%s条" % (n, n), "开页计数条不对（实际 %r）" % d.get("foot0")
+assert d.get("pri0") == ("一键解析%s条" % n if n > 1 else "一键解析"), \
+  "开页主按钮文案不对（实际 %r，n=%s）" % (d.get("pri0"), n)
+assert int(d.get("on1", -1)) == n - 1, "点一条应取消那一条（on1=%s n=%s）：tick 链断了" % (d.get("on1"), n)
+assert d.get("foot1") == "%s条已选·共%s条" % (n - 1, n), "点一条后计数没动（实际 %r）" % d.get("foot1")
+assert d.get("pri1") == ("一键解析%s条" % (n - 1) if n - 1 > 1 else "一键解析"), \
+  "选 %s 条时主按钮文案不对（实际 %r）：n>1 才带数字" % (n - 1, d.get("pri1"))
+assert d.get("on2") == "0", "全不选后应一个不剩（on2=%s）" % d.get("on2")
+assert d.get("foot2") == "0条已选·共%s条" % n, "全不选后计数条不对（实际 %r）" % d.get("foot2")
+assert d.get("pri2") == "一键解析", "只选 0 条时主按钮不该带数字（实际 %r）" % d.get("pri2")
+assert d.get("on3") == str(n), "全选后应全部勾中（on3=%s n=%s）" % (d.get("on3"), n)
+assert d.get("foot3") == "%s条已选·共%s条" % (n, n), "全选后计数不对（实际 %r）" % d.get("foot3")
+assert d.get("pri3") == "一键解析%s条" % n, "全选后主按钮应带条数（实际 %r）" % d.get("pri3")
+assert int(d.get("beforeDel", n)) == n, "单条删除前行数不对（%s，夹具是 %s 条）" % (d.get("beforeDel"), n)
+assert int(d.get("onBeforeDel", 0)) == n, "单条删除前全选没生效（onBeforeDel=%s n=%s）" % (d.get("onBeforeDel"), n)
+assert int(d.get("afterDel", n)) == n - 1, "点 .clipdel 后条目数没少 1（%s → %s）" % (n, d.get("afterDel"))
+assert int(d.get("onAfterDel", n)) == n - 1, \
+  "点 .clipdel 勾选数掉得不止那一条（%s → %s）：stopPropagation 没生效，点击顺手翻了勾选" % (
+    d.get("onBeforeDel"), d.get("onAfterDel"))
+assert d.get("selAfterDel") == "0", "点 .clipdel 顺手把这条勾上了（stopPropagation 没生效）"
+assert int(d.get("onBeforeDelAll", 0)) >= 1, "删除所选前没东西可删（onBeforeDelAll=%s）" % d.get("onBeforeDelAll")
+assert d.get("afterDelAll") == "0", "删除所选后条目没清光（afterDelAll=%s）" % d.get("afterDelAll")
+assert d.get("emptyAfterDel") == "1", "删完后弹层里没出现空态（空暂存是剪贴板页的主路径之一）"
+assert d.get("footAfterDel") == "0条已选", "删完后计数条不对（实际 %r）" % d.get("footAfterDel")
+assert d.get("sheetMounted") == "1", "弹层被意外卸载（遗留行为是就地换空态，不关页）"
+print("  ok (真点击 %s 条：勾选 %s→%s、计数 %r、全选/全不选、按钮文案收敛、"
+      "单条删除不顺手勾选、删除所选后就地换空态)" % (
+    n, d.get("on0"), d.get("on1"), d.get("foot1")))
+'
+asroot_global "rm -f '$DATA/enote/.devmode'"
+# 删光之后的空态那一遍：先把系统剪贴板清成空白（Go 侧 TrimSpace 后为空 → clipAdd 直接
+# 拒），否则前台轮询会立刻把剪贴板上那条旧文本重新暂存，空态那一遍比的是 1 条列表。
+am_start "$ACTIVITY" "--es hook clipset --es arg ' '" >/dev/null 2>&1 || true
+sleep 2
+api_post clip/clear '' >/dev/null 2>&1 || true
+vdiff_sheet clip empty
+
 step "截图页交互在 Vue 路径上真的生效（勾选/全选/实时计数/按钮收敛）"
 # 上面的夹具只证明「画出来一样」，不证明「点了会动」：computed 读普通模块变量（没响应式
 # 依赖）时签名与 DOM 夹具全绿而界面纹丝不动（步骤 6 的 ClipBanner 就踩过）。浮层页多一层
@@ -1648,6 +1847,7 @@ import json
 js = r'''(async function(){
   var L=function(m){console.log("SIT "+m)};
   var E=window.__enote||{};
+  // 同上：注册表没注册 shots 或弹层没挂 Vue → python 侧判红
   if(!E.vue||!E.vue.isVueSheet||!E.vue.isVueSheet("shots")){ L("skip=no-vue-shots"); L("done=1"); return }
   try{
     var q=function(){ return document.querySelectorAll("#sheet .shotitem") };
@@ -1658,15 +1858,16 @@ js = r'''(async function(){
       if(q().length||t>20){res();return} t++; setTimeout(probe,200); })(); });
     L("isvue=1"); L("mounted="+(E.vue.sheets.shots?1:0));
     L("n="+q().length);
+    // 夹具没到位（列表空）→ 断言全空跑，python 侧判红
     if(!q().length){ L("skip=no-items"); L("done=1"); return }
     L("on0="+on()); L("foot0="+foot());
     q()[0].click();                       // 真点击：证明 @click 真的绑上了
     await new Promise(function(r){setTimeout(r,300)});
     L("on1="+on()); L("foot1="+foot());
-    document.querySelector("#sheet .cliptop .btn.sm").click();          // 全选
+    document.querySelector("#sheet #shotSelAll").click();               // 全选
     await new Promise(function(r){setTimeout(r,300)});
     L("on2="+on()); L("foot2="+foot());
-    document.querySelectorAll("#sheet .cliptop .btn.sm")[1].click();    // 全不选
+    document.querySelector("#sheet #shotSelNone").click();              // 全不选
     await new Promise(function(r){setTimeout(r,300)});
     L("on3="+on()); L("foot3="+foot());
     q()[0].click();                       // 只选 1 张：三个导入按钮塌成
@@ -1720,8 +1921,9 @@ d = {}
 for l in lines:
     m = re.search(r"SIT (\w+)=(.*)", l)
     if m: d[m.group(1)] = m.group(2).strip()
+# skip 算红（同 vdiff_*）：shots 页没挂 Vue 或夹具没到位，这一遍就是空跑
 if d.get("skip"):
-    print("  ok (%s)" % d["skip"]); sys.exit(0)
+    raise AssertionError("截图页交互这一遍没跑成（%s）：Vue 没挂载或夹具没到位" % d["skip"])
 assert d.get("done") == "1", "SIT 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
 assert d.get("ERR") is None, "截图页交互：前端抛异常：%s" % d.get("ERR")
 assert d.get("isvue") == "1" and d.get("mounted") == "1", \

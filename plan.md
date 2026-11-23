@@ -1214,3 +1214,54 @@ shots empty 719 / folders fake 1222 / folders empty 552。`tools/shots_vue.sh` �
 **记入后续步骤的账**：文件夹页底部计数在窄屏会折行（`1 个已选 · 共 3 个` 的「个」掉到第二
 行，DOM 与遗留逐字相同 → 不是本步回归，步骤 13 打磨）；`pageSheetVue` 只 unmount 同名
 sheet，Vue-in-Vue 入口出现时（步骤 9/10）再补全量 unmount。
+
+### 9.15 S3 步骤 9 已完成（Austin：剪贴板暂存页转 Vue）
+
+分工（Tony 的开工契约）：这一步 app.js 破例授权给 Austin（步骤 8 约定 app.js 归 Tony），
+`css/views/clip.css` 归 Tony，视觉侧（`tools/shots_vue.sh` 的 clip 图 + `docs/shots` 出图）
+Tony 接。契约要求：导出 `ClipItem` + `ClipSheetView`、模块变量叫 `clipList`、
+`__enote.legacy.clip` 挂加载完的 DOM、全选/全不选给稳定 id。全部照做。
+
+**落地的东西**
+* `go/ui/js/views/clip.js`：`ClipItem`（props `tick`/`x`，返回 `H`）+ `ClipSheetView`
+  （三根节点：`.cliptop` / `#clipList` / `.pfoot`）；`VUE_SHEETS` 加 `clip: ClipSheetView`；
+  `clipSheet()` 分发到 `pageSheetVue`；`closeSheet()` 收尾补 `unmountSheet('clip')`。
+* app.js 侧新增与 Vue 共用的叶子函数（`clipItemCls` / `clipPrevText` / `clipThumbText` /
+  `clipMetaText` / `clipItemHTML` / `clipListHTML` / `clipCountHTML` / `clipParseText` /
+  `clipSheetHTML`），模块变量 `clipList` + `clipLoading` + `clipError`，状态桥 10→12 名
+  （三处名单同步），`__enote.vue.clipPaint` / `__enote.legacy.clip` 两条缝。
+* 稳定 id：`#clipSelAll`/`#clipSelNone`、`#shotSelAll`/`#shotSelNone`、
+  `#folderSelAll`/`#folderSelNone`、`#clipDelSel`/`#clipRaw`/`#clipParseBtn`；test.sh 里
+  四处按下标选按钮换成 id（folders 交互用例 2 处、截图页 SIT 2 处、CIT 2 处）。
+* VDIFF 6 弹层遍（新增 clip grid / clip empty）+ CIT 真点击用例。
+
+**三个真 bug（都是新用例/VDIFF 抓出来的）**
+1. **剪贴板页每条的删除按钮从来没生效过**：遗留字符串
+   `onclick="clipDel(event," + JSON.stringify(id) + ")"` 双引号套双引号属性，浏览器在第一个
+   内层引号截断 → `onclick="clipDel(event,"`（半个表达式，点一下抛 SyntaxError）+ 一个以 id
+   命名的野属性。VDIFF 比属性时以「野属性」现形（`17954494784061717mmy")"`）。改单引号插值。
+2. **`loadClips()` 在空列表分支提前 return**，`clipSel` 里上一批的 id 不清理（计数以页面条目
+   为准所以看不出来，`clipDelSel` 会去删已经不存在的 id）。
+3. **遗留 `clipPick` 给 `.clicb` 加 `on`** 是空操作（CSS 只有 `.clipitem.on .clicb`），
+   Vue 路径没有它 → 两条路径 DOM 差一个类名。删掉。
+
+**夹具的三个坑（真机跑出来的，不是审查看出来的）**
+* `go/clip.go:124`「同来源 5s 内 → 覆盖最新一条」：钩子写进来的 app 都是 `hook`，1s 连发
+  三条塌成一条（第一次真机跑 fail 在 `剪贴板夹具只到 1 条`）。三条夹具改成间隔 6s。
+* `/api/clip/clear` 后前台轮询会立刻把系统剪贴板上那条旧文本重新暂存 → 空态那一遍前先把
+  剪贴板写成空格（P6.5 已踩过，这次是同一个坑的第二处）。
+* 计数条初始不是「0 条已选」：`clipSel` 的冻结语义是首次见到某 id **默认选中**，所以刚
+  加载完是「N 条已选 · 共 N 条」、主按钮带条数。CIT 第一版按「默认全不选」写断言，真机
+  跑出来才红。三条夹具的 6s 间隔 = `go/clip.go:124` 的 5s 去抖 + 1s 余量，给套件加约 12s。
+
+**验收**：静态三件套全绿（ui_test 15 闸门 / 签名 84 项 / `go test` ok）；`test.sh --vd`
+EXIT=0，clip grid / clip empty 两遍 `same=1`，CIT 真点击全链通过（开页默认全选、点一条取消
+那一条、全不选/全选、主按钮文案随勾选数收敛、单条删除行数与勾选数同步 -1、删除所选后
+就地换空态）。反向实验六条：五条会红，`__enote.legacy.clip` 缺失在全绿 → 本步把
+`vdiff_*` / CIT / SIT 的 `skip` 分支改成判红后，该实验变红（已重跑）。
+
+**记入后续步骤的账**
+* 步骤 11：删遗留 JS 时要把 VDIFF 整套一起删（`skip` 分支已在本步改成 fail，遗留渲染器
+  删干净前不会静默空跑；步骤 11 删基准时连 `vdiff_tab` / `vdiff_sheet` 一起删）。
+* 步骤 11：`clipParse` 走真 LLM（几十秒且依赖 key），CIT 只测到按钮文案与勾选联动，
+  「一键解析 N 条」真解析路径仍无客户端回归。
