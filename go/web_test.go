@@ -129,20 +129,48 @@ func TestIndexServedFromDirectory(t *testing.T) {
 	// D13：render() 的契约是 Promise。视图转 Vue 后刷新是微任务，调用点不 await 就断言不到
 	// 新 DOM；今天的实现是同步 innerHTML，return 时 DOM 已更新，Promise.resolve() 就是真语义。
 	// 钉这个是因为契约比实现先动：步骤 5-10 换实现时调用点（3 处 jseval 载荷）一行不用改。
-	if i := strings.Index(appjs, "function render(){"); i < 0 {
-		t.Errorf("app.js 里找不到 function render(){（D13）")
-	} else {
+	// D13/D14：render() 的契约是 Promise，混合期两条分支都得兑现：遗留路径是同步
+	// innerHTML（return 时 DOM 已更新，Promise.resolve() 就是真语义），Vue 路径是
+	// vuePaint().then(...)。钉这个是因为契约比实现先动：步骤 5-10 换实现时调用点
+	// （3 处 jseval 载荷）一行不用改。
+	if n := strings.Count(appjs, "function render(){"); n != 1 {
+		t.Errorf("app.js 里 function render(){ 出现 %d 次（应为 1）：函数声明提升会让后一份覆盖前一份，Vue 分发静默失效", n)
+	}
+	if i := strings.Index(appjs, "function render(){"); i >= 0 {
 		body := appjs[i:]
 		if j := strings.Index(body, "\n}"); j > 0 {
 			body = body[:j]
 		}
-		if !strings.Contains(body, "return Promise.resolve();") {
-			t.Errorf("app.js 的 render() 没返回 Promise（D13）：载荷里 await render() 拿到 undefined，Vue 化那天会集体变红")
+		for _, want := range []string{
+			"return Promise.resolve();",              // 遗留分支
+			"return vuePaint().then(done, done);",    // Vue 分支（D14）
+			"try { afterPaint() } finally { markReady() }", // 首屏记号无条件打出去
+			"markReady();",                           // 遗留分支的首屏记号
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("app.js 的 render() 缺 %q（D13/D14）", want)
+			}
 		}
-		mi, ri := strings.Index(body, "markReady();"), strings.Index(body, "return Promise.resolve();")
+		// markReady 的语义是「首屏画完」。遗留分支是同步的，所以下面这个顺序有意义；
+		// Vue 分支的 DOM 在 nextTick 之后才落地，只能靠 done 在 then/catch 两条分支上都挂上
+		// （上面那条）+ done 内部 try/finally 保证它一跑就打记号。
+		legacy := body[strings.Index(body, "p.innerHTML = buildPage(tab);"):]
+		mi, ri := strings.Index(legacy, "markReady();"), strings.Index(legacy, "return Promise.resolve();")
 		if mi < 0 || ri < 0 || mi > ri {
-			t.Errorf("markReady() 必须在 render() 的 return 之前（D13/D17）：ready 的语义是「首屏画完」，甩进 .then 就变了")
+			t.Errorf("遗留分支里 markReady() 必须在 return 之前（D13/D17）")
 		}
+	}
+	// D14：混合期的唯一开关——注册表。加一行迁移一个视图，删一行退回字符串路径。
+	if !strings.Contains(appjs, "var VUE_VIEWS = { notes: NotesView }") {
+		t.Errorf("app.js 缺 VUE_VIEWS 注册表（步骤 5：notes 转 Vue）")
+	}
+	// Vue 是全局构建，js/vue.js 在模块求值时就要拿 window.Vue，所以脚本顺序是硬约束。
+	if i, j := strings.Index(body, "/vendor/vue.global.prod.js"), strings.Index(body, `type="module" src="/js/app.js"`); i < 0 || j < 0 || i > j {
+		t.Errorf("index.html 里 vendored Vue 必须在 <script type=module> 之前（i=%d j=%d）", i, j)
+	}
+	// 组件 setup() 里就要读宿主接口，所以 setHost 必须早于首次 refresh()。
+	if i, j := strings.Index(appjs, "setHost({"), strings.Index(appjs, "\nrefresh();"); i < 0 || j < 0 || i > j {
+		t.Errorf("setHost() 必须早于首次 refresh()（i=%d j=%d）：render() 会 mount Vue 视图，组件 setup() 立刻要读宿主接口", i, j)
 	}
 	// build.json 由独立 fetch 填，ready 在首屏就兑现：没存 promise 的话，载荷 await ready 后
 	// 立刻读 E.build 是没顺序保证的（实测不犯，因为 seam 载荷是在桥载荷轮询完几秒后注入的）。

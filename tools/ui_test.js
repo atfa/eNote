@@ -673,6 +673,96 @@ if (SPLIT) {
   }
 }
 
+// ---------- 闸门⑮：Vue 模板编译 + tick 依赖 + 模板 handler 存活性（S3 步骤 5） ----------
+// 视图转 Vue 后，三类静默失效只能静态抓：
+//   a) 模板语法错（属性顺序、实体、v-if/v-else 不配对）在 prod 构建里不报错，症状是那块 DOM 直接没；
+//   b) 组件没在渲染期读 V.tick → render() 后视图不动（S.notes 不是响应式的，effect 没依赖就永不重跑）；
+//   c) 模板里把 delNote 挨成 delNot → 闸门① 只认 onclick="…"，Vue 模板用 @click，不扩它验的 handler
+//      集会随迁移静默缩小（点了没反应，P12 同款）。
+{
+  const vuePath = path.join(uiDir, 'vendor/vue.global.prod.js');
+  const viewFiles = [];
+  if (fs.existsSync(path.join(uiDir, 'js'))) {
+    (function walk(d) {
+      for (const f of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+        const p = path.join(d, f.name);
+        if (f.isDirectory()) walk(p);
+        else if (/\.js$/.test(f.name) && !/[/\\]vue\.js$/.test(p)) viewFiles.push(p);
+      }
+    })(path.join(uiDir, 'js'));
+  }
+  if (!fs.existsSync(vuePath) || !viewFiles.length) {
+    ok('Vue 模板闸门：vendor Vue 或 js/ 视图不存在，跳过（未拆分形态）');
+  } else {
+    // 在 node 里跑 vendored 全局构建：它只要 window + 一个能 decodeEntities 的 div。
+    // Vue 的属性值实体解码走 `div.innerHTML = '<div foo="…">'` 然后读 children[0].getAttribute，
+    // 所以 shim 必须把这条路径供上（不供就是「Cannot read properties of undefined (reading '0')」）。
+    function fakeEl() {
+      const el = { style: {}, classList: { add(){}, remove(){} }, children: [], textContent: '' };
+      Object.defineProperty(el, 'innerHTML', {
+        set(v) { const m = /^<div foo="([\s\S]*)">$/.exec(v);
+          el.children = [{ getAttribute: () => (m ? m[1].replace(/&quot;/g, '"') : null) }] },
+        get() { return '' }
+      });
+      return el;
+    }
+    global.window = global;
+    global.document = { createElement: fakeEl, querySelector: () => null,
+                        addEventListener(){}, getElementById: () => null };
+    let VVue = null;
+    try { (0, eval)(fs.readFileSync(vuePath, 'utf8')); VVue = global.Vue } catch (e) {
+      bad('闸门⑮ 加载 vendored Vue 失败', e.message);
+    }
+    if (VVue) {
+      const tplErrs = [], tpls = [];
+      for (const f of viewFiles) {
+        const src = fs.readFileSync(f, 'utf8');
+        for (const m of src.matchAll(/template: `([\s\S]*?)`\n\}/g)) {
+          tpls.push([path.relative(root, f), m[1]]);
+          try { VVue.compile(m[1]) } catch (e) { tplErrs.push(path.relative(root, f) + '：' + e.message) }
+        }
+      }
+      if (tplErrs.length) bad('闸门⑮ Vue 模板编译不过', tplErrs.join(' | '));
+      else if (!tpls.length) bad('闸门⑮ 一个 Vue 模板也没扫到（视图文件改名了？）');
+
+      // 模板里的 @click / @input / v-on: 函数名 ⊆ 导出表（闸门①(a) 的 Vue 版）
+      const appSrc = read('go/ui/js/app.js');
+      const table = new Set(exportTableKeys(appSrc));
+      const miss = new Set();
+      for (const [, t] of tpls) {
+        for (const m of t.matchAll(/(?:@|v-on:)(click|input|change|submit)="\s*(?:H\.)?([A-Za-z_$][\w$]*)\s*[(\[]/g))
+          if (!table.has(m[2])) miss.add(m[2]);
+      }
+      // 注册表：app.js 的 var VUE_VIEWS = { notes: NotesView } 是唯一开关
+      const reg = /var VUE_VIEWS = \{([^}]*)\}/.exec(appSrc);
+      const views = reg ? [...reg[1].matchAll(/(\w+)\s*:\s*(\w+)/g)].map(m => ({ tab: m[1], comp: m[2] })) : [];
+      const tickErrs = [];
+      if (!reg) tickErrs.push('app.js 里找不到 var VUE_VIEWS = {…} 注册表');
+      for (const v of views) {
+        const f = viewFiles.find(p => new RegExp('export const ' + v.comp + '\\b').test(fs.readFileSync(p, 'utf8')));
+        if (!f) { tickErrs.push(v.tab + '：注册表里的 ' + v.comp + ' 在 js/ 下找不到定义'); continue }
+        const src = fs.readFileSync(f, 'utf8');
+        const tpl = /template: `([\s\S]*?)`\n/.exec(src);
+        if (!/V\.tick/.test(src)) tickErrs.push(v.tab + '：视图没读 V.tick（render() 后视图不会动，静默失效）');
+        if (tpl) {
+          const noTick = [...tpl[1].matchAll(/<([a-z][\w-]*-[\w-]+)\b([^>]*)>/g)]
+            .filter(m => !/:tick="tick"/.test(m[2])).map(m => m[1]);
+          if (noTick.length) tickErrs.push(v.tab + '：子组件没收 :tick="tick"（props 不变 → 子组件不重渲染）：' + noTick.join(' '));
+        }
+      }
+      if (miss.size) bad('闸门⑮ 模板里的 handler 不在导出表（点了没反应）', [...miss].join(' '));
+      else if (tickErrs.length) bad('闸门⑮ Vue tick 依赖断了', tickErrs.join(' | '));
+      else {
+        const names = new Set();
+        for (const [, t] of tpls)
+          for (const m of t.matchAll(/(?:@|v-on:)(?:click|input|change|submit)="\s*(?:H\.)?([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
+        ok('闸门⑮ Vue 模板 ' + tpls.length + ' 个编译通过；注册表 ' + views.length
+          + '  视图的 tick 链完整；模板 handler ' + names.size + ' 个全在导出表');
+      }
+    }
+  }
+}
+
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);
 for (const s of fails) console.log('FAIL ' + s);
