@@ -889,7 +889,7 @@ Vue 分发静默失效——这条也钉进 `go/web_test.go`）。
    跑一遍 `__enote.afterPaint()` 再读回来比 → 新增 `__enote.afterPaint` 缝（D17，步骤 11 一起删）。
 
 **给 6/7/9/10 的两个小坑**：jseval 载荷的中文注释里不要写反引号（闸门② 不认模板字符串，
-直接判红）；夹具的 `Promise.race([render(), 兑底])` 写法闸门② 现在认（组件渲染抛异常时
+直接判红）；夹具的 `Promise.race([render(), 兜底])` 写法闸门② 现在认（组件渲染抛异常时
 `nextTick` 不兑现，`await render()` 会挂死）。
 
 **夹具的两条边界（Tony，给 6/7/9/10 定调）**：VDIFF 比的是**规范化后相等**，不是字符串相等

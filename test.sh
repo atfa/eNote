@@ -1402,6 +1402,9 @@ NIN=$(readtlog | wc -l)
   L("delBefore="+n0); L("delAfter="+cards());
   L("ndone=1");
 })()' > "$TMPDIR/jsnint.json"
+# 同 VDIFF 夹具那个坑：jseval 钩子只在 .devmode 存在时干活，上一块刚把它删了。
+# 不 touch 就是「载荷根本没跑」，症状是「前端抛异常了？已收到=[]」。
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsnint.json'"
 for i in $(seq 1 60); do
   newtlog | grep -q 'NINT ndone=1' && break
@@ -1431,6 +1434,7 @@ assert int(d["delAfter"]) == int(d["delBefore"]) - 1, \
   "删除后卡片数没掉（%s→%s）：删除走了但视图没重绘" % (d["delBefore"], d["delAfter"])
 print("  ok (展开/空态/三横幅/删除四条交互在 Vue 路径上都真生效，卡片 %d→%d)" % (n, int(d["delAfter"])))
 '
+asroot_global "rm -f '$DATA/enote/.devmode'"
 
 step "前端没有运行时报错（未声明的变量会把点击静默吞掉）"
 if newtlog | grep -q 'SELFCHECK FAIL'; then
