@@ -23,6 +23,25 @@ function walkDir(d) {
 const uiDir = path.join(root, 'go/ui');
 const src = fs.existsSync(uiDir) ? walkDir(uiDir).join('\n')
                                 : fs.readFileSync(path.join(root, 'go/ui.html'), 'utf8');
+
+/* 步骤 5 起视图转 Vue。这些签名断言的是「这条行为还在」，不是「用哪种写法」，
+   所以横幅/卡片两种形式都算：字符串拼接 strip()+missedBanner()+… 或 Vue 组件
+   <strip-bar/><missed-banner/>…。src 已经递归含 go/ui/js/views/*.js，无需额外读取。 */
+const TOP_FORMS = [
+  /strip\(\)\+missedBanner\(\)\+shotBanner\(\)\+clipBanner\(\)/,                 // 字符串
+  /<strip-bar[^>]*>\s*<missed-banner[\s\S]*?<shot-banner[\s\S]*?<clip-banner/,   // Vue 模板
+];
+const notesTopOrder = (s) => TOP_FORMS.some((re) => re.test(s));
+// 横幅被引用的次数：字符串调用 clipBanner() 和组件标签 <clip-banner> 都计数
+const bannerRefs = (s, name) => {
+  const kebab = name.replace(/([A-Z])/g, (m) => '-' + m.toLowerCase());
+  return (s.match(new RegExp(name + '\\(\\)', 'g')) || []).length
+    + (s.match(new RegExp('<' + kebab + '[ />]', 'g')) || []).length;
+};
+// 卡片片段：函数调用形式或组件标签形式。
+// \b 是必需的：不带它，factsBlock 改名成 factsBlockRenamed 也能对上（前缀匹配），
+// 反向实验验出来签名会假绿。
+const frag = (s, fn, tag) => new RegExp('\\b' + fn + '\\(').test(s) || new RegExp('<' + tag + '[ />]').test(s);
 const m = src.match(/function sigOf\(d\)\{[\s\S]*?\n\}/);
 if (!m) { console.error('sigOf not found'); process.exit(1); }
 const sigOf = eval('(' + m[0] + ')');
@@ -274,7 +293,7 @@ const facts = /facts/.test(gollm) && /何时/.test(gollm) && /何人/.test(gollm
   && /何事/.test(gollm) && /为何/.test(gollm) && /下一步/.test(gollm)
   && /Facts\s+\[\]Fact/.test(gostore) && /func cleanFacts/.test(gollm)
   && /关键信息/.test(gosearch)
-  && /function factsBlock/.test(src) && /factsBlock\(n\)/.test(src) && /class="facts"/.test(src);
+  && /function factsBlock/.test(src) && frag(src, 'factsBlock', 'facts-block') && /class="facts"/.test(src);
 console.log((facts ? '  ok   ' : '  FAIL ') + '关键信息：六问提取 + 落库 + 卡片渲染 + 可搜索');
 if (!facts) bad++;
 
@@ -310,7 +329,7 @@ const clip = /func clipAdd/.test(goclip) && /func clipParse/.test(goclip)
   && !/ClipWatchService/.test(man)            // 无障碍方案已移除（读不到内容）
   && /function clipBanner/.test(src) && /function clipSheet/.test(src)
   && /\/api\/clip\/parse/.test(src) && /\/api\/clip\/list/.test(src)
-  && (src.match(/clipBanner\(\)/g)||[]).length >= 3;   // 三个 renderNotes 分支都挂横幅
+  && bannerRefs(src, 'clipBanner') >= 3;   // 三个 renderNotes 分支都挂横幅（转 Vue 后算组件标签）
 console.log((clip ? '  ok   ' : '  FAIL ') + '剪贴板前台采集 + 暂存去重 + 横幅/批量页/一键解析');
 if (!clip) bad++;
 
@@ -463,7 +482,7 @@ const shotsGo = fs.readFileSync(path.join(root, 'go/shots.go'), 'utf8');
 const shotsJava = fs.readFileSync(path.join(root, 'src/dev/xduo/enote/Shots.java'), 'utf8');
 const manifest = fs.readFileSync(path.join(root, 'AndroidManifest.xml'), 'utf8');
 
-const shotBannerOrder = /strip\(\)\+missedBanner\(\)\+shotBanner\(\)\+clipBanner\(\)/.test(src)
+const shotBannerOrder = notesTopOrder(src)
   && /function shotBanner\(\)/.test(src);
 console.log((shotBannerOrder ? '  ok   ' : '  FAIL ') + '首页横幅顺序：错过提醒 → 新截图 → 剪贴板');
 if (!shotBannerOrder) bad++;
