@@ -45,8 +45,55 @@ function read(p) { try { return fs.readFileSync(path.join(root, p), 'utf8'); } c
 // 所以要先还原 \' 和 \" 转义，才能按 onclick="..." 抓全。
 const uiUnescaped = ui.replace(/\\'/g, "'").replace(/\\"/g, '"');
 
-// ---------- 闸门① 内联 handler 调的函数必须存在 ----------
-// 顶层声明收集：function / async function / var|let|const x = / window.x =
+// 按顶层分隔符切开，尊重 () [] {} 和字符串。`var L=…,q=…,b=…` 这种逗号声明列表
+// 必须整体扫，用 `var (\w+)` 只抓得到第一个名字，后面的会被误判成外部依赖。
+function splitTopLevel(src, sep) {
+  const out = [];
+  let depth = 0, start = 0, q = null;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (q) {                       // 字符串内部：只找收尾，转义跳过下一字符
+      if (c === '\\') i++;
+      else if (c === q) q = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { q = c; continue; }
+    if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) depth--;
+    else if (c === sep && depth === 0) { out.push(src.slice(start, i)); start = i + 1; }
+  }
+  out.push(src.slice(start));
+  return out;
+}
+
+// window.__enoteActions = { … } 的 key 集合。这是内联 handler 的唯一解析域（D12）。
+// 返回 null = 没有导出表；返回 'UNCLOSED' = 写了但括号没配平（解析器不可信，必须红）。
+function exportTableKeys(src) {
+  const m = /window\.__enoteActions\s*=\s*\{/.exec(src);
+  if (!m) return null;
+  let depth = 0, end = -1;
+  for (let i = m.index + m[0].length - 1; i < src.length; i++) {
+    const c = src[i];
+    if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) { end = i; break; }
+  }
+  if (end < 0) return 'UNCLOSED';
+  const keys = new Set();
+  for (const part of splitTopLevel(src.slice(m.index + m[0].length, end), ',')) {
+    const p = part.trim();
+    const short = p.match(/^([A-Za-z_$][\w$]*)$/);                 // 简写 { api }
+    if (short) { keys.add(short[1]); continue; }
+    const kv = p.match(/^['"]?([A-Za-z_$][\w$]*)['"]?\s*:/);        // { api: api }
+    if (kv) keys.add(kv[1]);
+  }
+  return keys;
+}
+
+// ---------- 闸门① 内联 handler 调的函数必须在导出表里（D12 原子防线）----------
+// 转 ES module 后 app.js 的顶层声明不再是 window 上的全局，内联 onclick="foo()" 走的是
+// 全局查找，看不到模块顶层函数。70 处里漏接一处 = 一次静默失效（P12 那一类）。
+// 所以：app.js 一旦是 module，handler 的解析域就只有 window.__enoteActions + 内建，
+// 顶层声明不再算数——这条闸门和转 module 必须同批，拆开的中间态就是 70 个静默失效。
 const declared = new Set();
 for (const m of ui.matchAll(/(?:^|\n)\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g)) declared.add(m[1]);
 for (const m of ui.matchAll(/(?:^|\n)\s*(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=/g)) declared.add(m[1]);
@@ -60,6 +107,26 @@ const BUILTIN = new Set(['this', 'window', 'document', 'location', 'navigator', 
   'parseInt', 'parseFloat', 'isNaN', 'event', 'console', 'fetch', 'localStorage', 'RegExp', 'Set', 'Map']);
 
 const handlerRe = /on(click|input|change|keyup|keydown|focus|blur|submit|touchstart|touchend)="([^"]*)"/g;
+
+const table = exportTableKeys(ui);
+const htmlSrc = SPLIT ? read('go/ui/index.html') : ui;
+const isModule = /<script[^>]*\btype\s*=\s*["']module["']/.test(htmlSrc);
+const STRICT = table !== null || isModule;
+
+if (table === 'UNCLOSED') {
+  bad('window.__enoteActions 写了但括号没配平，闸门① 无法解析导出表');
+} else if (isModule && table === null) {
+  bad('app.js 已是 ES module 但没有 window.__enoteActions 导出表',
+    '内联 handler 走全局查找，模块顶层函数它们看不到 → 70 处静默失效');
+}
+if (table instanceof Set && !/Object\.assign\(\s*window\s*,\s*(window\.)?__enoteActions\b/.test(ui)) {
+  bad('导出表没挂回 window', '缺 Object.assign(window, __enoteActions)：'
+    + 'onclick="foo()" 是全局查找，只挂 __enoteActions 上的话 70 处 handler 一个都进不了函数');
+}
+
+// 解析域：有导出表（或已是 module）就只认导出表 + 内建，顶层声明不算全局；
+// 没导出表且仍是普通 script 时，保持 S2 的老行为（扫顶层声明）。
+const domain = STRICT ? (table instanceof Set ? table : new Set()) : declared;
 const missing = new Map();
 let handlerCount = 0;
 for (const m of uiUnescaped.matchAll(handlerRe)) {
@@ -70,13 +137,16 @@ for (const m of uiUnescaped.matchAll(handlerRe)) {
     const call = t.match(/^([A-Za-z_$][\w$]*)\s*\(/);
     if (!call) continue;                 // 赋值、return false、this.x=… 等，不是调用
     const name = call[1];
-    if (BUILTIN.has(name) || declared.has(name)) continue;
+    if (BUILTIN.has(name) || domain.has(name)) continue;
     missing.set(name, (missing.get(name) || 0) + 1);
   }
 }
 if (missing.size) {
-  bad('内联 handler 调了不存在的函数（P12 类：点了没反应）',
+  bad(STRICT ? '内联 handler 调了导出表里没有的函数（点了没反应）'
+             : '内联 handler 调了不存在的函数（P12 类：点了没反应）',
     [...missing].map(([k, v]) => k + '×' + v).join(', '));
+} else if (STRICT) {
+  ok('内联 handler ' + handlerCount + ' 处全部能在导出表里解析（导出 ' + domain.size + ' 个）');
 } else {
   ok('内联 handler ' + handlerCount + ' 处引用的函数全部存在（页面顶层声明 ' + declared.size + ' 个）');
 }
