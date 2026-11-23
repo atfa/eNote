@@ -56,14 +56,18 @@ shoot() {   # shoot <输出名> <额外 JS>
 asroot_global "am start --display $VDID -n $ACTIVITY" >/dev/null
 sleep 3
 
-shoot vue-notes-light
+shoot vue-notes-light "setTheme('light'); await render();"
 shoot vue-notes-dark "setTheme('dark'); await render();"
 # 空态：走真 API 清空（只改 S.notes 被两层遮蔽：SR.notes 优先 + 2s 轮询整体替换 S），截完恢复
 shoot vue-notes-empty "var A=__enote.actions; var ids=__enote.state.S.notes.map(function(n){return n.id}); window.__svIds=ids; for(var i=0;i<ids.length;i++){ await A.api('/api/delete',{id:ids[i]}) } await A.refresh(true); await sleep(600);"
-# 三横幅同时出现：造 MISSED + clip 计数
-shoot vue-notes-banners "__enote.state.MISSED={count:2,items:[{id:'t1',nid:'n1',title:'x',at:Date.now()-60000}]}; __enote.state.S.info.clip=3; await render();"
-# 恢复现场：补回刚删的笔记、主题回明色，别让下一轮测试接到脏状态
-asroot_global "am start --display $VDID -n $ACTIVITY --es hook jseval --es arg '{\"js\":\"(async function(){ var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})}; var A=__enote.actions; var ids=window.__svIds||[]; for(var i=0;i<ids.length;i++){ await A.api(\\\"/api/add\\\",{text:\\\"标题 \\\"+i}) } await A.refresh(true); await sleep(1200); await A.refresh(true); setTheme(\\\"light\\\"); await render(); console.log(\\\"SHOT restore ok=1\\\") })()\"}'" >/dev/null
+# 三横幅同时出现：错过提醒 + 新截图 + 剪贴板。
+# shot 计数必须给：ShotBanner 的 kind 在 shot=0 且 SHOTFLAGS 全好时返回 ''（不渲染），
+# 只造 MISSED + clip 截出来只有两条，图名与证据对不上。
+shoot vue-notes-banners "__enote.state.MISSED={count:2,items:[{id:'t1',nid:'n1',title:'x',at:Date.now()-60000}]}; __enote.state.S.info.shot=5; __enote.state.S.info.clip=3; await render();"
+# 恢复现场：补回刚删的笔记、主题回明色，别让下一轮测试接到脏状态。
+# 轮询等卡片数回来，不用固定 sleep：实测 3 条 /api/add 到读数要 2.04s，
+# 而原来 1200+800=2.0s 的预算只剩 0 秒余量 —— 定时依赖迟早自己变红。
+asroot_global "am start --display $VDID -n $ACTIVITY --es hook jseval --es arg '{\"js\":\"(async function(){ var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})}; var A=__enote.actions; var ids=window.__svIds||[]; var n=ids.length; for(var i=0;i<n;i++){ await A.api(\\\"/api/add\\\",{text:\\\"标题 \\\"+i}) } for(var i=0;i<60;i++){ await A.refresh(true); await sleep(250); if(document.querySelectorAll(\\\".pane[data-tab=notes] .card\\\").length>=n) break } setTheme(\\\"light\\\"); await render(); console.log(\\\"SHOT restore ok=1\\\") })()\"}'" >/dev/null
 
 cd "$OUT"
 n=$(md5sum vue-notes-*.png | awk '{print $1}' | sort -u | wc -l)
