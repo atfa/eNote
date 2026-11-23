@@ -39,11 +39,56 @@ const uiDir = path.join(root, 'go/ui');
 const SPLIT = fs.existsSync(uiDir);
 const uiFiles = SPLIT ? walkDir(uiDir) : [fs.readFileSync(path.join(root, 'go/ui.html'), 'utf8')];
 const ui = uiFiles.join('\n');
+// 只要 JS 源（带路径），给闸门① 当解析域用。
+function walkJs(d) {
+  let out = [];
+  for (const f of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const p = path.join(d, f.name);
+    if (f.isDirectory()) { if (f.name !== 'vendor') out = out.concat(walkJs(p)); }
+    else if (/\.js$/.test(f.name)) out.push(fs.readFileSync(p, 'utf8'));
+  }
+  return out;
+}
 function read(p) { try { return fs.readFileSync(path.join(root, p), 'utf8'); } catch (e) { return ''; } }
 
+// 剔注释，但要认字符串：handler 就活在字符串字面量里（'<button onclick="foo()">'），
+// 用正则一把抹会连真 handler 一起抹掉。反过来，注释里举的例子也不能当真：
+// app.js 写过一行 `// 例子：onclick="foo()"`，闸门① 就判红过「foo×1」（Austin 踩的）。
+//
+// 做法是行锚定：只抹「行首（可带缩进）的 // 行」和「行首开始的 /* */ 块」。
+// 为什么不写完整的 JS tokenizer：手写扫描器要区分正则字面量和除法（`/[&<>"]/g` 里带引号、
+// `(a-b) / 1000` 里的 / 不是正则），一错就整片代码被当字符串吞掉（实测顶层声明 302→297，
+// 闸门② 假红「S 不存在」）。行锚定不会：本仓库的字符串都是单行的，行首的 // 不可能在字符串里。
+// 已知盲区：代码后面的行尾注释（`x=1; // onclick="fake()"`）不会被抹，真撞上了再改。
+function stripComments(src) {
+  const lines = src.split('\n');
+  const out = [];
+  let inBlock = false;
+  for (const line of lines) {
+    const t = line.replace(/^\s+/, '');
+    if (inBlock) {
+      const e = t.indexOf('*/');
+      if (e >= 0) { inBlock = false; out.push(line.slice(line.indexOf('*/') + 2)); }
+      else out.push('');
+      continue;
+    }
+    if (t.startsWith('//')) { out.push(''); continue; }
+    if (t.startsWith('/*')) {
+      const e = t.indexOf('*/');
+      if (e >= 0) { out.push(line.slice(line.indexOf('*/') + 2)); continue; }
+      inBlock = true; out.push(''); continue;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+// 只对 JS 源做剔注释：HTML 里 https:// 的 `//` 会被当成行注释，整行连收尾引号一起吞掉
+// （实测 index.html 剔完从 14707 字节剩 307），CSS 的 /* */ 又会被 JS 扫描器误读。
+// 所以逐文件剔，且只剔 .js。未拆分的 go/ui.html 旧形态不剔（它是 HTML 包 script）。
+const uiCode = SPLIT ? walkJs(uiDir).map(stripComments).join('\n') : ui;
 // 内联 handler 全部写在 JS 的字符串拼接里（实测 index.html 里 0 个、app.js 里 70 个），
 // 所以要先还原 \' 和 \" 转义，才能按 onclick="..." 抓全。
-const uiUnescaped = ui.replace(/\\'/g, "'").replace(/\\"/g, '"');
+const uiUnescaped = uiCode.replace(/\\'/g, "'").replace(/\\"/g, '"');
 
 // 按顶层分隔符切开，尊重 () [] {} 和字符串。`var L=…,q=…,b=…` 这种逗号声明列表
 // 必须整体扫，用 `var (\w+)` 只抓得到第一个名字，后面的会被误判成外部依赖。
@@ -95,11 +140,11 @@ function exportTableKeys(src) {
 // 所以：app.js 一旦是 module，handler 的解析域就只有 window.__enoteActions + 内建，
 // 顶层声明不再算数——这条闸门和转 module 必须同批，拆开的中间态就是 70 个静默失效。
 const declared = new Set();
-for (const m of ui.matchAll(/(?:^|\n)\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g)) declared.add(m[1]);
-for (const m of ui.matchAll(/(?:^|\n)\s*(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=/g)) declared.add(m[1]);
-for (const m of ui.matchAll(/window\.([A-Za-z_$][\w$]*)\s*=/g)) declared.add(m[1]);
+for (const m of uiCode.matchAll(/(?:^|\n)\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g)) declared.add(m[1]);
+for (const m of uiCode.matchAll(/(?:^|\n)\s*(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=/g)) declared.add(m[1]);
+for (const m of uiCode.matchAll(/window\.([A-Za-z_$][\w$]*)\s*=/g)) declared.add(m[1]);
 // 对象方法形式（Vue 组件的 methods: { foo() {} }）在 S3 之后是主要来源
-for (const m of ui.matchAll(/(?:^|\n)\s{2,}([A-Za-z_$][\w$]*)\s*\(/g)) declared.add(m[1]);
+for (const m of uiCode.matchAll(/(?:^|\n)\s{2,}([A-Za-z_$][\w$]*)\s*\(/g)) declared.add(m[1]);
 
 const BUILTIN = new Set(['this', 'window', 'document', 'location', 'navigator', 'alert', 'confirm',
   'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'JSON', 'Math', 'Date', 'Array',
@@ -108,9 +153,11 @@ const BUILTIN = new Set(['this', 'window', 'document', 'location', 'navigator', 
 
 const handlerRe = /on(click|input|change|keyup|keydown|focus|blur|submit|touchstart|touchend)="([^"]*)"/g;
 
-const table = exportTableKeys(ui);
+const table = exportTableKeys(uiCode);
 const htmlSrc = SPLIT ? read('go/ui/index.html') : ui;
-const isModule = /<script[^>]*\btype\s*=\s*["']module["']/.test(htmlSrc);
+// HTML 只剔 <!-- --> 注释，不能用 stripComments（见上）。
+const htmlCode = htmlSrc.replace(/<!--[\s\S]*?-->/g, ' ');
+const isModule = /<script[^>]*\btype\s*=\s*["']module["']/.test(htmlCode);
 const STRICT = table !== null || isModule;
 
 if (table === 'UNCLOSED') {
@@ -119,7 +166,7 @@ if (table === 'UNCLOSED') {
   bad('app.js 已是 ES module 但没有 window.__enoteActions 导出表',
     '内联 handler 走全局查找，模块顶层函数它们看不到 → 70 处静默失效');
 }
-if (table instanceof Set && !/Object\.assign\(\s*window\s*,\s*(window\.)?__enoteActions\b/.test(ui)) {
+if (table instanceof Set && !/Object\.assign\(\s*window\s*,\s*(window\.)?__enoteActions\b/.test(uiCode)) {
   bad('导出表没挂回 window', '缺 Object.assign(window, __enoteActions)：'
     + 'onclick="foo()" 是全局查找，只挂 __enoteActions 上的话 70 处 handler 一个都进不了函数');
 }
