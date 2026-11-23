@@ -136,6 +136,25 @@ api_state() {
   return 1
 }
 
+# wait_parse_idle：等解析队列排空（笔记全部进 done/raw/error 终态）。
+# LLM 解析是异步的：status 从 queued→parsing→done 这条链上，n.Todos 是整体替换。
+# 断言「服务端过滤条件生效」时如果还有笔记在解析，返回集里就会出现 status 不是 done 的
+# 笔记，红字写成「src/status filters are ignored」，实际是状态在飞（实测 suite 里红过
+# 一次，同树第二次绿；探针里全绿，因为探针跑的时候没有解析在飞）。
+# 上限 60s：这台机器上图片 OCR + LLM 解析实测过 21.6s。
+wait_parse_idle() {
+  n=0
+  while [ "$n" -lt 60 ]; do
+    busy=$(api_state | "$PY" -c 'import json,sys
+ns = json.load(sys.stdin).get("notes") or []
+print(1 if any(x.get("status") not in ("done", "raw", "error") for x in ns) else 0)' 2>/dev/null || echo 1)
+    [ "$busy" = "0" ] && return 0
+    n=$((n + 1)); sleep 1
+  done
+  say "  (warn) 解析队列 60s 没排空，后面的过滤断言可能假红"
+  return 0
+}
+
 api_get() {   # <path> [timeout]：GET 是幂等的，所以可以多试
   # app 被系统杀掉重启时 Go 服务会换端口、有几秒不可用（实测在 todo 用例里拿到空响应，
   # 然在 python 里变成 JSONDecodeError，看不出是“服务还没起来”）。
@@ -468,6 +487,8 @@ api_state | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["settings"]["
 say "  ok (light is the default, java stays in sync)"
 
 step "search + per-page prefs (server side, R3)"
+# 上面图片 OCR 那步的解析可能还在飞（实测 21.6s），不等排空就是「filters are ignored」假红
+wait_parse_idle
 api_get "search?tab=notes" | "$PY" -c '
 import json,sys
 d = json.load(sys.stdin)
@@ -1264,26 +1285,34 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
 # 签名 84 项是源码级正则，抓不到 DOM 漂移；Vue 会规范化模板（属性顺序、空白节点、
 # class 合并顺序）。这里在真 WebView 里把两条路径各渲染一次，把 DOM 规范化后逐字比：
 # 属性按名排序、空白折叠、文本 trim。CSS 和测试选择器看的是 tag/class/attr，不看属性顺序，
-# 所以「规范化后相等」才是对的契约。步骤 6/7/9/10 直接复用（加对应 tab 即可）。
-
+# 所以「规范化后相等」才是对的契约。
+#
+# 步骤 6 起参数化（vdiff_tab <tab>）：每迁一个 tab 就加一行调用。只比 notes 时，todos 转
+# Vue 后的 DOM 漂移是无人值守的 —— VDIFF 绿着，但它比的是 notes。
+vdiff_tab() {   # $1 = tab 名（notes / todos / files / shots / stats / settings）
+VD_TAB=$1
 # 日志窗口：从本步起算（readtlog 不切 + 自己记 NVD）。不能用 newtlog：它从整轮
 # 开头切，上一轮跑剩的同名 token 就在窗口里，等待循环会立刻 break，断言读到的是
 # 上一轮的旧数据（假绿：VDIFF 永远 same=1，NINT 读到上一轮的 empty=false）。
 NVD=$(readtlog | wc -l)
-"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+"$PY" - "$VD_TAB" > "$TMPDIR/jsvdiff.json" <<'PYV'
+import json, sys
+tab = sys.argv[1]
+js = r'''(async function(){
+  var TAB="__TAB__";
   var L=function(m){console.log("VDIFF "+m)};
   var E=window.__enote||{};
-  if(!E.legacy||!E.legacy.notes){ L("skip=no-legacy"); L("done=1"); return; }
+  if(!E.legacy||!E.legacy[TAB]){ L("skip=no-legacy"); L("done=1"); return; }
   /* 上一版夹具「一条 VDIFF 也没打出来」：Vue 分支里某个组件渲染抛异常时，nextTick 的
      promise 永不兑现，await render() 挂死，症状就是「载荷没跑完」。所以 render() 加 4s
      兜底 + 全程 try/catch 把异常打进日志——夹具本身要永远给结论，不能跟着一起挂。 */
   try {
-  __enote.state.tab="notes";
+  __enote.state.tab=TAB;
   await Promise.race([render(), new Promise(function(r){ setTimeout(r, 4000) })]);
   L("rendered=1");
-  var pane=document.querySelector(".pane[data-tab=notes]");
+  var pane=document.querySelector(".pane[data-tab="+TAB+"]");
   if(!pane){ L("skip=no-pane"); L("done=1"); return; }
-  var vueHtml=pane.innerHTML, oldHtml=E.legacy.notes();
+  var vueHtml=pane.innerHTML, oldHtml=E.legacy[TAB]();
   /* 遗留字符串要过一遍和 render() 相同的收尾再比：syncExpand 会按正文高度把「展开详情」
      按钮设成 display:none，Vue 那侧的 DOM 是收尾后的，raw 字符串没有这一步。
      临时 pane 必须挂在 #view 里（syncExpand 的选择器是 #view .card）。 */
@@ -1326,7 +1355,9 @@ NVD=$(readtlog | wc -l)
   }
   }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
   L("done=1");
-})()' > "$TMPDIR/jsvdiff.json"
+})()'''.replace("__TAB__", tab)
+print(json.dumps({"js": js}))
+PYV
 # jseval 钩子只在 .devmode 存在时干活（上面一行刚把它删了），不重新 touch 就是
 # `{"ok":false,"error":"jseval disabled: no .devmode"}`：载荷根本没跑，日志里一条 VDIFF 也没有，
 # 症状是「前端抛异常了？日志=[]」——不是抛异常，是根本没执行。test.sh 里每个 jseval 块都 touch。
@@ -1339,19 +1370,23 @@ for i in $(seq 1 40); do
 done
 readtlog | tail -n +$((NVD + 1)) | grep 'VDIFF' | "$PY" -c '
 import sys, re
+tab = sys.argv[1]
 lines = [l.strip() for l in sys.stdin if "VDIFF" in l]
 d = {}
 for l in lines:
     m = re.search(r"VDIFF (\w+)=(.*)", l)
     if m: d[m.group(1)] = m.group(2).strip()
 if d.get("skip"):
-    print("  ok (%s：Notes 尚未转 Vue，混合期正常)" % d["skip"]); sys.exit(0)
+    print("  ok (%s：%s 尚未转 Vue，混合期正常)" % (d["skip"], tab)); sys.exit(0)
 assert d.get("done") == "1", "VDIFF 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
-assert d.get("same"), "Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  旧: %s\n  Vue: %s" % (
-    d.get("at"), d.get("old", "")[:200], d.get("vue", "")[:200])
-print("  ok (规范化后 DOM 逐字一致，长度 %s)" % d.get("len"))
-'
+assert d.get("same"), "%s：Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  旧: %s\n  Vue: %s" % (
+    tab, d.get("at"), d.get("old", "")[:200], d.get("vue", "")[:200])
+print("  ok (%s 规范化后 DOM 逐字一致，长度 %s)" % (tab, d.get("len")))
+' "$VD_TAB"
 asroot_global "rm -f '$DATA/enote/.devmode'"
+}
+vdiff_tab notes
+vdiff_tab todos
 
 step "Notes 交互在 Vue 路径上真的生效（tick 链断则点了没反应）"
 # 上面的夹具只证明「画出来一样」，不证明「点了会动」。Vue 迁移最阴的失效是：computed 读的是
@@ -1455,6 +1490,187 @@ assert d["dlg"] == "删除", "delNote 没弹确认框, got %r" % d["dlg"]
 assert int(d["delAfter"]) == int(d["delBefore"]) - 1, \
   "删除后卡片数没掉（%s→%s）：删除走了但视图没重绘" % (d["delBefore"], d["delAfter"])
 print("  ok (展开/空态/三横幅/删除四条交互在 Vue 路径上都真生效，卡片 %d→%d)" % (n, int(d["delAfter"])))
+'
+asroot_global "rm -f '$DATA/enote/.devmode'"
+
+step "Todos 交互在 Vue 路径上真的生效（勾选 → done 翻转 → 再点回来）"
+# Notes 那条 NINT 只覆盖笔记页；todos 转 Vue 后如果没人点它，「tick 链断了 → 点了没反应」
+# 这一整类失效在待办页是空的（P12 同款）。这条把三件事钉在真机上：
+#   1) Vue 路径是活的（__enote.vue.isVue('todos') 且视图真挂载了）—— 步骤 5 的用例结构上
+#      区分不了渲染路径（VDIFF 比 DOM，而两条路径的 DOM 按设计逐字相同），这条是补的正向断言；
+#   2) 点 .cb 真的提交到服务端（done 翻转），再点回来；
+#   3) 搜索态下 Vue 渲染的行数 = 服务端 SR.todoIds 的条数（SR 是模块 var，
+#      computed 没依赖就永远缓存 → 搜索后待办列表不动）。
+# 顺带把 .cb 的几何量出来：plan.md 记的「.cb 被左边缘裁一半」要靠数据判，不靠描述。
+NIT=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("TINT "+m)};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var q=function(s){return document.querySelector(s)};
+  var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
+  var P=".pane[data-tab=todos]";
+  var rows=function(){ return qa(P+" .todo").length };
+  var findTodo=function(st,tid){ var r=null; (st.notes||[]).forEach(function(n){
+    (n.todos||[]).forEach(function(t){ if(t.id===tid) r={n:n,t:t} }) }); return r };
+  var findByText=function(st,txt){ var r=null; (st.notes||[]).forEach(function(n){
+    (n.todos||[]).forEach(function(t){ if(t.text===txt) r={n:n,t:t} }) }); return r };
+  var fx=[];   // 本步造的测试待办，末尾统一删（设备上是真数据，不能留垃圾）
+  var add=function(text){
+    return api("/api/todo",{action:"add",noteId:nid,text:text,due:"",priority:"normal"})
+      .then(function(){ return api("/api/state") }).then(function(st){
+        var f=findByText(st,text); if(f) fx.push({nid:f.n.id,tid:f.t.id}); return f })
+  };
+  try{
+    // 1) Vue 路径必须是活的：装配掉了 / 注册表没 todos 时，本步测的是字符串渲染器
+    L("isVue="+(__enote.vue?__enote.vue.isVue("todos"):"no-vue"));
+    L("mounted="+(__enote.vue?!!__enote.vue.apps.todos:"no-vue"));
+    // 2) 夹具：至少两条「未完成」待办（一条给勾选测试，两条给搜索态测试）
+    var purge=function(st){ var ps=[]; (st.notes||[]).forEach(function(n){
+      (n.todos||[]).forEach(function(t){ if(t.text.indexOf("Vue 交互夹具")===0)
+        ps.push(api("/api/todo",{action:"delete",noteId:n.id,todoId:t.id})) }) });
+      return Promise.all(ps) };
+    // 夹具挂在「解析已终结」的笔记上：llm.go 解析完成时是 n.Todos = nil 整体替换，
+    // 夹具赶在解析前加进去会被抹掉（实测 suite 里 done1=null rows1=0，探针里全绿 ——
+    // 探针跑的时候没有解析在飞）。
+    var term=function(n){ return ["done","raw","error"].indexOf(n.status)>=0 };
+    for(var w=0;w<80;w++){
+      var q=await api("/api/state");
+      if(!(q.notes||[]).some(function(n){ return !term(n) })) break;
+      await sleep(500);
+    }
+    var st=await api("/api/state");
+    var stable=(st.notes||[]).filter(term);
+    var nid=(stable[0]||{}).id;
+    if(!nid){ L("skip=no-note"); L("done=1"); return }
+    // 先清掉上一轮失败留下的同名夹具：findByText 命中旧的那条（已勾完）时，
+    // 症状是 row=none —— 已完成项默认被筛掉，看着像「Vue 没渲染」
+    var purged=0;
+    if(st.notes.some(function(n){ return (n.todos||[]).some(function(t){
+      return t.text.indexOf("Vue 交互夹具")===0 }) })){
+      await purge(st); st=await api("/api/state"); purged=1 }
+    L("purged="+purged);
+    // 夹具一律自建两条，不依赖设备上的真数据：真待办有已勾完的、有同名前缀的，
+    // 拿它们当目标时「row=none / done0=true」这类假红查一轮才定位（自建夹具 + 开头 purge
+    // 之后，本步的输入完全已知）。
+    var f1=await add("Vue 交互夹具甲");
+    st=await api("/api/state");
+    var f2=await add("Vue 交互夹具乙");
+    st=await api("/api/state");
+    L("made="+(f1&&f2?"2":"0"));
+    // 模块里的 S 由 2s 轮询更新，夹具是刚建的：不把新 state 灌进模块，render() 画的
+    // 还是旧数据，症状是「行找不到」（实测 row=none，夹具明明建成功了）
+    __enote.state.S = st;
+    var t0=f1, tid=f1?f1.t.id:"";
+    L("tid="+(tid?"ok":"none"));
+    L("done0="+(t0?!!t0.t.done:"-"));
+    __enote.state.tab="todos"; await render(); await sleep(300);
+    L("mounted2="+(__enote.vue?!!__enote.vue.apps.todos:"no-vue"));
+    L("rows0pre="+rows());
+    // 2b) .cb 几何：圆圈（.cb::before）左边缘不能跑到父 padding-box 左边（=被裁）。
+    // 必须在夹具还在 DOM 里的时候量：suite 跑到这一步时真数据可能已被前面的用例清空，
+    // 列表空态下没有 .todo .cb，量不到就是「没量到几何」假红（实测 suite 红、探针绿，
+    // 差别就在探针那台设备上有真待办）。
+    qa(P+" .todo .cb").slice(0,3).forEach(function(cb,i){
+      var td=cb.closest(".todo"), bs=getComputedStyle(cb,"::before");
+      var r=cb.getBoundingClientRect(), tr=td.getBoundingClientRect(), tcs=getComputedStyle(td);
+      var circleL=r.left+(parseFloat(bs.left)||0);
+      // 键名必须紧跟 =：闸门侧的正则是 r"TINT (\w+)=(.*)"，写成
+      // "geo0 circleL=..." 时键会被解析成 circleL，geo 前缀一个都收不到（实测红成
+      // 「没量到 .cb 几何」，而日志里 geo0/geo1 两行明明白白在）
+      L("geo"+i+"=circleL="+circleL.toFixed(2)+" padBoxL="+(tr.left+tr.width).toFixed(2)
+        +" padBoxL0="+(tr.left+(parseFloat(tcs.borderLeftWidth)||0)+(parseFloat(tcs.paddingLeft)||0)).toFixed(2)
+        +" overflow="+tcs.overflow+" w="+r.width.toFixed(2));
+    });
+    // 3) 点 .cb → 服务端 done 翻转 → 行从「未完成」列表消失 → 点回来
+    var row=null;
+    // .ttx 的 textContent 还包含 <small> 里的到期时间和笔记标题，按前缀匹配会撞车
+    // （实测点到另一条待办上）：取第一个文本节点，那才是 esc(t.text) 本身。
+    var rowOf=function(txt){ var r=null; qa(P+" .todo").forEach(function(x){
+      var tx=x.querySelector(".ttx");
+      if(!r && tx && tx.firstChild && tx.firstChild.nodeValue===txt) r=x }); return r };
+    var row=rowOf(t0?t0.t.text:"");
+    L("row="+(row?"found":"none"));
+    if(row){
+      var r0=rows();
+      row.querySelector(".cb").click(); await sleep(1700);
+      var s1=await api("/api/state"), t1=findTodo(s1,tid);
+      var row2=rowOf(t1?t1.t.text:"");
+      L("done1="+(t1&&t1.t.done));
+      L("rows0="+r0);
+      L("rows1="+rows());
+      L("moved="+(row2?"still":"gone"));
+      // 复原：勾完的项默认被「已完成」筛掉，行不在 DOM 里，用游离节点直接调 handler 点回来
+      var ghost=document.createElement("div"); ghost.className="todo";
+      // window. 前缀：闸门② 的闭集只放行 10 个桥函数，toggle 是导出表里的 DOM handler，
+      // 裸写会让闸门② 红（导出表是 Object.assign(window, …)，window.toggle 就是它本身）
+      window.toggle(nid, tid, ghost); await sleep(1700);
+      var s2=await api("/api/state"), t2=findTodo(s2,tid);
+      L("done2="+(t2&&t2.t.done));
+    }
+    // 4) 搜索态：Vue 渲染的行数必须等于 SR.todoIds 里未完成的条数
+    var keys=fx.map(function(f){ return f.nid+"|"+f.tid });
+    if(keys.length>=2){
+      var sub={}; sub[keys[0]]=1; sub[keys[1]]=1;
+      __enote.state.SR={notes:[],todoIds:sub,where:{},total:2,scanned:2};
+      await render(); await sleep(250);
+      L("srRows="+rows());
+      L("srWant=2");
+      __enote.state.SR={notes:null,todoIds:null,where:{},total:0,scanned:0};
+      await render(); await sleep(250);
+    }
+    L("srSkip="+(keys.length<2?"1":"0"));
+  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
+  var okDel=0;
+  for(var i=0;i<fx.length;i++){
+    try{ var rr=await api("/api/todo",{action:"delete",noteId:fx[i].nid,todoId:fx[i].tid});
+         if(rr&&rr.ok) okDel++ }catch(e){ L("cleanErr="+(e&&e.message)) }
+  }
+  L("cleaned="+okDel);
+  L("done=1");
+})()' > "$TMPDIR/jstint.json"
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jstint.json'"
+for i in $(seq 1 60); do
+  readtlog | tail -n +$((NIT + 1)) | grep -q 'TINT done=1' && break
+  sleep 0.5
+done
+readtlog | tail -n +$((NIT + 1)) | grep 'TINT' | "$PY" -c '
+import sys, re
+lines = [l.strip() for l in sys.stdin if "TINT" in l]
+d = {}
+for l in lines:
+    m = re.search(r"TINT (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+assert d.get("done") == "1", "TINT 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+assert d.get("isVue") == "true", \
+  "__enote.vue.isVue(todos) 不是 true：Vue 装配掉了或注册表没 todos，本步测的是字符串渲染器"
+assert d.get("mounted2") == "true", "切到 todos 并 render() 后 TodosView 仍没挂载"
+assert d.get("tid") == "ok", "造不出待办夹具数据，本步断言会是空跑"
+assert d.get("row") == "found", "待办页找不到夹具项对应的行（.ttx 文本对不上）"
+# JS 的 String(true) 是小写 "true"，不是 Python 的 "True"
+assert d.get("done1") == "true", \
+  "点 .cb 后服务端 done 没翻转（%s→%s）：tick 链断了，Vue 没重渲染或点击没提交" % (
+    d.get("done0"), d.get("done1"))
+assert d.get("moved") == "gone" and int(d["rows1"]) == int(d["rows0"]) - 1, \
+  "勾选后行没从「未完成」列表消失（rows %s→%s，%s）：动画/重绘没跟上" % (
+    d.get("rows0"), d.get("rows1"), d.get("moved"))
+assert d.get("done2") == d.get("done0"), \
+  "再点一次没复原（%s→%s）：夹具会污染真数据" % (d.get("done0"), d.get("done2"))
+if d.get("srSkip") != "1":
+    assert d.get("srRows") == d.get("srWant"), \
+      "搜索态下 Vue 渲染 %s 行，SR.todoIds 里未完成的有 %s 条：SR 遮蔽又回来了（computed 没读 SR）" % (
+        d.get("srRows"), d.get("srWant"))
+geos = [v for k, v in d.items() if k.startswith("geo")]
+assert geos, "夹具渲染后没量到 .cb 几何：Vue 没画出 .todo .cb？"
+for g in geos:
+    kv = dict(re.findall(r"(\w+)=(-?[\d.]+|\w+)", g))
+    assert float(kv["circleL"]) >= float(kv["padBoxL0"]) - 0.5, \
+      ".cb 圆圈左边缘 %s 在父 padding-box 左边缘 %s 之外（被裁）：overflow=%s" % (
+        kv["circleL"], kv["padBoxL0"], kv["overflow"])
+assert d.get("cleaned") == d.get("made"), \
+  "夹具待办没删干净（造 %s 删 %s）：会污染下一轮和真数据" % (d.get("made"), d.get("cleaned"))
+print("  ok (勾选/复原/SR 搜索态在 Vue 路径上真生效；.cb 圆圈未被裁 %s)" % geos[0])
 '
 asroot_global "rm -f '$DATA/enote/.devmode'"
 

@@ -114,6 +114,21 @@ function splitTopLevel(src, sep) {
 
 // window.__enoteActions = { … } 的 key 集合。这是内联 handler 的唯一解析域（D12）。
 // 返回 null = 没有导出表；返回 'UNCLOSED' = 写了但括号没配平（解析器不可信，必须红）。
+// setHost({...}) 的键：name: value 与 get name() 两种写法都算。
+function setHostKeys(src) {
+  const i = src.indexOf('setHost({');
+  if (i < 0) return [];
+  let d = 0, j = i + 8, k = j;
+  for (; k < src.length; k++) {
+    if (src[k] === '{') d++;
+    else if (src[k] === '}') { d--; if (!d) break }
+  }
+  const body = src.slice(j + 1, k).replace(/\/\*[\s\S]*?\*\//g, '');
+  const keys = [];
+  for (const m of body.matchAll(/(?:^|[,{])\s*(?:get\s+)?([A-Za-z_$][\w$]*)\s*[(:]/g)) keys.push(m[1]);
+  return keys;
+}
+
 function exportTableKeys(src) {
   const m = /window\.__enoteActions\s*=\s*\{/.exec(src);
   if (!m) return null;
@@ -756,12 +771,14 @@ if (SPLIT) {
     if (VVue) {
       const tplErrs = [], tpls = [];
       const bareComputed = [];
+      const viewCode = new Map();   // 视图文件 → 注掉后的代码（下面 H.xxx 全量扫要用）
       for (const f of viewFiles) {
         const src = fs.readFileSync(f, 'utf8');
         // 读模块状态的 computed 必须包 live()：S / MISSED 不是响应式的，computed 没依赖就永远缓存，
         // 症状是「数据变了视图不动」（实测：删光剪贴板后首页横幅不消失）。唯一允许的直接 computed
         // 是 tick 源本身。取后窗口 80 字符判 V.tick：computed 的箭头体里括号嵌套，正则匹不出平衡括号。
         const code = stripComments(src);
+        viewCode.set(path.relative(root, f), code);
         for (let i = code.indexOf('computed('); i >= 0; i = code.indexOf('computed(', i + 1)) {
           const win = code.slice(i, i + 80);
           if (!/V\.tick/.test(win)) bareComputed.push(path.relative(root, f) + '：' + win.replace(/\s+/g, ' ').slice(0, 56))
@@ -777,11 +794,51 @@ if (SPLIT) {
       // 模板里的 @click / @input / v-on: 函数名 ⊆ 导出表（闸门①(a) 的 Vue 版）
       const appSrc = read('go/ui/js/app.js');
       const table = new Set(exportTableKeys(appSrc));
-      const miss = new Set();
+      // 模板里写 H.foo(...) 的 foo 走 setHost 的宿主对象，裸名 foo(...) 走 window（导出表）。
+      // 两条解析路径不同，必须分开判 —— 混在一起时「导出表有、setHost 没有」的函数会绿着抛错，
+      // 抛进 render() 的 catch 就静默回退字符串渲染器，Vue 路径一行没跑（步骤 5 实测踩过）。
+      const host = new Set(setHostKeys(appSrc));
+      const miss = new Set(), missHost = new Set(), usedHost = new Set();
       for (const [, t] of tpls) {
-        for (const m of t.matchAll(/(?:@|v-on:)(click|input|change|submit)="\s*(?:H\.)?([A-Za-z_$][\w$]*)\s*[(\[]/g))
-          if (!table.has(m[2])) miss.add(m[2]);
+        // 组号：m[1]=事件名（click/input/…，恒真）、m[2]=H. 前缀、m[3]=函数名。
+        // 早先写的 (m[1] ? missHost : miss).add(m[2]) 收进去的是「click」这种事件名，
+        // 加上下面那行过滤方向反了（删的是「在集合里的」），两条合起来让这条检查恒绿：
+        // 反向实验② 实测从 setHost 里删掉模板用到的函数，闸门一点反应没有。
+        for (const m of t.matchAll(/(?:@|v-on:)(click|input|change|submit)="\s*(H\.)?([A-Za-z_$][\w$]*)\s*[(\[]/g))
+          (m[2] ? missHost : miss).add(m[3]);
       }
+      // setup() 里的 H.xxx 与模板里的走同一个宿主对象，失效方式也一样（抛错 → render()
+      // 静默回退字符串渲染器），所以扫整个视图文件而不只是模板：TodoRow 的 H.cbInnerHTML
+      // 就写在 setup() 里，只扫模板时它不在闸门视野里。
+      for (const [, code] of viewCode) {
+        for (const m of code.matchAll(/\bH\.([A-Za-z_$][\w$]*)/g)) { missHost.add(m[1]); usedHost.add(m[1]) }
+      }
+      // 留下「不在集合里」的（早先方向反了，把在集合里的删掉，于是恒绿）
+      for (const n of [...missHost]) if (host.has(n)) missHost.delete(n);
+      for (const n of [...miss]) if (table.has(n)) miss.delete(n);
+      // 装配本身：模板里的 <x-y> 没在视图的 components: 里注册 → Vue 只当未知自定义元素，
+      // prod 构建不报错，整块 DOM 直接没；__enote.vue 没设 → 测试无法断言走了哪条路径。
+      // 两条都是「全绿而看不出问题」，所以静态钉住。
+      const wiring = [];
+      if (!/window\.__enote\.vue\s*=/.test(appSrc)) wiring.push('app.js 没设 window.__enote.vue（测试缝缺失：isVue(tab) 无从断言，VDIFF 比 DOM 区分不了两条路径）');
+      // 模板里的自定义元素必须在视图的 components: 里注册：没注册时 Vue 只当未知自定义元素，
+      // prod 构建不报错，症状是整块 DOM 直接没（步骤 5 的 <note-card> 就是这么静默掉的）。
+      const compSrc = fs.existsSync(path.join(uiDir, 'js/components.js'))
+        ? fs.readFileSync(path.join(uiDir, 'js/components.js'), 'utf8') : '';
+      const globalComps = new Set([...compSrc.matchAll(/export const (\w+)/g)].map(m => m[1]));
+      for (const [f, t] of tpls) {
+        const src = fs.readFileSync(path.join(root, f), 'utf8');
+        const cm = /components:\s*\{([^}]*)\}/.exec(src);
+        const names = new Set(cm ? cm[1].split(',').map(x => x.trim()).filter(Boolean) : []);
+        for (const m of t.matchAll(/<([a-z][\w-]*-[\w-]+)\b/g)) {
+          const pascal = m[1].replace(/(^|-)(\w)/g, (_, __, c) => c.toUpperCase());
+          // 只认视图自己的 components: 注册表：全局注册（app.component）这条路径本项目没用，
+          // 留着 globalComps 当豁免就会漏掉「导出了但没注册」这一整类（实测 <strip-bar> 就是这么漏的）。
+          if (!names.has(pascal))
+            wiring.push(f + '：模板用了 <' + m[1] + '> 但视图没在 components: 里注册');
+        }
+      }
+      if (wiring.length) bad('闸门⑮ Vue 装配缺失', wiring.join(' | '));
       // 注册表：app.js 的 var VUE_VIEWS = { notes: NotesView } 是唯一开关
       const reg = /var VUE_VIEWS = \{([^}]*)\}/.exec(appSrc);
       const views = reg ? [...reg[1].matchAll(/(\w+)\s*:\s*(\w+)/g)].map(m => ({ tab: m[1], comp: m[2] })) : [];
@@ -801,6 +858,7 @@ if (SPLIT) {
       }
       if (bareComputed.length)
         bad('闸门⑮ 组件里的 computed 没包 live()（数据变了视图不动）', bareComputed.join(' | '));
+      else if (missHost.size) bad('闸门⑮ 模板里的 H.xxx 不在 setHost（Vue 渲染抛错→静默回退字符串）', [...missHost].join(' '));
       else if (miss.size) bad('闸门⑮ 模板里的 handler 不在导出表（点了没反应）', [...miss].join(' '));
       else if (tickErrs.length) bad('闸门⑮ Vue tick 依赖断了', tickErrs.join(' | '));
       else {
@@ -808,7 +866,8 @@ if (SPLIT) {
         for (const [, t] of tpls)
           for (const m of t.matchAll(/(?:@|v-on:)(?:click|input|change|submit)="\s*(?:H\.)?([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
         ok('闸门⑮ Vue 模板 ' + tpls.length + ' 个编译通过；注册表 ' + views.length
-          + '  视图的 tick 链完整；模板 handler ' + names.size + ' 个全在导出表');
+          + '  视图的 tick 链完整；模板 handler ' + names.size + ' 个全在导出表；'
+          + '视图里的 H.xxx ' + usedHost.size + ' 个全在 setHost');
       }
     }
   }

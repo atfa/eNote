@@ -161,8 +161,15 @@ func TestIndexServedFromDirectory(t *testing.T) {
 		}
 	}
 	// D14：混合期的唯一开关——注册表。加一行迁移一个视图，删一行退回字符串路径。
-	if !strings.Contains(appjs, "var VUE_VIEWS = { notes: NotesView }") {
-		t.Errorf("app.js 缺 VUE_VIEWS 注册表（步骤 5：notes 转 Vue）")
+	// 每迁移一个视图就往注册表里追加一项，所以这里按「已迁移的视图都在」判，
+	// 不是整串相等（步骤 5 = notes，步骤 6 = + todos，步骤 7-10 继续加）。
+	if !regexp.MustCompile(`var VUE_VIEWS = \{[^}]*notes: NotesView[^}]*todos: TodosView[^}]*\}`).MatchString(appjs) {
+		t.Errorf("app.js 的 VUE_VIEWS 注册表缺 notes 或 todos（步骤 5/6 转的 Vue 视图）")
+	}
+	// 装配：__enote.vue 没设 → vueReady() 恒 false → render() 一直走字符串路径。
+	// 步骤 5 合并时这条被合掉了，结果 VDIFF/NINT 全绿而 Vue 一行没跑（P12 同款）。
+	if !strings.Contains(appjs, "window.__enote.vue =") {
+		t.Errorf("app.js 没设 window.__enote.vue（vueReady() 恒 false，Vue 路径是死的）")
 	}
 	// Vue 是全局构建，js/vue.js 在模块求值时就要拿 window.Vue，所以脚本顺序是硬约束。
 	if i, j := strings.Index(body, "/vendor/vue.global.prod.js"), strings.Index(body, `type="module" src="/js/app.js"`); i < 0 || j < 0 || i > j {

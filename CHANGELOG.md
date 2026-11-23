@@ -196,6 +196,55 @@
   空态的正解是走 API：删完 → `refresh(true)` → `.empty` 出现（真机实测 `cards=0 empty=true`）。
   `SR` 进闭合集是给夹具做诊断用，不是让它造空态。探针证据链见 plan.md §9.9。
 
+### 界面（P13 S3 步骤 6）：待办页转 Vue + `.cb` 裁切用数据核销
+
+* **待办页现在由 Vue 渲染**（`go/ui/js/views/todos.js`：`TodosView` + 子组件 `TodoRow`），
+  注册表 `VUE_VIEWS` 加一行 `todos: TodosView`。分组 / 排序 / 筛选在 Vue 的 computed 里重算，
+  `.cb` 与 `.tx` 两块叶子 HTML 走 `v-html` 复用 app.js 新抽的 `cbInnerHTML()` / `todoTxHTML()` /
+  `todoRowCls()`，遗留字符串渲染器改成调同一对函数 —— DOM 逐字一致不是约定，是共用一份代码。
+* **新增 Vue 路径的观测缝**：`render()` 的门禁是 `VUE_VIEWS[tab]`，而 VDIFF 比的是 DOM、两条
+  路径的 DOM 设上就逐字相同 —— 所以步骤 5 的用例结构上区分不了「Vue 没跑」和「Vue 跑了」。
+  app.js 现在导出 `window.__enote.vue = { app, views, apps, isVue }`（观测缝，不是生产门禁），
+  TINT 断言 `isVue(todos) === true` 且 `apps.todos` 非空。防线：`go/web_test.go` 钉住注册表含
+  notes+todos 且 `window.__enote.vue =` 必须存在；闸门⑮ 新增两条静态检查（视图里的 `H.xxx`
+  必须在 `setHost({...})` 的 key 里 —— Vue 读的是宿主对象不是 window；模板里的每个自定义标签
+  必须列在该视图的 `components:` 里，无全局豁免）。
+* **三条防线全做了反向实验，顺手挖出闸门⑮ 自己恒绿**：① 删 `components:` 里的 `EmptyState` →
+  立刻红（「模板用了 <empty-state> 但视图没在 components: 里注册」）；② 从 `setHost` 删掉模板用的
+  `toggle` 或 setup 用的 `cbInnerHTML` → 立刻红；③ 把 `todos` 从注册表摘掉装到真机 → TINT 红在
+  「`isVue(todos) 不是 true`」，而 `done1=true` / `moved=gone` / `srRows=2` / 几何全绿 ——
+  直接证明只有这条断言能抓到「走了字符串路径」。实验② 之前不红：那条检查的捕获组编号错位
+  （`m[1]` 是事件名，恒真）加上过滤方向写反（删的是「在集合里的」），两条合起来永不会红。
+  修正后正向输出：`模板 handler 10 个全在导出表；视图里的 H.xxx 31 个全在 setHost`。
+  顺带抓到 `setHost` 里两个不存在的名字（`isOver` / `priFilter`）：它们会让 app.js 在模块求值时
+  `ReferenceError` 白屏。
+* **`.cb` 左边缘被裁：量出来三站点全都没裁，CSS 一行没改**。真机量 `.cb::before`（圆圈本体）
+  左边缘 vs 父 `.todo` 的 padding-box 左边缘：待办列表 36.93 vs 35.43（+1.50px，正好是
+  `::before` 的 `left:1.5px` 内缩）、笔记卡片预览同值、逾期面板 `.msrow .cb` +3.50px，
+  `overflow:hidden` 没吃到圆圈。账本里那条是 S1 时代基线截图留下的，S2 的 tokens/base 落地时
+  已经修掉了。几何断言现在钉在真机（见 TINT），红字直接给 circleL / padBoxL0 / overflow。
+* **VDIFF 夹具参数化**成 `vdiff_tab()`，现在跑 `notes` + `todos` 两个 tab：以后每个视图转完 Vue
+  自动拿到「DOM 逐字一致」这条防线，不用一个视图抄一遍。
+* **新增 TINT 真机用例**（`Todos 交互在 Vue 路径上真的生效`）：`isVue`/`mounted`/切 tab 后
+  `mounted2` 钉住 Vue 路径是活的；点 `.cb` 后服务端 `done` 必须翻转且行从「未完成」列表消失
+  （`moved=gone`、`rows1=rows0-1`），再点回来必须复原；搜索态下渲染行数必须等于服务端
+  `SR.todoIds` 里未完成的条数（`SR` 是模块 var，computed 不依赖它就会「搜索后列表不动」）；
+  顺带量 `.cb` 几何。夹具自建两条 + 开头 purge 同名残留 + 结尾按 `ok:true` 计数，`cleaned==made`。
+* **`/api/todo` 的删除动作是 `delete` 不是 `del`**，而 `go/web.go` 的 `switch` 没有 `default`：
+  写错时服务端连响应体都不写，夹具永远删不掉，下一轮命中上一轮已勾完的旧夹具，症状是
+  `done0=true` / `row=none`，完全像「Vue 渲染坏了」。
+* **夹具要挂在解析已终结的笔记上**：`go/llm.go` 解析完成时是 `n.Todos = nil` 整体替换，
+  赶在解析前插进去的夹具会被抹掉（探针全绿，suite 里 `done1=null rows1=0`）。现在先等所有笔记
+  进 `done/raw/error` 终态再插。
+* **jseval 日志约定一行一个键值对**：解析用的正则 `TINT (\w+)=(.*)` 每行只取一对，且 key 必须紧跟
+  `=`（`geo0 circleL=…` 会被解析成 key=`circleL`，几何列表永远为空，实测假红）。
+* **一个真机 flake（Tony 跑步骤 5 时遇到，本步修）**：`search + per-page prefs (server side)` 往
+  服务端灌笔记后立刻查 `src=status:inbox`，而 app 的自动解析在后台跑，笔记被解析成 `status=done`
+  → `ERROR: src/status filters are ignored`。现在该步骤开头先 `wait_parse_idle`（等所有笔记进
+  `done/raw/error` 终态，120s 超时后照旧走原断言，不会把真 bug 藏起来）。
+* 数字：Vue 模板 6→8 个、模板 handler 9→10 个、jseval 载荷 9→10 个、VDIFF 覆盖 1→2 个 tab；
+  导出表 58 key、闸门 15 个、签名 84 项、D15 冻结 class 名 10 个全部不变。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome

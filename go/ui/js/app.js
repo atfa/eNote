@@ -9,6 +9,7 @@ var S = {notes:[], settings:{}, info:{}};
    其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
 import { V, setHost, mountView, vuePaint, apps } from './vue.js'
 import { NotesView } from './views/notes.js'
+import TodosView from './views/todos.js'
 var tab = 'notes', open = {}, busy = {};
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
@@ -1014,6 +1015,24 @@ function factsBlock(n){
   var h = factsInner(n);
   return h ? '<div class="facts">'+h+'</div>' : '';
 }
+/* 勾选框内部：一个对勾图标。字符串渲染和 Vue 的 TodoRow 共用，
+   两条路径的 DOM 必须逐字一致（VDIFF 逐字比的就是这个）。 */
+function cbInnerHTML(){ return ic('check'); }
+
+/* .todo 的类名串：done / pri-high / 入场动画。Vue 模板用 :class 算出来的必须和这里一致。 */
+function todoRowCls(n, t){
+  return (t.done?' done':'')+(t.priority==='high'?' pri-high':'')+todoEnterCls(n,t);
+}
+
+/* 待办行的文字块：到期时间、优先级小标签、提醒按钮、来源笔记链接。
+   和 cbInnerHTML 一起构成 .todo 的两个子元素 —— 结构在 Vue 模板里，叶子 HTML 在这里，
+   这样两条路径共用同一份 HTML 生成代码，不会一份逻辑写两遍再各自漂移。 */
+function todoTxHTML(t, n){
+  return '<span class="ttx">'+esc(t.text)
+    +'<small>'+(t.due?'<span class="due'+(t.due<now()&&!t.done?' over':'')+'">'+ic('calendar')+fmtTime(t.due)+'</span> '+cdChip(t)+remindBtns(n,t):'')
+    +'<a href="#" onclick="jump(\''+n.id+'\');return false">'+esc(n.title||'查看笔记')+'</a></small></span>';
+}
+
 function todoRow(t, n, compact){
   var d='', dcls='due';  if(t.due){
     var overdue = t.due < now(), today = t.due.slice(0,10)===now().slice(0,10);
@@ -1139,11 +1158,11 @@ function renderTodos(){
     if(p.sort==='pri') items.sort(function(a,b){return rank(b.t)-rank(a.t)});
     h += '<div class="sec">'+ic(icons[k0], 's')+k0+' · '+items.length+'</div><div class="card'+enterCls('g'+k0)+'" style="--i:'+(k++)+'">';
     items.forEach(function(o){
-      h += '<div class="todo'+(o.t.done?' done':'')+(o.t.priority==='high'?' pri-high':'')+todoEnterCls(o.n,o.t)+'">'
-        +'<div class="cb'+(o.t.done?' on':'')+'" onclick="toggle(\''+o.n.id+'\',\''+o.t.id+'\',this)">'+ic('check')+'</div>'
-        +'<div class="tx"><span class="ttx">'+esc(o.t.text)
-        +'<small>'+(o.t.due?'<span class="due'+(o.t.due<now()&&!o.t.done?' over':'')+'">'+ic('calendar')+fmtTime(o.t.due)+'</span> '+cdChip(o.t)+remindBtns(o.n,o.t):'')
-        +'<a href="#" onclick="jump(\''+o.n.id+'\');return false">'+esc(o.n.title||'查看笔记')+'</a></small></div></div>';
+      // 结构在这里，叶子 HTML 由 cbInnerHTML / todoTxHTML 生成 —— Vue 的 TodoRow 调同一对函数，
+      // 两条路径共用一份 HTML 生成代码，DOM 才会逐字一致（VDIFF 逐字比的就是这个）
+      h += '<div class="todo'+todoRowCls(o.n,o.t)+'">'
+        +'<div class="cb'+(o.t.done?' on':'')+'" onclick="toggle(\''+o.n.id+'\',\''+o.t.id+'\',this)">'+cbInnerHTML()+'</div>'
+        +'<div class="tx">'+todoTxHTML(o.t,o.n)+'</div></div>';
     });
     h += '</div>';
   });
@@ -1283,7 +1302,7 @@ function buildPage(t){
 }
 /* 已迁移到 Vue 的 tab（D14 混合期的唯一开关）：加一行就迁移一个视图，删掉一行就退回字符串路径。
    步骤 5 notes；6 todos；7 files；9 clip；10 stats/mine；步骤 11 删掉遗留路径。 */
-var VUE_VIEWS = { notes: NotesView };
+var VUE_VIEWS = { notes: NotesView, todos: TodosView };
 /* DOM 测量类的副作用：必须在 DOM 落地之后跑（遗留路径是同步 innerHTML，Vue 路径是 nextTick 之后） */
 function afterPaint(){
   syncReminders();
@@ -1895,8 +1914,27 @@ setHost({
   clipHint: function(){ return !!(window.Android && Android.clipHint && Android.clipHint() === '1') },
   expand: expand, reparse: reparse, reocr: reocr, addTodoSheet: addTodoSheet, delNote: delNote,
   missedSheet: missedSheet, shotSheet: shotSheet, shotSetup: shotSetup, askShotPerm: askShotPerm,
-  folderSheet: folderSheet, clipSheet: clipSheet, importClip: importClip, shotGo: shotGo
+  folderSheet: folderSheet, clipSheet: clipSheet, importClip: importClip, shotGo: shotGo,
+  /* 步骤 6 加：TodosView 的宿主函数。漏一个的症状是「Vue 渲染抛错 → render() 静默回退
+     字符串渲染器」，肉眼看不出来 —— 闸门⑮（ui_test.js）静态扫模板里的 H.xxx 必须都在
+     setHost 的 key 里（Vue 读的是宿主对象，不是 window），test.sh 的 TINT 步骤动态断言
+     __enote.vue.isVue(todos) 且 TodosView 真的挂载了。 */
+  strip: strip, emptyState: emptyState, P: P, groupTodos: groupTodos, todoEnterCls: todoEnterCls,
+  todoRowCls: todoRowCls, cbInnerHTML: cbInnerHTML, todoTxHTML: todoTxHTML,
+  cdChip: cdChip, remindBtns: remindBtns,
+  hit: hit, rank: rank,
+  toggle: toggle, jump: jump, render: render
 });
+
+/* Vue 路径的观测缝（步骤 6 加，步骤 5 就没写过）。
+   它是给测试用的，不是生产门禁：render() 走哪条路径只看 VUE_VIEWS[tab]（app.js:1317），
+   没这个缝时 Vue 照跑。缺它的代价是「测不出来」：VDIFF 比的是 DOM，而两条路径的 DOM
+   按设计就逐字相同，它结构上无法区分走了哪条；真要是 Vue 没跑，VDIFF/NINT 会全绿。
+   所以 test.sh 的 TINT 用 isVue(tab) + apps[tab] 正向断言「目标 tab 真的由 Vue 挂载」。
+   必须在首次 refresh() 之前（mountView 会写 apps[tab]）。 */
+window.__enote = window.__enote || {};
+window.__enote.vue = { app:null, views:VUE_VIEWS, apps:apps,
+                       isVue:function(tab){ return !!VUE_VIEWS[tab] } };
 setInterval(function(){ if(!document.hidden) refresh(true); }, 2000);
 refresh();
 setTab();
@@ -1999,7 +2037,7 @@ Object.assign(window.__enote, {
   /* D17 夹具缝（Tony 提，步骤 5）：DOM 逐字一致对比要在真 WebView 里把两条路径各渲染一次。
      视图转 Vue 后遗留字符串渲染器不再被 render() 调用，但它是「今天长什么样」的唯一真相，
      留着它才谈得上「行为零变化」是可证明的。步骤 6/7/9/10 各加一个 tab，步骤 11 随渲染器一起删。 */
-  legacy: { notes: renderNotes },
+  legacy: { notes: renderNotes, todos: renderTodos },
   /* 夹具要在插入遗留字符串后跑一遍和 render() 相同的收尾（syncExpand 会按正文高度隐藏
      「展开详情」按钮），否则比的是「raw 字符串」对「收尾后的 DOM」。缝在 D17 上，步骤 11 一起删。 */
   afterPaint: afterPaint

@@ -625,7 +625,7 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 
 | 项 | 归谁 | 哪步 |
 |---|---|---|
-| 笔记卡片预览里 `.cb` 被左边缘裁一半（明暗两档都有，基线截图里就有） | Austin | S4 |
+| 笔记卡片预览里 `.cb` 被左边缘裁一半（明暗两档都有，基线截图里就有） | Austin | **已核销（S3 步骤 6）**：真机量出来三个站点全都没被裁，见 §9.10；S2 的 tokens/base 改动已经把它修掉了，账本条目是旧的 |
 | 设备累积状态会让计数类断言假红：附件行数 ≠ 磁盘文件数（一张截图被多条笔记复用）；`pm clear` 能清但 LLM 配置也在 app prefs 里，清了必红 | Austin | 断言已改成按唯一路径数比；**已做**：S8 步骤 1 给 test.sh 加了「跑前重置数据 + 回写测试配置」（见 §9.5） |
 | OCR 搜索断言只能证明「命中了」，证明不了「命中来自图片文字」（q=取快递 同时命中分享文本） | Austin | S7 前 |
 | `css/views.css` 已被 S2 删除，`go/web_test.go` 的判空豁免改成按目录（`/css/views/`）而非写死文件名 | Austin | 已做 |
@@ -939,3 +939,97 @@ clip 横幅没渲染、删除后卡片没掉、空态没出、横幅顺序反了
    （Austin 在集成 HEAD `a1732bed59` 上第一次跑红，同树第二次 PASS）。钩子是纯原生路径
    （`MainActivity.runHook` → `KeepAlive.setEnabled` + `Reminders.sync`），本步没碰过 Java，
    红在测试等待窗口，不在被测代码。修法同 1：轮询到行出现，窗口按 `Reminders.sync` 的实测耗时放宽。
+
+### 9.10 S3 步骤 6 已完成（Austin：Todos 视图转 Vue + `.cb` 裁切核实）
+
+新增 `go/ui/js/views/todos.js`（`TodosView` + 子组件 `TodoRow`），注册表 `VUE_VIEWS` 加一行
+`todos: TodosView`，`__enote.legacy` 加 `todos: renderTodos`。分组 / 排序 / 筛选逻辑在 Vue 里
+重算一遍，叶子 HTML（`.cb` 内容、`.tx` 整块）走 `v-html` 复用 app.js 抽出来的
+`cbInnerHTML()` / `todoTxHTML()` / `todoRowCls()` —— 字符串路径也改成调这同一对函数，
+VDIFF 逐字比的就是这个。
+
+**步骤 5 的用例结构上区分不了渲染路径（本步最大的发现）**：VDIFF 比的是 DOM，而两条路径的
+DOM 按设计就逐字相同，所以它**无法判出走的是哪条** —— 真要是 Vue 一行没跑，VDIFF/NINT 会全绿。
+落地 HEAD 上 Vue 确实跑了（`render()` 的门禁是 `VUE_VIEWS[tab]`，app.js:1317，非空就
+`mountView`，没有 `vueReady()` 这种东西），但没有任何断言能证明这件事。步骤 6 补的是正向断言：
+app.js 里加 `window.__enote.vue = { app:null, views:VUE_VIEWS, apps:apps, isVue:… }` 作为
+**观测缝**（不是生产门禁：让生产渲染路径依赖测试缝存在与否，就是测试对象决定生产行为），
+TINT 断言 `isVue(todos) === true` 且 `apps.todos` 非空。三条防线：`go/web_test.go` 断言
+`VUE_VIEWS` 含 notes+todos 且 app.js 里有 `window.__enote.vue =`；闸门⑮ 新增两条静态检查 ——
+视图里的 `H.xxx`（模板 + setup 全量）必须出现在 `setHost({...})` 的 key 里（Vue 读的是宿主对象，
+不是 window），模板里的每个自定义标签 `<x-y>` 必须列在该视图的 `components:` 里（无全局豁免）。
+
+**三条防线都做了反向实验**（新防线不做反向实验就只是装饰）：
+
+1. 从 `views/todos.js` 的 `components:` 删掉 `EmptyState` →
+   `FAIL 闸门⑮ Vue 装配缺失：go/ui/js/views/todos.js：模板用了 <empty-state> 但视图没在 components: 里注册`
+2. 从 `setHost({...})` 删掉模板用到的 `toggle` → `FAIL 闸门⑮ 模板里的 H.xxx 不在 setHost…：toggle`；
+   删掉只出现在 `setup()` 里的 `cbInnerHTML` → 同一条 FAIL 点名 `cbInnerHTML`（这就是扫整个视图文件
+   而不只扫模板的理由）。
+3. 把 `VUE_VIEWS` 里的 `todos` 摘掉重装到真机 → TINT 日志 `isVue=false mounted=false mounted2=false`，
+   断言红在 `__enote.vue.isVue(todos) 不是 true`，而 `row=found` / `done1=true` / `moved=gone` /
+   `srRows=2` / 几何全部依旧全绿 —— 直接证明「只有 isVue 能抓到走了字符串路径」。
+   附带收获：`go test` 也会拦住（`web_test.go:167 VUE_VIEWS 注册表缺 notes 或 todos`），
+   反向实验时要用不带 `GO_TEST=1` 的 `./build.sh` 才装得上去。
+
+**反向实验顺手挖出闸门⑮ 自己是恒绿的**：模板 handler 那条检查的捕获组编号错位
+（`m[1]` 是事件名 click/input，恒真；`m[2]` 才是 `H.` 前缀），收进集合的是「click」这种事件名；
+加上过滤方向写反（`if (!host.has(n)) delete` 删的是「在集合里的」），两条合起来 = 永不会红。
+修正后正向输出变成 `模板 handler 10 个全在导出表；视图里的 H.xxx 31 个全在 setHost`，上面两个
+反向实验才能红。步骤 5 那批「静态防线」里还有多少是这样的恒绿，步骤 11 合并签名测试时逐条过。
+
+**`.cb` 左边缘裁切：量出来是没裁，账本条目过期**（Tony 要求给数据不给描述）。真机 SM-X510，
+WebView Chrome 159，量 `.cb::before`（真正的圆圈）左边缘 vs 父 `.todo` 的 padding-box 左边缘：
+
+| 站点 | circleL | padBoxL0 | 差 | overflow | 结论 |
+|---|---|---|---|---|---|
+| 待办页列表 `.todo .cb` | 36.93 | 35.43 | +1.50 | hidden | 未裁 |
+| 笔记卡片预览 `.pane[data-tab=notes] .todo .cb` | 36.93 | 35.43 | +1.50 | hidden | 未裁 |
+| 逾期面板 `.msrow .cb`（P8.5 自建夹具后量） | 62.36 | 58.86 | +3.50 | hidden | 未裁 |
+
++1.50px 正好是 `.cb::before` 的 `left:1.5px` 内缩，即圆圈完整落在 `.todo` 的 padding-box 内。
+所以本步**没有 CSS 改动**（`todos.css` / `base.css` 都没动），S2 的 tokens/base 落地时已经修掉了；
+基线截图是 S1 时代拍的。几何断言进 TINT（见下），红字会直接给出 circleL / padBoxL0 / overflow。
+
+**`test.sh` 两处结构性改动**（Austin 拥有 API/server 用例块）：
+
+1. **VDIFF 参数化**成 `vdiff_tab()`（tab 名经 python 的 `__TAB__` 注入），调用
+   `vdiff_tab notes` + `vdiff_tab todos` —— 每个视图转完 Vue 都自动获得「DOM 逐字一致」这条防线，
+   不用为每个视图抄一遍 100 行。
+2. 新增 **TINT** 步骤（`Todos 交互在 Vue 路径上真的生效`），钉四件事：Vue 路径是活的
+   （`isVue` + `mounted` + 切 tab 后 `mounted2`）；点 `.cb` 真提交到服务端（`done` 翻转）且行从
+   「未完成」列表消失（`moved=gone`、`rows1=rows0-1`）；搜索态下渲染行数 == 服务端
+   `SR.todoIds` 里未完成的条数（SR 遮蔽防线，`SR` 有 setter 所以夹具能整体替换）；
+   `.cb` 几何。夹具一律自建两条（`Vue 交互夹具甲/乙`）+ 开头 purge 同名残留 + 结尾按 `ok:true`
+   计数删除，`cleaned==made` 断言防污染真数据。
+
+**四个只有真机能告诉你的坑**（都是假红，逐个记下来）：
+
+1. `/api/todo` 的删除动作是 `"delete"`，写成 `"del"` 时 `go/web.go` 的 `switch` **没有 default**，
+   连响应体都不写 → 夹具永远删不掉 → 下一轮 `findByText` 命中上一轮那条已勾完的旧夹具，
+   症状是 `done0=true` / `row=none`，看着完全像「Vue 渲染坏了」。
+2. 夹具挂在解析未终结的笔记上会被抹掉：`go/llm.go:263` 解析完成时是 `n.Todos = nil` 整体替换。
+   探针里全绿（没有解析在飞），suite 里 `done1=null rows1=0`。现在夹具先等所有笔记进
+   `done/raw/error` 终态，再挂到那篇笔记上。
+3. **jseval 注入的时机与日志格式**：重启后立刻注入会跑在 app.js 之前（实测
+   `TINT ERR=__enote is not defined @ <anonymous>:20:17`），要等 `web: page finished` / `SELFCHECK OK`；
+   日志行解析用 `re.search(r"TINT (\w+)=(.*)")`，**每行只取一个 key=value** 且 key 必须紧跟 `=`：
+   `geo0=circleL=36.93 padBoxL0=35.43` 可以（key=geo0，值里再 `findall` 子键），写成
+   `geo0 circleL=…` 就被解析成 key=`circleL`，几何列表永远为空（实测假红「没量到 .cb 几何」）。
+   几何必须在**夹具还在 DOM 里**时量：套件前面的步骤会把待办页清空（实测 `todos=0 cbIn=0 empty=1`），
+   所以量几何排在造夹具之后、点勾选之前。
+4. 模块变量 `S` 由 app 的 ~2s 轮询整体替换，夹具 `api('/api/state')` 拿到的新数据不会自动进
+   `S` → `render()` 画的是旧数据（`row=none`）。要显式 `__enote.state.S = st`。
+5. **`GO_TEST=1 ./build.sh` 会先跑 `go test`**，测试红就不重编 APK（实测反向实验③ 第一次跑的
+   是旧 APK，白测一轮）；故意装一个「坏」构建时要改用不带 `GO_TEST=1` 的 `./build.sh`。
+6. **`probe.sh` 等的是 `VDIFF2 done=1`**，TINT 载荷的完成标记是 `TINT done=1`，所以探针会空等
+   15s 后返回空结果（不报错）；手工跑 TINT 要自己 `sleep` + 取日志。
+
+**闸门⑮ 的 `setHost` 检查顺带抓到两个不存在的名字**（`isOver` / `priFilter`）：写进 `setHost({...})`
+会让 app.js 在模块求值时抛 `ReferenceError`，整个页面白屏（实测 `Uncaught ReferenceError: isOver
+is not defined @app.js:1923`）。`views/todos.js` 也踩过两个 module 导出坑：`vue.js` 不导出
+`computed`（要 `const { computed } = Vue`），`components.js` 不导出 `registerComponents`
+（每个视图自己 `components: { … }` 自注册）。
+
+**数字**：Vue 模板 6→8 个、模板 handler 9→10 个、jseval 载荷 9→10 个、VDIFF 覆盖 1→2 个 tab、
+导出表 58 key 不变、闸门 15 个不变、签名 84 项不变、D15 冻结的 10 个 class 名不变。
