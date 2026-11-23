@@ -189,6 +189,13 @@
   `.devmode` 存在时干活，夹具块紧跟在上一块删 `.devmode` 之后注入；签名测试的失败行是
   `  FAIL`（两个前导空格），`grep '^FAIL'` 恒为 0，判据要用 ok 计数。
 
+* **状态桥闭合集 16 → 17（+`SR`，D21）**：夹具里 `S.notes=[]` + `await render()` 画不出空态，
+  烧了两轮真机探针才定位，根因两条且都不是 Vue 的问题：`notesFiltered()` 的第一优先级是
+  `if(SR.notes) return SR.notes`（服务端搜索结果），而 app 每 ~2s 轮询 `/api/state` 整体替换 `S`，
+  载荷的赋值活不过下一次轮询 —— 症状看起来像「Vue 视图的 computed 冻住了」。
+  空态的正解是走 API：删完 → `refresh(true)` → `.empty` 出现（真机实测 `cards=0 empty=true`）。
+  `SR` 进闭合集是给夹具做诊断用，不是让它造空态。探针证据链见 plan.md §9.9。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome
@@ -643,3 +650,4 @@
 
 教训写在这里：**负向测试还原文件要用备份，不能用 `git checkout`**——后者还原到 HEAD，
 会连带丢掉同文件里其他未提交的改动。这个坑本轮踩了两次。
+

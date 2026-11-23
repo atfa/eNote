@@ -356,10 +356,11 @@ function stripJsLiterals(src) {
 }
 
 // 闭集：载荷能碰到的页面全局。函数 10 个（步骤 2 导出表里测试用得着的那批）
-// + 状态 6 个（只能以 __enote.state.X 出现，裸名就是假绿）。
+// + 状态 7 个（只能以 __enote.state.X 出现，裸名就是假绿）。
+// SR 是步骤 5 加的：notesFiltered() 第一优先级读它，夹具不暴露它就画不出笔记空态。
 const CLOSED_FN = ['api', 'refresh', 'render', 'missedDismiss', 'missedSheet', 'folderPick',
   'folderSave', 'folderSheet', 'shotPick', 'shotSheet'];
-const STATE_NAMES = ['tab', 'S', 'MISSED', 'open', 'shotSel', 'shotList'];
+const STATE_NAMES = ['tab', 'S', 'MISSED', 'open', 'shotSel', 'shotList', 'SR'];
 const JS_WORDS = new Set(['var', 'let', 'const', 'if', 'else', 'for', 'while', 'do', 'return',
   'function', 'await', 'async', 'new', 'typeof', 'instanceof', 'in', 'of', 'try', 'catch', 'finally',
   'throw', 'break', 'continue', 'switch', 'case', 'default', 'class', 'extends', 'super', 'void',

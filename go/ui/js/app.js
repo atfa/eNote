@@ -1966,13 +1966,18 @@ window.__enote.state = {
   get MISSED(){ return MISSED }, set MISSED(v){ MISSED = v },
   get open(){ return open }, set open(v){ open = v },
   get shotSel(){ return shotSel }, set shotSel(v){ shotSel = v },
-  get shotList(){ return shotList }, set shotList(v){ shotList = v }
+  get shotList(){ return shotList }, set shotList(v){ shotList = v },
+  /* 步骤 5 加：SR 是 notesFiltered() 的第一优先级输入（if(SR.notes) return SR.notes），
+     不暴露它，夹具把 S.notes 改成 [] 也画不出空态 —— 画的是服务端搜索结果那 2 条，
+     症状是「Vue 视图的 computed 冻住了」，实测在这里烧了两轮探针才定位。
+     闭合集 16 → 17 名（D21），闸门③与 web_test 的名单同步。 */
+  get SR(){ return SR }, set SR(v){ SR = v }
 };
 
 /* ---------- S3（D17）：__enote 测试缝 ----------
    测试要的是「能可靠地等首屏、能拿到刚装的这版是哪个 sha、能拿到 DOM 入口」，不是靠
    `typeof api === "function"` 猜页面还活着（那个哨兵连 module 没执行都看不出来）。
-   必须用 Object.assign 合并：整份赋值会把上面 state 的六个 getter/setter 全冲掉，
+   必须用 Object.assign 合并：整份赋值会把上面 state 的七个 getter/setter 全冲掉，
    载荷里 tab="notes" 就变成往新对象上写，模块里的 tab 一动不动 —— 步骤 2 那 11 处载荷
    集体假绿，比白屏难查一个量级。
    build.json 由 build.sh 生成（sha 带 -dirty 后缀），/build.json 走 no-store：设备是共享的，
