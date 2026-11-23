@@ -29,6 +29,12 @@ export function mountView(tab, pane, def){
   return app;
 }
 
+/* 组件里读模块状态的 computed 必须包 live()：S / MISSED / SHOTFLAGS 是普通
+   模块变量，不是响应式的，computed 没有响应式依赖就永远缓存 —— 数据变了视图不动
+   （症状：删光剪贴板后首页横幅不消失，实测踩过）。live() 让 computed 依赖 V.tick，
+   render() 每调一次就全部失效重算，语义等于今天的「全量重绘」。 */
+export function live(fn){ return Vue.computed(function(){ V.tick; return fn() }) }
+
 /* 一次绘制：bump tick → 等 Vue 把 DOM 打完。
    返回的 Promise 就是 render() 对外的 Promise（D13），调用点 await 它即可。 */
 export function vuePaint(){

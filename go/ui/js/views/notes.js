@@ -8,7 +8,7 @@
    3. 结构在模板里，叶子片段（图标/chip/待办行）走 v-html 复用 app.js 里的现成函数。
    4. 事件用 @click="H.xxx(...)"，函数名必须 ⊆ 导出表（闸门①(a)）。 */
 
-import { V, H, Vue } from '../vue.js'
+import { V, H, Vue, live } from '../vue.js'
 import { StripBar, MissedBanner, ShotBanner, ClipBanner, EmptyState, NoteCard } from '../components.js'
 
 const { computed } = Vue
@@ -18,9 +18,9 @@ export const NotesView = {
   components: { StripBar, MissedBanner, ShotBanner, ClipBanner, EmptyState, NoteCard },
   setup(){
     const tick = computed(() => V.tick);
-    const list = computed(() => H.notesFiltered());
+    const list = live(() => H.notesFiltered());
     /* 两种空态与遗留 renderNotes() 一致：一条笔记都没有 vs 有笔记但被筛没了 */
-    const empty = computed(() => H.S.notes.length
+    const empty = live(() => H.S.notes.length
       ? { icon: 'search', t: '没有符合条件的笔记', sub: '换个关键词，或点右上角重置筛选' }
       : { icon: 'inbox', t: '还没有笔记',
           sub: '在任何 app 里点「分享 → 懒得记」，文字和图片会自动变成笔记与待办' });
