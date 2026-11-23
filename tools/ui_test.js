@@ -909,7 +909,7 @@ if (SPLIT) {
               + ' 没进 VUE_VIEWS / VUE_SHEETS 注册表（视图存在但永远不会被挂载，render() 走遗留路径）');
       }
       // 模板里写 H.xxx 的组件必须在 setup() 的返回里带上 H：模板表达式编译成 _ctx.H.xxx(...)，
-      // setup 没返回 H 时，渲染期不碰它就丌报错，点一下才抛
+      // setup 没返回 H 时，渲染期不碰它就不报错，点一下才抛
       // 「Cannot read properties of undefined (reading 'shotSelAll')」，症状是按钮点了没反应。
       // 实测：ShotsView 的 全选 就是这么静默死掉的（步骤 8，被「截图页交互」用例抓到）。
       // 反向实验：删掉 ShotItem 的 return { H, … } 里的 H，闸门必红。

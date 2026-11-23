@@ -2228,8 +2228,8 @@ Object.assign(window, window.__enoteActions);
 /* shotOverlay / shotOvlSub 加进导出表是为了测试能测到进度层：它是步骤 8 迁 Vue 的一部分
    （SHOTPROG + ShotProgress 组件），而真机上走一次 AI 解析要几十秒且依赖 LLM，用例里直接
    调这两个入/出口函数比「等真导入」稳定得多。
-   注意：表体里丌能写注释 —— tools/ui_test.js 的 exportTableKeys() 是粗解析标识符列表，
-   注释会被当成一个名字，运行时导出表比对（P6.6）立刻红。
+   注意：表体里不能写注释 —— tools/ui_test.js 的 exportTableKeys() 是粗解析标识符列表，
+   注释会被当成一个名字，运行时导出表比对（P6.6）立刻红。 */
 
 /* ---------- S3（D21）：状态桥 ----------
    jseval 测试载荷跑在 module 外面，拿不到模块作用域里的变量。tab / MISSED / shotSel

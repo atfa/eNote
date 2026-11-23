@@ -1221,7 +1221,7 @@ N0T=$(readtlog | wc -l)
     await folderFilter("");
     L("funfiltered="+vis().length);
     // 真点一下 全选：上面全是直接调函数，而模板里的 H.xxx 要组件在 setup() 里返回 H 才能
-    // 解析（Vue 把模板表达式编成 _ctx.H.xxx(...)），没返回时渲染期丌碰它就丌报错，
+    // 解析（Vue 把模板表达式编成 _ctx.H.xxx(...)），没返回时渲染期不碰它就不报错，
     // 点一下才抛 undefined —— 只有真点击能抓到（步骤 8 实测：截图页 全选 就这么死的）。
     var ab=q("#sheet .cliptop .btn.sm");
     L("allBtn="+(ab?ab.textContent:"?"));
