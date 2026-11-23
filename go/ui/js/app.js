@@ -1269,6 +1269,14 @@ function render(){
   syncReminders();
   syncExpand();
   markReady();
+  /* D13：render 的契约从此是 Promise。今天的实现是同步 innerHTML，return 时 DOM 已经更新完，
+     所以 Promise.resolve() 就是真语义（不是装样子）；步骤 5-10 视图转 Vue 后这里换成
+     Vue 的 nextTick()，调用点一行不用改。
+     markReady() 必须在 return 之前：ready 的语义是「首屏画完」，甩进 .then 就变成
+     「首屏之后的某个微任务」，步骤 3 的 seam 断言 ready@0ms 语义就变了。
+     app.js 内部 16 处调用点一律不 await（Tony 逐条核过：没有一处紧跟读新 DOM），
+     只有 test.sh 的 3 处 jseval 载荷 await —— 那里是「点完立刻断言 DOM」的场景。 */
+  return Promise.resolve();
 }
 
 /* 「展开详情」只在正文真的超过三行时才出现：先去掉 clamp 量整段高度，再加上 clamp 量三行高度，
@@ -1920,6 +1928,11 @@ Object.assign(window.__enote, {
   probe: window.__enoteProbe || null,
   markReady: markReady
 });
-fetch('/build.json').then(function(r){ return r.json() }).then(
-  function(b){ window.__enote.build = b },
-  function(e){ window.__enote.build = { sha: 'unreachable', builtAt: '', error: String(e) } });
+/* buildReady（步骤 4，Tony 提的竞态）：ready 在首屏就兑现，build 由这个独立 fetch 填，
+   载荷 await ready 后立刻读 E.build 是没顺序保证的（实测不犯：seam 载荷是在桥载荷轮询完
+   几秒后注入的）。把 promise 存下来，载荷里带超时 await 一下就能把顺序钉死。
+   两个分支都 resolve（失败也返回一个带 error 的对象），载荷里 await 它不会抛。 */
+window.__enote.buildReady = fetch('/build.json').then(function(r){ return r.json() }).then(
+  function(b){ window.__enote.build = b; return b },
+  function(e){ window.__enote.build = { sha: 'unreachable', builtAt: '', error: String(e) };
+               return window.__enote.build });

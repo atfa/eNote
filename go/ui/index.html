@@ -152,7 +152,10 @@
       ['Promise', function () { return typeof Promise === 'function' }, 'app.js 的 fetch 链（Chrome 32）'],
       ['Object.assign', function () { return typeof Object.assign === 'function' }, '导出表 / __enote 合并（Chrome 45）'],
       ['String.prototype.padStart', function () { return typeof String.prototype.padStart === 'function' }, 'app.js 时间格式化（Chrome 57）'],
-      ['Object.entries', function () { return typeof Object.entries === 'function' }, 'Vue 模板遍历对象（Chrome 54）']
+      // 版本下限哨兵，不是「谁依赖它」：vendored Vue 3.5.46 里 Object.entries **0 次**、
+      // Object.keys 11 次（实测），app.js 也是 0 次。拿它当哨兵是因为 Chrome 54 是
+      // 下面所有特性的天花板：它挂了说明 WebView 比 54 还老，module（61）必然也跑不了。
+      ['Object.entries', function () { return typeof Object.entries === 'function' }, '版本下限哨兵（Chrome 54 ≤ module 的 61）']
     ];
     var missing = [], detail = [], i;
     for (i = 0; i < need.length; i++) {

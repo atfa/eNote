@@ -126,11 +126,40 @@ func TestIndexServedFromDirectory(t *testing.T) {
 			t.Errorf("app.js 的 __enote 缺 %s（D17）", want)
 		}
 	}
+	// D13：render() 的契约是 Promise。视图转 Vue 后刷新是微任务，调用点不 await 就断言不到
+	// 新 DOM；今天的实现是同步 innerHTML，return 时 DOM 已更新，Promise.resolve() 就是真语义。
+	// 钉这个是因为契约比实现先动：步骤 5-10 换实现时调用点（3 处 jseval 载荷）一行不用改。
+	if i := strings.Index(appjs, "function render(){"); i < 0 {
+		t.Errorf("app.js 里找不到 function render(){（D13）")
+	} else {
+		body := appjs[i:]
+		if j := strings.Index(body, "\n}"); j > 0 {
+			body = body[:j]
+		}
+		if !strings.Contains(body, "return Promise.resolve();") {
+			t.Errorf("app.js 的 render() 没返回 Promise（D13）：载荷里 await render() 拿到 undefined，Vue 化那天会集体变红")
+		}
+		mi, ri := strings.Index(body, "markReady();"), strings.Index(body, "return Promise.resolve();")
+		if mi < 0 || ri < 0 || mi > ri {
+			t.Errorf("markReady() 必须在 render() 的 return 之前（D13/D17）：ready 的语义是「首屏画完」，甩进 .then 就变了")
+		}
+	}
+	// build.json 由独立 fetch 填，ready 在首屏就兑现：没存 promise 的话，载荷 await ready 后
+	// 立刻读 E.build 是没顺序保证的（实测不犯，因为 seam 载荷是在桥载荷轮询完几秒后注入的）。
+	if !strings.Contains(appjs, "window.__enote.buildReady = fetch('/build.json')") {
+		t.Errorf("app.js 缺 __enote.buildReady（D17 竞态）：seam 载荷没法显式等 build.json 落地")
+	}
 }
 
 // D17：/build.json 是「WebView 里跑的就是刚装的这版」的凭据。设备是共享的（两个 worktree
 // 轮流装），光看日志对不上号；测试拿它和 APK 的 git sha 逐项比。
 func TestBuildJSONServed(t *testing.T) {
+	// build.json 是 build.sh 生成的构建产物，进了 .gitignore：新 worktree / 新 clone 里
+	// 本就没这文件，//go:embed 也就收不到它，404 不是 bug。缺文件就跳过（Tony 实测：
+	// 不跳的话「顺手跑个 go test」在干净树上必红），文件在时格式断言照旧严格。
+	if _, err := os.Stat("ui/build.json"); os.IsNotExist(err) {
+		t.Skip("先跑 build.sh：go/ui/build.json 不存在（它是构建产物，不进版本库）")
+	}
 	resp := doUI(t, "/build.json")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

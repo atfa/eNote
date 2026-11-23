@@ -747,6 +747,16 @@ N0S=$(readtlog | wc -l)
     }catch(e){ r="fail:"+((e&&e.message)||e) }
   }
   L("seam ready="+r+" ms="+(Date.now()-t));
+  // build 由 app.js 里那个独立 fetch 填，跟 ready 没顺序保证（步骤 4，Tony 提的竞态）：
+  // 现在不犯是因为 seam 载荷是在桥载荷轮询完几秒后才注入的。带超时 await 一下，把顺序钉死。
+  var br="none";
+  if(E.buildReady&&E.buildReady.then){
+    try{
+      await Promise.race([E.buildReady, new Promise(function(_,rej){setTimeout(function(){rej(new Error("build-timeout"))},5000)})]);
+      br="ok";
+    }catch(e){ br="timeout" }
+  }
+  L("seam buildready="+br);
   L("seam build="+(E.build&&E.build.sha||"none")+" builtAt="+(E.build&&E.build.builtAt||"none"));
   var d=E.dom||{};
   L("seam dom main="+(d.main?d.main.id+":"+d.main.tagName:"none")+" sheet="+(d.sheet?d.sheet.id+":"+d.sheet.tagName:"none")+" panel="+(d.panel?1:0)+" toast="+(d.toast?1:0)+" dlg="+(d.dlg?1:0));
@@ -771,6 +781,7 @@ want = os.environ["EXPECT_SHA"]
 d = dict(kv.split("=", 1) for l in lines for kv in l.split("JSEVAL seam ", 1)[1].split() if "=" in kv)
 assert d.get("ready") == "ok", "__enote.ready 没兑现（%s）：首屏没画出来，测试缝就是废的" % d.get("ready")
 assert d.get("build") == want, "页面里跑的是 %s，刚装的是 %s：no-store 失效或装完没重启" % (d.get("build"), want)
+assert d.get("buildready") == "ok", "__enote.buildReady 是 %s：build.json 的 fetch 没在 5s 内完成，那 E.build 就是上一版的残留" % d.get("buildready")
 assert d.get("main") == "view:MAIN", "__enote.dom.main = %s，期望 view:MAIN" % d.get("main")
 assert d.get("sheet") == "sheet:DIV", "__enote.dom.sheet = %s，期望 sheet:DIV" % d.get("sheet")
 for k in ("panel", "toast", "dlg"):
@@ -866,7 +877,7 @@ N0C=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
-  var d=await api("/api/missed"); __enote.state.MISSED=d; __enote.state.S.missed=d; __enote.state.tab="notes"; render(); missedSheet();
+  var d=await api("/api/missed"); __enote.state.MISSED=d; __enote.state.S.missed=d; __enote.state.tab="notes"; await render(); missedSheet();
   L("count="+d.count);
   L("rows="+document.querySelectorAll(".msrow").length);
   L("cb="+document.querySelectorAll(".msrow .cb").length);
@@ -1139,10 +1150,12 @@ cat > "$TMPDIR/jseval.sh" <<'EOS'
 am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$(cat "$1")" >/dev/null
 EOS
 N0T=$(readtlog | wc -l)
-"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(function(){
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  // D13：render 的契约是 Promise，载荷是「渲染完立刻断言 DOM」，所以必须 await；
+  // 包装得是 async function，否则 await 是 SyntaxError（整段载荷解析失败，JSEVAL token 集体消失）。
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
   var rows=function(){return [].slice.call(document.querySelectorAll("#folderList .frow"))};
-  __enote.state.tab="mine"; render(); folderSheet();
+  __enote.state.tab="mine"; await render(); folderSheet();
   L("count0="+q("#folderCount").textContent.replace(/\s+/g," "));
   var first=rows()[0].getAttribute("data-path");
   L("first="+first);
@@ -1211,9 +1224,10 @@ api_post shots/add "{\"shots\":[{\"path\":\"$EXT/one-shot.png\",\"name\":\"one-s
   | grep -q '"added":1' || fail "造一张暂存截图失败"
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 NT=$(readtlog | wc -l)
-"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(function(){
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  // D13：同上，render 返回 Promise，要 await 才能断言刚渲染的 DOM。
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
-  __enote.state.tab="notes"; render(); shotSheet();
+  __enote.state.tab="notes"; await render(); shotSheet();
   setTimeout(function(){
     __enote.state.shotSel={};
     L("n1_go="+(q("#shotGo")?q("#shotGo").textContent:"?"));

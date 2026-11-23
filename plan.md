@@ -776,3 +776,34 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 * **seam 有个潜在竞态**：`ready` 在首屏兑现，`build` 由独立的 `fetch('/build.json')` 填，载荷
   `await ready` 后立刻读 `E.build`，顺序没保证（实测不犯：seam 载荷是在桥载荷轮询完几秒后注入的）。
   app.js 把那个 fetch 的 promise 存成 `__enote.buildReady`，载荷里带超时 await 一下。
+
+### 9.8 S8 步骤 4 已完成（Austin，D12b / D13：`render()` → Promise + 闸门② 闭集）
+
+**契约先于实现动**：步骤 5-10 把视图转 Vue 之后，刷新变成微任务，「点完立刻断言 DOM」的测试载荷
+必须 `await`。所以这一步先把 `render()` 的契约改成 Promise，实现仍是同步 `innerHTML` ——
+`Promise.resolve()` 是真语义，不是占位；步骤 5-10 换成 `nextTick()` 时调用点一行不用改。
+
+* `app.js`：`render()` 末尾 `markReady(); return Promise.resolve();`。`markReady()` 必须在 return
+  之前（Tony 点的名）：`ready` 的语义是「首屏画完」，甩进 `.then` 就变成「首屏之后的某个微任务」，
+  步骤 3 的 seam 断言 `ready@0ms` 语义就变了。`go/web_test.go` 把这两条钉住。
+* 内部 16 处 `render()` 调用点**一律不 await**：Tony 逐条核过没有一处紧跟读新 DOM
+  （`:1587` 后面是 `setTimeout`、`:1834` 的 `shotIntroOnce` 读 localStorage、`:309` 的
+  `missedSheet` 建 sheet 不读 main）。改动面因此压到 3 处 jseval 载荷。
+* 3 处载荷加 `await render()`，其中 2 处（folderSheet / shotSheet）的包装是同步 `(function(){`，
+  必须连包装一起改成 `(async function(){` —— 漏改是整段载荷 SyntaxError，JSEVAL token 集体消失，
+  表现为「用例没跑」而不是「用例红了」。
+* **闸门② 重写**（`tools/ui_test.js`，FAST 步骤我代写，Tony 验）：抽 7 个载荷 → 剥注释/字符串/
+  正则字面量 → 抽自由标识符 → 减去载荷局部名 → 断言 == 闭集（函数 10 个），状态 6 个必须只以
+  `__enote.state.X` 出现。实测闭集与 Tony 独立量的完全一致：`api refresh render missedDismiss
+  missedSheet folderPick folderSave folderSheet shotPick shotSheet`。
+* 扫描器三条实测假阳性（都写进注释）：选择器串 `.pane[data-tab=mine]` 命中裸名 `tab`；载荷块后的
+  Python（`open(sys.argv[1])`/`print`/`int`）不是 JS；正则字面量 `/\s+/g` 里的 `g`/`d`/`s` 被当标识符。
+  闸门自己的防线：载荷数 < 7 判红。
+* 五条反向实验逐条变红：裸写 `tab="notes"` / 删一个 `await` / 引入闭集外新全局 / 一处载荷输出文件
+  改名 / 闭集里 `shotPick` 不再被引用。
+* Tony 步骤 3 的三条后续全部落地：`Object.entries` 依据改成「版本下限哨兵」（实测 vendored Vue
+  3.5.46：`Object.entries` 0 次、`Object.keys` 11 次）；`TestBuildJSONServed` 缺文件时 `t.Skip`；
+  `__enote.buildReady` + seam 载荷带超时 await + 断言 `buildready=ok`。
+
+**给步骤 5-10 的硬约束**：载荷里新增的全局引用必须同步改闸门② 的闭集（红字会直接说这条）；
+视图转 Vue 后 `render()` 的返回值换成 `nextTick()`，`markReady()` 仍留在首屏那一次。

@@ -253,33 +253,121 @@ if (dupReports.length) {
   ok('顶层声明无重名（' + jsSources.length + ' 个 JS 文件，var+var 合法不计）');
 }
 
-// ---------- 闸门② test.sh 的 jseval 引用的全局名必须存在 ----------
-// jseval 脚本是 `"$PY" -c 'import json…' '(async function(){ … })()' > js.json`，
-// 所以整块 JS 是单引号参数，按 (async function(){ … })() 的配对抓。
+// ---------- 闸门② jseval 载荷引用的全局名必须落在闭集里（D12b / D13）----------
+// 为什么这么狠：载荷里裸写 tab="notes" 是往 window 上写，模块里的 tab 一动不动，
+// 断言全绿而界面根本没切过去 —— 这种假绿比崩溃难查一个量级。步骤 5-10 把视图转成
+// Vue 之后，模块顶层名字不再自动是 window 属性，这类假绿会成批出现，所以缝先立起来。
+//
+// 载荷边界：test.sh 里 `"$PY" -c '…sys.argv[1]}))' '<JS>' > "$TMPDIR/js*.json"`，
+// JS 是单引号参数，到 `> "$TMPDIR/js*.json"` 为止。边界外的 Python（open/print/int/val）
+// 不是 JS，扫进来就是假阳性（实测）。字符串字面量也要剔掉：`.pane[data-tab=mine]`
+// 这种选择器串会命中裸名 tab；正则字面量也要剔掉：replace(/\s+/g) 里的 g/d/s 会被
+// 当成标识符（都是实测过的假阳性）。
 const testSh = read('test.sh');
-const jsevalNames = new Set();
-const jsevalLocals = new Set();
-for (const m of testSh.matchAll(/\(async function\(\)\{[\s\S]*?\}\)\(\)'/g)) {
-  const body = m[0];
-  // 脚本内部自己声明的 var L / var q / var sleep 是局部名，不算页面全局
-  for (const d of body.matchAll(/(?:var|let|const)\s+([A-Za-z_$][\w$]*)/g)) jsevalLocals.add(d[1]);
-  for (const s of body.split(/;|\n/)) {
-    const t = s.trim();
-    const call = t.match(/^([A-Za-z_$][\w$]*)\s*\(/);
-    if (call) jsevalNames.add(call[1]);
-    const asg = t.match(/^([A-Za-z_$][\w$]*)\.[A-Za-z_$][\w$]*\s*=/);
-    if (asg) jsevalNames.add(asg[1]);
+
+// 剥掉注释 / 字符串 / 模板串 / 正则字面量，只留语法骨架。
+function stripJsLiterals(src) {
+  let out = '', i = 0;
+  const prev = () => out.replace(/\s+$/, '').slice(-1);
+  while (i < src.length) {
+    const d = src.slice(i, i + 2);
+    if (d === '//') { const j = src.indexOf('\n', i); i = j < 0 ? src.length : j; continue }
+    if (d === '/*') { const j = src.indexOf('*/', i + 2); i = j < 0 ? src.length : j + 2; continue }
+    const c = src[i];
+    if (c === '"' || c === "'" || c === '`') {
+      let j = i + 1;
+      while (j < src.length) { if (src[j] === '\\') { j += 2; continue } if (src[j] === c) break; j++ }
+      out += '""'; i = j + 1; continue
+    }
+    // 判「除号还是正则」看前一个非空字符：载荷里正则一律出现在 ( , = : 后面。
+    if (c === '/' && '(,=:[!&|?{};+-*%<>~^'.includes(prev())) {
+      let j = i + 1, cls = false;
+      while (j < src.length) {
+        if (src[j] === '\\') { j += 2; continue }
+        if (src[j] === '[') cls = true; else if (src[j] === ']') cls = false;
+        else if (src[j] === '/' && !cls) break;
+        j++;
+      }
+      i = j + 1;
+      while (/[gimsuy]/.test(src[i] || '')) i++;
+      out += '""'; continue;
+    }
+    out += c; i++;
   }
+  return out;
 }
-const JS_BUILTINS = new Set(['var', 'let', 'const', 'if', 'for', 'while', 'return', 'function', 'await',
-  'new', 'typeof', 'JSON', 'Math', 'Date', 'Object', 'Array', 'String', 'Number', 'Promise', 'document',
-  'window', 'console', 'setTimeout', 'clearTimeout', 'setInterval', 'api', 'render', 'encodeURIComponent',
-  'parseInt', 'Boolean', 'String', 'location', 'navigator', 'fetch', 'localStorage', 'Array', 'Set', 'Map']);
-const jsMissing = [...jsevalNames].filter(n => !JS_BUILTINS.has(n) && !jsevalLocals.has(n) && !declared.has(n));
-if (jsMissing.length) {
-  bad('test.sh 的 jseval 用了页面里不存在的名字', jsMissing.join(', '));
+
+// 闭集：载荷能碰到的页面全局。函数 10 个（步骤 2 导出表里测试用得着的那批）
+// + 状态 6 个（只能以 __enote.state.X 出现，裸名就是假绿）。
+const CLOSED_FN = ['api', 'refresh', 'render', 'missedDismiss', 'missedSheet', 'folderPick',
+  'folderSave', 'folderSheet', 'shotPick', 'shotSheet'];
+const STATE_NAMES = ['tab', 'S', 'MISSED', 'open', 'shotSel', 'shotList'];
+const JS_WORDS = new Set(['var', 'let', 'const', 'if', 'else', 'for', 'while', 'do', 'return',
+  'function', 'await', 'async', 'new', 'typeof', 'instanceof', 'in', 'of', 'try', 'catch', 'finally',
+  'throw', 'break', 'continue', 'switch', 'case', 'default', 'class', 'extends', 'super', 'void',
+  'delete', 'yield', 'static', 'this', 'arguments', 'true', 'false', 'null', 'undefined', 'get',
+  'set', 'import', 'export', 'as', 'with', 'debugger']);
+const JS_GLOBALS = new Set(['console', 'document', 'window', 'navigator', 'location', 'history',
+  'alert', 'Math', 'JSON', 'Date', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Promise',
+  'RegExp', 'Error', 'Set', 'Map', 'WeakMap', 'Symbol', 'Reflect', 'Proxy', 'globalThis', 'Infinity',
+  'NaN', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame',
+  'queueMicrotask', 'parseInt', 'parseFloat', 'isNaN', 'encodeURIComponent', 'decodeURIComponent',
+  'fetch', 'atob', 'btoa', 'localStorage', 'sessionStorage', 'URL', 'Blob', 'File', 'FormData',
+  'Headers', 'Request', 'Response', 'AbortController', 'TextEncoder', 'TextDecoder', 'structuredClone',
+  'Intl', 'crypto', 'performance', 'getComputedStyle', 'querySelector', 'querySelectorAll',
+  'addEventListener', 'MutationObserver', 'IntersectionObserver',
+  '__enote', '__enoteActions', '__enoteProbe']);
+
+function payloadLocals(src) {
+  const loc = new Set();
+  for (const m of src.matchAll(/\b(?:var|let|const)\s+([A-Za-z_$][\w$]*(?:\s*=\s*[^;]*?,\s*[A-Za-z_$][\w$]*)*)/g))
+    for (const p of m[1].split(/[,=]/).map(s => s.trim()).filter(Boolean)) loc.add(p);
+  for (const m of src.matchAll(/\bfunction\s*([A-Za-z_$][\w$]*)?\s*\(([^)]*)\)/g)) {
+    if (m[1]) loc.add(m[1]);
+    m[2].split(',').map(s => s.trim()).filter(Boolean).forEach(s => loc.add(s.replace(/=.*/, '').trim()));
+  }
+  for (const m of src.matchAll(/\bcatch\s*\(\s*([A-Za-z_$][\w$]*)/g)) loc.add(m[1]);
+  for (const m of src.matchAll(/(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*=>/g)) loc.add(m[1]);
+  for (const m of src.matchAll(/\(([^()]*)\)\s*=>/g))
+    m[1].split(',').map(s => s.trim()).filter(Boolean).forEach(s => loc.add(s));
+  return loc;
+}
+
+const jsevalPayloads = [...testSh.matchAll(/sys\.argv\[1\]\}\)\)'[ \t]*(?:\\\n)?[ \t]*'([\s\S]*?)' > "\$TMPDIR\/[a-z]+\.json"/g)]
+  .map(m => m[1]);
+const CLOSED = new Set(CLOSED_FN);
+const g2 = [];
+const refsAll = new Set();
+let bareStateAll = [], renderCalls = 0, renderAwaited = 0;
+jsevalPayloads.forEach((body, idx) => {
+  if (body.indexOf('`') >= 0) g2.push('载荷 ' + (idx + 1) + ' 用了模板字符串，扫描器不认（改成字符串拼接）');
+  const clean = stripJsLiterals(body);
+  const loc = payloadLocals(clean);
+  for (const m of clean.matchAll(/(^|[^.\w$?])([A-Za-z_$][\w$]*)/g)) {
+    const name = m[2];
+    if (/^\s*:/.test(clean.slice(m.index + m[0].length))) continue;   // 对象字面量的 key
+    if (JS_WORDS.has(name) || JS_GLOBALS.has(name) || loc.has(name)) continue;
+    refsAll.add(name);
+    if (STATE_NAMES.includes(name)) bareStateAll.push(name + '@载荷' + (idx + 1));
+  }
+  renderCalls += (clean.match(/\brender\(/g) || []).length;
+  renderAwaited += (clean.match(/\bawait\s+render\(/g) || []).length;
+});
+
+if (jsevalPayloads.length < 7) {
+  bad('jseval 载荷只扫到 ' + jsevalPayloads.length + ' 个', '期望 ≥ 7：抽取正则失效了，闸门② 自己在假绿');
+} else if (g2.length) {
+  bad('闸门② 扫载荷失败', g2.join('；'));
 } else {
-  ok('test.sh 的 jseval 引用的 ' + jsevalNames.size + ' 个页面名字全部存在（局部名 ' + jsevalLocals.size + ' 个已排除）');
+  const extra = [...refsAll].filter(n => !CLOSED.has(n)).sort();
+  const unused = CLOSED_FN.filter(n => !refsAll.has(n));
+  // 顺序有讲究：裸状态名先报。它同时也是「闭集外」，但只说「闭集外」会把人往
+  // 「新增要改闸门」的方向带，而真正的坑是「写到 window 上、模块没动」这种假绿。
+  if (bareStateAll.length) bad('载荷里裸写了状态名', bareStateAll.join(', ') + '：裸名是往 window 上写，模块里的 ' + bareStateAll[0].split('@')[0] + ' 一动不动（假绿），要走 __enote.state.' + bareStateAll[0].split('@')[0]);
+  else if (extra.length) bad('jseval 载荷引用了闭集外的全局名', extra.join(', ') + '（闭集 = 函数 10 个 + 状态 6 个走桥，新增要同步改闸门②）');
+  else if (unused.length) bad('闭集里有名字没人引用了', unused.join(', ') + '（闭集要同步缩小，否则改名后闸门② 查不出来）');
+  else if (renderCalls !== renderAwaited) bad('载荷里的 render 没全部 await', renderAwaited + '/' + renderCalls + '：render() 的契约是 Promise（D13），不 await 就断言不到新 DOM；包装也得是 async function');
+  else ok('jseval 载荷 ' + jsevalPayloads.length + ' 个：引用全局名 == 闭集（函数 ' + CLOSED_FN.length + '）+ 状态 6 个全走 __enote.state + render ' + renderCalls + ' 处全部 await');
 }
 
 // ---------- 闸门③ 裸 hex / 裸 px 棘轮 ----------

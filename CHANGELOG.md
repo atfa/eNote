@@ -127,6 +127,36 @@
   顺手修一个解析陷阱：`missing` 里带说明文本（含空格）会把 seam 载荷的空格分隔 token 解析弄脏，
   现在 `missing` 只存名字，给人看的那份放 `missingDetail`（页面卡片用它）。
 
+### 测试契约（P13 S8 步骤 4，D12b / D13）：`render()` → Promise + 闸门② 闭集
+
+* **`render()` 现在返回 Promise**（D13）：今天的实现是同步 `innerHTML`，`return` 时 DOM 已经更新完，
+  所以 `Promise.resolve()` 就是真语义（不是装样子）；步骤 5-10 视图转 Vue 后换成 `nextTick()`，
+  调用点一行不用改。`markReady()` 留在 `return` **之前** —— `ready` 的语义是「首屏画完」，甩进
+  `.then` 就变成「首屏之后的某个微任务」，步骤 3 的 seam 断言 `ready@0ms` 语义就变了。
+  `app.js` 内部 16 处调用点一律不 await（Tony 逐条核过：没有一处紧跟读新 DOM），只有 3 处
+  jseval 载荷 await —— 那里是「点完立刻断言 DOM」的场景。
+* **2 处载荷的包装必须一起改**：`test.sh` 的 folderSheet / shotSheet 载荷包在同步 `(function(){` 里，
+  直接加 `await` 是 SyntaxError —— 症状是整段载荷解析失败、JSEVAL token 集体消失（表现为
+  「用例没跑」而不是「用例红了」）。
+* **闸门② 重写为闭集断言**（D12b）：从 `test.sh` 抽 7 个 jseval 载荷（边界 = 单引号 JS 串，到
+  `> "$TMPDIR/js*.json"` 为止），剥掉注释 / 字符串 / 正则字面量，抽自由标识符，减去载荷局部名，
+  断言 == 闭集：函数 10 个（`api refresh render missedDismiss missedSheet folderPick folderSave
+  folderSheet shotPick shotSheet`）；状态 6 个（`tab S MISSED open shotSel shotList`）必须只以
+  `__enote.state.X` 出现，裸名判红。为什么这么狠：裸写 `tab="notes"` 是往 window 上写，模块里的
+  `tab` 一动不动，测试全绿而界面根本没切页 —— 这种假绿比崩溃难查一个量级，而步骤 5-10 转 Vue
+  之后（模块顶层名字不再自动是 window 属性）它会成批出现。
+* 扫描器三条**实测**假阳性（都写进注释）：`.pane[data-tab=mine]` 这类选择器串会命中裸名 `tab`；
+  载荷块后面的 Python（`open(sys.argv[1])` / `print` / `int`）不是 JS；`replace(/\s+/g,"")` 里的
+  `g`/`d`/`s` 会被当成标识符。闸门自己的防线：载荷数 < 7 判红（抽取正则失效 = 闸门自己假绿）。
+* 五条反向实验逐条变红：裸写 `tab="notes"`、删掉一个 `await`、引入闭集外的新全局、把一处载荷的
+  输出文件改名（载荷扫不到）、闭集里 `shotPick` 不再被引用。
+* Tony 审步骤 3 的三条后续一并落地：probe 的 `Object.entries` 依据改成「版本下限哨兵」（vendored
+  Vue 3.5.46 里 `Object.entries` **0 次**、`Object.keys` 11 次，实测）；`TestBuildJSONServed` 在
+  `go/ui/build.json` 缺失时 `t.Skip`（它是构建产物、进了 `.gitignore`，干净树上新 clone 必红）；
+  `__enote.buildReady` 存下 build.json 的 fetch promise，seam 载荷带超时 await 并断言
+  `buildready=ok`（`ready` 首屏就兑现、`build` 由独立 fetch 填，原本没顺序保证）。
+* `go/web_test.go` 钉住 D13：`render()` 必须 `return Promise.resolve()`，且 `markReady()` 在 return 之前。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome
