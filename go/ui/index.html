@@ -123,6 +123,10 @@
   <div class="dacts"><button class="btn" id="dlgNo">取消</button><button class="btn pri" id="dlgYes">确定</button></div>
 </div></div>
 <div id="toast"></div>
+<!-- 步骤 8：截图导入进度层的挂载容器（body 级）。容器自身不带样式：遮罩 (.ovl) 在组件根
+     元素上且带 v-if，unmount 后容器里什么都不留，不会剩一层透明遮罩吃掉点击。
+     放 body 级是因为 closeSheet() 会换掉 .panel 的内容，而进度层要活过弹层。 -->
+<div id="shotOvlRoot"></div>
   <!-- S1a：脚本从 go/ui.html 的 <script>（原 683-2524 行）搬出。
        S3 起是 ES module：顶层声明不再是全局，内联 handler 靠 app.js 末尾的
        window.__enoteActions + Object.assign(window, …) 解析（D12 原子防线，闸门① 守）。 -->

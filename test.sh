@@ -1176,23 +1176,45 @@ N0T=$(readtlog | wc -l)
   // 包装得是 async function，否则 await 是 SyntaxError（整段载荷解析失败，JSEVAL token 集体消失）。
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
   var rows=function(){return [].slice.call(document.querySelectorAll("#folderList .frow"))};
+  var vis=function(){return rows().filter(function(r){return getComputedStyle(r).display!=="none"})};
   __enote.state.tab="mine"; await render(); folderSheet();
+  // 步骤 8：Vue 弹层的 DOM 在 nextTick 之后才落地（遗留路径是同步 innerHTML）。
+  // 不等这一拍，count0 读到的是空容器，q("#folderCount") 直接 null → 载荷抛异常。
+  await new Promise(function(r){ setTimeout(r,400) });
+  // 正向断言「真的走了 Vue 路径」：VDIFF 结构上分不出两条路径（DOM 按设计逐字相同），
+  // 只靠它的话，VUE_SHEETS 注册了但分发没接上也是绿的。
+  L("isvue="+(__enote.vue.isVueSheet("folders")?1:0));
+  L("mounted="+(__enote.vue.sheets.folders?1:0));
   L("count0="+q("#folderCount").textContent.replace(/\s+/g," "));
+  L("rows0="+rows().length);
   var first=rows()[0].getAttribute("data-path");
   L("first="+first);
-  folderPick(first);
+  // folderPick 在 Vue 路径返回 sheetPaint() 的 Promise（遗留路径返回 undefined，await 两者都安全）
+  await folderPick(first);
   var r2=rows(),seenUn=false,ok=true;
   r2.forEach(function(r){var on=r.classList.contains("on");if(!on)seenUn=true;else if(seenUn)ok=false;});
   L("count1="+q("#folderCount").textContent.replace(/\s+/g," "));
   L("firstAfter="+r2[0].getAttribute("data-path"));
   L("orderOK="+(ok?1:0));
   var panel=q("#sheet .panel"); panel.scrollTop=Math.round(panel.scrollHeight/2);
-  setTimeout(function(){
+  setTimeout(async function(){
     var f=q("#sheet .pfoot"),b=f.getBoundingClientRect();
     L("sticky="+getComputedStyle(f).position);
     L("footVisible="+((b.bottom<=window.innerHeight+2&&b.top>=0&&b.height>20)?1:0));
-    folderPick(first);
+    // 勾选之后滚动位置不能跳：遗留路径靠「记住 scrollTop 再放回」，Vue 靠 v-for 的 :key
+    // 原地移动节点。两条路径都只看结果：面板仍在中间附近（允许 4px 误差）。
+    L("scrollKept="+(Math.abs(panel.scrollTop-Math.round(panel.scrollHeight/2))<=4?1:0));
+    await folderPick(first);
     L("count2="+q("#folderCount").textContent.replace(/\s+/g," "));
+    // 搜索框过滤：用第一行路径的最后一段当关键词，两条路径都必须只留下包含它的行
+    var key=String(first).replace(/\/$/,"").split("/").pop();
+    await folderFilter(key);
+    var v=vis();
+    L("fkey="+key);
+    L("fshown="+v.length);
+    L("fmatch="+(v.length&&v.every(function(r){return String(r.getAttribute("data-path")).toLowerCase().indexOf(key.toLowerCase())>=0})?1:0));
+    await folderFilter("");
+    L("funfiltered="+vis().length);
     folderSave();
     var tries=0,probe=function(){
       var p=document.querySelector(".pane[data-tab=mine]");
@@ -1233,7 +1255,17 @@ assert n2 == n0, "勾回来之后应该回到 %d: %r" % (n0, c2)
 mine = val("mine")
 assert re.match(r"^监控文件夹\d+个$", mine), "我的页数量没刷新: %r" % mine
 assert int(re.search(r"(\d+)", mine).group(1)) == n2, "我的页数量该跟选择一致: %r vs %s" % (mine, n2)
-print("  ok (固定条 sticky、计数 %d→%d 实时、已选在前、返回后我的页同步为 %d)" % (n0, n1, n2))
+# 步骤 8：正向断言走的是 Vue 路径。VDIFF 比的是 DOM，而两条路径的 DOM 按设计逐字相同，
+# 它结构上分不出走了哪条 —— 没有这两行，VUE_SHEETS 注册了但分发没接上也是绿的。
+assert val("isvue") == "1", "文件夹页没走 Vue 路径（isVueSheet(folders) 为假）"
+assert val("mounted") == "1", "文件夹页的 Vue 应用没挂载（__enote.vue.sheets.folders 为空）"
+assert val("scrollKept") == "1", "勾选之后弹层滚动位置跳了"
+assert int(val("fshown")) >= 1 and val("fmatch") == "1", \
+    "搜索框过滤没生效: key=%r shown=%s match=%s" % (val("fkey"), val("fshown"), val("fmatch"))
+assert int(val("funfiltered")) == int(val("rows0")), \
+    "清空关键词之后行没全部回来: %s -> %s" % (val("rows0"), val("funfiltered"))
+print("  ok (固定条 sticky、计数 %d→%d 实时、已选在前、过滤 %s 命中 %s 行、Vue 挂载、返回后我的页同步为 %d)"
+      % (n0, n1, val("fkey"), val("fshown"), n2))
 PYCHK
 asroot_global "rm -f '$DATA/enote/.devmode'"
 
@@ -1249,13 +1281,19 @@ NT=$(readtlog | wc -l)
   // D13：同上，render 返回 Promise，要 await 才能断言刚渲染的 DOM。
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
   __enote.state.tab="notes"; await render(); shotSheet();
-  setTimeout(function(){
+  setTimeout(async function(){
     __enote.state.shotSel={};
+    // 步骤 8：正向断言截图页真的由 Vue 挂载（同文件夹页，VDIFF 分不出两条路径）
+    L("isvue="+(__enote.vue.isVueSheet("shots")?1:0));
+    L("mounted="+(__enote.vue.sheets.shots?1:0));
     L("n1_go="+(q("#shotGo")?q("#shotGo").textContent:"?"));
     L("n1_split="+(q("#shotSplit")?getComputedStyle(q("#shotSplit")).display:"?"));
     L("n1_raw="+(q("#shotRaw")?getComputedStyle(q("#shotRaw")).display:"?"));
-    shotPick(__enote.state.shotList[0].id);
+    // shotPick 在 Vue 路径返回 sheetPaint() 的 Promise：不 await 就读，读到的是上一帧
+    await shotPick(__enote.state.shotList[0].id);
     L("n2_go="+(q("#shotGo")?q("#shotGo").textContent:"?"));
+    L("n2_on="+document.querySelectorAll(".shotitem.on").length);
+    L("n2_foot="+(q("#shotFoot")?q("#shotFoot").textContent.replace(/\s+/g," "):"?"));
     L("done=1");
   }, 1200);
 })()' > "$TMPDIR/js.json"
@@ -1276,7 +1314,14 @@ assert val("done") == "1", "jseval 没跑完"
 assert val("n1_go") == "创建笔记", "一张时主按钮文案该是「创建笔记」, got %r" % val("n1_go")
 assert val("n1_split") == "none", "一张时不该出现「各存一条」"
 assert val("n1_raw") == "none", "一张时不该出现「原样存」"
-print("  ok (一张只有「创建笔记」，勾选后文案不变)")
+# 步骤 8：勾选之后 DOM 真的变了 = tick 链没断。shotPick 只改模块变量 + bump tick，
+# 任何一环没接上（忘了 sheetPaint / 组件没用 live()）都是「点了没反应」，
+# 而签名测试与静态闸门全绿。
+assert val("isvue") == "1", "截图页没走 Vue 路径（isVueSheet(shots) 为假）"
+assert val("mounted") == "1", "截图页的 Vue 应用没挂载（__enote.vue.sheets.shots 为空）"
+assert val("n2_on") == "1", "勾选之后 .shotitem.on 没变（tick 链断了）"
+assert re.match(r"^1 张已选 · 共 \d+ 张$", val("n2_foot")), "勾选后计数条没实时更新: %r" % val("n2_foot")
+print("  ok (一张只有「创建笔记」，勾选后文案不变；Vue 挂载、勾选与计数实时生效)")
 PYONE
 api_post shots/remove "{\"ids\":$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin)["shots"] if x["name"]=="one-shot.png"]))')}" >/dev/null
 asroot_global "rm -f '$EXT/one-shot.png' '$DATA/enote/.devmode'"

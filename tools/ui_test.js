@@ -370,12 +370,16 @@ function stripJsLiterals(src) {
   return out;
 }
 
-// 闭集：载荷能碰到的页面全局。函数 10 个（步骤 2 导出表里测试用得着的那批）
-// + 状态 7 个（只能以 __enote.state.X 出现，裸名就是假绿）。
+// 闭集：载荷能碰到的页面全局。函数 11 个（步骤 2 导出表里测试用得着的那批）
+// + 状态 10 个（只能以 __enote.state.X 出现，裸名就是假绿）。
 // SR 是步骤 5 加的：notesFiltered() 第一优先级读它，夹具不暴露它就画不出笔记空态。
+// folderFilter 是步骤 8 加的：选文件夹页的搜索框过滤要在 Vue 路径上真跑一次。
 const CLOSED_FN = ['api', 'refresh', 'render', 'missedDismiss', 'missedSheet', 'folderPick',
-  'folderSave', 'folderSheet', 'shotPick', 'shotSheet'];
-const STATE_NAMES = ['tab', 'S', 'MISSED', 'open', 'shotSel', 'shotList', 'SR'];
+  'folderSave', 'folderSheet', 'shotPick', 'shotSheet', 'folderFilter'];
+const STATE_NAMES = ['tab', 'S', 'MISSED', 'open', 'shotSel', 'shotList', 'SR',
+  // 步骤 8：文件夹页夹具要整体注入 folderAll/folderSel/folderQ（闭合集 17 → 20，
+  // 与 app.js 的 __enote.state、go/web_test.go 的名单三处同步）。
+  'folderAll', 'folderSel', 'folderQ'];
 const JS_WORDS = new Set(['var', 'let', 'const', 'if', 'else', 'for', 'while', 'do', 'return',
   'function', 'await', 'async', 'new', 'typeof', 'instanceof', 'in', 'of', 'try', 'catch', 'finally',
   'throw', 'break', 'continue', 'switch', 'case', 'default', 'class', 'extends', 'super', 'void',
@@ -842,8 +846,15 @@ if (SPLIT) {
       // 注册表：app.js 的 var VUE_VIEWS = { notes: NotesView } 是唯一开关
       const reg = /var VUE_VIEWS = \{([^}]*)\}/.exec(appSrc);
       const views = reg ? [...reg[1].matchAll(/(\w+)\s*:\s*(\w+)/g)].map(m => ({ tab: m[1], comp: m[2] })) : [];
+      // 步骤 8：弹层（sheet）是第二张注册表 VUE_SHEETS，tick 链规则一模一样。弹层不走
+      // render()（它只画 tab pane），靠 app.js 的 handler 调 sheetPaint() bump tick；
+      // 注册表里缺一个条目 = 那个弹层永远走遗留路径（静默），模板里的 :tick 全没人查。
+      const sreg = /var VUE_SHEETS = \{([^}]*)\}/.exec(appSrc);
+      const sheets = sreg ? [...sreg[1].matchAll(/(\w+)\s*:\s*(\w+)/g)].map(m => ({ tab: m[1] + '(弹层)', comp: m[2] })) : [];
       const tickErrs = [];
       if (!reg) tickErrs.push('app.js 里找不到 var VUE_VIEWS = {…} 注册表');
+      if (!sreg) tickErrs.push('app.js 里找不到 var VUE_SHEETS = {…} 注册表（步骤 8 起弹层也要登记）');
+      const mounted = views.concat(sheets);
       // 组件 → 是否声明 tick prop。规则是双向的：声明了 tick 的必须收 :tick="tick"
       // （props 不变 → 子组件不重渲染），没声明的禁止收（Vue 当透传属性落到根元素上：
       // 真机实测 <empty-state> 收 :tick 时 Vue 路径是 <div class="empty" tick="27">，
@@ -861,7 +872,7 @@ if (SPLIT) {
         }
       }
       let tickTpls = 0;
-      for (const v of views) {
+      for (const v of mounted) {
         const f = viewFiles.find(p => new RegExp('export const ' + v.comp + '\\b').test(fs.readFileSync(p, 'utf8')));
         if (!f) { tickErrs.push(v.tab + '：注册表里的 ' + v.comp + ' 在 js/ 下找不到定义'); continue }
         const src = fs.readFileSync(f, 'utf8');
@@ -882,14 +893,14 @@ if (SPLIT) {
           }
         }
       }
-      // 注册表完整性：视图文件导出的每个 *View 都必须在 VUE_VIEWS 里。上一版只数条目数，
+      // 注册表完整性：视图文件导出的每个 *View 都必须在 VUE_VIEWS ∪ VUE_SHEETS 里。上一版只数条目数，
       // 反向实验：删掉注册表里的 files: FilesView 闸门仍绿，只把打印变成「注册表 2」。
       for (const f of viewFiles) {
         const src = fs.readFileSync(f, 'utf8');
         for (const m of src.matchAll(/^export const (\w+View)\b/gm))
-          if (!views.some(v => v.comp === m[1]))
+          if (!mounted.some(v => v.comp === m[1]))
             tickErrs.push(path.relative(root, f) + '：导出的 ' + m[1]
-              + ' 没进 VUE_VIEWS 注册表（视图存在但永远不会被挂载，render() 走遗留路径）');
+              + ' 没进 VUE_VIEWS / VUE_SHEETS 注册表（视图存在但永远不会被挂载，render() 走遗留路径）');
       }
       if (bareComputed.length)
         bad('闸门⑮ 组件里的 computed 没包 live()（数据变了视图不动）', bareComputed.join(' | '));
@@ -900,8 +911,9 @@ if (SPLIT) {
         const names = new Set();
         for (const [, t] of tpls)
           for (const m of t.matchAll(/(?:@|v-on:)(?:click|input|change|submit)="\s*(?:H\.)?([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
-        ok('闸门⑮ Vue 模板 ' + tpls.length + ' 个编译通过；注册表 ' + views.length
-          + '  视图的 tick 链完整（扫 ' + tickTpls + ' 个模板，组件 tick prop ' + [...tickProp.values()].filter(Boolean).length + ' 个）；模板 handler ' + names.size + ' 个全在导出表；'
+        ok('闸门⑮ Vue 模板 ' + tpls.length + ' 个编译通过；注册表 ' + views.length + ' 视图 + '
+          + sheets.length + ' 弹层的 tick 链完整（扫 ' + tickTpls + ' 个模板，组件 tick prop '
+          + [...tickProp.values()].filter(Boolean).length + ' 个）；模板 handler ' + names.size + ' 个全在导出表；'
           + '视图里的 H.xxx ' + usedHost.size + ' 个全在 setHost');
       }
     }

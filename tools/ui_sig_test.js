@@ -555,16 +555,20 @@ console.log((stickyFoot ? '  ok   ' : '  FAIL ') + '文件夹页/截图页/剪�
 if (!stickyFoot) bad++;
 
 // 已选数量实时显示 + 已选项排到最前（勾一个立刻重排并改数字）
-const pickBody = (src.split('function folderPick')[1] || '').slice(0, 200);
+// 步骤 8：folderPick 现在先走 Vue 分发（return sheetPaint()），遗留路径才是 folderRender()；
+// 两条都是「改完立刻重画」，所以两个名字都算。slice 要盖到分发那一行之后（注释变长了）。
+const pickBody = (src.split('function folderPick(')[1] || '').slice(0, 400);
 const liveCount = /function folderCountLabel\(\)/.test(src)
   && /个已选 · 共 /.test(src)
   && /已选的排最前/.test(src)
-  && /folderRender\(\)/.test(pickBody);
+  && /(folderRender\(\)|return sheetPaint\(\))/.test(pickBody);
 console.log((liveCount ? '  ok   ' : '  FAIL ') + '文件夹页实时显示已选数量、已选项排到最前');
 if (!liveCount) bad++;
 
 // 选完文件夹回到「我的」要立刻看到新统计：强制重建当前页 + 重算统计
-const saveBody = (src.split('function folderSave')[1] || '').slice(0, 900);
+// 步骤 8：必须切 'function folderSave(){'。只切 'function folderSave' 会先命中新加的
+// folderSaveText()，slice(0,900) 落在它身上 → 四项全 false，而 folderSave 本体完好（假红）。
+const saveBody = (src.split('function folderSave(){')[1] || '').slice(0, 900);
 const afterSave = /paneDirty\[tab\] = 1/.test(saveBody)
   && /setTab\(\)/.test(saveBody)
   && /statsNow\(\)/.test(saveBody)
