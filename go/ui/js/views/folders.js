@@ -6,8 +6,12 @@
    1) 搜索框过滤：遗留 folderFilter() 给不匹配的行加 style="display:none"（节点留在 DOM 里），
       Vue 用 computed 过滤，节点直接不渲染。VDIFF 比的是未过滤状态（folderQ 为空），
       两边逐字一致；过滤后的差异是「隐藏」与「不存在」，视觉上等价。
-   2) folderRender() 那句「记住 #sheet .panel 的 scrollTop，画完放回去」在 Vue 路径不需要：
-      v-for 带 :key，勾选只是移动已有节点，滚动位置天然不动（真机量过一次，见 plan.md）。
+   2) folderRender() 那句「记住 #sheet .panel 的 scrollTop，画完放回」在 Vue 路径不需要：
+      v-for 带 :key，勾选只是移动已有节点，滚动位置天然不动（真机量过：Chrome 的滚动
+      锚定只会让 scrollTop 移动正好一行高，不会跳回顶部，见 test.sh 的 P11 假夹具）。
+   3) 搜索框**不能**写 :value="fq"：Vue 会把 value 写成 DOM 属性，innerHTML 序列化出来多一个
+      value=""，遗留字符串里没有这个属性 → VDIFF 在 input 那一字节就红。输入框本来也不需要
+      受控：输入节点是静态的，重画不会重建它，用户输的字自然留着（真机验过）。
 
    读模块状态一律 live()：folderSel 是普通模块变量，folderSelAll / folderPickShots 整体替换
    它，computed 不依赖 tick 就永远缓存 → 勾选点了没反应。
@@ -63,8 +67,8 @@ export const FoldersView = {
     const rows = live(() => sortRows(H.folderAll, H.folderSel));
     const q = live(() => String(H.folderQ || '').toLowerCase());
     return {
+      H,
       tick,
-      fq: live(() => H.folderQ),
       rows,
       shown: live(() => {
         const t = q.value;
@@ -90,7 +94,7 @@ export const FoldersView = {
   <button class="btn sm" @click="H.folderSelAll(false)">全不选</button>
   <button class="btn sm" @click="H.folderPickShots()">只选截图目录</button>
 </div>
-<div style="margin:8px 0 4px"><input id="folderQ" class="fin" placeholder="搜索文件夹" :value="fq" @input="H.folderFilter($event.target.value)"></div>
+<div style="margin:8px 0 4px"><input id="folderQ" class="fin" placeholder="搜索文件夹" @input="H.folderFilter($event.target.value)"></div>
 <div id="folderList" class="clipload">
   <empty-state v-if="!rows.length" icon="folder" title="读不到文件夹" sub="需要先允许读取照片（我的 → 截图捕获 → 去授权）"/>
   <folder-row v-for="f in shown" :key="f.path" :f="f" :tick="tick"/>

@@ -375,7 +375,9 @@ function stripJsLiterals(src) {
 // SR 是步骤 5 加的：notesFiltered() 第一优先级读它，夹具不暴露它就画不出笔记空态。
 // folderFilter 是步骤 8 加的：选文件夹页的搜索框过滤要在 Vue 路径上真跑一次。
 const CLOSED_FN = ['api', 'refresh', 'render', 'missedDismiss', 'missedSheet', 'folderPick',
-  'folderSave', 'folderSheet', 'shotPick', 'shotSheet', 'folderFilter'];
+  'folderSave', 'folderSheet', 'shotPick', 'shotSheet', 'folderFilter', 'closeSheet',
+  // 步骤 8：进度层的入口/出口（测试直接调它们，比等一次真 AI 导入稳定）
+  'shotOverlay', 'shotOvlSub'];
 const STATE_NAMES = ['tab', 'S', 'MISSED', 'open', 'shotSel', 'shotList', 'SR',
   // 步骤 8：文件夹页夹具要整体注入 folderAll/folderSel/folderQ（闭合集 17 → 20，
   // 与 app.js 的 __enote.state、go/web_test.go 的名单三处同步）。
@@ -412,8 +414,12 @@ function payloadLocals(src) {
   return loc;
 }
 
+// 两种写法都要扫：老的是 python -c '…sys.argv[1]…' '<js>' > "$TMPDIR/x.json"，
+// 新的是 heredoc 里 js = r'''…'''（截图页 / 笔记页交互用例）。只扫前一种时 heredoc
+// 载荷里的全局名完全不在闸门视野里 —— 闭集加了新名字却报「没人引用」就是这种漏网。
 const jsevalPayloads = [...testSh.matchAll(/sys\.argv\[1\]\}\)\)'[ \t]*(?:\\\n)?[ \t]*'([\s\S]*?)' > "\$TMPDIR\/[a-z]+\.json"/g)]
-  .map(m => m[1]);
+  .map(m => m[1])
+  .concat([...testSh.matchAll(/js = r'''([\s\S]*?)'''/g)].map(m => m[1]));
 const CLOSED = new Set(CLOSED_FN);
 const g2 = [];
 const refsAll = new Set();
@@ -465,7 +471,7 @@ if (jsevalPayloads.length < 7) {
   // 顺序有讲究：裸状态名先报。它同时也是「闭集外」，但只说「闭集外」会把人往
   // 「新增要改闸门」的方向带，而真正的坑是「写到 window 上、模块没动」这种假绿。
   if (bareStateAll.length) bad('载荷里裸写了状态名', bareStateAll.join(', ') + '：裸名是往 window 上写，模块里的 ' + bareStateAll[0].split('@')[0] + ' 一动不动（假绿），要走 __enote.state.' + bareStateAll[0].split('@')[0]);
-  else if (extra.length) bad('jseval 载荷引用了闭集外的全局名', extra.join(', ') + '（闭集 = 函数 10 个 + 状态 6 个走桥，新增要同步改闸门②）');
+  else if (extra.length) bad('jseval 载荷引用了闭集外的全局名', extra.join(', ') + `（闭集 = 函数 ${CLOSED_FN.length} 个 + 状态 ${STATE_NAMES.length} 个走桥，新增要同步改闸门②）`);
   else if (unused.length) bad('闭集里有名字没人引用了', unused.join(', ') + '（闭集要同步缩小，否则改名后闸门② 查不出来）');
   else if (renderCalls !== renderAwaited) bad('载荷里的 render 没全部 await', renderAwaited + '/' + renderCalls + '：render() 的契约是 Promise（D13），不 await 就断言不到新 DOM；包装也得是 async function');
   else ok('jseval 载荷 ' + jsevalPayloads.length + ' 个：引用全局名 == 闭集（函数 ' + CLOSED_FN.length + '）+ 状态 6 个全走 __enote.state + render ' + renderCalls + ' 处全部 await');
@@ -902,11 +908,29 @@ if (SPLIT) {
             tickErrs.push(path.relative(root, f) + '：导出的 ' + m[1]
               + ' 没进 VUE_VIEWS / VUE_SHEETS 注册表（视图存在但永远不会被挂载，render() 走遗留路径）');
       }
+      // 模板里写 H.xxx 的组件必须在 setup() 的返回里带上 H：模板表达式编译成 _ctx.H.xxx(...)，
+      // setup 没返回 H 时，渲染期不碰它就丌报错，点一下才抛
+      // 「Cannot read properties of undefined (reading 'shotSelAll')」，症状是按钮点了没反应。
+      // 实测：ShotsView 的 全选 就是这么静默死掉的（步骤 8，被「截图页交互」用例抓到）。
+      // 反向实验：删掉 ShotItem 的 return { H, … } 里的 H，闸门必红。
+      const noH = [];
+      let hExposed = 0;
+      for (const f of viewFiles) {
+        const src = fs.readFileSync(f, 'utf8');
+        for (const m of src.matchAll(/export const (\w+)\s*=\s*\{([\s\S]*?)\n\};/g)) {
+          const tpl = /template:\s*`([\s\S]*)`/.exec(m[2]);
+          if (!tpl || !/\bH\./.test(tpl[1])) continue;
+          if (/return\s*\{[\s\S]*?[^.\w]H,/.test(m[2])) hExposed++;
+          else noH.push(path.relative(root, f) + '：' + m[1]
+            + ' 的模板用了 H.xxx，但 setup() 没返回 H（点击时抛 undefined → 按钮点了没反应）');
+        }
+      }
       if (bareComputed.length)
         bad('闸门⑮ 组件里的 computed 没包 live()（数据变了视图不动）', bareComputed.join(' | '));
       else if (missHost.size) bad('闸门⑮ 模板里的 H.xxx 不在 setHost（Vue 渲染抛错→静默回退字符串）', [...missHost].join(' '));
       else if (miss.size) bad('闸门⑮ 模板里的 handler 不在导出表（点了没反应）', [...miss].join(' '));
       else if (tickErrs.length) bad('闸门⑮ Vue tick 依赖断了', tickErrs.join(' | '));
+      else if (noH.length) bad('闸门⑮ 模板用 H.xxx 的组件没在 setup() 返回 H', noH.join(' | '));
       else {
         const names = new Set();
         for (const [, t] of tpls)
@@ -914,7 +938,8 @@ if (SPLIT) {
         ok('闸门⑮ Vue 模板 ' + tpls.length + ' 个编译通过；注册表 ' + views.length + ' 视图 + '
           + sheets.length + ' 弹层的 tick 链完整（扫 ' + tickTpls + ' 个模板，组件 tick prop '
           + [...tickProp.values()].filter(Boolean).length + ' 个）；模板 handler ' + names.size + ' 个全在导出表；'
-          + '视图里的 H.xxx ' + usedHost.size + ' 个全在 setHost');
+          + '视图里的 H.xxx ' + usedHost.size + ' 个全在 setHost；模板用 H 的 ' + hExposed
+          + ' 个组件全在 setup() 返回里暴露了 H');
       }
     }
   }

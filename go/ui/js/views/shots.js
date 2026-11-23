@@ -56,6 +56,11 @@ export const ShotsView = {
     const items = live(() => H.shotList);
     const selCount = live(() => H.shotList.filter(function(x){ return !!H.shotSel[x.id] }).length);
     return {
+      // 模板里写 H.xxx 的组件必须把 H 返回出去：模板表达式编译成 _ctx.H.xxx(...)，
+      // setup 没返回 H 时，渲染期不碰它就丌报错，点一下才抛
+      // 「Cannot read properties of undefined (reading 'shotSelAll')」 —— 症状是按钮点了没反应。
+      // 实测：全选 就是这么静默死掉的（步骤 8，被「截图页交互」用例抓到）。
+      H,
       tick, items,
       loading: live(() => H.shotLoading),
       err: live(() => H.shotError),
@@ -106,6 +111,7 @@ export const ShotProgress = {
   props: ['tick'],
   setup(){
     return {
+      H,
       P: live(() => H.SHOTPROG),
       warn: H.ic('alert') + '请保持屏幕常亮：不要锁屏、不要让手机黑屏，'
         + '也不要退出 App 或切到别的应用，否则解析会中断。'

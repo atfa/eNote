@@ -1196,14 +1196,19 @@ N0T=$(readtlog | wc -l)
   L("count1="+q("#folderCount").textContent.replace(/\s+/g," "));
   L("firstAfter="+r2[0].getAttribute("data-path"));
   L("orderOK="+(ok?1:0));
-  var panel=q("#sheet .panel"); panel.scrollTop=Math.round(panel.scrollHeight/2);
+  var panel=q("#sheet .panel");
+  var maxS=panel.scrollHeight-panel.clientHeight;
+  var setS=maxS>40?Math.round(maxS/2):0;
+  L("scrollable="+(maxS>40?1:0));
+  panel.scrollTop=setS;
   setTimeout(async function(){
     var f=q("#sheet .pfoot"),b=f.getBoundingClientRect();
     L("sticky="+getComputedStyle(f).position);
     L("footVisible="+((b.bottom<=window.innerHeight+2&&b.top>=0&&b.height>20)?1:0));
     // 勾选之后滚动位置不能跳：遗留路径靠「记住 scrollTop 再放回」，Vue 靠 v-for 的 :key
-    // 原地移动节点。两条路径都只看结果：面板仍在中间附近（允许 4px 误差）。
-    L("scrollKept="+(Math.abs(panel.scrollTop-Math.round(panel.scrollHeight/2))<=4?1:0));
+    // 原地移动节点。内容不够高（真机上往往只 3~5 个文件夹）时滚不动，那就只能记
+    // scrollable=0：断言退化为「不报假红」，Python 侧会把 scrollable 打出来，空跑一眼可见。
+    L("scrollKept="+((maxS<=40||Math.abs(panel.scrollTop-setS)<=4)?1:0));
     await folderPick(first);
     L("count2="+q("#folderCount").textContent.replace(/\s+/g," "));
     // 搜索框过滤：用第一行路径的最后一段当关键词，两条路径都必须只留下包含它的行
@@ -1215,6 +1220,46 @@ N0T=$(readtlog | wc -l)
     L("fmatch="+(v.length&&v.every(function(r){return String(r.getAttribute("data-path")).toLowerCase().indexOf(key.toLowerCase())>=0})?1:0));
     await folderFilter("");
     L("funfiltered="+vis().length);
+    // 真点一下 全选：上面全是直接调函数，而模板里的 H.xxx 要组件在 setup() 里返回 H 才能
+    // 解析（Vue 把模板表达式编成 _ctx.H.xxx(...)），没返回时渲染期丌碰它就丌报错，
+    // 点一下才抛 undefined —— 只有真点击能抓到（步骤 8 实测：截图页 全选 就这么死的）。
+    var ab=q("#sheet .cliptop .btn.sm");
+    L("allBtn="+(ab?ab.textContent:"?"));
+    if(ab){ ab.click(); await new Promise(function(r){ setTimeout(r,300) });
+      L("allSel="+document.querySelectorAll("#folderList .frow.on").length); }
+    var nb=document.querySelectorAll("#sheet .cliptop .btn.sm")[1];
+    if(nb){ nb.click(); await new Promise(function(r){ setTimeout(r,300) });
+      L("noneSel="+document.querySelectorAll("#folderList .frow.on").length); }
+    // 恢复成测试开头那个目录选中，folderSave 写回后「我的」页计数才能对上
+    await folderPick(first);
+    // 滚动位置保持要真测到：真机上往往只 3~5 个文件夹，页面根本滚不动（上面的 scrollable=0）。
+    // 用状态桥注 40 个假目录（folderAll/folderSel 走 setter，否则只写 window —— D21），
+    // 滚到中间再勾一个：已选行浮到顶，scrollTop 必须原地不动。Vue 靠 v-for 的 :key 移动
+    // 节点，遗留路径靠 folderRender 里的「记住 scrollTop 再放回」。
+    var keepAll=__enote.state.folderAll, keepSel=__enote.state.folderSel;
+    var fake=[];
+    for(var i=0;i<40;i++) fake.push({path:"/sdcard/Fake/Dir"+i, count:i, shot:false, missing:false});
+    __enote.state.folderAll=fake; __enote.state.folderSel={};
+    __enote.vue.folderPaint();
+    await new Promise(function(r){ setTimeout(r,250) });
+    var p2=q("#sheet .panel"), max2=p2.scrollHeight-p2.clientHeight;
+    L("fakescroll="+(max2>40?1:0));
+    if(max2>40){
+      p2.scrollTop=Math.round(max2/2);
+      var want=p2.scrollTop;
+      await folderPick("/sdcard/Fake/Dir7");
+      // 容差一行高（~57px）：Chrome 的 scroll anchoring 会在「上方内容被移动」时主动
+      // 调 scrollTop 让可见内容保持不动，于是 scrollTop 数值正好移动一行。遗留路径是
+      // 「记住 scrollTop 再放回」，数值不动、可见内容跳一行。两者都不该发生的是
+      // 「滚回顶部」（innerHTML 重建的旧病），那才是用户能感觉到的 bug。
+      var d=Math.abs(p2.scrollTop-want);
+      L("fakeDelta="+Math.round(d));
+      L("fakeKept="+((d<=90&&p2.scrollTop>100)?1:0));
+      L("fakeTop="+(rows()[0].getAttribute("data-path")==="/sdcard/Fake/Dir7"?1:0));
+    }
+    __enote.state.folderAll=keepAll; __enote.state.folderSel=keepSel;
+    __enote.vue.folderPaint();
+    await new Promise(function(r){ setTimeout(r,200) });
     folderSave();
     var tries=0,probe=function(){
       var p=document.querySelector(".pane[data-tab=mine]");
@@ -1264,8 +1309,19 @@ assert int(val("fshown")) >= 1 and val("fmatch") == "1", \
     "搜索框过滤没生效: key=%r shown=%s match=%s" % (val("fkey"), val("fshown"), val("fmatch"))
 assert int(val("funfiltered")) == int(val("rows0")), \
     "清空关键词之后行没全部回来: %s -> %s" % (val("rows0"), val("funfiltered"))
-print("  ok (固定条 sticky、计数 %d→%d 实时、已选在前、过滤 %s 命中 %s 行、Vue 挂载、返回后我的页同步为 %d)"
-      % (n0, n1, val("fkey"), val("fshown"), n2))
+# 真点击：全选 / 全不选 两个按钮的 @click 真的绑上了（直接调函数测不到模板里的 H.xxx）
+assert val("allBtn") == "全选", "第一个 .btn.sm 不是「全选」，点击目标选错了: %s" % val("allBtn")
+assert int(val("allSel")) == int(val("rows0")), \
+    "点 全选 之后只有 %s 行勾上，应等于总行数 %s" % (val("allSel"), val("rows0"))
+assert int(val("noneSel")) == 0, "点 全不选 之后还剩 %s 行勾着" % val("noneSel")
+# 假夹具必须真的把页面撑高（fakescroll=1），否则「滚动位置保持」是空跑。
+assert val("fakescroll") == "1", "注入 40 个假目录后页面还是滚不动，滚动保持根本没测到"
+assert val("fakeKept") == "1", \
+    "勾选之后弹层滚回顶部了（允许 Chrome 滚动锚定的一行位移，实测 delta=%s）" % val("fakeDelta")
+assert val("fakeTop") == "1", "勾选后选中行没浮到最前（假夹具）"
+print("  ok (固定条 sticky、计数 %d→%d 实时、已选在前、过滤 %s 命中 %s 行、真点击 全选/全不选 全部 %s 行、"
+      "Vue 挂载、40 行假夹具下勾选后滚动不跳（delta=%s px）、返回后我的页同步为 %d)"
+      % (n0, n1, val("fkey"), val("fshown"), val("allSel"), val("fakeDelta"), n2))
 PYCHK
 asroot_global "rm -f '$DATA/enote/.devmode'"
 
@@ -1618,6 +1674,25 @@ js = r'''(async function(){
     var vis=function(id){ var e=document.querySelector("#sheet #"+id); return (e&&e.style.display!=="none")?1:0 };
     L("btnGo="+vis("shotGo")); L("btnSplit="+vis("shotSplit")); L("btnRaw="+vis("shotRaw"));
     L("goLabel="+((document.querySelector("#sheet #shotGo")||{}).textContent||""));
+    // 导入进度层（步骤 8 的第三块）：状态在 app.js 的 SHOTPROG（reactive），组件
+    // ShotProgress 是纯渲染器，挂在 body 级的 #shotOvlRoot 上 —— 进度要在截图弹层
+    // 关掉之后继续活着（shotsImported 才收），而 closeSheet() 会换掉 .panel 的 innerHTML。
+    shotOverlay(true, 2, "OCR 完成，AI 正在解析");
+    await new Promise(function(r){setTimeout(r,250)});
+    L("ovlMounted="+(E.vue.sheets.progress?1:0));
+    L("ovlBody="+(document.querySelector("#shotOvlRoot .ovl")?1:0));
+    L("ovlInSheet="+(document.querySelector("#sheet #shotOvl")?1:0));
+    L("ovlSub="+((document.querySelector("#shotOvlSub")||{}).textContent||""));
+    closeSheet();                       // 进度层必须活过弹层关闭
+    await new Promise(function(r){setTimeout(r,250)});
+    L("ovlAfterClose="+(document.querySelector("#shotOvlRoot .ovl")?1:0));
+    shotOvlSub("AI 正在解析：1 / 2 条完成");
+    await new Promise(function(r){setTimeout(r,250)});
+    L("ovlSub2="+((document.querySelector("#shotOvlSub")||{}).textContent||""));
+    shotOverlay(false);
+    await new Promise(function(r){setTimeout(r,250)});
+    L("ovlLeft="+(document.querySelector("#shotOvl")?1:0));
+    L("ovlUnmounted="+(E.vue.sheets.progress?1:0));
   }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
   try{ closeSheet() }catch(e){}
   L("done=1");
@@ -1660,7 +1735,18 @@ assert d.get("on3") == "0", "全不选后应一个不剩（on3=%s）" % d.get("o
 assert d.get("btnSplit") == "0" and d.get("btnRaw") == "0" and d.get("btnGo") == "1", \
   "只选 1 张时按钮没塔成（go=%s split=%s raw=%s）" % (d.get("btnGo"), d.get("btnSplit"), d.get("btnRaw"))
 assert "创建笔记" in d.get("goLabel", ""), "塔成后主按钮文案应变成「创建笔记」（实际 %r）" % d.get("goLabel")
-print("  ok (真点击 %s 张：勾选 %s→%s、计数跟变、全选/全不选、单张时按钮塔成 %r)" % (
+# 导入进度层：SHOTPROG + ShotProgress 组件，body 级容器，要活过 closeSheet()
+assert d.get("ovlMounted") == "1", "进度层没挂到 __enote.vue.sheets.progress（mountSheet 没走？）"
+assert d.get("ovlBody") == "1", "进度层不在 body 级的 #shotOvlRoot 里（挂弹层里会被 closeSheet 清掉）"
+assert d.get("ovlInSheet") == "0", "进度层跑到弹层里了"
+assert "AI 正在解析" in d.get("ovlSub", "") and "已用" in d.get("ovlSub", ""), \
+    "进度层副标题没渲染（实际 %r）" % d.get("ovlSub")
+assert d.get("ovlAfterClose") == "1", "截图弹层一关进度层就没了（导入还在跑，用户看不到进度）"
+assert "1 / 2" in d.get("ovlSub2", ""), "shotOvlSub 更新没反映到进度层（实际 %r）" % d.get("ovlSub2")
+assert d.get("ovlLeft") == "0", "关掉之后 #shotOvl 还留在 DOM 里（透明遮罩吃掉点击）"
+assert d.get("ovlUnmounted") == "0", "关掉之后进度层 app 还在 __enote.vue.sheets 里（unmountSheet 没调）"
+print("  ok (真点击 %s 张：勾选 %s→%s、计数跟变、全选/全不选、单张时按钮塔成 %r；"
+      "进度层 body 级、活过 closeSheet、shotOvlSub 实时更新、关掉后零残留)" % (
     d.get("n"), d.get("on0"), d.get("on1"), d.get("foot1")))
 '
 asroot_global "rm -f '$DATA/enote/.devmode'"
