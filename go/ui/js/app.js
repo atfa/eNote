@@ -5,6 +5,10 @@
 // 转 module 与导出表、tools/ui_test.js 闸门① 同批落地，中间态不能存在：
 // 少了任何一环，70 个 handler 会全部静默失效（P12 那一类「点了没反应」）。
 var S = {notes:[], settings:{}, info:{}};
+/* S3（D14）：Vue 装配层与视图注册表。混合期（步骤 5-10）里已迁移的 tab 走 Vue，
+   其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
+import { V, setHost, mountView, vuePaint, apps } from './vue.js'
+import { NotesView } from './views/notes.js'
 var tab = 'notes', open = {}, busy = {};
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
@@ -339,6 +343,14 @@ function shotFlags(cb){
     SHOTFLAGS = d && typeof d === 'object' ? d : null;
   }catch(e){ SHOTFLAGS = null }
   if(cb) cb();
+}
+/* 截图横幅四种状态点下去各去哪：Vue 模板里写成 H.shotGo(kind) 而不是 H[text.go]()，
+   闸门⑮ 才能静态验函数名存在（动态成员访问抓不到，typo 就是「点了没反应」）。 */
+function shotGo(kind){
+  if(kind==='off') shotSetup();
+  else if(kind==='perm') askShotPerm();
+  else if(kind==='nofolder') folderSheet();
+  else shotSheet();
 }
 function shotBanner(){
   var f = SHOTFLAGS || {};
@@ -1017,16 +1029,11 @@ function noteCard(n, k){
   var body = n.content || '(无正文)';
   var h = '<div class="card'+enterCls('n'+n.id)+'" id="n'+n.id+'" style="--i:'+Math.min(k||0,8)+'">';
   h += '<div class="row between"><p class="t">'+esc(n.title || '未命名笔记')+'</p></div>';
-  h += '<div class="meta">'+srcChip(n)+statusChip(n)
-     + '<span>'+ic('clock', 's')+' '+fmtTime(n.createdAt.toISOString?n.createdAt:n.createdAt)+'</span>'
-     + (n.tags||[]).map(function(t){return '<span class="chip tag">'+ic('tag')+' '+esc(t)+'</span>'}).join('')
-     + '</div>';
-  var w = SR.where[n.id];
-  if(w && w.length) h += '<div class="hits">' + w.map(function(x){
-      return '<span class="hit'+(x==='来自图片文字'?' img':'')+'">'+ic(x==='来自图片文字'?'image':'search')
-        +esc(x)+'</span>' }).join('') + '</div>';
-  if(n.attachments && n.attachments.length > 1)
-    h += '<div class="hits"><span class="hit">'+ic('clip')+n.attachments.length+' 个附件</span></div>';
+  h += '<div class="meta">'+metaHTML(n)+'</div>';
+  var w = whereHTML(n);
+  if(w) h += '<div class="hits">'+w+'</div>';
+  var a = attachHTML(n);
+  if(a) h += '<div class="hits">'+a+'</div>';
   if(n.imagePath) h += '<img class="thumb" src="/img?id='+n.id+'">';
   h += factsBlock(n);
   h += '<div class="body'+(exp?'':' clamp')+'">'+esc(body)+'</div>';
@@ -1043,6 +1050,24 @@ function noteCard(n, k){
   h += '<button class="btn sm dg" onclick="delNote(\''+n.id+'\')">'+ic('trash')+'删除</button>';
   h += '</div></div>';
   return h;
+}
+/* 笔记卡片的三块叶子 HTML（meta / 搜索命中 / 附件），从 noteCard() 里抽出来而不是复制：
+   混合期遗留字符串渲染器与 Vue 组件共用同一份，产出的 DOM 逐字一致，签名断言只有一份真相。 */
+function metaHTML(n){
+  return srcChip(n)+statusChip(n)
+    + '<span>'+ic('clock', 's')+' '+fmtTime(n.createdAt.toISOString?n.createdAt:n.createdAt)+'</span>'
+    + (n.tags||[]).map(function(t){return '<span class="chip tag">'+ic('tag')+' '+esc(t)+'</span>'}).join('');
+}
+function whereHTML(n){
+  var w = SR.where[n.id];
+  if(!w || !w.length) return '';
+  return w.map(function(x){
+    return '<span class="hit'+(x==='来自图片文字'?' img':'')+'">'+ic(x==='来自图片文字'?'image':'search')+esc(x)+'</span>'
+  }).join('');
+}
+function attachHTML(n){
+  if(!n.attachments || n.attachments.length <= 1) return '';
+  return '<span class="hit">'+ic('clip')+n.attachments.length+' 个附件</span>';
 }
 function renderNotes(){
   var list = notesFiltered();
@@ -1249,6 +1274,40 @@ function buildPage(t){
        : t==='todos' ? renderTodos()
        : t==='files' ? renderFiles() : renderMine();
 }
+/* 已迁移到 Vue 的 tab（D14 混合期的唯一开关）：加一行就迁移一个视图，删掉一行就退回字符串路径。
+   步骤 5 notes；6 todos；7 files；9 clip；10 stats/mine；步骤 11 删掉遗留路径。 */
+var VUE_VIEWS = { notes: NotesView };
+/* DOM 测量类的副作用：必须在 DOM 落地之后跑（遗留路径是同步 innerHTML，Vue 路径是 nextTick 之后） */
+function afterPaint(){
+  syncReminders();
+  syncExpand();
+}
+function render(){
+  var p = paneFor(tab);
+  invalidatePanes(tab);
+  showPane();
+  paintStatus();
+  clearEnter();
+  if(VUE_VIEWS[tab]){
+    if(!apps[tab]) mountView(tab, p, VUE_VIEWS[tab]);
+    paneBuilt[tab] = 1; paneDirty[tab] = 0;
+    /* D13/D14：Vue 的 DOM 在 nextTick 之后才落地，所以 DOM 测量与 markReady 都得摄到那一拍。
+       done 同时挂在 then 和 catch 两条分支上，done 内部用 try/finally：链上任何一环 reject、
+       某个副作用抛了，也要把首屏记号打出去，否则 index.html 的看门狗（D16，12s）会把
+       「画完了但某个副作用抛了」误判成白屏，症状从「一处没刷新」升级成「整页重建」。 */
+    var done = function(){ try { afterPaint() } finally { markReady() } };
+    return vuePaint().then(done, done);
+  }
+  p.innerHTML = buildPage(tab);
+  paneBuilt[tab] = 1; paneDirty[tab] = 0;
+  afterPaint();
+  markReady();
+  /* D13：render 的契约是 Promise。遗留路径是同步 innerHTML，return 时 DOM 已经更新完，
+     所以 Promise.resolve() 就是真语义；Vue 路径返回 nextTick().then(...)，调用点一行不用改。
+     app.js 内部 16 处调用点一律不 await（Tony 逐条核过：没有一处紧跟读新 DOM），
+     只有 test.sh 的 3 处 jseval 载荷 await —— 那里是「点完立刻断言 DOM」的场景。 */
+  return Promise.resolve();
+}
 /* S3（D17）：首屏画完的记号。两个用途：__enote.ready 的兑现点，也是 index.html 里
    看门狗（D16）的存活信号。声明成函数 + 可空回调是因为时序：refresh() 在模块末尾的
    __enote 装配之前就被调用，render() 可能在 Promise 存好之前就跑到，直接引用会拿到 undefined。 */
@@ -1258,26 +1317,8 @@ function markReady(){
   firstPainted = true;
   if(readyResolve) readyResolve();
 }
-function render(){
-  var p = paneFor(tab);
-  p.innerHTML = buildPage(tab);
-  paneBuilt[tab] = 1; paneDirty[tab] = 0;
-  invalidatePanes(tab);
-  showPane();
-  paintStatus();
-  clearEnter();
-  syncReminders();
-  syncExpand();
-  markReady();
-  /* D13：render 的契约从此是 Promise。今天的实现是同步 innerHTML，return 时 DOM 已经更新完，
-     所以 Promise.resolve() 就是真语义（不是装样子）；步骤 5-10 视图转 Vue 后这里换成
-     Vue 的 nextTick()，调用点一行不用改。
-     markReady() 必须在 return 之前：ready 的语义是「首屏画完」，甩进 .then 就变成
-     「首屏之后的某个微任务」，步骤 3 的 seam 断言 ready@0ms 语义就变了。
-     app.js 内部 16 处调用点一律不 await（Tony 逐条核过：没有一处紧跟读新 DOM），
-     只有 test.sh 的 3 处 jseval 载荷 await —— 那里是「点完立刻断言 DOM」的场景。 */
-  return Promise.resolve();
-}
+/* render() 在 buildPage() 旁边（步骤 5 加了 Vue 分发，往上看）：这里不能再有一份同名函数，
+   函数声明提升会让后一份覆盖前一份，Vue 分发会静默失效。web_test.go 钉了「全文只有一个 render 定义」。 */
 
 /* 「展开详情」只在正文真的超过三行时才出现：先去掉 clamp 量整段高度，再加上 clamp 量三行高度，
    两者一样就说明没被截断，按钮没意义，直接藏起来（否则每张短笔记都挂一个点了没反应的按钮）。 */
@@ -1833,6 +1874,22 @@ $('#qClear').onclick = function(){ q=''; this.blur(); var el=$('#q'); el.value='
   $('#searchBox').classList.remove('has'); P().q=''; clearTimeout(searchT); searchNow(); savePrefs(); };
 window.addEventListener('resize', moveInd);
 // 安静轮询：数据没变就只刷状态点，不重建 DOM
+/* ---------- S3（D14）：Vue 宿主接口 ----------
+   组件不持有数据，只通过 H 读模块状态（getter 取当前值，因为 S / MISSED / SHOTFLAGS
+   这些是会被整体赋值的 var）。必须在首次 refresh() 之前装好：render() 会 mount Vue 视图，
+   组件 setup() 里就要读 H。 */
+setHost({
+  V: V,
+  get S(){ return S }, get SR(){ return SR }, get tab(){ return tab },
+  get open(){ return open }, get MISSED(){ return MISSED }, get SHOTFLAGS(){ return SHOTFLAGS },
+  notesFiltered: notesFiltered, enterCls: enterCls, ic: ic, esc: esc, fmtTime: fmtTime,
+  srcChip: srcChip, statusChip: statusChip, factsBlock: factsBlock, todoRow: todoRow,
+  metaHTML: metaHTML, whereHTML: whereHTML, attachHTML: attachHTML,
+  clipHint: function(){ return !!(window.Android && Android.clipHint && Android.clipHint() === '1') },
+  expand: expand, reparse: reparse, reocr: reocr, addTodoSheet: addTodoSheet, delNote: delNote,
+  missedSheet: missedSheet, shotSheet: shotSheet, shotSetup: shotSetup, askShotPerm: askShotPerm,
+  folderSheet: folderSheet, clipSheet: clipSheet, importClip: importClip, shotGo: shotGo
+});
 setInterval(function(){ if(!document.hidden) refresh(true); }, 2000);
 refresh();
 setTab();
@@ -1883,7 +1940,7 @@ window.__enoteActions = {
   missedDismiss, missedDone, missedGoTodos, missedSheet, openAttach, pickImage,
   refresh, render, reocr, reparse, resetPrefs, saveSettings,
   setPref, setTheme, shotIgnoreSel, shotPick, shotSelAll, shotSetup,
-  shotSheet, showDebug, showLog, testLLM, toAlarm, toCalendar,
+  shotGo, shotSheet, showDebug, showLog, testLLM, toAlarm, toCalendar,
   toggle, toggleAI, toggleKeepAlive
 };
 Object.assign(window, window.__enoteActions);

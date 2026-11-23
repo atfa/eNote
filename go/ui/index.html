@@ -222,6 +222,10 @@
     }, WATCHDOG_MS);
   })();
   </script>
+  <!-- S3（D1/D14）：Vue 3 全局构建（含模板编译器，零构建步骤）必须在 module 之前加载：
+       js/vue.js 在模块求值时就要拿到 window.Vue。语法下限实测 Chrome 58（VENDOR.md），
+       低于 D16 probe 里已探测的 Proxy/Reflect/Symbol 那一档，所以不需要新增特性探测。 -->
+  <script src="/vendor/vue.global.prod.js"></script>
   <script type="module" src="/js/app.js"></script>
 
 </body>
