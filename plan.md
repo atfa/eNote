@@ -873,5 +873,25 @@ shim 必须供上 `decodeEntities` 用的那个 div，否则报 `Cannot read pro
 签名 84 项不变、`function render(){` 在 app.js 里必须**恰好一份**（函数声明提升会让后一份覆盖前一份，
 Vue 分发静默失效——这条也钉进 `go/web_test.go`）。
 
-**验收**：静态 15 闸门 + 84 签名 + `go test ./...` 全绿；全量 `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd`
+**VDIFF 夹具跑出来的四处漂移（都是真发现，不是测试噪声）**：
+
+1. `style="--i:0"`（字符串）对 `--i: 0;`（Vue）：`:style` 走 `el.style.setProperty`，浏览器读回来就
+   是规范化后的形式。CSS 语义完全等价 → 夹具两边都过一遍 `el.style.cssText` 再比。
+2. 遗留路径写 `onclick="expand('id')"`，Vue 用 `@click`（addEventListener），DOM 里根本没有
+   `onclick` 属性 → 夹具不比 `on*` 属性：它们是绑定机制不是 DOM 形状，两条路径的 handler
+   存在性由闸门①（onclick）与闸门①b（@click）分别验。
+3. **`v-html` 只能挂在真实元素上，所以它必顶多一层包装**：`<div v-html="H.factsBlock(n)">` 比今天
+   多一层 `<div>`。修法是把字符串函数拆成「内层」：新增 `factsInner(n)`（`factsBlock` 继续用它），
+   模板写 `<div class="facts" v-if="facts" v-html="facts">`。**模式模板补一条：被 `v-html`
+   复用的字符串函数必须返回内层 HTML，不是整块。**
+4. 比的是「raw 字符串」对「收尾后的 DOM」：`syncExpand()` 会按正文高度把「展开详情」按钮设成
+   `display:none`，Vue 那侧的 DOM 是收尾后的。夹具现在把遗留字符串塞进 `#view` 里的临时 pane、
+   跑一遍 `__enote.afterPaint()` 再读回来比 → 新增 `__enote.afterPaint` 缝（D17，步骤 11 一起删）。
+
+**给 6/7/9/10 的两个小坑**：jseval 载荷的中文注释里不要写反引号（闸门② 不认模板字符串，
+直接判红）；夹具的 `Promise.race([render(), 兑底])` 写法闸门② 现在认（组件渲染抛异常时
+`nextTick` 不兑现，`await render()` 会挂死）。
+
+**验收**：静态 15 闸门 + 84 签名 + `go test ./...` 全绿；真机 VDIFF 夹具
+`same=1 len=8078`（规范化后 DOM 逐字一致）；全量 `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd`
 见 CHANGELOG。
