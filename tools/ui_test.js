@@ -416,7 +416,11 @@ jsevalPayloads.forEach((body, idx) => {
     if (STATE_NAMES.includes(name)) bareStateAll.push(name + '@载荷' + (idx + 1));
   }
   renderCalls += (clean.match(/\brender\(/g) || []).length;
-  renderAwaited += (clean.match(/\bawait\s+render\(/g) || []).length;
+  // 两种写法算「已 await」：直接 `await render()`，以及 VDIFF 夹具的
+  // `Promise.race([render(), 兑底超时])`——Vue 分支里组件渲染抛异常时 nextTick 不兑现，
+  // `await render()` 会挂死，夹具要永远给结论，不能跟着一起挂。
+  renderAwaited += (clean.match(/\bawait\s+render\(/g) || []).length
+    + (clean.match(/Promise\.race\(\[\s*render\(/g) || []).length;
 });
 
 if (jsevalPayloads.length < 7) {

@@ -119,6 +119,7 @@ export const NoteCard = {
     return { H, exp, todos,
              idx: live(() => Math.min(props.k || 0, 8)),
              body: live(() => props.n.content || '(无正文)'),
+             facts: live(() => H.factsInner(props.n)),
              ec: live(() => H.enterCls('n' + props.n.id)) }
   },
   template: `
@@ -128,7 +129,7 @@ export const NoteCard = {
   <div class="hits" v-if="H.whereHTML(n)" v-html="H.whereHTML(n)"></div>
   <div class="hits" v-if="H.attachHTML(n)" v-html="H.attachHTML(n)"></div>
   <img class="thumb" v-if="n.imagePath" :src="'/img?id='+n.id">
-  <div v-html="H.factsBlock(n)"></div>
+  <div class="facts" v-if="facts" v-html="facts"></div>
   <div class="body" :class="{clamp: !exp}" v-text="body"></div>
   <div class="errbox" v-if="n.error" v-text="n.error"></div>
   <div style="margin-top:10px" v-if="todos" v-html="todos"></div>
