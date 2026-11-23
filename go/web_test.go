@@ -103,9 +103,13 @@ func TestIndexServedFromDirectory(t *testing.T) {
 			t.Errorf("app.js 缺少 %s：转 module 与导出表/状态桥必须同批（D12/D21）", want)
 		}
 	}
-	// D21 状态桥的六个名字逐个钉住：只钉 `window.__enote.state = {` 这个字面量的话，
+	// D21 状态桥的九个名字逐个钉住：只钉 `window.__enote.state = {` 这个字面量的话，
 	// 改名（比如 tab 改成 currentTab）就漏，而载荷里的 tab="notes" 会静默打到 window 上。
-	for _, s := range []string{"tab", "S", "MISSED", "open", "shotSel", "shotList", "SR"} {
+	// 步骤 8 加 folderAll / folderSel / folderQ：选文件夹页的夹具要整体注入这三个（真机上
+	// Android.shotFolders() 返回设备目录，夹具不能依赖它），没 setter 就是 D21 那个坑。
+	// 名单与 app.js 的 __enote.state、tools/ui_test.js 的 STATE_NAMES 三处同步。
+	for _, s := range []string{"tab", "S", "MISSED", "open", "shotSel", "shotList", "SR",
+		"folderAll", "folderSel", "folderQ"} {
 		for _, want := range []string{"get " + s + "()", "set " + s + "(v)"} {
 			if !strings.Contains(appjs, want) {
 				t.Errorf("app.js 状态桥缺 %s：载荷里对它的读写会打到 window 上，测试绿着骗过去（D21）", want)
@@ -165,6 +169,11 @@ func TestIndexServedFromDirectory(t *testing.T) {
 	// 不是整串相等（步骤 5 = notes，步骤 6 = + todos，步骤 7-10 继续加）。
 	if !regexp.MustCompile(`var VUE_VIEWS = \{[^}]*notes: NotesView[^}]*todos: TodosView[^}]*files: FilesView[^}]*\}`).MatchString(appjs) {
 		t.Errorf("app.js 的 VUE_VIEWS 注册表缺 notes / todos / files（步骤 5/6/7 转的 Vue 视图）")
+	}
+	// 步骤 8：弹层（sheet）的第二张注册表。pageSheetVue 只认这张表，条目缺了就是那个弹层
+	// 静默走遗留路径，而 VDIFF 比 DOM 分不出来（两条路径的 DOM 按设计逐字相同）。
+	if !regexp.MustCompile(`var VUE_SHEETS = \{[^}]*shots: ShotsView[^}]*folders: FoldersView[^}]*progress: ShotProgress[^}]*\}`).MatchString(appjs) {
+		t.Errorf("app.js 的 VUE_SHEETS 注册表缺 shots / folders / progress（步骤 8 转 Vue 的弹层与进度层）")
 	}
 	// 装配：__enote.vue 没设 → vueReady() 恒 false → render() 一直走字符串路径。
 	// 步骤 5 合并时这条被合掉了，结果 VDIFF/NINT 全绿而 Vue 一行没跑（P12 同款）。
