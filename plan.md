@@ -1033,3 +1033,32 @@ is not defined @app.js:1923`）。`views/todos.js` 也踩过两个 module 导出
 
 **数字**：Vue 模板 6→8 个、模板 handler 9→10 个、jseval 载荷 9→10 个、VDIFF 覆盖 1→2 个 tab、
 导出表 58 key 不变、闸门 15 个不变、签名 84 项不变、D15 冻结的 10 个 class 名不变。
+
+### 9.11 步骤 6 的视觉验收被 Tony 打回一次（三条都是「验收项自己空跑」）
+
+第一版 `tools/shots_todos.sh` 交出来的东西不算证据，三条：
+
+1. **量不到 `.cb` 时只 warn + `return 0`** → 脚本 exit 0，而两张 `-cb.png` 根本没生成。
+   裁切图就是「修 `.cb` 裁切」的证据本体，静默缺席等于验收项空跑。现在：量不到直接 `die`，
+   末尾自检加一条「四张图必须存在且非空」，和「明暗两张必须不同」同级。
+2. **两张图拍的是空列表**：全量测试跑完数据被重置，脚本不造夹具就拍到空态页，
+   「明暗两档复查」复查的是空态（步骤 1 的 P8.5 隐式依赖设施数据，同一类坑）。现在脚本
+   自己造三条 `视觉夹具` 前缀待办（逾期+high / 今天 / 已完成），截完删干净，并断言
+   `made>=3`、画面 `rows>=3`。
+3. **导航高亮和页面不一致**：载荷里 `tab='todos'; render()` 只换 pane，导航高亮由 `setTab()`
+   写 `.tab.on` + `moveInd()`，而 `setTab` 不在导出表（步骤 5 同一个坑）。现在走真实用户
+   路径点 `.tabbar .tab[data-tab=todos]`，并断言 `.tabbar .tab.on` 的 `data-tab` 就是 `todos`。
+   坑：`.tabbar .tab` 的 handler 对「点当前 tab」是 early return（app.js:1885），上一轮探针
+   把模块里的 `tab` 设成过 todos，直接点 todos 什么也不做 —— 所以先点「笔记」再点「待办」。
+
+**顺带修了一个真 bug：待办页筛选面板里的「全部」是个空操作。** `prefPayload()` 把值为 `all`
+的筛选项省略掉，而 `go/search.go:195` 对 todos 在 `done` 缺失时默认成 `open` —— 用户选「全部」
+之后仍然只看得见未完成。修法是 `done` 的 `all` 显式发给服务端（`matchTodo` 对 `done=all`
+不匹配任何 case → 不过滤，正好是「全部」的语义）。这条是截图逼出来的：要让勾选态进画面
+就得选「全部」，一选就发现它不管用。
+
+**验收图**（`docs/shots/`，`./tools/shots_todos.sh` 产出）：`vue-todos-light.png` /
+`vue-todos-dark.png` + 两张 `-cb.png` 特写。画面里三个分组（已逾期·1 带红色高优先条、
+今天·1、已完成·1 带勾选态）、导航高亮在「待办」、圆圈左边缘在明暗两档都完整。
+脚本日志会打印 `nav=todos rows=3 theme=…` 和 `RECT dpr=2.75 x=35.6 y=243.4 w=18.0 h=18.0`，
+裁切坐标由它自己量自己算，不靠人眼。

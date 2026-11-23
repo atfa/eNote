@@ -32,7 +32,10 @@ var searchSeq = 0, prefsLoaded = false;
 var PREF_KEYS = ['src','status','done','pri','kind','file'];
 function prefPayload(){
   var p = P(), f = {};
-  PREF_KEYS.forEach(function(k){ if(p[k] && p[k]!=='all') f[k]=p[k] });
+  // done 的「全部」必须显式发给服务端：省略它时 go/search.go:195 会给 todos 默认成
+  // open，于是筛选面板里的「全部」按钮是个空操作（选了之后仍然只看得见未完成）。
+  // 服务端 matchTodo 对 done=all 不匹配任何 case → 不过滤，正好是「全部」的语义。
+  PREF_KEYS.forEach(function(k){ if(p[k] && (p[k] !== 'all' || k === 'done')) f[k] = p[k] });
   return {tab:tab, q:q, sort:p.sort||'new', dir:p.dir||'', filters:f};
 }
 function prefQS(){

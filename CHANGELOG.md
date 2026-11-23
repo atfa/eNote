@@ -242,6 +242,15 @@
   服务端灌笔记后立刻查 `src=status:inbox`，而 app 的自动解析在后台跑，笔记被解析成 `status=done`
   → `ERROR: src/status filters are ignored`。现在该步骤开头先 `wait_parse_idle`（等所有笔记进
   `done/raw/error` 终态，120s 超时后照旧走原断言，不会把真 bug 藏起来）。
+* **修了一个真 bug：待办页筛选面板里的「全部」是个空操作**。`prefPayload()` 把值为 `all`
+  的筛选项省略掉，而 `go/search.go` 对 todos 在 `done` 缺失时默认成 `open` —— 用户点「全部」
+  之后仍然只看得见未完成。现在 `done` 的 `all` 显式发给服务端（`matchTodo` 对 `done=all`
+  不匹配任何 case → 不过滤）。这条是截图逼出来的：要让勾选态进画面就得选「全部」。
+* **视觉验收脚本被 Tony 打回一次，三条都是「验收项自己空跑」**（详见 plan.md §9.11）：量不到
+  `.cb` 从 warn+跳过 改成 die，四张图齐了才算过；脚本自己造三条夹具（逾期+high / 今天 /
+  已完成）再截，不拍空态页；走真实用户路径点底部导航（`tab='todos'; render()` 不会同步
+  `.tab.on`，图里会导航亮笔记、画面是待办），并断言 `.tab.on` 就是 todos。产出
+  `docs/shots/vue-todos-{light,dark}.png` + 两张 `.cb` 特写（圆圈在明暗两档都完整）。
 * 数字：Vue 模板 6→8 个、模板 handler 9→10 个、jseval 载荷 9→10 个、VDIFF 覆盖 1→2 个 tab；
   导出表 58 key、闸门 15 个、签名 84 项、D15 冻结 class 名 10 个全部不变。
 
