@@ -451,6 +451,29 @@ if (jsevalPayloads.length < 7) {
   else ok('jseval 载荷 ' + jsevalPayloads.length + ' 个：引用全局名 == 闭集（函数 ' + CLOSED_FN.length + '）+ 状态 6 个全走 __enote.state + render ' + renderCalls + ' 处全部 await');
 }
 
+// ---------- 闸门⑯ 每个 jseval 调用前必须自己 touch .devmode ----------
+// jseval 钩子只在设备上存在 .devmode 时干活，而几乎每个步骤块末尾都会 rm 它。块与块之间
+// 一旦接错，钩子直接回 {"ok":false,"error":"jseval disabled: no .devmode"}：载荷根本没跑，
+// 日志里一条 token 也没有，红字长得像「前端抛异常了？已收到=[]」——不是抛异常，是根本没执行。
+// 步骤 5 里 Austin（VDIFF 夹具）和我（Notes 交互用例）各踩一次，各付出一轮完整跑。
+// 规则：每个 jseval 块自己 touch，别信上一块留下的状态（步骤 6/7/9/10 都要加用例）。
+{
+  const lines = testSh.split('\n');
+  let have = false, calls = [], errs = [];
+  lines.forEach((ln, i) => {
+    if (/asroot_global\s+"[^"]*touch[^"]*\.devmode/.test(ln)) have = true;
+    else if (/asroot_global\s+"[^"]*rm[^" ]*[^" ]*[^"]*\.devmode/.test(ln)) have = false;
+    else if (/asroot_global\s+"[^"]*jseval\.sh[^"]*\/([a-z]+)\.json/.test(ln)) {
+      const f = (ln.match(/([a-z]+)\.json/) || [, '?'])[1];
+      calls.push(f);
+      if (!have) errs.push('第 ' + (i + 1) + ' 行调 ' + f + '.json 前没 touch .devmode（钩子会直接 disabled，载荷不执行）');
+    }
+  });
+  if (calls.length < 6) bad('闸门⑯ 只扫到 ' + calls.length + ' 个 jseval 调用点', '期望 ≥ 6：扫描正则失效了，闸门⑯ 自己在假绿');
+  else if (errs.length) bad('闸门⑯ jseval 块缺 .devmode touch', errs.join('；'));
+  else ok('闸门⑯ jseval 调用点 ' + calls.length + ' 个，每个前面都有 touch .devmode');
+}
+
 // ---------- 闸门③ 裸 hex / 裸 px 棘轮 ----------
 // 棘轮：只许降不许升。基线是拆分前实测值，S2 之后每迁移一个视图就该往下走。
 // px 只统计刻度管得着的属性（margin/padding/gap/border-radius/font-size），
