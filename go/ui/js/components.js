@@ -13,6 +13,9 @@
    ui_sig_test.js 的 84 项签名 + test.sh 的 10 个 class 断言是硬验收。 */
 
 import { H, Vue } from './vue.js'
+// 基础组件 <empty-state> 归 Tony（owner 见文件头注释），在这里统一注册。
+import { EmptyState } from './components/empty-state.js'
+export { EmptyState }
 
 const { computed } = Vue
 
@@ -102,13 +105,6 @@ export const ClipBanner = {
 <div class="clipbanner" v-else-if="hint" @click="H.importClip()" v-html="H.ic('clipboard')
   +'<div style=&quot;flex:1&quot;><b>剪贴板刚有更新</b><div class=&quot;cbsub&quot;>系统不让后台读，点这里收进暂存</div></div>'
   +'<span class=&quot;cbar&quot;>收进来 ›</span>'"></div>`
-}
-
-export const EmptyState = {
-  name: 'EmptyState',
-  props: ['tick', 'icon', 't', 'sub'],
-  template: `
-<div class="empty"><div class="eo"><svg class="ic"><use :href="'#i-'+icon"></use></svg></div>{{ t }}<div class="esub" v-if="sub">{{ sub }}</div></div>`
 }
 
 export const NoteCard = {

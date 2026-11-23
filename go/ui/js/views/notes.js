@@ -31,7 +31,7 @@ export const NotesView = {
 <missed-banner :tick="tick"></missed-banner>
 <shot-banner :tick="tick"></shot-banner>
 <clip-banner :tick="tick"></clip-banner>
-<empty-state v-if="!list.length" :tick="tick" :icon="empty.icon" :t="empty.t" :sub="empty.sub"></empty-state>
+<empty-state v-if="!list.length" :tick="tick" :icon="empty.icon" :title="empty.t" :sub="empty.sub"></empty-state>
 <note-card v-for="(n,k) in list" :key="n.id" :tick="tick" :n="n" :k="k"></note-card>
 `
 }

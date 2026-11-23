@@ -1983,7 +1983,11 @@ Object.assign(window.__enote, {
     dlg: document.getElementById('dlg')
   },
   probe: window.__enoteProbe || null,
-  markReady: markReady
+  markReady: markReady,
+  /* D17 夹具缝（Tony 提，步骤 5）：DOM 逐字一致对比要在真 WebView 里把两条路径各渲染一次。
+     视图转 Vue 后遗留字符串渲染器不再被 render() 调用，但它是「今天长什么样」的唯一真相，
+     留着它才谈得上「行为零变化」是可证明的。步骤 6/7/9/10 各加一个 tab，步骤 11 随渲染器一起删。 */
+  legacy: { notes: renderNotes }
 });
 /* buildReady（步骤 4，Tony 提的竞态）：ready 在首屏就兑现，build 由这个独立 fetch 填，
    载荷 await ready 后立刻读 E.build 是没顺序保证的（实测不犯：seam 载荷是在桥载荷轮询完

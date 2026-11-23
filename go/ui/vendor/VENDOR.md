@@ -37,6 +37,26 @@ node -e 'const fs=require("fs"),vm=require("vm");const ctx={window:{},document:{
 * `test.sh` 会打印设备 `navigator.userAgent`，设备 WebView 版本以那里为准。
 * `js/main.js` 启动做 feature probe，不满足就渲染可读的"WebView 太旧"页面，不白屏（D10）。
 
+### Vue 自身要什么（实测，不是猜）
+
+转 Vue 前先把这条钉死，因为 `MIN_API=26` → Android 8.0 出厂 WebView 是 58，Vue 要是比它新，
+整个 app 在老机器上直接白屏，比今天差。
+
+| 特性 | 出现 | 判定 |
+|---|---|---|
+| 可选链 `?.` | 1 次 | **假阳性**：在正则字面量 `/\?.*$/` 里，不是语法 |
+| 空值合并 `??` | 0 次 | — |
+| 对象字面量展开 `{...x}` | **0 次** | 77 次 `...` 全是形参 `(...a)` 46 + 数组展开 `[...x]` 13，ES2015 |
+| `globalThis` | 2 次 | 在 `"u">typeof globalThis?globalThis:…self…window…global` 的 typeof 守卫里，Chrome 58 走 fallback |
+| `BigInt` | 1 次 | 在字符串白名单里（`…,Intl,BigInt,console,…`），不是真用法 |
+| `Proxy` / `Reflect` / `Symbol` / `WeakMap` | 6 / 14 / 87 / 20 次 | 全 ≤ Chrome 49 |
+
+**结论：Vue 3.5.46 global 构建在 Chrome 58 上能解析能跑，`MIN_API=26` 不用抬。**
+真实下限 = ES2015 + Proxy/Reflect/Symbol/WeakMap，全部 ≤ Chrome 49，低于我们的 ES2020 基线。
+D16 的 feature probe 已经覆盖 Proxy / Reflect / Symbol / Promise，正好是 Vue 的依赖集，
+所以 probe 顺带就是 Vue 的守门人——升级 Vue 时如果引入新依赖（`?.`、`Object.fromEntries`、
+`queueMicrotask`），probe 必须同步加项，否则老 WebView 上是一句 `Vue is not defined`。
+
 ## 升级步骤
 
 ```sh

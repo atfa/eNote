@@ -165,7 +165,7 @@ func TestIndexServedFromDirectory(t *testing.T) {
 		t.Errorf("app.js 缺 VUE_VIEWS 注册表（步骤 5：notes 转 Vue）")
 	}
 	// Vue 是全局构建，js/vue.js 在模块求值时就要拿 window.Vue，所以脚本顺序是硬约束。
-	if i, j := strings.Index(html, "/vendor/vue.global.prod.js"), strings.Index(html, `type="module" src="/js/app.js"`); i < 0 || j < 0 || i > j {
+	if i, j := strings.Index(body, "/vendor/vue.global.prod.js"), strings.Index(body, `type="module" src="/js/app.js"`); i < 0 || j < 0 || i > j {
 		t.Errorf("index.html 里 vendored Vue 必须在 <script type=module> 之前（i=%d j=%d）", i, j)
 	}
 	// 组件 setup() 里就要读宿主接口，所以 setHost 必须早于首次 refresh()。
