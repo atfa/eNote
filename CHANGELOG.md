@@ -315,6 +315,52 @@
 * `tools/shots_files.sh` 以 100644 提交，`./tools/shots_files.sh` 直接 Permission denied
   （其余 shots 脚本是 100755）—— `chmod 755` 并把 mode 一起提交。
 
+### 界面（P13 S3 步骤 8）：截图暂存页 + 选文件夹页 + 导入进度层转 Vue
+
+* **两个弹层页 + 一个 body 级进度层转 Vue**：新增 `go/ui/js/views/shots.js`（`ShotItem` /
+  `ShotsView` / `ShotProgress`）与 `go/ui/js/views/folders.js`（`FolderRow` / `FoldersView`），
+  `vue.js` 加 `mountSheet` / `unmountSheet` / `sheetPaint`，app.js 加**第二张注册表**
+  `VUE_SHEETS = { shots, folders, progress }` 与 `pageSheetVue()` 分发。进度层挂在 body 级的
+  `#shotOvlRoot`（不在 `.panel` 里）：`shotsImported()` 会先 `closeSheet()` 再等 AI 解析，
+  进度层必须活过弹层。遗留字符串渲染器（`shotSheetHTML` / `folderListHTML` / `folderRows` …）
+  全部保留并挂到 `__enote.legacy.*`，VDIFF 靠它们比对。
+* **必修 bug：模板里用 `H.xxx` 的组件必须在 `setup()` 返回里暴露 `H`**（真点击用例抓出来的）。
+  Vue 把模板表达式编成 `_ctx.H.xxx(...)`，没暴露时**渲染期不碰它就静默过**，点一下才抛
+  `TypeError: Cannot read properties of undefined (reading 'shotSelAll')` —— 全选 / 全不选 /
+  只选截图目录 / 搜索框全部点了没反应，而 VDIFF（比 DOM）+ 84 项签名 + 闸门⑮ 全绿。
+  闸门⑮ 新增静态检查：模板用了 `H.xxx` 的组件必须在 `setup()` 返回里出现 `H,`
+  （反向实验：删 `ShotItem` 的 `H` → 红，删 `FoldersView` 的 `H` → 红）。
+* **`closeSheet()` 的 110ms 收起动画有竞态**：关弹层后 110ms 内重开，迟到的定时器会把刚
+  `mountSheet` 出来的新实例卸掉 —— DOM 还留在 `.panel` 里而 app 已死，弹层空白且点了没反应。
+  加 `sheetGen` 世代号，三个开启入口（`pageSheet` / `pageSheetVue` / `sheet`）各自 bump，
+  回调发现世代变了就什么都不做。
+* **folders 搜索框的 `:value="fq"` 造成真 DOM 漂移**：Vue 会把 `value` 写成 DOM 属性，
+  `innerHTML` 多一个 `value=""` → VDIFF folders 在 `<input>` 处红。输入节点是静态的、重画不
+  重建，去掉受控即可（遗留路径本来也是非受控）。
+* **测试缝**：`__enote.vue.{sheets, VUE_SHEETS, isVueSheet, shotPaint, folderPaint}`；状态桥
+  7→10 名（`folderAll` / `folderSel` / `folderQ`，get+set 都要 —— 没 setter 时夹具注入是空跑）；
+  导出表 58→60 key（`shotOverlay` / `shotOvlSub`，进度层的入/出口，真跑一次 AI 解析要几十秒
+  且依赖 LLM，直接调这两个函数比等真导入稳定）。
+* **`vdiff_sheet <页> <形态>` 参数化夹具**（Austin）：复用 `vdiff_tab` 的 ser/norm/canon，跳过
+  `on*` 属性，日志窗口用 `readtlog`。四遍：截图页网格（shell 侧分享两张 PNG 进 inbox，再走
+  真 `/api/shots/add` 断言 `added=2`）/ 截图页空态 / 选文件夹页注入三个目录（含 `missing:true`
+  分支与「已选浮到顶」排序）/ 选文件夹页空目录。每遍都断言 `isvue=1` + `mounted=1` —— VDIFF 比
+  的是 DOM，而两条路径的 DOM 按设计逐字相同，它结构上分不出走了哪条路径。
+* **两条真点击交互用例**（Austin 的截图页 + Tony 的文件夹页）：`.shotitem` / `.cliptop .btn.sm`
+  用 `element.click()`，断言选中数与底部计数**真的变**、只选一张时三个导入按钮塌成「创建
+  笔记」、全选/全不选生效。「勾选后滚动不跳」原来在真机上是空跑（只 3 个目录，页面滚不动），
+  现在用状态桥注 40 个假目录（断言 `fakescroll=1`）再测，容差一行高 ~57px —— Chrome 的 scroll
+  anchoring 会在上方内容被移动时主动调 `scrollTop`（真机实测 delta=58），真正要断言的是「不跳回
+  顶部」（`innerHTML` 重建的旧病）。
+* **闸门② 的载荷提取有盲区**（Tony）：原来只扫 `python -c sys.argv[1]` 那种写法，
+  `js = r'''…'''` heredoc 载荷（截图页交互用例）完全在视野外；现在两种都扫（12→15 个），
+  全局闭集补 `closeSheet` / `folderFilter` / `shotOverlay` / `shotOvlSub`。
+* **视觉**：`tools/shots_vue.sh` 扩到 8 张（夹具走真 `/api/shots/add`，自检 8 图互不相同），
+  新增 `docs/shots/vue-shots-{light,dark}.png`、`vue-folders-light.png`、`vue-progress.png`。
+* 数字：Vue 模板 10→15 个（⑮ 扫 13 个）、注册表 3 视图 + 3 弹层、组件 tick prop 10 个、
+  模板 handler 11→20 个、`H.xxx` 40→59 个、暴露 `H` 的组件 6 个、导出表 60 key、状态桥 10 名、
+  jseval 载荷 12→15 个、VDIFF 3 tab + 4 弹层遍、真机套件 54→59 项 ok。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome
