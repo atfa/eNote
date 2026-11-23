@@ -1153,3 +1153,64 @@ denied（其余 shots 脚本是 100755）。`chmod 755` 并把 mode 一起提交
 **顺带记入步骤 11/13 的账**（Tony 提，不阻塞本步）：shots 脚本的「明暗两张 md5 不同」自检
 因状态栏时钟恒真；`prefPayload` 的 `done=all` 缺客户端回归测试；§9.10 那批「永远绿」静态
 闸门复查。
+
+### 9.14 S3 步骤 8 已完成（Tony + Austin：截图暂存页 + 选文件夹页 + 导入进度层转 Vue）
+
+分工（Austin 提议、Tony 接受）：app.js 全归 Tony（弹层分发、`setHost`、状态桥、进度层
+状态），Austin 保留 `test.sh` 的 `vdiff_sheet` 夹具与交互用例，`go/web_test.go` 归 Austin
+（Tony 回退自己那份以免合并冲突）。
+
+**落地的东西**
+* `go/ui/js/vue.js`：`mountSheet(name, el, def)`（先 unmount 同名）/ `unmountSheet` /
+  `sheetApps` / `sheetPaint()`（`V.tick++` + `Vue.nextTick()`，返回 Promise）。
+* `go/ui/js/views/shots.js`：`ShotItem` / `ShotsView` / `ShotProgress`；
+  `go/ui/js/views/folders.js`：`FolderRow` / `FoldersView`（搜索框过滤改成 computed，
+  遗留是 `display:none`，节点级差异，VDIFF 比的是未过滤态）。
+* `app.js`：`VUE_SHEETS = { shots, folders, progress }`、`pageSheetVue(name, title)`、
+  `shotSheet()`/`folderSheet()` 分发、`SHOTPROG`（reactive，计时器留在 app.js，因为
+  `shotOvlSub` 是 Java 侧回调写的全局函数）、`folderRows()` 抽成唯一排序规则、
+  `__enote.vue.{sheets,isVueSheet,folderPaint,shotPaint,host}`、
+  `__enote.state` 加 `folderAll/folderSel/folderQ`（三处名单同步：app.js /
+  `go/web_test.go` / `tools/ui_test.js` 闸门②）。
+* `index.html`：body 级空容器 `<div id="shotOvlRoot"></div>`（无样式；组件根带 `v-if`，
+  未挂载时零残留，不会留一层透明遮罩吃掉点击）。
+
+**验收**：`test.sh --vd` EXIT=0 / 59 ok。VDIFF 新增四遍全 `same=1`：shots grid 979 /
+shots empty 719 / folders fake 1222 / folders empty 552。`tools/shots_vue.sh` 扩到 8 张
+（新增 `vue-shots-light` / `vue-shots-dark` / `vue-folders-light` / `vue-progress`，
+夹具走真 `/api/shots/add`，脚本自校验 8 图互不相同）。
+
+**四个真 bug（都是被新用例抓出来的，不是审查看出来的）**
+1. **模板用 `H.xxx` 的组件必须在 `setup()` 返回里暴露 `H`**。模板表达式编译成
+   `_ctx.H.xxx(...)`，`setup` 没返回 `H` 时渲染期不碰它就静默过，点一下才抛
+   `TypeError: Cannot read properties of undefined (reading 'shotSelAll')`。
+   `ShotsView` / `FoldersView` 都只把 `H` 用在 handler 里 → 全选/全不选/只选截图目录/
+   搜索框全部点了没反应，而 VDIFF、签名 84 项、闸门⑮ 全绿。闸门⑮ 加静态检查（模板用了
+   `H.` 的组件必须暴露 `H`），反向实验：删 `ShotItem` 的 `H` → 红，删 `FoldersView` 的
+   `H` → 红。
+2. **`closeSheet()` 的 110ms 收尾会 unmount 刚重开的弹层**（Austin 审查指出）。加
+   `sheetGen` 世代号：`pageSheet`/`pageSheetVue`/`sheet` 各自 bump，迟到的定时器发现
+   世代变了就什么都不做。
+3. **`folders.js` 搜索框的 `:value="fq"`**：Vue 把 value 写成 DOM 属性，`innerHTML` 多一个
+   `value=""` → VDIFF `folders fake` 在 input 那一字节红。输入节点是静态的，重画不重建它，
+   不需要受控。
+4. **闸门② 看不见 heredoc 载荷**：载荷提取只匹配 `python -c '…sys.argv[1]…'`，
+   `js = r'''…'''` 写法（截图页/笔记页交互用例）完全在视野外——闭集加新名字时报「没人引用」
+   就是这个漏网。现在两种写法都扫（12 → 15 个载荷），闭集补 `closeSheet`/`folderFilter`/
+   `shotOverlay`/`shotOvlSub`，报错文案里的计数改成动态。
+
+**两条「用例自己空跑」**（Tony 加，都是真机量出来的）
+* 文件夹页「勾选后滚动位置不跳」在真机上是空跑：只有 3 个目录，页面根本滚不动
+  （`scrollable=0`）。改成用状态桥注 40 个假目录把页面撑高（`fakescroll=1` 断言夹具真的
+  生效），滚到中间勾一个，容差一行高（~57px）——Chrome 的 scroll anchoring 会主动调
+  `scrollTop` 让可见内容不动，真机实测 delta=58px；遗留路径是「记住 scrollTop 再放回」，
+  数值不动、可见内容跳一行。两者都不该出现的是「跳回顶部」（innerHTML 重建的旧病）。
+* 文件夹页原来全是直接调函数（`folderPick`/`folderFilter`），测不到模板里的 `H.xxx`
+  （就是 bug 1 的现场）。补真点击 全选/全不选，断言 `allSel == rows0`、`noneSel == 0`。
+* 进度层补覆盖：`shotOverlay`/`shotOvlSub` 进导出表（真跑一次 AI 解析要几十秒且依赖 LLM，
+  用例直接调入/出口函数稳定得多），断言挂 body 级、活过 `closeSheet()`、副标题实时更新、
+  关掉后 `#shotOvl` 零残留且从 `__enote.vue.sheets` 里 unmount。
+
+**记入后续步骤的账**：文件夹页底部计数在窄屏会折行（`1 个已选 · 共 3 个` 的「个」掉到第二
+行，DOM 与遗留逐字相同 → 不是本步回归，步骤 13 打磨）；`pageSheetVue` 只 unmount 同名
+sheet，Vue-in-Vue 入口出现时（步骤 9/10）再补全量 unmount。
