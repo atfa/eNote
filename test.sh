@@ -1260,6 +1260,64 @@ PYONE
 api_post shots/remove "{\"ids\":$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin)["shots"] if x["name"]=="one-shot.png"]))')}" >/dev/null
 asroot_global "rm -f '$EXT/one-shot.png' '$DATA/enote/.devmode'"
 
+step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收）"
+# 签名 84 项是源码级正则，抓不到 DOM 漂移；Vue 会规范化模板（属性顺序、空白节点、
+# class 合并顺序）。这里在真 WebView 里把两条路径各渲染一次，把 DOM 规范化后逐字比：
+# 属性按名排序、空白折叠、文本 trim。CSS 和测试选择器看的是 tag/class/attr，不看属性顺序，
+# 所以「规范化后相等」才是对的契约。步骤 6/7/9/10 直接复用（加对应 tab 即可）。
+
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("VDIFF "+m)};
+  var E=window.__enote||{};
+  if(!E.legacy||!E.legacy.notes){ L("skip=no-legacy"); L("done=1"); return; }
+  __enote.state.tab="notes";
+  await render();
+  var pane=document.querySelector(".pane[data-tab=notes]");
+  if(!pane){ L("skip=no-pane"); L("done=1"); return; }
+  var vueHtml=pane.innerHTML, oldHtml=E.legacy.notes();
+  function ser(n){
+    if(n.nodeType===3) return (n.nodeValue||"").replace(/\s+/g," ").trim();
+    if(n.nodeType!==1) return "";
+    var a=[],i; for(i=0;i<n.attributes.length;i++) a.push(n.attributes[i].name+"="+n.attributes[i].value);
+    a.sort();
+    var kids=[]; for(var c=n.firstChild;c;c=c.nextSibling){ var s=ser(c); if(s!=="") kids.push(s); }
+    var t=n.tagName.toLowerCase();
+    return "<"+t+(a.length?" "+a.join(" "):"")+">"+kids.join("")+"</"+t+">";
+  }
+  function canon(h){
+    var d=new DOMParser().parseFromString("<div id=\"r\">"+h+"</div>","text/html");
+    return ser(d.body.firstChild);
+  }
+  var A=canon(oldHtml), B=canon(vueHtml);
+  if(A===B){ L("same=1"); L("len="+A.length); }
+  else {
+    var i=0; while(i<A.length&&i<B.length&&A.charAt(i)===B.charAt(i)) i++;
+    L("at="+i);
+    L("old="+JSON.stringify(A.slice(Math.max(0,i-80),i+80)));
+    L("vue="+JSON.stringify(B.slice(Math.max(0,i-80),i+80)));
+  }
+  L("done=1");
+})()' > "$TMPDIR/jsvdiff.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsvdiff.json'"
+for i in $(seq 1 40); do
+  newtlog | grep -q 'VDIFF done=1' && break
+  sleep 0.5
+done
+newtlog | grep 'VDIFF' | "$PY" -c '
+import sys, re
+lines = [l.strip() for l in sys.stdin if "VDIFF" in l]
+d = {}
+for l in lines:
+    m = re.search(r"VDIFF (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+if d.get("skip"):
+    print("  ok (%s：Notes 尚未转 Vue，混合期正常)" % d["skip"]); sys.exit(0)
+assert d.get("done") == "1", "VDIFF 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+assert d.get("same"), "Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  旧: %s\n  Vue: %s" % (
+    d.get("at"), d.get("old", "")[:200], d.get("vue", "")[:200])
+print("  ok (规范化后 DOM 逐字一致，长度 %s)" % d.get("len"))
+'
+
 step "前端没有运行时报错（未声明的变量会把点击静默吞掉）"
 if newtlog | grep -q 'SELFCHECK FAIL'; then
   newtlog | grep 'SELFCHECK FAIL' | tail -2 | sed 's/^/  /'

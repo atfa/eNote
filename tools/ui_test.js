@@ -370,6 +370,7 @@ const JS_GLOBALS = new Set(['console', 'document', 'window', 'navigator', 'locat
   'RegExp', 'Error', 'Set', 'Map', 'WeakMap', 'Symbol', 'Reflect', 'Proxy', 'globalThis', 'Infinity',
   'NaN', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame',
   'queueMicrotask', 'parseInt', 'parseFloat', 'isNaN', 'encodeURIComponent', 'decodeURIComponent',
+  'DOMParser',   // 步骤 5 的 DOM 一致性夹具用（Chrome 1 就有，远低于 ES2020 基线）
   'fetch', 'atob', 'btoa', 'localStorage', 'sessionStorage', 'URL', 'Blob', 'File', 'FormData',
   'Headers', 'Request', 'Response', 'AbortController', 'TextEncoder', 'TextDecoder', 'structuredClone',
   'Intl', 'crypto', 'performance', 'getComputedStyle', 'querySelector', 'querySelectorAll',
