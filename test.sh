@@ -1301,7 +1301,7 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
   /* style 属性的两种写法在 CSS 里完全等价，但序列化不同：字符串路径写的是 「style="--i:0"」，
      Vue 的 :style 走 el.style.setProperty，浏览器读回来是 「--i: 0;」。夹具比的是语义，
      所以两边都过一遍同一个规范化（用浏览器自己的 cssText）。 */
-  /* 内联 handler 属性不比：遗留路径写 「onclick="expand('id')"」，Vue 用 @click（addEventListener），
+  /* 内联 handler 属性不比：遗留路径写 「onclick="expand(「id」)"」，Vue 用 @click（addEventListener），
      DOM 里没有 onclick 属性。它们是绑定机制不是 DOM 形状，两条路径的 handler 存在性由
      闸门①（onclick）与闸门①b（@click）分别验，都要求名字在导出表里。 */
   function norm(name, v){

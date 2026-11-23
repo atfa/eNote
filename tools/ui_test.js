@@ -406,6 +406,18 @@ jsevalPayloads.forEach((body, idx) => {
     return;
   }
   if (body.indexOf('`') >= 0) g2.push('载荷 ' + (idx + 1) + ' 用了模板字符串，扫描器不认（改成字符串拼接）');
+  // 载荷是 shell 单引号参数，JS 里不能出现单引号。shell 没有「转义的单引号」：串在第一个
+  // 单引号处结束，前后两段相邻字符串字面量直接拼接，于是引号被静默吃掉。
+  // 代码里写 document.createElement('div') → 到浏览器手里变成 document.createElement(div)，
+  // 语法完全合法（div 是个合法标识符），上面的 new Function 编译检查抓不到，
+  // 真机运行时才炸 div is not defined——整条用例白跑一轮（真踩过，代价是一次完整跑）。
+  // 注释里写单引号只伤文字不伤语义，但规则一刀切最好记：载荷里一律用双引号。
+  if (body.indexOf("'") >= 0) {
+    const at = body.indexOf("'");
+    g2.push('载荷 ' + (idx + 1) + " 里有单引号，shell 会把它吃掉：JS 代码里 'x' 会变成裸标识符 x"
+      + '（语法合法、编译检查绿，运行时才炸）。改用双引号。片段：'
+      + JSON.stringify(body.slice(Math.max(0, at - 40), at + 20)));
+  }
   const clean = stripJsLiterals(body);
   const loc = payloadLocals(clean);
   for (const m of clean.matchAll(/(^|[^.\w$?])([A-Za-z_$][\w$]*)/g)) {
