@@ -755,3 +755,11 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 
 给步骤 4 的硬约束：`render()` 改成返回 Promise 后，`markReady()` 的兑现点必须跟着挪到渲染真的
 完成之后（现在在同步 `render()` 末尾）；`JSEVAL seam` 的 `ready` 断言会自动覆盖这件事。
+
+步骤 3 落地时补的一条（真机全量首跑抓出来的）：
+
+* **probe 的判定式本身要测**。`Reflect` 是命名空间对象（同 `Math` / `JSON`），`typeof` 是
+  `'object'`；写成 `=== 'function'` 会让 probe 在 Chrome 159 上永远报缺（假红）。这类 bug 静态
+  全绿看不出来，所以 `go/web_test.go` 加 `TestProbeSelfTest`：抽出探针脚本在 node `vm` 里用最小
+  window/document 桩跑一遍，断言 `ok === true` 且 `missing` 为空。**给步骤 5–10 的规矩：往 probe
+  加探测项，必须同时保证自测在 node 上绿**（node 与 V8 同源，特性齐全时判定必然一致）。

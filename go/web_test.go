@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -314,3 +315,51 @@ func uiBody(t *testing.T, resp *http.Response) string {
 	}
 	return string(b)
 }
+
+// probe 自测：把 index.html 里的探针脚本在 node 的 vm 里跑一遍，断言它判定「特性齐全」。
+// 为什么要有这条：探针的判定式写错是**静默**的。真机首跑就抓到一次——Reflect 是命名空间
+// 对象（同 Math / JSON），typeof 是 'object'，写成 typeof Reflect === 'function' 会让
+// probe 永远报缺，Chrome 159 上直接假红。这类 bug 只有真跑一遍判定式才看得见。
+func TestProbeSelfTest(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("没有 node，跳过 probe 自测")
+	}
+	src, err := os.ReadFile("ui/index.html")
+	if err != nil {
+		t.Fatalf("读 ui/index.html：%v", err)
+	}
+	m := regexp.MustCompile(`(?s)<script id="probe">(.*?)</script>`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("index.html 里没有 <script id=\"probe\">")
+	}
+	cmd := exec.Command(node, "-e", probeHarness)
+	cmd.Stdin = strings.NewReader(string(m[1]))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("probe 自测没通过（判定式写错 / 探针抛异常？）：%v\n%s", err, out)
+		return
+	}
+	t.Logf("probe 自测：%s", strings.TrimSpace(string(out)))
+}
+
+// 探针在浏览器里靠 window / document / navigator / setTimeout；这里给最小桩，
+// 只保证「特性探测」这一段能独立跑。缺桩会让探针抛异常，自测同样判红。
+const probeHarness = `
+const vm = require('vm');
+const src = require('fs').readFileSync(0, 'utf8');
+const win = { addEventListener: function () {}, __enote: undefined };
+const doc = { title: '', getElementById: function () { return null }, body: null };
+const ctx = { window: win, document: doc, navigator: { userAgent: 'node-selftest' },
+              setTimeout: function () { return 0 }, console: { log: function () {} } };
+vm.createContext(ctx);
+vm.runInContext(src, ctx, { filename: 'probe.js' });
+const p = win.__enoteProbe;
+if (!p) { console.error('探针没写出 window.__enoteProbe'); process.exit(1); }
+if (!Array.isArray(p.missing) || !Array.isArray(p.missingDetail)) {
+  console.error('probe.missing / missingDetail 不是数组'); process.exit(1);
+}
+if (p.ok !== (p.missing.length === 0)) { console.error('probe.ok 与 missing 不一致'); process.exit(1); }
+if (p.missing.length) { console.error('本机（node V8）判定缺特性：' + p.missing.join(',')); process.exit(1); }
+console.log('ok 探针判定特性齐全，探测 ' + p.probed + ' 项');
+`

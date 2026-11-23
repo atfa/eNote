@@ -144,21 +144,30 @@
     var WATCHDOG_MS = 12000;
     var need = [
       ['Proxy', function () { return typeof Proxy === 'function' }, 'Vue 3 响应式（Chrome 49）'],
-      ['Reflect', function () { return typeof Reflect === 'function' }, 'Vue 3 响应式（Chrome 49）'],
+      // Reflect 是命名空间对象（同 Math / JSON），typeof 是 'object' 不是 'function'：
+      // 写错的话 probe 永远报缺，真机首跑就是这么被抓的。探 Vue 3 真用的方法。
+      ['Reflect', function () { return typeof Reflect === 'object' && Reflect !== null &&
+        typeof Reflect.ownKeys === 'function' && typeof Reflect.get === 'function' }, 'Vue 3 响应式（Chrome 49）'],
       ['Symbol', function () { return typeof Symbol === 'function' }, 'Vue 3 内部标记（Chrome 45）'],
       ['Promise', function () { return typeof Promise === 'function' }, 'app.js 的 fetch 链（Chrome 32）'],
       ['Object.assign', function () { return typeof Object.assign === 'function' }, '导出表 / __enote 合并（Chrome 45）'],
       ['String.prototype.padStart', function () { return typeof String.prototype.padStart === 'function' }, 'app.js 时间格式化（Chrome 57）'],
       ['Object.entries', function () { return typeof Object.entries === 'function' }, 'Vue 模板遍历对象（Chrome 54）']
     ];
-    var missing = [], i;
+    var missing = [], detail = [], i;
     for (i = 0; i < need.length; i++) {
       var has = false;
       try { has = !!need[i][1]() } catch (e) { has = false }
-      if (!has) missing.push(need[i][0] + '（' + need[i][2] + '）');
+      if (!has) {
+        missing.push(need[i][0]);
+        detail.push(need[i][0] + '（' + need[i][2] + '）');
+      }
     }
-    var p = { ua: navigator.userAgent, missing: missing, ok: missing.length === 0,
-              moduleError: null, reported: 0, startedAt: Date.now() };
+    // missing 只放名字（无空格）：test.sh 的 seam 载荷把 token 用空格分隔打印，带空格的
+    // 说明文本会把解析弄脏；给人看的那份在 missingDetail，页面卡片用它。
+    var p = { ua: navigator.userAgent, missing: missing, missingDetail: detail,
+              probed: need.length, ok: missing.length === 0, moduleError: null,
+              reported: 0, startedAt: Date.now() };
     window.__enoteProbe = p;
     function esc(s) {
       return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -177,7 +186,7 @@
         'border-radius:10px;font:14px/1.6 system-ui">' +
         '<div style="font-weight:700;color:#c00;margin-bottom:6px">界面没起来</div>' +
         '<div>' + esc(why) + '</div>' +
-        (p.missing.length ? '<div>缺特性：' + esc(p.missing.join('、')) + '</div>' : '') +
+        (p.missing.length ? '<div>缺特性：' + esc(p.missingDetail.join('、')) + '</div>' : '') +
         '<div style="opacity:.7;font-size:12px;word-break:break-all">' + esc(p.ua) + '</div></div>';
     }
     window.addEventListener('error', function (ev) {

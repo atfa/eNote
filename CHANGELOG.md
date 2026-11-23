@@ -118,6 +118,14 @@
 * 两个踩过的坑：`git diff --quiet || git diff --cached --quiet || SHA="$SHA-dirty"` 会被第二个
   `--quiet`（返回 0）短路，未提交的树标不出 `-dirty`，改成 `if ! … || ! …; then`；`index.html`
   里**没有 `#main`**，主容器是 `<main id="view">`，所以 `dom.main` 取的是 `#view`。
+* **probe 自己的判定式写错了，是运行时防线当场拓出来的**（全量首跑）：`Reflect` 是命名空间
+  对象（同 `Math` / `JSON`），`typeof Reflect` 是 `'object'`，写成 `=== 'function'` 就永远报缺，
+  Chrome 159 上直接假红（`missing=Reflect（Vue 3 响应式（Chrome 49））`）。修成探 Vue 3 真用的
+  方法（`Reflect.ownKeys` / `Reflect.get`）。这类 bug **只有真跑一遍判定式才看得见**，所以新增
+  `go/web_test.go` 的 `TestProbeSelfTest`：抽出探针脚本，在 node 的 `vm` 里用最小 window/document
+  桩跑一遗，断言 `ok === true` 且 `missing` 为空（没 node 则 skip）——静态验收命令就能抖出来。
+  顺手修一个解析陷阱：`missing` 里带说明文本（含空格）会把 seam 载荷的空格分隔 token 解析弄脏，
+  现在 `missing` 只存名字，给人看的那份放 `missingDetail`（页面卡片用它）。
 
 ### 界面（P7）
 
