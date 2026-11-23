@@ -38,8 +38,10 @@ const bannerRefs = (s, name) => {
   return (s.match(new RegExp(name + '\\(\\)', 'g')) || []).length
     + (s.match(new RegExp('<' + kebab + '[ />]', 'g')) || []).length;
 };
-// 卡片片段：函数调用形式或组件标签形式
-const frag = (s, fn, tag) => new RegExp(fn + '\\(').test(s) || new RegExp('<' + tag + '[ />]').test(s);
+// 卡片片段：函数调用形式或组件标签形式。
+// \b 是必需的：不带它，factsBlock 改名成 factsBlockRenamed 也能对上（前缀匹配），
+// 反向实验验出来签名会假绿。
+const frag = (s, fn, tag) => new RegExp('\\b' + fn + '\\(').test(s) || new RegExp('<' + tag + '[ />]').test(s);
 const m = src.match(/function sigOf\(d\)\{[\s\S]*?\n\}/);
 if (!m) { console.error('sigOf not found'); process.exit(1); }
 const sigOf = eval('(' + m[0] + ')');
