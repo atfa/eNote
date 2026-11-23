@@ -1425,7 +1425,7 @@ js = r'''(async function(){
                            {path:"/sdcard/DCIM/Camera",count:0,shot:false,missing:true}];
         E.state.folderSel={"/sdcard/Pictures/Screenshots":true,"/sdcard/Download":false,"/sdcard/DCIM/Camera":true};
       } else if(MODE==="empty"){ E.state.folderAll=[]; E.state.folderSel={}; }
-      E.vue.folderRender();
+      E.vue.folderPaint();
       await new Promise(function(r){setTimeout(r,200)});
     } else {
       shotSheet();
