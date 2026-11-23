@@ -807,3 +807,71 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 
 **给步骤 5-10 的硬约束**：载荷里新增的全局引用必须同步改闸门② 的闭集（红字会直接说这条）；
 视图转 Vue 后 `render()` 的返回值换成 `nextTick()`，`markReady()` 仍留在首屏那一次。
+
+### 9.9 S3 步骤 5 已完成（Austin + Tony，D14：Notes 视图转 Vue + 组件模式模板）
+
+**这一步的产物不是「Notes 页换了实现」，是一份能照抄的模式模板**，加一条能证明「行为零变化」的夹具。
+步骤 6/7/9/10 是纯执行。
+
+新增三个文件（Austin）：
+
+* `go/ui/js/vue.js`（45 行）：装配层。`setHost(h)` 注入宿主接口（app.js 在**首次 `refresh()` 之前**调一次，
+  `go/web_test.go` 钉住这个顺序）、`V = Vue.reactive({tick:0})`、`live(fn)`、`mountView`/`vuePaint`。
+  混合期用「渲染计数器」而不是把 `S` 改成 reactive：八个视图共用同一个 `S`，改 reactive 是跨视图的
+  大改，留到步骤 11。
+* `go/ui/js/components.js`（130 行）：`StripBar` / `MissedBanner` / `ShotBanner` / `ClipBanner` /
+  `NoteCard`，并注册 Tony 的 `components/empty-state.js`。
+* `go/ui/js/views/notes.js`（40 行）：`NotesView`，fragment 根，顺序 = `renderNotes()` 的拼接顺序。
+
+`app.js`：`var VUE_VIEWS = { notes: NotesView }` 注册表（**混合期唯一开关**：加一行迁移一个视图，
+删一行退回字符串路径）、`render()` 按注册表分发、`setHost({...})`、`shotGo(kind)`、
+`__enote.legacy = { notes: renderNotes }`（夹具缝，步骤 6/7/9/10 各加一个 tab，步骤 11 随渲染器删）、
+`metaHTML`/`whereHTML`/`attachHTML` 从 `noteCard()` 抽出来给两条路径共用。
+`index.html`：`<script src="/vendor/vue.global.prod.js">` 必须在 `<script type="module">` 之前
+（`js/vue.js` 在模块求值时就要读 `window.Vue`），`go/web_test.go` 钉住这个顺序。
+
+**模式模板（6/7/9/10 照抄）**
+
+1. 视图根 `const tick = computed(() => V.tick)`，子组件一律 `:tick="tick"`。
+2. 读模块状态（`S` / `MISSED` / `SHOTFLAGS` / `open`）的 computed 一律包 `live(() => …)`。
+3. 结构（循环 / 条件 / 卡片骨架）用模板语法；叶子片段（图标、chip、待办行、facts）用 `v-html`
+   复用现成字符串函数（`H.metaHTML` 等）——DOM 与今天逐字一致，签名测试和 CSS 选择器都不受影响。
+   Tony 原话是「先包后换」，落地形态就是这条：**结构用模板，叶子用 v-html**。
+4. 模板里只写 `H.名字(…)` 直调：不用 `H[expr]()`（静态抓不到，typo 就是「点了没反应」）、
+   不用 `.stop` 修饰符、不用内联箭头（闸门①b/①c 会红）。
+5. D15 冻结的 class 名是契约：`msrow cb pfoot ttx acard iconbtn brand justdone sheet todo`，
+   `.missedb` / `.missedtop` 必须继续不存在。
+
+**真机第一次跑就抓到的静默失效（本步最重要的发现）**：P6.6「删光剪贴板后首页横幅立刻消失」红，
+红字是「删之前首页应该有剪贴板横幅: 'none'」——横幅根本没渲染。根因：组件里
+`computed(() => (H.S.info && H.S.info.clip) || 0)` **没有任何响应式依赖**（`S` 是普通模块变量），
+computed 永远缓存，视图永远停在首帧。视图读到 `tick` 不够，**每个读模块状态的 computed 都得依赖 tick**。
+修法：`js/vue.js` 加 `export function live(fn){ return Vue.computed(function(){ V.tick; return fn() }) }`，
+组件里读模块状态的 computed 全部换成 `live(() => …)`。闸门⑮ 加了静态防线：组件/视图文件里出现
+`computed(` 且后 80 字符没有 `V.tick` 就判红（唯一豁免是 tick 源本身）；反向实验把 ClipBanner 的
+`live(` 换回 `Vue.computed(` → 红字精确指到那一行，恢复即绿。
+
+**夹具的坑（Austin 踩，记下来给 6/7/9/10）**：VDIFF 第一版「一条 VDIFF 也没打出来」，红字写成
+「前端抛异常了？日志=[]」——不是抛异常，是**载荷根本没执行**：jseval 钩子只在 `.devmode` 存在时干活，
+夹具块紧跟在上一块删 `.devmode` 之后注入。每个 jseval 块都要自己 `touch .devmode`（test.sh 里 5 处都是这个写法）。
+夹具本身也加了防御：`render()` 用 `Promise.race` 兜 4s + 全程 `try/catch`，因为 Vue 分支里组件渲染抛异常时
+`nextTick` 的 promise 不兑现，`await render()` 会挂死，夹具要永远给结论，不能跟着一起挂。
+
+**Tony 半边**：闸门①b/①c（模板 `@click` 名 ⊆ 导出表，handler 总数钉 70）、DOM 逐字一致夹具、
+`<empty-state>`（整块 `v-html`：标题在原实现里是原样插入的 HTML，`{{ }}` 会多一层转义）、
+签名 5 处迁移改成写法无关（横幅顺序五条反向实验逐条红）、VENDOR.md 记录 Vue 的浏览器下限。
+
+**Vue 语法下限（Tony 实测）**：vendored Vue 3.5.46 = Chrome 58（ES2015 + Proxy/Reflect/Symbol/WeakMap；
+`?.` 只出现在正则字面量里、`??` 0 次、对象展开 0 次）→ `MIN_API=26` 不用动。
+
+**闸门⑮**（`tools/ui_test.js`，Austin）：① 模板全部过 vendored Vue 的 `compile()`（在 node 里跑，
+shim 必须供上 `decodeEntities` 用的那个 div，否则报 `Cannot read properties of undefined (reading '0')`）；
+② 注册表里的视图必须读 `V.tick`，模板里的自定义标签必须全收 `:tick="tick"`；③ 模板 handler 名 ⊆ 导出表；
+④ 组件里的 `computed(` 必须包 `live()`。
+
+**数字**：闸门 14→15、导出表 57→58 key（+`shotGo`）、Vue 模板 6 个、模板 handler 9 个、
+签名 84 项不变、`function render(){` 在 app.js 里必须**恰好一份**（函数声明提升会让后一份覆盖前一份，
+Vue 分发静默失效——这条也钉进 `go/web_test.go`）。
+
+**验收**：静态 15 闸门 + 84 签名 + `go test ./...` 全绿；全量 `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd`
+见 CHANGELOG。

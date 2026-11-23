@@ -156,6 +156,32 @@
   `__enote.buildReady` 存下 build.json 的 fetch promise，seam 载荷带超时 await 并断言
   `buildready=ok`（`ready` 首屏就兑现、`build` 由独立 fetch 填，原本没顺序保证）。
 * `go/web_test.go` 钉住 D13：`render()` 必须 `return Promise.resolve()`，且 `markReady()` 在 return 之前。
+* 闸门② 补上**逐载荷编译检查**：每个载荷过一遍 `new Function(body)`。包装漏改 `async` 是整段
+  SyntaxError（JSEVAL token 集体消失），静态就能抓，不用等真机跑完才知道。
+
+### 界面（P13 S3 步骤 5，D14）：Notes 页转 Vue + 定下组件模式模板
+
+* **首页（笔记页）现在由 Vue 渲染**，其余七个页还是字符串路径。开关是 `app.js` 里的
+  `var VUE_VIEWS = { notes: NotesView }`：加一行迁移一个视图，删一行退回今天的路径。
+  用户看到的东西不变（这一步的验收就是「行为零变化」），变的是实现与可验证性。
+* **组件模式模板定下来了**（步骤 6/7/9/10 照抄）：结构（循环 / 条件 / 卡片骨架）用模板语法，
+  叶子片段（图标、chip、待办行、facts）用 `v-html` 复用现成的字符串函数，DOM 与今天逐字一致；
+  视图根读 `V.tick`，子组件一律收 `:tick="tick"`；模板里只写 `H.名字(…)` 直调。
+* **修掉一个真机才暴露的静默失效**：删光剪贴板后首页横幅不消失。组件里的
+  `computed(() => H.S.info.clip)` 没有响应式依赖（`S` 是普通模块变量），computed 永远缓存，
+  视图停在首帧。现在所有读模块状态的 computed 一律包 `live(() => …)`（依赖渲染计数器），
+  闸门⑮ 静态守这条：组件里出现没包 `live()` 的 `computed(` 直接判红。
+* **新增闸门⑮**（`tools/ui_test.js`）：6 个 Vue 模板全部过 vendored Vue 的 `compile()`（在 node 里跑）；
+  注册表里的视图必须读 `V.tick`、子组件必须全收 `:tick`；模板里的 handler 名必须在导出表里
+  （Vue 模板用 `@click`，闸门① 只认 `onclick="…"`，不扩它验的集就会静默缩小）。
+* **新增 DOM 逐字一致夹具**（`test.sh`，Tony）：在真 WebView 里把 Vue 产出的 DOM 与遗留字符串
+  渲染器各渲染一次，规范化（属性按名排序 / 空白折叠 / 文本 trim）后逐字比。签名 84 项是源码级
+  正则，抓不到 DOM 漂移，这条是步骤 5-10「行为零变化」的唯一硬证据。
+* `shotGo(kind)`：截图横幅四种状态点下去各去哪，从模板里的动态成员访问 `H[text.go]()` 改成显式函数
+  （导出表 57 → 58 key）——动态成员访问静态抓不到，拼错就是「点了没反应」（P12 同款）。
+* 记账：VDIFF 夹具第一版「一条也没打出来」不是前端抛异常，是载荷根本没执行——jseval 钩子只在
+  `.devmode` 存在时干活，夹具块紧跟在上一块删 `.devmode` 之后注入；签名测试的失败行是
+  `  FAIL`（两个前导空格），`grep '^FAIL'` 恒为 0，判据要用 ok 计数。
 
 ### 界面（P7）
 

@@ -1001,11 +1001,18 @@ function remindBtns(n,t){
   return ' <span class="remind" title="写入系统日历" onclick="toCalendar(\''+n.id+'\',\''+t.id+'\',event)">'+ic('calendar')+'</span>'
        + ' <span class="remind" title="设为闹钟" onclick="toAlarm(\''+n.id+'\',\''+t.id+'\',event)">'+ic('alarm')+'</span>';
 }
-function factsBlock(n){
+/* factsBlock 的内层单独抽出来（factsInner）：Vue 模板里 v-html 必须挂在一个真实元素上，
+   整块 v-html 会多一层 <div>，DOM 与今天不一致（VDIFF 夹具实测抓到）。字符串路径继续用
+   factsBlock，两条路径共用 factsInner。 */
+function factsInner(n){
   var f = n.facts||[]; if(!f.length) return '';
-  return '<div class="facts"><div class="fh">'+ic('search')+'关键信息</div>'
+  return '<div class="fh">'+ic('search')+'关键信息</div>'
     + f.map(function(x,ki){return '<div class="fr" style="--k:'+ki+'"><span class="fq">'+esc(x.q)+'</span>'
-        + '<span class="fa">'+esc(x.a)+'</span></div>'}).join('') + '</div>';
+        + '<span class="fa">'+esc(x.a)+'</span></div>'}).join('');
+}
+function factsBlock(n){
+  var h = factsInner(n);
+  return h ? '<div class="facts">'+h+'</div>' : '';
 }
 function todoRow(t, n, compact){
   var d='', dcls='due';  if(t.due){
@@ -1883,7 +1890,7 @@ setHost({
   get S(){ return S }, get SR(){ return SR }, get tab(){ return tab },
   get open(){ return open }, get MISSED(){ return MISSED }, get SHOTFLAGS(){ return SHOTFLAGS },
   notesFiltered: notesFiltered, enterCls: enterCls, ic: ic, esc: esc, fmtTime: fmtTime,
-  srcChip: srcChip, statusChip: statusChip, factsBlock: factsBlock, todoRow: todoRow,
+  srcChip: srcChip, statusChip: statusChip, factsBlock: factsBlock, factsInner: factsInner, todoRow: todoRow,
   metaHTML: metaHTML, whereHTML: whereHTML, attachHTML: attachHTML,
   clipHint: function(){ return !!(window.Android && Android.clipHint && Android.clipHint() === '1') },
   expand: expand, reparse: reparse, reocr: reocr, addTodoSheet: addTodoSheet, delNote: delNote,
@@ -1987,7 +1994,10 @@ Object.assign(window.__enote, {
   /* D17 夹具缝（Tony 提，步骤 5）：DOM 逐字一致对比要在真 WebView 里把两条路径各渲染一次。
      视图转 Vue 后遗留字符串渲染器不再被 render() 调用，但它是「今天长什么样」的唯一真相，
      留着它才谈得上「行为零变化」是可证明的。步骤 6/7/9/10 各加一个 tab，步骤 11 随渲染器一起删。 */
-  legacy: { notes: renderNotes }
+  legacy: { notes: renderNotes },
+  /* 夹具要在插入遗留字符串后跑一遍和 render() 相同的收尾（syncExpand 会按正文高度隐藏
+     「展开详情」按钮），否则比的是「raw 字符串」对「收尾后的 DOM」。缝在 D17 上，步骤 11 一起删。 */
+  afterPaint: afterPaint
 });
 /* buildReady（步骤 4，Tony 提的竞态）：ready 在首屏就兑现，build 由这个独立 fetch 填，
    载荷 await ready 后立刻读 E.build 是没顺序保证的（实测不犯：seam 载荷是在桥载荷轮询完

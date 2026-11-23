@@ -1280,14 +1280,33 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
   var pane=document.querySelector(".pane[data-tab=notes]");
   if(!pane){ L("skip=no-pane"); L("done=1"); return; }
   var vueHtml=pane.innerHTML, oldHtml=E.legacy.notes();
+  /* 遗留字符串要过一遍和 render() 相同的收尾再比：syncExpand 会按正文高度把「展开详情」
+     按钮设成 display:none，Vue 那侧的 DOM 是收尾后的，raw 字符串没有这一步。
+     临时 pane 必须挂在 #view 里（syncExpand 的选择器是 #view .card）。 */
+  var tmp=document.createElement('div'); tmp.className='pane'; tmp.innerHTML=oldHtml;
+  (document.getElementById('view')||document.body).appendChild(tmp);
+  try{ E.afterPaint() }catch(e){ L("afterpaint-err="+(e&&e.message)) }
+  oldHtml=tmp.innerHTML; tmp.parentNode.removeChild(tmp);
   function ser(n){
     if(n.nodeType===3) return (n.nodeValue||"").replace(/\s+/g," ").trim();
     if(n.nodeType!==1) return "";
-    var a=[],i; for(i=0;i<n.attributes.length;i++) a.push(n.attributes[i].name+"="+n.attributes[i].value);
+    var a=[],i; for(i=0;i<n.attributes.length;i++){ var nm=n.attributes[i].name;
+      if(/^on/i.test(nm)) continue;   // 见下面 norm() 的注释
+      a.push(nm+"="+norm(nm, n.attributes[i].value)); }
     a.sort();
     var kids=[]; for(var c=n.firstChild;c;c=c.nextSibling){ var s=ser(c); if(s!=="") kids.push(s); }
     var t=n.tagName.toLowerCase();
     return "<"+t+(a.length?" "+a.join(" "):"")+">"+kids.join("")+"</"+t+">";
+  }
+  /* style 属性的两种写法在 CSS 里完全等价，但序列化不同：字符串路径写的是 「style="--i:0"」，
+     Vue 的 :style 走 el.style.setProperty，浏览器读回来是 「--i: 0;」。夹具比的是语义，
+     所以两边都过一遍同一个规范化（用浏览器自己的 cssText）。 */
+  /* 内联 handler 属性不比：遗留路径写 「onclick="expand('id')"」，Vue 用 @click（addEventListener），
+     DOM 里没有 onclick 属性。它们是绑定机制不是 DOM 形状，两条路径的 handler 存在性由
+     闸门①（onclick）与闸门①b（@click）分别验，都要求名字在导出表里。 */
+  function norm(name, v){
+    if(name!=="style") return v;
+    var d=document.createElement("div"); d.setAttribute("style", v); return d.style.cssText;
   }
   function canon(h){
     var d=new DOMParser().parseFromString("<div id=\"r\">"+h+"</div>","text/html");
