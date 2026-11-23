@@ -16,7 +16,9 @@ export const V = Vue.reactive({ tick: 0 });
 /* 宿主接口：app.js 在装配时注入（状态 getter + 渲染叶子 + 事件方法）。
    组件在 mount 时才 setup()，那时 H 已经装好，所以直接返回 H 给模板用是安全的。 */
 export let H = null;
-export function setHost(h){ H = h }
+/* 返回 h：app.js 要把同一个对象再挂到 __enote.vue 上给测试用（步骤 7），
+   而闸门⑮ 的 setHostKeys() 认的是 `setHost({` 这个字面量，不能改成 `var HOST = {…}; setHost(HOST)`。 */
+export function setHost(h){ H = h; return h }
 
 export const apps = {};
 

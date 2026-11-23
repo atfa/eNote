@@ -1062,3 +1062,49 @@ is not defined @app.js:1923`）。`views/todos.js` 也踩过两个 module 导出
 今天·1、已完成·1 带勾选态）、导航高亮在「待办」、圆圈左边缘在明暗两档都完整。
 脚本日志会打印 `nav=todos rows=3 theme=…` 和 `RECT dpr=2.75 x=35.6 y=243.4 w=18.0 h=18.0`，
 裁切坐标由它自己量自己算，不靠人眼。
+
+### 9.12 S3 步骤 7 已完成（Austin：Files 视图转 Vue）
+
+`go/ui/js/views/files.js` 新增 `FilesView` + `AttachCard`，注册表加一行
+`var VUE_VIEWS = { notes, todos, files: FilesView }`。沿用步骤 5/6 的模式：结构在模板里，
+叶子 HTML 两条路径同源 —— app.js 里把 `renderFiles` 拆成
+`fileStripInner` / `filesSkeleton` / `attachCardCls` / `attachGlyphHTML` / `attachMetaHTML` /
+`attachCardHTML` 六个小函数，遗留渲染器和 Vue 组件调同一份，VDIFF 才逐字比得过。
+`FA` / `q` 走 `setHost` 的 getter（传值就是装配时的快照，2s 轮询换掉 `FA` 后视图不动）。
+
+**四条只有真跑才会撞上的事：**
+
+1. **`setHost` 不能改成 `var HOST = {…}; setHost(HOST)`。** 闸门⑮ 的 `setHostKeys()` 认的是
+   `setHost({` 这个字面量（`tools/ui_test.js:119`），改了写法它返回空数组，于是「模板里的
+   `H.xxx` 全在 setHost」这条判据当场变成 40 条红。FINT 载荷要调 `filesNow()`（它不是内联
+   handler，不在导出表里，加 key 就要动 Tony 的 57 键基线），所以让 `setHost(h)` 把 h 返回，
+   app.js 写 `var HOST = setHost({…})`，再把 `HOST` 挂到 `__enote.vue.host` 观测缝上。
+2. **`/api/attachments` 空库时 `items` 是 `null` 不是 `[]`**（Go 侧 nil slice 编码成 JSON null）。
+   FINT 第一版在删除后的轮询里读 `r.items.length` 直接抛
+   `Cannot read properties of null (reading 'length')`，整步红。JS 侧统一 `(r.items||[])`，
+   shell 侧统一 `json.load(sys.stdin).get("items") or []`。
+3. **`vdiff_tab files` 跑在空库上是空跑**：只比到 strip + 空态，145 字节，卡片网格这条主路径
+   根本没进比较。现在夹具分享进来之后先跑一个 `FLOAD` 载荷（`filesNow()` 把 `FA` 真加载好，
+   断言 `loaded=true` 且 `fa>=1`），再跑第二次 `vdiff_tab files` —— 这次比的是真卡片。
+   （`vdiff_tab` 只调 `render()`，而 `render()` 不会去拉附件。）
+4. **`class="acard" :class="cls"` 会渲染成 `class="acard acard enter"`**：`attachCardCls()`
+   本身带 `acard`，Vue 把静态和动态 class 拼接，VDIFF 比 class 字符串就多一个 token。
+   模板只写 `:class="cls"`。
+
+**新增测试**：`test.sh` 的 `vdiff_tab files` + 新步骤「附件页交互在 Vue 路径上真的生效」
+（FINT）。夹具是 shell 侧分享进来的一个 PDF（附件只能由分享意图产生，JS 侧没有建附件的 API），
+轮询 `/api/attachments?q=` 等它出现，出现不了就 `fail`（夹具不存在 ⇒ 断言全是空跑）。
+载荷断言：`isVue(files)` / 挂载 / `FA.items.length == 页面卡片数` / strip 文案含「附件 <total>」/
+点卡片出「预览即将上线」toast / 点删除弹确认框并真删到服务端 / 删完卡片少一张。
+夹具笔记在步骤末尾删掉，不污染后续用例。
+
+**闸门⑮ 的一条空跑（记进步骤 11 的审计清单）**：`tools/ui_test.js:852` 的
+`/template: `([\s\S]*?)`\n/` 只取每个视图文件里的**第一个** template 检查「子组件必须收
+`:tick="tick"`」。todos.js 的第一个 template 是 `TodoRow`（里面没有自定义元素），所以
+`<empty-state>` 没写 `:tick` 一直没被报出来。files.js 里第一个 template 是 `AttachCard`
+（也没有自定义元素），同样漏。已给 files.js 的 `<empty-state>` 显式加 `:tick="tick"`。
+
+**验收图**（`./tools/shots_files.sh` 产出）：`docs/shots/vue-files-{light,dark}.png` +
+两张 `-card.png` 卡片特写。脚本自己分享两个夹具（一个 PDF 走 glyph、一张 PNG 走缩略图），
+轮询断言 `附件数>=2`，走真实导航点击并断言 `.tabbar .tab.on == files`，量不到 `.acard`
+直接 `die`，末尾自检四张图存在且明暗两张不同。

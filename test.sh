@@ -1387,6 +1387,7 @@ asroot_global "rm -f '$DATA/enote/.devmode'"
 }
 vdiff_tab notes
 vdiff_tab todos
+vdiff_tab files
 
 step "Notes 交互在 Vue 路径上真的生效（tick 链断则点了没反应）"
 # 上面的夹具只证明「画出来一样」，不证明「点了会动」。Vue 迁移最阴的失效是：computed 读的是
@@ -1672,6 +1673,176 @@ assert d.get("cleaned") == d.get("made"), \
   "夹具待办没删干净（造 %s 删 %s）：会污染下一轮和真数据" % (d.get("made"), d.get("cleaned"))
 print("  ok (勾选/复原/SR 搜索态在 Vue 路径上真生效；.cb 圆圈未被裁 %s)" % geos[0])
 '
+asroot_global "rm -f '$DATA/enote/.devmode'"
+
+step "附件页交互在 Vue 路径上真的生效（预览 toast / 删除确认 / strip 计数）"
+# 步骤 7 的 FilesView 转 Vue。VDIFF 只证明「画出来一样」，这条用真点击钉住四件事：
+# Vue 路径是活的、卡片点击能弹预览 toast、删除按钮走确认框并真删到服务端、
+# 顶部 strip 的计数读的是实时 FA（不是装配时那份快照）。
+# 夹具只能从 shell 侧造：附件由分享意图产生，JS 侧没有建附件的 API（/api/attach 只有 delete）。
+EXT="/data/user/0/$APP_PACKAGE/files/enote/inbox"
+FIXNAME="vue-files-fixture.pdf"
+UID_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+printf '%%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\ntrailer2 %s\n' "Vue 附件夹具$$" > "$TMPDIR/$FIXNAME"
+asroot_global "mkdir -p '$EXT' && cp '$TMPDIR/$FIXNAME' '$EXT/$FIXNAME' && chown '$UID_APP:$UID_APP' '$EXT/$FIXNAME' && chmod 644 '$EXT/$FIXNAME'" \
+  || fail "cannot stage $FIXNAME in $EXT"
+# 上一轮残留会让计数和「找到夹具卡片」的断言假绿，先清干净
+api_get attachments | "$PY" -c 'import json,sys
+for a in (json.load(sys.stdin).get("items") or []):
+    if a["name"] == "vue-files-fixture.pdf": print(a["id"])' | while read -r x; do
+  api_post attach/delete "{\"id\":\"$x\"}" >/dev/null; done
+FIXNOTE=$(api_get "attachments?q=vue-files-fixture" | "$PY" -c 'import json,sys
+items = json.load(sys.stdin).get("items") or []
+print(items[0]["noteId"] if items else "")')
+am_start "$APP_PACKAGE/.ShareActivity" "-a android.intent.action.SEND -t application/pdf --eu android.intent.extra.STREAM file://$EXT/$FIXNAME"
+FIXAID=""
+for i in $(seq 1 40); do
+  FIXAID=$(api_get "attachments?q=vue-files-fixture" | "$PY" -c 'import json,sys
+items = json.load(sys.stdin).get("items") or []
+print(items[0]["id"] if items else "")' 2>/dev/null)
+  [ -n "$FIXAID" ] && break
+  sleep 0.5
+done
+[ -n "$FIXAID" ] || fail "共享的夹具附件没出现在 /api/attachments：夹具不存在，下面的断言会是空跑"
+FIXNOTE=$(api_get "attachments?q=vue-files-fixture" | "$PY" -c 'import json,sys
+print((json.load(sys.stdin).get("items") or [{}])[0]["noteId"])')
+# 夹具到位之后再比一次 files 的 DOM：上面那次（步骤 7 的 vdiff_tab files）跑在空库上，
+# 只比到 strip + 空态（145 字节），卡片网格这条主路径根本没进比较。
+# vdiff_tab 只调 render()，而 render() 不会去拉附件：FA.loaded=false 时两条路径都画
+# 骨架屏，比出来还是「空对空」。所以先用 filesNow() 把 FA 真加载好。
+# jseval 钩子只在 .devmode 存在时干活（上一块刚把它删了），不 touch 就是
+# `{"ok":false,"error":"jseval disabled"}`：载荷根本没跑，日志里一条也没有（真机撞过）。
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("FLOAD "+m)};
+  try{
+    __enote.state.tab="files";
+    await __enote.vue.host.filesNow();
+    L("fa="+__enote.vue.host.FA.items.length);
+    L("loaded="+__enote.vue.host.FA.loaded);
+  }catch(e){ L("ERR="+(e&&e.message)) }
+  L("done=1");
+})()' > "$TMPDIR/jsfload.json"
+NFL=$(readtlog | wc -l)
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsfload.json'"
+for i in $(seq 1 40); do
+  readtlog | tail -n +$((NFL + 1)) | grep -q 'FLOAD done=1' && break
+  sleep 0.5
+done
+readtlog | tail -n +$((NFL + 1)) | grep 'FLOAD' | "$PY" -c '
+import sys, re
+lines = [l.strip() for l in sys.stdin if "FLOAD" in l]
+d = {}
+for l in lines:
+    m = re.search(r"FLOAD (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+assert d.get("done") == "1", "FLOAD 载荷没跑完：日志=%s" % lines[:2]
+assert d.get("ERR") is None, "FLOAD 抛异常：%s" % d.get("ERR")
+assert d.get("loaded") == "true", "FA.loaded 仍是 %s：filesNow() 没拉到数据" % d.get("loaded")
+assert int(d.get("fa", "0")) >= 1, "FA 里只有 %s 条附件，夹具没进去" % d.get("fa")
+print("  ok (FA 已加载 %s 条，下面的 VDIFF 比的是真卡片)" % d["fa"])
+'
+vdiff_tab files
+NFT=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("FINT "+m)};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
+  var P=".pane[data-tab=files]";
+  var FIX="vue-files-fixture.pdf";
+  var cardOf=function(){ var r=null; qa(P+" .acard").forEach(function(c){
+    var n=c.querySelector(".aname");
+    if(!r && n && n.textContent===FIX) r=c }); return r };
+  try{
+    // 1) Vue 路径必须是活的：装配掉了 / 注册表没 files 时，本步测的是字符串渲染器
+    L("isVue="+(__enote.vue?__enote.vue.isVue("files"):"no-vue"));
+    if(!(__enote.vue && __enote.vue.host && __enote.vue.host.filesNow)){
+      L("ERR=no-host"); L("done=1"); return }
+    // filesNow 不在导出表（它不是内联 handler），测试刷新走 __enote.vue.host 观测缝
+    __enote.state.tab="files";
+    await __enote.vue.host.filesNow();      // 内部会 render()
+    await sleep(500);
+    L("mounted2="+(__enote.vue?!!__enote.vue.apps.files:"no-vue"));
+    // 2) 渲染保真度：FA 里有几条就画几张卡，strip 的计数是实时 FA（不是装配时那份快照）
+    var FA=__enote.vue.host.FA;
+    L("fa="+FA.items.length);
+    L("total="+FA.total);
+    L("cards="+qa(P+" .acard").length);
+    var st0=document.querySelector(P+" .strip");
+    L("strip="+(st0?st0.textContent.replace(/\s+/g," ").trim():"none"));
+    // 3) 点卡片 → openAttach 的 toast（Vue 的 @click 绑的 H.openAttach）
+    var card=cardOf();
+    L("card="+(card?"found":"none"));
+    if(!card){ L("done=1"); return }
+    card.click(); await sleep(400);
+    var tst=document.getElementById("toast");
+    L("toastOn="+tst.classList.contains("on"));
+    L("toast="+tst.textContent.replace(/\s+/g," ").trim());
+    // 4) 点「删除」→ askDel 确认框 → 确认 → 服务端真删了 → 行从 DOM 消失
+    var del=card.querySelector(".arow .dg");
+    L("delBtn="+(del?"found":"none"));
+    if(!del){ L("done=1"); return }
+    var cardsBefore=qa(P+" .acard").length;
+    del.click(); await sleep(300);
+    L("dlg="+document.getElementById("dlg").classList.contains("on"));
+    document.getElementById("dlgYes").click();
+    var left=-1;
+    for(var i=0;i<40;i++){ await sleep(300);
+      var r=await api("/api/attachments?q=vue-files-fixture"); left=(r.items||[]).length;
+      if(!left) break }
+    L("apiLeft="+left);
+    await sleep(800);   // delAttach 里 filesNow() 会重绘，给 DOM 一拍
+    L("gone="+(cardOf()?"still":"gone"));
+    L("cards2="+qa(P+" .acard").length);
+    L("cardsBefore="+cardsBefore);
+  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
+  L("done=1");
+})()' > "$TMPDIR/jsfint.json"
+# vdiff_tab 末尾会删 .devmode（jseval 钩子只在它存在时干活），不重新 touch 就是
+# 「载荷根本没跑，日志里一条 FINT 也没有」。
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsfint.json'"
+for i in $(seq 1 60); do
+  readtlog | tail -n +$((NFT + 1)) | grep -q 'FINT done=1' && break
+  sleep 0.5
+done
+readtlog | tail -n +$((NFT + 1)) | grep 'FINT' | "$PY" -c '
+import sys, re
+lines = [l.strip() for l in sys.stdin if "FINT" in l]
+d = {}
+for l in lines:
+    m = re.search(r"FINT (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+assert d.get("done") == "1", "FINT 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+assert d.get("isVue") == "true", \
+  "__enote.vue.isVue(files) 不是 true：Vue 装配掉了或注册表没 files，本步测的是字符串渲染器"
+assert d.get("mounted2") == "true", "切到 files 并 filesNow() 后 FilesView 仍没挂载"
+assert d.get("ERR") is None, "FINT 载荷抛异常：%s" % d.get("ERR")
+assert d.get("card") == "found", "附件页找不到夹具卡片（.aname 对不上）：Vue 没画出附件卡片？"
+assert d.get("fa") == d.get("cards"), \
+  "FA 里 %s 条而页面画了 %s 张卡：渲染保真度对不上（live() 没读 FA？）" % (
+    d.get("fa"), d.get("cards"))
+assert ("附件 " + d.get("total", "?")) in d.get("strip", ""), \
+  "顶部 strip 是 %r，不含「附件 %s」：strip 读的不是实时 FA" % (
+    d.get("strip"), d.get("total"))
+assert d.get("toastOn") == "true" and "预览即将上线" in d.get("toast", ""), \
+  "点卡片没出预览 toast（%r）：Vue 的 @click 没绑上 openAttach" % d.get("toast")
+assert d.get("delBtn") == "found", "卡片里没有删除按钮（.arow .dg）"
+assert d.get("dlg") == "true", "点删除没弹确认框：delAttach 没绑上"
+assert d.get("apiLeft") == "0", "确认后服务端还有 %s 条夹具附件：删除没提交" % d.get("apiLeft")
+assert d.get("gone") == "gone", "删除后卡片还在页面上：tick 链断了，Vue 没重渲染"
+assert int(d["cards2"]) == int(d["cardsBefore"]) - 1, \
+  "删除后卡片数 %s→%s：没少一张" % (d.get("cardsBefore"), d.get("cards2"))
+print("  ok (预览 toast / 删除确认 / strip 计数在 Vue 路径上真生效，%s 张卡)" % d.get("cards"))
+'
+# 夹具清理：附件由分享意图建了一条笔记，删掉笔记（连带附件文件），别污染真数据和后续用例
+asroot_global "rm -f '$EXT/$FIXNAME'" >/dev/null 2>&1 || true
+if [ -n "$FIXNOTE" ]; then api_post delete "{\"id\":\"$FIXNOTE\"}" >/dev/null 2>&1 || true; fi
+api_get attachments | "$PY" -c 'import json,sys
+for a in (json.load(sys.stdin).get("items") or []):
+    if a["name"] == "vue-files-fixture.pdf": print(a["id"])' | while read -r x; do
+  api_post attach/delete "{\"id\":\"$x\"}" >/dev/null; done
 asroot_global "rm -f '$DATA/enote/.devmode'"
 
 step "前端没有运行时报错（未声明的变量会把点击静默吞掉）"

@@ -10,6 +10,7 @@ var S = {notes:[], settings:{}, info:{}};
 import { V, setHost, mountView, vuePaint, apps } from './vue.js'
 import { NotesView } from './views/notes.js'
 import TodosView from './views/todos.js'
+import FilesView from './views/files.js'
 var tab = 'notes', open = {}, busy = {};
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
@@ -1305,7 +1306,7 @@ function buildPage(t){
 }
 /* 已迁移到 Vue 的 tab（D14 混合期的唯一开关）：加一行就迁移一个视图，删掉一行就退回字符串路径。
    步骤 5 notes；6 todos；7 files；9 clip；10 stats/mine；步骤 11 删掉遗留路径。 */
-var VUE_VIEWS = { notes: NotesView, todos: TodosView };
+var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView };
 /* DOM 测量类的副作用：必须在 DOM 落地之后跑（遗留路径是同步 innerHTML，Vue 路径是 nextTick 之后） */
 function afterPaint(){
   syncReminders();
@@ -1409,33 +1410,51 @@ async function filesNow(){
   render();
 }
 function fileStrip(){
-  if(!FA.total) return '<div class="strip">附件 <b>0</b></div>';
-  return '<div class="strip">附件 <b>'+FA.total+'</b> · '+fmtSize(FA.bytes)
-    + (FA.missing ? ' · <i>'+FA.missing+' 个文件缺失</i>' : '')
-    + '</div>';
+  return '<div class="strip">' + fileStripInner() + '</div>';
+}
+/* 步骤 7 拆出的叶子：Vue 的 FilesView 直接画 <div class="strip" v-html=...>，
+   两条路径共用一份 inner HTML，VDIFF 才能逐字比（步骤 5/6 定下的模式：结构在模板里，
+   叶子片段同源）。 */
+function fileStripInner(){
+  if(!FA.total) return '附件 <b>0</b>';
+  return '附件 <b>'+FA.total+'</b> · '+fmtSize(FA.bytes)
+    + (FA.missing ? ' · <i>'+FA.missing+' 个文件缺失</i>' : '');
+}
+function filesSkeleton(){
+  return '<div class="card"><div class="skel img"></div>'
+    + '<div class="skel l"></div><div class="skel s"></div></div>';
+}
+function attachCardCls(a){
+  return 'acard' + (a.missing ? ' gone' : '') + enterCls('a' + a.id);
+}
+function attachMetaHTML(a){
+  return esc(a.kind) + ' · ' + fmtSize(a.size) + ' · ' + fmtTime(a.createdAt);
+}
+function attachGlyphHTML(a){
+  return ic(KIND[a.kind] || 'clipfile', 'xl');
+}
+function attachCardHTML(a, k){
+  return '<div class="' + attachCardCls(a) + '" style="--i:' + Math.min(k, 8) + '" '
+    + 'onclick="openAttach(\'' + a.id + '\')">'
+    + (a.kind === 'image' && !a.missing
+        ? '<img class="athumb" loading="lazy" src="/file?id=' + a.id + '">'
+        : '<div class="aglyph">' + attachGlyphHTML(a) + '</div>')
+    + '<div class="aname">' + esc(a.name) + '</div>'
+    + '<div class="ameta">' + attachMetaHTML(a) + '</div>'
+    + '<div class="anote">' + esc(a.noteTitle || '') + '</div>'
+    + (a.missing ? '<div class="amiss">文件已不在</div>' : '')
+    + '<div class="arow" onclick="event.stopPropagation()">'
+    + '<button class="btn sm gh" onclick="jump(\'' + a.noteId + '\')">' + ic('note') + '笔记</button>'
+    + '<button class="btn sm dg" onclick="delAttach(\'' + a.id + '\')">' + ic('trash') + '删除</button>'
+    + '</div></div>';
 }
 function renderFiles(){
-  if(!FA.loaded) return fileStrip() + '<div class="card"><div class="skel img"></div>'
-    + '<div class="skel l"></div><div class="skel s"></div></div>';
+  if(!FA.loaded) return fileStrip() + filesSkeleton();
   if(!FA.items.length) return fileStrip() + emptyState('clip',
       q ? '没有匹配的附件' : '还没有附件',
       '分享图片 / PDF，或点右下角「添加附件」');
   var h = fileStrip() + '<div class="agrid">';
-  FA.items.forEach(function(a, k){
-    h += '<div class="acard'+(a.missing?' gone':'')+enterCls('a'+a.id)+'" style="--i:'+Math.min(k,8)+'" '
-      + 'onclick="openAttach(\''+a.id+'\')">'
-      + (a.kind==='image' && !a.missing
-          ? '<img class="athumb" loading="lazy" src="/file?id='+a.id+'">'
-          : '<div class="aglyph">'+ic(KIND[a.kind]||'clipfile','xl')+'</div>')
-      + '<div class="aname">'+esc(a.name)+'</div>'
-      + '<div class="ameta">'+esc(a.kind)+' · '+fmtSize(a.size)+' · '+fmtTime(a.createdAt)+'</div>'
-      + '<div class="anote">'+esc(a.noteTitle||'')+'</div>'
-      + (a.missing ? '<div class="amiss">文件已不在</div>' : '')
-      + '<div class="arow" onclick="event.stopPropagation()">'
-      + '<button class="btn sm gh" onclick="jump(\''+a.noteId+'\')">'+ic('note')+'笔记</button>'
-      + '<button class="btn sm dg" onclick="delAttach(\''+a.id+'\')">'+ic('trash')+'删除</button>'
-      + '</div></div>';
-  });
+  FA.items.forEach(function(a, k){ h += attachCardHTML(a, k) });
   return h + '</div>';
 }
 function openAttach(id){
@@ -1907,7 +1926,7 @@ window.addEventListener('resize', moveInd);
    组件不持有数据，只通过 H 读模块状态（getter 取当前值，因为 S / MISSED / SHOTFLAGS
    这些是会被整体赋值的 var）。必须在首次 refresh() 之前装好：render() 会 mount Vue 视图，
    组件 setup() 里就要读 H。 */
-setHost({
+var HOST = setHost({
   V: V,
   get S(){ return S }, get SR(){ return SR }, get tab(){ return tab },
   get open(){ return open }, get MISSED(){ return MISSED }, get SHOTFLAGS(){ return SHOTFLAGS },
@@ -1926,7 +1945,15 @@ setHost({
   todoRowCls: todoRowCls, cbInnerHTML: cbInnerHTML, todoTxHTML: todoTxHTML,
   cdChip: cdChip, remindBtns: remindBtns,
   hit: hit, rank: rank,
-  toggle: toggle, jump: jump, render: render
+  toggle: toggle, jump: jump, render: render,
+  /* 步骤 7 加：FilesView 的宿主函数（同上，漏一个就是静默回退字符串渲染器）。
+     FA / q 是模块状态，必须走 getter：直接传值的话 Vue 拿到的是装配时那份快照，
+     2s 轮询换掉 FA 后视图不会动（症状是「附件页永远停在首屏数据」）。 */
+  get FA(){ return FA }, get q(){ return q },
+  fileStripInner: fileStripInner,
+  attachCardCls: attachCardCls, attachMetaHTML: attachMetaHTML,
+  attachGlyphHTML: attachGlyphHTML,
+  openAttach: openAttach, delAttach: delAttach, filesNow: filesNow
 });
 
 /* Vue 路径的观测缝（步骤 6 加，步骤 5 就没写过）。
@@ -1937,7 +1964,12 @@ setHost({
    必须在首次 refresh() 之前（mountView 会写 apps[tab]）。 */
 window.__enote = window.__enote || {};
 window.__enote.vue = { app:null, views:VUE_VIEWS, apps:apps,
-                       isVue:function(tab){ return !!VUE_VIEWS[tab] } };
+                       isVue:function(tab){ return !!VUE_VIEWS[tab] },
+                       /* 步骤 7 加：宿主接口对象本身。jseval 载荷只能碰 window，而
+                          filesNow / setTab 这类「刷新某一页」的函数不在导出表里（导出表
+                          只服务内联 handler，加一个 key 就要动 Tony 的基线），测试要刷新
+                          附件列表只能走这里。它是观测缝，不是生产门禁。 */
+                       host: HOST };
 setInterval(function(){ if(!document.hidden) refresh(true); }, 2000);
 refresh();
 setTab();
@@ -2040,7 +2072,7 @@ Object.assign(window.__enote, {
   /* D17 夹具缝（Tony 提，步骤 5）：DOM 逐字一致对比要在真 WebView 里把两条路径各渲染一次。
      视图转 Vue 后遗留字符串渲染器不再被 render() 调用，但它是「今天长什么样」的唯一真相，
      留着它才谈得上「行为零变化」是可证明的。步骤 6/7/9/10 各加一个 tab，步骤 11 随渲染器一起删。 */
-  legacy: { notes: renderNotes, todos: renderTodos },
+  legacy: { notes: renderNotes, todos: renderTodos, files: renderFiles },
   /* 夹具要在插入遗留字符串后跑一遍和 render() 相同的收尾（syncExpand 会按正文高度隐藏
      「展开详情」按钮），否则比的是「raw 字符串」对「收尾后的 DOM」。缝在 D17 上，步骤 11 一起删。 */
   afterPaint: afterPaint

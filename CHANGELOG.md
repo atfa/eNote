@@ -254,6 +254,46 @@
 * 数字：Vue 模板 6→8 个、模板 handler 9→10 个、jseval 载荷 9→10 个、VDIFF 覆盖 1→2 个 tab；
   导出表 58 key、闸门 15 个、签名 84 项、D15 冻结 class 名 10 个全部不变。
 
+### 界面（P13 S3 步骤 7）：附件页转 Vue
+
+* **附件页现在由 Vue 渲染**（`go/ui/js/views/files.js`：`FilesView` + 子组件 `AttachCard`），
+  注册表加一行 `files: FilesView`。三态（骨架屏 / 空态 / 网格）的判定顺序和遗留
+  `renderFiles()` 逐字一致（骨架屏优先于空态，否则首屏会闪一下「还没有附件」）；
+  strip 文案、卡片 class、glyph 图标、meta 行四条叶子 HTML 抽成 app.js 的
+  `fileStripInner` / `filesSkeleton` / `attachCardCls` / `attachGlyphHTML` / `attachMetaHTML`，
+  遗留渲染器和 Vue 组件共用。`FA` / `q` 走 `setHost` 的 getter：传值的话 Vue 拿到的是装配时
+  那份快照，2s 轮询换掉 `FA` 后附件页永远停在首屏数据。
+* **`setHost` 的写法是闸门认出来的字面量**：`tools/ui_test.js` 的 `setHostKeys()` 靠
+  `setHost({` 定位对象字面量，改成 `var HOST = {…}; setHost(HOST)` 它直接返回空数组，
+  「模板里的 `H.xxx` 全在 setHost」当场变 40 条红。FINT 载荷要调 `filesNow()`（它不是内联
+  handler，不在导出表里），所以让 `setHost(h)` 返回 h，app.js 写 `var HOST = setHost({…})`，
+  再把 `HOST` 挂到 `__enote.vue.host` 观测缝上（测试刷新某一页的唯一入口）。
+* **`/api/attachments` 空库时 `items` 是 `null` 不是 `[]`**（Go 侧 nil slice 编码成 JSON null）：
+  FINT 第一版在删除后的轮询里读 `r.items.length` 直接抛
+  `Cannot read properties of null (reading 'length')`。JS 侧统一 `(r.items||[])`，
+  shell 侧统一 `.get("items") or []`。
+* **新增 FINT 真机用例**（`附件页交互在 Vue 路径上真的生效`）：夹具是 shell 侧分享进来的一个
+  PDF（附件只能由分享意图产生，JS 侧没有建附件的 API），轮询 `/api/attachments?q=` 等它出现，
+  不出现就 `fail`（夹具不存在 ⇒ 断言全空跑）。断言链：`isVue(files)` + 挂载 →
+  `FA.items.length == 页面卡片数` → strip 文案含「附件 <total>」（证明读的是实时 `FA`）→
+  点卡片出「预览即将上线」toast → 点删除弹确认框且真删到服务端 → 删完卡片少一张。
+  夹具笔记在步骤末尾删掉。
+* **`vdiff_tab files` 跑在空库上是空跑**：只比到 strip + 空态（145 字节），卡片网格这条主路径
+  根本没进比较。现在夹具到位后先跑 `FLOAD` 载荷（`filesNow()` 真加载 `FA`，断言
+  `loaded=true` 且 `fa>=1`），再跑第二次 `vdiff_tab files`，这次比的是真卡片。
+* **`class="acard" :class="cls"` 会渲染成 `class="acard acard enter"`**：`attachCardCls()` 自带
+  `acard`，Vue 拼接静态与动态 class，VDIFF 比 class 字符串就多一个 token。模板只写 `:class`。
+* **闸门⑮ 自己还有一条空跑（记进步骤 11 审计清单）**：`tools/ui_test.js:852` 的
+  `/template: `([\s\S]*?)`\n/` 只取每个视图文件里第一个 template 检查「子组件必须收
+  `:tick="tick"`」，而 todos.js / files.js 的第一个 template 都是子组件（里面没有自定义元素），
+  所以 `<empty-state>` 少写 `:tick` 一直没被报出来。
+* **视觉验收脚本 `tools/shots_files.sh`**（步骤 6 的三条硬约束照搬）：自己分享两个夹具（一个
+  PDF 走 glyph、一张 PNG 走缩略图），轮询断言附件数 ≥2，走真实导航点击并断言
+  `.tabbar .tab.on == files`，量不到 `.acard` 直接 `die`，末尾自检四张图存在且明暗两张不同。
+  产出 `docs/shots/vue-files-{light,dark}.png` + 两张卡片特写。
+* 数字：Vue 模板 8→10 个、注册表 2→3 个视图、模板 handler 10→11 个、视图里的 `H.xxx` 31→40 个、
+  jseval 载荷 10→12 个、VDIFF 覆盖 2→3 个 tab；导出表 58 key、签名 84 项、闸门 15 个不变。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome

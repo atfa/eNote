@@ -163,8 +163,8 @@ func TestIndexServedFromDirectory(t *testing.T) {
 	// D14：混合期的唯一开关——注册表。加一行迁移一个视图，删一行退回字符串路径。
 	// 每迁移一个视图就往注册表里追加一项，所以这里按「已迁移的视图都在」判，
 	// 不是整串相等（步骤 5 = notes，步骤 6 = + todos，步骤 7-10 继续加）。
-	if !regexp.MustCompile(`var VUE_VIEWS = \{[^}]*notes: NotesView[^}]*todos: TodosView[^}]*\}`).MatchString(appjs) {
-		t.Errorf("app.js 的 VUE_VIEWS 注册表缺 notes 或 todos（步骤 5/6 转的 Vue 视图）")
+	if !regexp.MustCompile(`var VUE_VIEWS = \{[^}]*notes: NotesView[^}]*todos: TodosView[^}]*files: FilesView[^}]*\}`).MatchString(appjs) {
+		t.Errorf("app.js 的 VUE_VIEWS 注册表缺 notes / todos / files（步骤 5/6/7 转的 Vue 视图）")
 	}
 	// 装配：__enote.vue 没设 → vueReady() 恒 false → render() 一直走字符串路径。
 	// 步骤 5 合并时这条被合掉了，结果 VDIFF/NINT 全绿而 Vue 一行没跑（P12 同款）。
