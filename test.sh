@@ -1393,7 +1393,10 @@ NIN=$(readtlog | wc -l)
   var ids=__enote.state.S.notes.map(function(n){return n.id});
   for(var i=0;i<ids.length;i++){ await A.api("/api/delete", {id: ids[i]}) }
   await A.refresh(true); await sleep(500);
-  L("empty="+String(!!q(P+" .empty"))+" emptyCards="+cards());
+  // 一个 token 一行：断言止的 `NINT (\w+)=(.*)` 是贪婪匹配，两个 token 写一行会被
+  // 当成一个值（empty 收到 "true emptyCards=0"），下一条则根本不存在。
+  L("empty="+String(!!q(P+" .empty")));
+  L("emptyCards="+cards());
   for(var i=0;i<ids.length;i++){ await A.api("/api/add", {text:"标题 "+i}) }
   await A.refresh(true); await sleep(1200); await A.refresh(true); await sleep(800);
   L("restored="+cards());
