@@ -911,3 +911,19 @@ clip 横幅没渲染、删除后卡片没掉、空态没出、横幅顺序反了
 **验收**：静态 15 闸门 + 84 签名 + `go test ./...` 全绿；真机 VDIFF 夹具
 `same=1 len=8078`（规范化后 DOM 逐字一致）；全量 `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd`
 见 CHANGELOG。
+
+**状态桥闭合集 16 → 17（+`SR`，D21）**：NINT 夹具里 `S.notes=[]` + `await render()` 画不出空态，
+烧了两轮真机探针才定位，根因两条，**都不是 Vue 的问题**：
+
+1. `notesFiltered()` 的第一优先级是 `if(SR.notes) return SR.notes`（服务端搜索结果），
+   夹具只改 `S.notes` 时画的是 SR 里那 2 条 —— 症状看起来像「视图的 computed 冻住了」。
+2. app 每 ~2s 轮询 `/api/state` 并整体替换 `S`，载荷对 `S.notes` 的赋值活不过下一次轮询。
+   实测：`S.notes=[]` 后 render，透传的 `data-list` 反而从 0 变 2（轮询把真数据灌回来了）。
+
+夹具的正解是走 API：`api('/api/delete',{id})` 删完 → `refresh(true)` → `.empty` 出现
+（真机实测 `cards=0 empty=true`），再 `api('/api/add',{text})` 建回来。`SR` 进闭合集是让夹具
+能读/清它做诊断，不是让载荷靠它造空态（一样会被轮询覆盖）。
+
+探针证据链（写下来免得下轮重烧）：给 StripBar 加临时 `:data-tick`/`:data-i` → tick 每次 render
+递增 ✓、`S.info.notes=99` → `data-i` 2→99 ✓（证明 `live()` 可用）；同载荷里跑最小 Vue app
+（`reactive({tick})` + `computed` + `{{c}}`）0→1→3 ✓（证明 WebView 的 Vue 响应式正常）。

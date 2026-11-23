@@ -105,7 +105,7 @@ func TestIndexServedFromDirectory(t *testing.T) {
 	}
 	// D21 状态桥的六个名字逐个钉住：只钉 `window.__enote.state = {` 这个字面量的话，
 	// 改名（比如 tab 改成 currentTab）就漏，而载荷里的 tab="notes" 会静默打到 window 上。
-	for _, s := range []string{"tab", "S", "MISSED", "open", "shotSel", "shotList"} {
+	for _, s := range []string{"tab", "S", "MISSED", "open", "shotSel", "shotList", "SR"} {
 		for _, want := range []string{"get " + s + "()", "set " + s + "(v)"} {
 			if !strings.Contains(appjs, want) {
 				t.Errorf("app.js 状态桥缺 %s：载荷里对它的读写会打到 window 上，测试绿着骗过去（D21）", want)
