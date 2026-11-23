@@ -1434,6 +1434,239 @@ vdiff_tab notes
 vdiff_tab todos
 vdiff_tab files
 
+step "浮层页（截图暂存 / 选文件夹）的 DOM 与字符串渲染器逐字一致"
+# vdiff_tab 比的是 tab pane；截图页与选文件夹页是 pageSheet 全屏浮层，容器是 #sheet .pbody，
+# 生命周期跟着 open/close 走（每次开页 mount、关页 unmount），所以单独一套 vdiff_sheet。
+# 遗留侧调 __enote.legacy.shots() / .folders()：它们与 Vue 组件共用同一批叶子函数
+# （shotGridHTML / shotFootHTML / folderRowHTML / folderFootHTML），比的是加载完的状态。
+vdiff_sheet() {   # $1 = shots | folders   $2 = grid | empty | fake
+VD_NAME=$1
+VD_MODE=$2
+# 日志窗口从本步起算（同 vdiff_tab：用 newtlog 会读到上一轮的 VDS 行，假绿）
+NVS=$(readtlog | wc -l)
+"$PY" - "$VD_NAME" "$VD_MODE" > "$TMPDIR/jsvdiff_sheet.json" <<'PYVS'
+import json, sys
+name, mode = sys.argv[1], sys.argv[2]
+js = r'''(async function(){
+  var NAME="__NAME__", MODE="__MODE__";
+  var L=function(m){console.log("VDS "+m)};
+  var E=window.__enote||{};
+  if(!E.legacy||!E.legacy[NAME]){ L("skip=no-legacy"); L("done=1"); return }
+  try{
+    L("isvue="+(E.vue.isVueSheet(NAME)?1:0));
+    /* 夹具注入：选文件夹页的数据来自 Android.shotFolders()（MediaStore 枚举），这台机器
+       上有几个目录不由测试决定，所以「有目录」那一遍从测试侧注入三个（含一个 missing，
+       用来测「已不存在」分支与已选浮顶的排序）。注入必须在 folderSheet() 之后：
+       loadFolders() 会用真数据覆盖 folderAll。 */
+    if(NAME==="folders"){
+      folderSheet();
+      await new Promise(function(res){ var t=0;(function probe(){
+        var b=document.querySelector("#sheet .pbody");
+        if((b&&b.querySelector(".frow,.empty"))||t>20){res();return} t++; setTimeout(probe,200);
+      })(); });
+      if(MODE==="fake"){
+        E.state.folderAll=[{path:"/sdcard/Pictures/Screenshots",count:3,shot:true},
+                           {path:"/sdcard/Download",count:1,shot:false},
+                           {path:"/sdcard/DCIM/Camera",count:0,shot:false,missing:true}];
+        E.state.folderSel={"/sdcard/Pictures/Screenshots":true,"/sdcard/Download":false,"/sdcard/DCIM/Camera":true};
+      } else if(MODE==="empty"){ E.state.folderAll=[]; E.state.folderSel={}; }
+      E.vue.folderPaint();
+      await new Promise(function(r){setTimeout(r,200)});
+    } else {
+      shotSheet();
+      await new Promise(function(res){ var t=0;(function probe(){
+        var b=document.querySelector("#sheet .pbody");
+        if((b&&(b.querySelector(".shotitem")||b.querySelector(".empty")))||t>20){res();return}
+        t++; setTimeout(probe,200);
+      })(); });
+    }
+    var body=document.querySelector("#sheet .pbody");
+    if(!body){ L("skip=no-sheet"); L("done=1"); return }
+    L("mounted="+(E.vue.sheets[NAME]?1:0));
+    L("items="+body.querySelectorAll(".shotitem").length);
+    L("rows="+body.querySelectorAll(".frow").length);
+    L("rowsHidden="+body.querySelectorAll(".frow[style*=\"display: none\"],.frow[style*=\"display:none\"]").length);
+    L("empty="+(body.querySelector(".empty")?1:0));
+    L("foot="+(body.querySelector("#shotFoot")?body.querySelector("#shotFoot").textContent.replace(/\s+/g," "):""));
+    L("count="+(body.querySelector("#folderCount")?body.querySelector("#folderCount").textContent.replace(/\s+/g," "):""));
+    var vueHtml=body.innerHTML, oldHtml=E.legacy[NAME]();
+    function ser(n){
+      if(n.nodeType===3) return (n.nodeValue||"").replace(/\s+/g," ").trim();
+      if(n.nodeType!==1) return "";
+      var a=[],i; for(i=0;i<n.attributes.length;i++){ var nm=n.attributes[i].name;
+        if(/^on/i.test(nm)) continue;   // 内联 handler 是绑定机制不是 DOM 形状（见 vdiff_tab）
+        a.push(nm+"="+norm(nm, n.attributes[i].value)); }
+      a.sort();
+      var kids=[]; for(var c=n.firstChild;c;c=c.nextSibling){ var s=ser(c); if(s!=="") kids.push(s); }
+      var t=n.tagName.toLowerCase();
+      return "<"+t+(a.length?" "+a.join(" "):"")+">"+kids.join("")+"</"+t+">";
+    }
+    function norm(name, v){
+      if(name!=="style") return v;
+      var d=document.createElement("div"); d.setAttribute("style", v); return d.style.cssText;
+    }
+    function canon(h){
+      var d=new DOMParser().parseFromString("<div id=\"r\">"+h+"</div>","text/html");
+      return ser(d.body.firstChild);
+    }
+    var A=canon(oldHtml), B=canon(vueHtml);
+    if(A===B){ L("same=1"); L("len="+A.length); }
+    else {
+      var i=0; while(i<A.length&&i<B.length&&A.charAt(i)===B.charAt(i)) i++;
+      L("at="+i);
+      L("old="+JSON.stringify(A.slice(Math.max(0,i-80),i+80)));
+      L("vue="+JSON.stringify(B.slice(Math.max(0,i-80),i+80)));
+    }
+  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
+  try{ closeSheet() }catch(e){}
+  L("done=1");
+})()'''.replace("__NAME__", name).replace("__MODE__", mode)
+print(json.dumps({"js": js}))
+PYVS
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsvdiff_sheet.json'"
+for i in $(seq 1 40); do
+  readtlog | tail -n +$((NVS + 1)) | grep -q 'VDS done=1' && break
+  sleep 0.5
+done
+readtlog | tail -n +$((NVS + 1)) | grep 'VDS' | "$PY" -c '
+import sys, re
+name, mode = sys.argv[1], sys.argv[2]
+lines = [l.strip() for l in sys.stdin if "VDS" in l]
+d = {}
+for l in lines:
+    m = re.search(r"VDS (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+if d.get("skip"):
+    print("  ok (%s：%s 尚未转 Vue，混合期正常)" % (d["skip"], name)); sys.exit(0)
+assert d.get("done") == "1", "VDS 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+assert d.get("ERR") is None, "%s：浮层页前端抛异常：%s" % (name, d.get("ERR"))
+# 正向断言「这一页真的由 Vue 挂载」：VDIFF 比 DOM，而两条路径的 DOM 按设计逐字相同，
+# 它结构上分不出走了哪条 —— 只比 DOM 的夹具在「Vue 根本没跑」时也会绿。
+assert d.get("isvue") == "1", "%s：不在 VUE_SHEETS 注册表里，这一页根本没走 Vue" % name
+assert d.get("mounted") == "1", "%s：注册表有但 app 没挂载（pageSheetVue 没调到 mountSheet？）" % name
+assert d.get("same"), "%s %s：Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  旧: %s\n  Vue: %s" % (
+    name, mode, d.get("at"), d.get("old", "")[:200], d.get("vue", "")[:200])
+if mode == "grid":
+    assert int(d.get("items", 0)) >= 2, "截图页网格那一遍没卡片（items=%s）：夹具没到位，这一遍是空跑" % d.get("items")
+if mode == "empty" and name == "shots":
+    assert d.get("empty") == "1" and int(d.get("items", 0)) == 0, \
+      "截图页空态那一遍没比到空态（empty=%s items=%s）" % (d.get("empty"), d.get("items"))
+if mode == "fake":
+    assert int(d.get("rows", 0)) == 3, "文件夹页夹具该有 3 行（rows=%s）" % d.get("rows")
+if mode == "empty" and name == "folders":
+    assert d.get("empty") == "1" and int(d.get("rows", 0)) == 0, \
+      "文件夹页空态那一遍没比到空态（empty=%s rows=%s）" % (d.get("empty"), d.get("rows"))
+print("  ok (%s %s 规范化后 DOM 逐字一致，长度 %s；items=%s rows=%s empty=%s)" % (
+    name, mode, d.get("len"), d.get("items"), d.get("rows"), d.get("empty")))
+' "$VD_NAME" "$VD_MODE"
+asroot_global "rm -f '$DATA/enote/.devmode'"
+}
+# 截图页夹具：暂存区的图只能由分享意图产生（JS 侧没有建暂存的 API），走 /api/shots/add。
+# 夹具不到位时「网格那一遍」比的是两条空态 —— 空跑，所以先断言 added。
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+VDS_EXT="/data/user/0/$APP_PACKAGE/files/enote/inbox"
+for f in vds-a.png vds-b.png; do
+  asroot_global "rm -f '$VDS_EXT/$f'; cp '$IMG' '$VDS_EXT/$f'; chown '$UI_APP:$UI_APP' '$VDS_EXT/$f'; chmod 644 '$VDS_EXT/$f'" || true
+done
+api_post shots/add "{\"shots\":[{\"path\":\"$VDS_EXT/vds-a.png\",\"name\":\"vds-a.png\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)},\
+{\"path\":\"$VDS_EXT/vds-b.png\",\"name\":\"vds-b.png\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)}]}" \
+  | grep -q '"added":2' || fail "造暂存截图夹具失败（截图页网格那一遍没卡片可比）"
+vdiff_sheet shots grid
+# 空态那一遍：清掉夹具再比（两条路径都画空态，恰好是步骤 7 被 :tick 透传漂移坑过的那一支）
+VDSIDS=$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin).get("shots") or []]))')
+[ "$VDSIDS" != "[]" ] && api_post shots/remove "{\"ids\": $VDSIDS}" >/dev/null
+vdiff_sheet shots empty
+vdiff_sheet folders fake
+vdiff_sheet folders empty
+asroot_global "rm -f '$VDS_EXT/vds-a.png' '$VDS_EXT/vds-b.png'"
+
+step "截图页交互在 Vue 路径上真的生效（勾选/全选/实时计数/按钮收敛）"
+# 上面的夹具只证明「画出来一样」，不证明「点了会动」：computed 读普通模块变量（没响应式
+# 依赖）时签名与 DOM 夹具全绿而界面纹丝不动（步骤 6 的 ClipBanner 就踩过）。浮层页多一层
+# 风险：tick 链是 sheetPaint 手动 bump 的，忘了 bump 就是「点了没反应」。
+NIT=$(readtlog | wc -l)
+"$PY" - > "$TMPDIR/js_shots_int.json" <<'PYIT'
+import json
+js = r'''(async function(){
+  var L=function(m){console.log("SIT "+m)};
+  var E=window.__enote||{};
+  if(!E.vue||!E.vue.isVueSheet||!E.vue.isVueSheet("shots")){ L("skip=no-vue-shots"); L("done=1"); return }
+  try{
+    var q=function(){ return document.querySelectorAll("#sheet .shotitem") };
+    var on=function(){ var n=0; q().forEach(function(x){ if(x.classList.contains("on")) n++ }); return n };
+    var foot=function(){ var e=document.querySelector("#sheet #shotFoot"); return e?e.textContent.replace(/\s+/g,""):"" };
+    shotSheet();
+    await new Promise(function(res){ var t=0;(function probe(){
+      if(q().length||t>20){res();return} t++; setTimeout(probe,200); })(); });
+    L("isvue=1"); L("mounted="+(E.vue.sheets.shots?1:0));
+    L("n="+q().length);
+    if(!q().length){ L("skip=no-items"); L("done=1"); return }
+    L("on0="+on()); L("foot0="+foot());
+    q()[0].click();                       // 真点击：证明 @click 真的绑上了
+    await new Promise(function(r){setTimeout(r,300)});
+    L("on1="+on()); L("foot1="+foot());
+    document.querySelector("#sheet .cliptop .btn.sm").click();          // 全选
+    await new Promise(function(r){setTimeout(r,300)});
+    L("on2="+on()); L("foot2="+foot());
+    document.querySelectorAll("#sheet .cliptop .btn.sm")[1].click();    // 全不选
+    await new Promise(function(r){setTimeout(r,300)});
+    L("on3="+on()); L("foot3="+foot());
+    q()[0].click();                       // 只选 1 张：三个导入按钮塔成
+    await new Promise(function(r){setTimeout(r,300)});
+    var vis=function(id){ var e=document.querySelector("#sheet #"+id); return (e&&e.style.display!=="none")?1:0 };
+    L("btnGo="+vis("shotGo")); L("btnSplit="+vis("shotSplit")); L("btnRaw="+vis("shotRaw"));
+    L("goLabel="+((document.querySelector("#sheet #shotGo")||{}).textContent||""));
+  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
+  try{ closeSheet() }catch(e){}
+  L("done=1");
+})()'''
+print(json.dumps({"js": js}))
+PYIT
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+for f in vds-a.png vds-b.png; do
+  asroot_global "rm -f '$VDS_EXT/$f'; cp '$IMG' '$VDS_EXT/$f'; chown '$UI_APP:$UI_APP' '$VDS_EXT/$f'; chmod 644 '$VDS_EXT/$f'" || true
+done
+api_post shots/add "{\"shots\":[{\"path\":\"$VDS_EXT/vds-a.png\",\"name\":\"vds-a.png\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)},\
+{\"path\":\"$VDS_EXT/vds-b.png\",\"name\":\"vds-b.png\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)}]}" \
+  | grep -q '"added":2' || fail "造暂存截图夹具失败（交互用例没卡片可点）"
+NIT=$(readtlog | wc -l)
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/js_shots_int.json'"
+for i in $(seq 1 40); do
+  readtlog | tail -n +$((NIT + 1)) | grep -q 'SIT done=1' && break
+  sleep 0.5
+done
+readtlog | tail -n +$((NIT + 1)) | grep 'SIT' | "$PY" -c '
+import sys, re
+lines = [l.strip() for l in sys.stdin if "SIT" in l]
+d = {}
+for l in lines:
+    m = re.search(r"SIT (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+if d.get("skip"):
+    print("  ok (%s)" % d["skip"]); sys.exit(0)
+assert d.get("done") == "1", "SIT 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+assert d.get("ERR") is None, "截图页交互：前端抛异常：%s" % d.get("ERR")
+assert d.get("isvue") == "1" and d.get("mounted") == "1", \
+  "截图页没走 Vue（isvue=%s mounted=%s）：这一遍比的是遗留路径" % (d.get("isvue"), d.get("mounted"))
+n = int(d.get("n", 0))
+assert n >= 2, "截图页没卡片（n=%s）：夹具没到位，这一遍是空跑" % d.get("n")
+assert d.get("on1") != d.get("on0"), "点一张卡片后勾选数没变（%s → %s）：tick 链断了" % (d.get("on0"), d.get("on1"))
+assert d.get("foot1") != d.get("foot0"), "点一张卡片后计数文案没变（%s → %s）" % (d.get("foot0"), d.get("foot1"))
+assert d.get("on2") == d.get("n"), "全选后应全部勾中（on2=%s n=%s）" % (d.get("on2"), d.get("n"))
+assert d.get("on3") == "0", "全不选后应一个不剩（on3=%s）" % d.get("on3")
+assert d.get("btnSplit") == "0" and d.get("btnRaw") == "0" and d.get("btnGo") == "1", \
+  "只选 1 张时按钮没塔成（go=%s split=%s raw=%s）" % (d.get("btnGo"), d.get("btnSplit"), d.get("btnRaw"))
+assert "创建笔记" in d.get("goLabel", ""), "塔成后主按钮文案应变成「创建笔记」（实际 %r）" % d.get("goLabel")
+print("  ok (真点击 %s 张：勾选 %s→%s、计数跟变、全选/全不选、单张时按钮塔成 %r)" % (
+    d.get("n"), d.get("on0"), d.get("on1"), d.get("foot1")))
+'
+asroot_global "rm -f '$DATA/enote/.devmode'"
+VDSIDS=$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin).get("shots") or []]))')
+[ "$VDSIDS" != "[]" ] && api_post shots/remove "{\"ids\": $VDSIDS}" >/dev/null
+
 step "Notes 交互在 Vue 路径上真的生效（tick 链断则点了没反应）"
 # 上面的夹具只证明「画出来一样」，不证明「点了会动」。Vue 迁移最阴的失效是：computed 读的是
 # 普通模块变量（S / open / MISSED），没有响应式依赖 → 永远缓存 → 界面纹丝不动，
