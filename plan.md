@@ -892,6 +892,22 @@ Vue 分发静默失效——这条也钉进 `go/web_test.go`）。
 直接判红）；夹具的 `Promise.race([render(), 兑底])` 写法闸门② 现在认（组件渲染抛异常时
 `nextTick` 不兑现，`await render()` 会挂死）。
 
+**夹具的两条边界（Tony，给 6/7/9/10 定调）**：VDIFF 比的是**规范化后相等**，不是字符串相等
+（属性按名排序、空白节点丢弃、文本 trim）——CSS 和测试选择器看 tag/class/attr，不看属性顺序，
+所以属性顺序变化不算漂移，不必为此退化成 `v-html`。而它不比 `on*` 属性（上面第 2 条），
+所以「画出来一样」不等于「点了会动」：handler 没绑上，VDIFF 依旧绿。这两条边界由
+`test.sh` 的「Notes 交互在 Vue 路径上真的生效」补齐（Tony）：真点击钉住展开 / 空态 / 三横幅 / 删除
+四类交互，正是上面那个 `live()` 静默失效的靶心。八条断言逐条合成输入验过（tick 链断、
+clip 横幅没渲染、删除后卡片没掉、空态没出、横幅顺序反了、载荷没跑完、无卡片空跑探测）；
+`delNote` 走 `__enote.actions` 而不是裸全局，闸门② 当场把它拦下（闭集只给 10 个函数）。
+视觉漂移（class 逐字相同但层叠上下文变了、组件根节点多包一层导致 margin 合并消失）由
+`tools/shots_vue.sh` 截四张钉住：明 / 暗 / 空态 / 三横幅，脚本自检四张 md5 必须互不相同。
+
+**签名断言的一条假绿（Tony 自检）**：`frag()` 写成 `new RegExp(fn + '\\(')` 是前缀匹配，
+把 `factsBlock` 连调用点改名成 `factsBlockRenamed` 签名断言照样绿——等于没在断言。加 `\b` 后
+改名即红、恢复即绿。同理 `ui_sig_test.js` 的失败行是 `  FAIL …`（两个前导空格），
+`grep '^FAIL'` 恒为 0，判据要用 ok 计数（84 = 全过）。
+
 **验收**：静态 15 闸门 + 84 签名 + `go test ./...` 全绿；真机 VDIFF 夹具
 `same=1 len=8078`（规范化后 DOM 逐字一致）；全量 `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd`
 见 CHANGELOG。
