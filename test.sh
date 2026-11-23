@@ -1266,6 +1266,10 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
 # 属性按名排序、空白折叠、文本 trim。CSS 和测试选择器看的是 tag/class/attr，不看属性顺序，
 # 所以「规范化后相等」才是对的契约。步骤 6/7/9/10 直接复用（加对应 tab 即可）。
 
+# 日志窗口：从本步起算（readtlog 不切 + 自己记 NVD）。不能用 newtlog：它从整轮
+# 开头切，上一轮跑剩的同名 token 就在窗口里，等待循环会立刻 break，断言读到的是
+# 上一轮的旧数据（假绿：VDIFF 永远 same=1，NINT 读到上一轮的 empty=false）。
+NVD=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("VDIFF "+m)};
   var E=window.__enote||{};
@@ -1301,7 +1305,7 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
   /* style 属性的两种写法在 CSS 里完全等价，但序列化不同：字符串路径写的是 「style="--i:0"」，
      Vue 的 :style 走 el.style.setProperty，浏览器读回来是 「--i: 0;」。夹具比的是语义，
      所以两边都过一遍同一个规范化（用浏览器自己的 cssText）。 */
-  /* 内联 handler 属性不比：遗留路径写 「onclick="expand('id')"」，Vue 用 @click（addEventListener），
+  /* 内联 handler 属性不比：遗留路径写 「onclick="expand(「id」)"」，Vue 用 @click（addEventListener），
      DOM 里没有 onclick 属性。它们是绑定机制不是 DOM 形状，两条路径的 handler 存在性由
      闸门①（onclick）与闸门①b（@click）分别验，都要求名字在导出表里。 */
   function norm(name, v){
@@ -1330,10 +1334,10 @@ UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsvdiff.json'"
 for i in $(seq 1 40); do
-  newtlog | grep -q 'VDIFF done=1' && break
+  readtlog | tail -n +$((NVD + 1)) | grep -q 'VDIFF done=1' && break
   sleep 0.5
 done
-newtlog | grep 'VDIFF' | "$PY" -c '
+readtlog | tail -n +$((NVD + 1)) | grep 'VDIFF' | "$PY" -c '
 import sys, re
 lines = [l.strip() for l in sys.stdin if "VDIFF" in l]
 d = {}
@@ -1354,6 +1358,12 @@ step "Notes 交互在 Vue 路径上真的生效（tick 链断则点了没反应�
 # 普通模块变量（S / open / MISSED），没有响应式依赖 → 永远缓存 → 界面纹丝不动，
 # 而签名 84 项和 DOM 夹具都是绿的。Austin 在真机首跑就踩到（ClipBanner 的 computed），
 # 这条用真点击把四类交互钉住：展开 / 空态 / 三横幅 / 删除。
+# 日志窗口：从本步起算取日志行。两个坑都踩过，都在这行上：
+# 1) 不能对 newtlog 再 tail -n +$((NIN+1))：newtlog 内部已经是 readtlog | tail -n +$((BASE+1))，
+#    NIN 是整份日志的绝对行号，对切短的流二次切直接切空，症状是「已收到=[]」，
+#    看着像载荷没跑（真机首跑先误判成 .devmode，补了 touch 依旧红，根因在这里）。
+# 2) 要读未切的 readtlog 并自己记 NIN：从本步起算比从 BASE 起算紧，
+#    不会把上一轮残留的同名 token 扫进来。
 NIN=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("NINT "+m)};
@@ -1375,11 +1385,20 @@ NIN=$(readtlog | wc -l)
   var eb2=q(P+" .exp");
   L("expAfter="+(eb2?eb2.textContent.trim():"none"));
   if(eb2){ eb2.click(); await sleep(400); }
-  // 2) 空态：笔记清空后必须出 .empty（Vue 的 v-if 分支）
-  var saved=__enote.state.S.notes;
-  __enote.state.S.notes=[]; await render();
+  // 2) 空态：笔记清空后必须出 .empty（Vue 的 v-if 分支）。
+  //    不能只改 S.notes=[]：notesFiltered() 第一优先级是服务端搜索结果 SR.notes，
+  //    它非空时画的是 SR 那几条，S 改什么都看不出；而且 app 每 ~2s 轮询 /api/state
+  //    会整体替换 S，直接赋值活不过下一次轮询。走真 API 删除才是真输入路径。
+  var A=__enote.actions;
+  var ids=__enote.state.S.notes.map(function(n){return n.id});
+  for(var i=0;i<ids.length;i++){ await A.api("/api/delete", {id: ids[i]}) }
+  await A.refresh(true); await sleep(500);
+  // 一个 token 一行：断言止的 NINT (\w+)=(.*) 是贪婪匹配，两个 token 写一行会被
+  // 当成一个值（empty 收到 "true emptyCards=0"），下一条则根本不存在。
   L("empty="+String(!!q(P+" .empty")));
-  __enote.state.S.notes=saved; await render();
+  L("emptyCards="+cards());
+  for(var i=0;i<ids.length;i++){ await A.api("/api/add", {text:"标题 "+i}) }
+  await A.refresh(true); await sleep(1200); await A.refresh(true); await sleep(800);
   L("restored="+cards());
   // 3) 三横幅同时出现且顺序对
   __enote.state.MISSED={count:2,items:[{id:"t1",nid:"n1",title:"x",at:Date.now()-60000}]};
@@ -1407,11 +1426,10 @@ NIN=$(readtlog | wc -l)
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsnint.json'"
 for i in $(seq 1 60); do
-  newtlog | grep -q 'NINT ndone=1' && break
+  readtlog | tail -n +$((NIN + 1)) | grep -q 'NINT ndone=1' && break
   sleep 0.5
 done
-# newtlog 已经 tail -n +$((BASE+1)) 了，再 tail 一次是双重跳过（症状：载荷明明跑完、
-# 日志里 NINT 全在，断言却收到 []）。test.sh 里的既有写法是 readtlog | tail。
+# 取窗口读未切的 readtlog：对 newtlog 再 tail 一次是双重跳过（见步骤开头那段注释）。
 readtlog | tail -n +$((NIN + 1)) | grep 'NINT' | "$PY" -c '
 import sys, re
 d = {}
@@ -1426,10 +1444,12 @@ assert int(d["clampAfter"]) < int(d["clampBefore"]), \
   "点「展开详情」后正文仍是收起态（clamp %s→%s）：tick 链断了，Vue 没重渲染" % (
     d["clampBefore"], d["clampAfter"])
 assert d["expAfter"] == "收起", "展开后按钮文案该是「收起」, got %r" % d["expAfter"]
-assert d["empty"] == "True", "笔记清空后没出空态块（.empty）：Vue 的 v-if 分支没生效"
+assert d["empty"] == "true", "笔记清空后没出空态块（.empty）：Vue 的 v-if 分支没生效"
+assert int(d["emptyCards"]) == 0, \
+  "走 /api/delete 清空后卡片数不是 0（实际 %s）：SR.notes 遮蔽又回来了" % d["emptyCards"]
 assert int(d["restored"]) == n, "恢复笔记后卡片数不对（%s→%s）" % (n, d["restored"])
-assert d["missed"] == "True", "造了 MISSED 数据但 .missed 横幅没渲染"
-assert d["clip"] == "True", "造了 clip 计数但 .clipbanner 横幅没渲染（live() 没包？）"
+assert d["missed"] == "true", "造了 MISSED 数据但 .missed 横幅没渲染"
+assert d["clip"] == "true", "造了 clip 计数但 .clipbanner 横幅没渲染（live() 没包？）"
 assert d["order"] == "ok", "首页横幅顺序不对：该是错过提醒 → 新截图 → 剪贴板"
 assert d["dlg"] == "删除", "delNote 没弹确认框, got %r" % d["dlg"]
 assert int(d["delAfter"]) == int(d["delBefore"]) - 1, \
