@@ -12,18 +12,18 @@
    类名冻结（D15）：模板产出的 class 必须与遗留字符串渲染器逐字相同，
    ui_sig_test.js 的 84 项签名 + test.sh 的 10 个 class 断言是硬验收。 */
 
-import { H, Vue } from './vue.js'
+import { H, Vue, live } from './vue.js'
 // 基础组件 <empty-state> 归 Tony（owner 见文件头注释），在这里统一注册。
 import { EmptyState } from './components/empty-state.js'
 export { EmptyState }
 
-const { computed } = Vue
+/* 读模块状态的 computed 一律用 live() 包（见 vue.js）：漏一个就是「数据变了视图不动」 */
 
 export const StripBar = {
   name: 'StripBar',
   props: ['tick'],
   setup(){
-    return { H, i: computed(() => H.S.info) }
+    return { H, i: live(() => H.S.info) }
   },
   template: `
 <div class="metrics">
@@ -38,9 +38,9 @@ export const MissedBanner = {
   name: 'MissedBanner',
   props: ['tick'],
   setup(){
-    const m = computed(() => H.MISSED)
-    const more = computed(() => m.value && m.value.count > (m.value.items || []).length)
-    const sub = computed(() => {
+    const m = live(() => H.MISSED)
+    const more = live(() => m.value && m.value.count > (m.value.items || []).length)
+    const sub = live(() => {
       const v = m.value
       return more.value ? '只列出最早到点的 ' + (v.items || []).length + ' 条'
                         : '你不在的时候到点了，闹钟可能没响'
@@ -60,7 +60,7 @@ export const ShotBanner = {
   name: 'ShotBanner',
   props: ['tick'],
   setup(){
-    const kind = computed(() => {
+    const kind = live(() => {
       const n = (H.S.info && H.S.info.shot) || 0
       if (n > 0) return 'found'
       const f = H.SHOTFLAGS || {}
@@ -69,7 +69,7 @@ export const ShotBanner = {
       if (!f.folders) return 'nofolder'
       return ''
     })
-    const text = computed(() => {
+    const text = live(() => {
       const n = (H.S.info && H.S.info.shot) || 0
       switch (kind.value){
         case 'found':    return { b: '发现 ' + (n >= 50 ? '50+' : n) + ' 张新截图',
@@ -94,8 +94,8 @@ export const ClipBanner = {
   name: 'ClipBanner',
   props: ['tick'],
   setup(){
-    const n = computed(() => (H.S.info && H.S.info.clip) || 0)
-    const hint = computed(() => !n.value && H.clipHint())
+    const n = live(() => (H.S.info && H.S.info.clip) || 0)
+    const hint = live(() => !n.value && H.clipHint())
     return { H, n, hint }
   },
   template: `
@@ -111,15 +111,15 @@ export const NoteCard = {
   name: 'NoteCard',
   props: ['tick', 'n', 'k'],
   setup(props){
-    const exp = computed(() => !!H.open[props.n.id])
-    const todos = computed(() => {
+    const exp = live(() => !!H.open[props.n.id])
+    const todos = live(() => {
       const n = props.n
       return (n.todos && n.todos.length) ? n.todos.map(t => H.todoRow(t, n, true)).join('') : ''
     })
     return { H, exp, todos,
-             idx: computed(() => Math.min(props.k || 0, 8)),
-             body: computed(() => props.n.content || '(无正文)'),
-             ec: computed(() => H.enterCls('n' + props.n.id)) }
+             idx: live(() => Math.min(props.k || 0, 8)),
+             body: live(() => props.n.content || '(无正文)'),
+             ec: live(() => H.enterCls('n' + props.n.id)) }
   },
   template: `
 <div class="card" :class="ec" :id="'n'+n.id" :style="'--i:'+idx">

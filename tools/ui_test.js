@@ -715,8 +715,17 @@ if (SPLIT) {
     }
     if (VVue) {
       const tplErrs = [], tpls = [];
+      const bareComputed = [];
       for (const f of viewFiles) {
         const src = fs.readFileSync(f, 'utf8');
+        // 读模块状态的 computed 必须包 live()：S / MISSED 不是响应式的，computed 没依赖就永远缓存，
+        // 症状是「数据变了视图不动」（实测：删光剪贴板后首页横幅不消失）。唯一允许的直接 computed
+        // 是 tick 源本身。取后窗口 80 字符判 V.tick：computed 的箭头体里括号嵌套，正则匹不出平衡括号。
+        const code = stripComments(src);
+        for (let i = code.indexOf('computed('); i >= 0; i = code.indexOf('computed(', i + 1)) {
+          const win = code.slice(i, i + 80);
+          if (!/V\.tick/.test(win)) bareComputed.push(path.relative(root, f) + '：' + win.replace(/\s+/g, ' ').slice(0, 56))
+        }
         for (const m of src.matchAll(/template: `([\s\S]*?)`\n\}/g)) {
           tpls.push([path.relative(root, f), m[1]]);
           try { VVue.compile(m[1]) } catch (e) { tplErrs.push(path.relative(root, f) + '：' + e.message) }
@@ -750,7 +759,9 @@ if (SPLIT) {
           if (noTick.length) tickErrs.push(v.tab + '：子组件没收 :tick="tick"（props 不变 → 子组件不重渲染）：' + noTick.join(' '));
         }
       }
-      if (miss.size) bad('闸门⑮ 模板里的 handler 不在导出表（点了没反应）', [...miss].join(' '));
+      if (bareComputed.length)
+        bad('闸门⑮ 组件里的 computed 没包 live()（数据变了视图不动）', bareComputed.join(' | '));
+      else if (miss.size) bad('闸门⑮ 模板里的 handler 不在导出表（点了没反应）', [...miss].join(' '));
       else if (tickErrs.length) bad('闸门⑮ Vue tick 依赖断了', tickErrs.join(' | '));
       else {
         const names = new Set();
