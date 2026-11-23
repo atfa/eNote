@@ -3,7 +3,12 @@
 
    读模块状态一律 live()，理由见 js/vue.js 的注释；组件的 computed 必须读 tick，
    否则 2s 轮询换掉整个 S 之后 computed 不重算（闸门⑮ 扫这个）。
-   SR.todoIds 是搜索态的第一优先级输入，和 notes 的 SR.notes 同一个坑。 */
+   SR.todoIds 是搜索态的第一优先级输入，和 notes 的 SR.notes 同一个坑。
+
+   :tick 的双向规则（步骤 7 审查后由闸门⑮ 钉住）：组件声明了 tick prop 就必须收
+   :tick="tick"（本视图第一版写的是 <strip-bar/>，靠 live() 也能重渲染，但约定不统一
+   就是给以后埋雷：一旦组件改成读 props.tick，它会永远是装配时那份快照）；没声明
+   tick prop 的组件（EmptyState）禁止收，多传的 :tick 会透传成根元素属性。 */
 import { V, H, Vue, live } from '../vue.js'
 import { StripBar, EmptyState } from '../components.js'
 
@@ -62,7 +67,7 @@ export const TodosView = {
     }
   },
   template: `
-  <strip-bar/>
+  <strip-bar :tick="tick"/>
   <template v-if="groups.length">
     <template v-for="g in groups" :key="g.name">
       <div class="sec" v-html="icHtml(g.icon, 's')+g.name+' · '+g.items.length"></div>

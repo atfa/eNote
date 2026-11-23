@@ -1103,8 +1103,53 @@ is not defined @app.js:1923`）。`views/todos.js` 也踩过两个 module 导出
 `:tick="tick"`」。todos.js 的第一个 template 是 `TodoRow`（里面没有自定义元素），所以
 `<empty-state>` 没写 `:tick` 一直没被报出来。files.js 里第一个 template 是 `AttachCard`
 （也没有自定义元素），同样漏。已给 files.js 的 `<empty-state>` 显式加 `:tick="tick"`。
+→ 这条在 §9.13 里真的修了，而且加 `:tick` 本身是错的（EmptyState 没这个 prop）。
 
 **验收图**（`./tools/shots_files.sh` 产出）：`docs/shots/vue-files-{light,dark}.png` +
 两张 `-card.png` 卡片特写。脚本自己分享两个夹具（一个 PDF 走 glyph、一张 PNG 走缩略图），
 轮询断言 `附件数>=2`，走真实导航点击并断言 `.tabbar .tab.on == files`，量不到 `.acard`
 直接 `die`，末尾自检四张图存在且明暗两张不同。
+
+### 9.13 步骤 7 被 Tony 打回一次（四条：一条真 DOM 漂移 + 三条「闸门/用例空跑」）
+
+Tony 在 `d58baf87ed` 独立复验：静态三件套绿、真机 PASS 52 ok、VDIFF notes 8775 /
+todos 4897 / files 145（骨架）/ files 503（夹具后）逐字一致、FINT 非空跑、
+`shots_files.sh` 可复现、明暗四图合格。四条必修：
+
+**① 真 DOM 漂移（不是覆盖率问题）**：`files.js` 给 `<empty-state>` 传 `:tick="tick"`，
+而 `EmptyState`（Tony owner）的 props 只有 `icon/title/sub` → Vue 把它当透传属性落到根
+元素。真机实测本 HEAD：Vue 路径 `<div class="empty" tick="27">`，遗留
+`__enote.legacy.files()` 是 `<div class="empty">`。VDIFF 的 `ser()` 比属性，所以空态一
+比就红。`notes.js` 的 `<empty-state>` 同样收 `:tick`（notes 的 VDIFF 跑在列表非空时，
+所以一直没暴露）。修法：两处都去掉 `:tick`（空态文案的响应性已由 `emptyTitle: live(...)`
+覆盖，tick 对它无意义）。`todos.js` 的 `<strip-bar/>` 是反向问题：StripBar **声明了**
+`props: ['tick']` 却没传 → 补成 `<strip-bar :tick="tick"/>`。
+
+**② `vdiff_tab files` 从没比过空态**：第一遍跑在 `FA.loaded=false` → 两条路径都画骨架屏
+（实测 `hasSkel=1 hasEmpty=0`，145 字节），第二遍有 items → 比网格。空态分支（恰好是 ①
+的现场）从没进过比较。修法：FINT 删完夹具后 `FA` 正好是 `loaded=true` + `items=[]`，加
+FEMPTY 载荷断言 `loaded=true`、`fa=0`、页面有 `.empty`、没有 `.skel`、`.empty` 上没有
+`tick` 属性，再跑第三遍 `vdiff_tab files`。顺带修掉 `test.sh` 里「第一遍比到 strip +
+空态」这句错的注释。
+
+**③ 闸门⑮ 对本步骤主体是空跑的**（Tony 的反向实验：删 `attach-card` 的 `:tick` → 绿；
+删注册表里的 `files: FilesView` → 绿，只把打印变成「注册表 2」）。两处修：
+* `tools/ui_test.js:851` 的非全局 `/template: `([\s\S]*?)`\n/` 换成 `matchAll` 扫视图文件
+  里的全部模板（files.js 之前查的是 `AttachCard`，`FilesView` 整段没查；todos.js 同理）。
+* tick 规则改成**双向**并按组件 props 判定：扫 `js/**` 里每个 `export const X = {…}` 的
+  `props`，声明了 `tick` 的元素必须收 `:tick="tick"`，没声明的**禁止**收（收了就透传成
+  DOM 属性 → 与遗留渲染漂移）。这条同时覆盖 ① 的两个方向。
+* 注册表完整性：视图文件里 `export const *View` 必须逐个出现在 `VUE_VIEWS` 里，删掉
+  `files: FilesView` 现在会红（症状是「视图存在但永远不会被挂载」）。
+
+四条反向实验（都在本 HEAD 实测，闸门必须红）：删 `attach-card` 的 `:tick` → 红；注册表删
+`files: FilesView` → 红；给 `<empty-state>` 加回 `:tick` → 红；`todos.js` 的 `<strip-bar>`
+去掉 `:tick` → 红。复原后绿，输出改为
+「Vue 模板 10 个编译通过；注册表 3 视图的 tick 链完整（扫 5 个模板，组件 tick prop 7 个）…」。
+
+**④ `tools/shots_files.sh` 提交成 100644**：`./tools/shots_files.sh` 直接 Permission
+denied（其余 shots 脚本是 100755）。`chmod 755` 并把 mode 一起提交。
+
+**顺带记入步骤 11/13 的账**（Tony 提，不阻塞本步）：shots 脚本的「明暗两张 md5 不同」自检
+因状态栏时钟恒真；`prefPayload` 的 `done=all` 缺客户端回归测试；§9.10 那批「永远绿」静态
+闸门复查。

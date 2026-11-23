@@ -4,7 +4,11 @@
    1. setup() 里 `const tick = computed(() => V.tick)` —— 视图必须**在渲染期真的读到 tick**：
       S.notes 是非响应式的模块变量，渲染 effect 只跟踪响应式依赖，没读到 tick 的组件在
       render() 后纹丝不动（点了删除没反应，正是 P12 那类静默 bug）。闸门①(b) 静态钉这条。
-   2. 每个子组件都收 :tick="tick"：子组件的 props 变了才会重渲染，视图读到 tick 不够。
+   2. 声明了 tick prop 的子组件都收 :tick="tick"：子组件的 props 变了才会重渲染，视图读到
+      tick 不够。**没声明 tick prop 的组件禁止收**：Vue 把它当透传属性落到根元素上，
+      真机实测 <empty-state> 收 :tick 时 Vue 路径是 <div class="empty" tick="27">，遗留
+      路径是 <div class="empty"> —— VDIFF 比属性，空态一比就红（步骤 7 审查抓到）。
+      闸门⑮ 现在按组件的 props 双向钉这条。
    3. 结构在模板里，叶子片段（图标/chip/待办行）走 v-html 复用 app.js 里的现成函数。
    4. 事件用 @click="H.xxx(...)"，函数名必须 ⊆ 导出表（闸门①(a)）。 */
 
@@ -31,7 +35,7 @@ export const NotesView = {
 <missed-banner :tick="tick"></missed-banner>
 <shot-banner :tick="tick"></shot-banner>
 <clip-banner :tick="tick"></clip-banner>
-<empty-state v-if="!list.length" :tick="tick" :icon="empty.icon" :title="empty.t" :sub="empty.sub"></empty-state>
+<empty-state v-if="!list.length" :icon="empty.icon" :title="empty.t" :sub="empty.sub"></empty-state>
 <note-card v-for="(n,k) in list" :key="n.id" :tick="tick" :n="n" :k="k"></note-card>
 `
 }

@@ -294,6 +294,27 @@
 * 数字：Vue 模板 8→10 个、注册表 2→3 个视图、模板 handler 10→11 个、视图里的 `H.xxx` 31→40 个、
   jseval 载荷 10→12 个、VDIFF 覆盖 2→3 个 tab；导出表 58 key、签名 84 项、闸门 15 个不变。
 
+#### 步骤 7 被 Tony 打回一次（一条真 DOM 漂移 + 三条空跑）
+
+* **`<empty-state>` 收 `:tick` 是真 DOM 漂移**：`EmptyState` 的 props 只有 `icon/title/sub`，
+  多传的 `:tick` 被 Vue 当透传属性落到根元素——真机实测 Vue 路径 `<div class="empty" tick="27">`，
+  遗留 `__enote.legacy.files()` 是 `<div class="empty">`，VDIFF 的 `ser()` 比属性，一比就红。
+  `files.js` 与 `notes.js` 两处都去掉 `:tick`（空态文案的响应性已由 `emptyTitle: live(...)` 覆盖）；
+  `todos.js` 是反向问题：`<strip-bar/>` 对应的 StripBar **声明了** `props: ['tick']` 却没传，
+  补成 `<strip-bar :tick="tick"/>`。
+* **VDIFF 补第三遍：空态**。前两遍比的是骨架屏（`FA.loaded=false`，实测 `hasSkel=1 hasEmpty=0`）
+  和网格（items 非空），空态分支（恰好是上面那条的现场）从没进过比较。现在 FINT 删完夹具后
+  跑 FEMPTY 载荷（断言 `loaded=true`、`fa=0`、页面有 `.empty`、无 `.skel`、`.empty` 上没有
+  `tick` 属性）再比一次。同时修掉「第一遍比到 strip + 空态」这句错的注释。
+* **闸门⑮ 从「只看第一个模板」改成扫全部模板 + 双向 tick 规则 + 注册表完整性**（Tony 的反向
+  实验：删 `attach-card` 的 `:tick` → 绿；删注册表里的 `files: FilesView` → 绿）。现在扫
+  `js/**` 里每个 `export const X = {…}` 的 `props`：声明了 `tick` 的元素必须收 `:tick="tick"`，
+  没声明的**禁止**收（收了就透传成 DOM 属性）；视图文件导出的每个 `*View` 必须在 `VUE_VIEWS`
+  里。四条反向实验全部实测会红（删 attach-card 的 `:tick` / 注册表删 files / 给 empty-state
+  加回 `:tick` / strip-bar 去 `:tick`）。
+* `tools/shots_files.sh` 以 100644 提交，`./tools/shots_files.sh` 直接 Permission denied
+  （其余 shots 脚本是 100755）—— `chmod 755` 并把 mode 一起提交。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome

@@ -844,17 +844,52 @@ if (SPLIT) {
       const views = reg ? [...reg[1].matchAll(/(\w+)\s*:\s*(\w+)/g)].map(m => ({ tab: m[1], comp: m[2] })) : [];
       const tickErrs = [];
       if (!reg) tickErrs.push('app.js 里找不到 var VUE_VIEWS = {…} 注册表');
+      // 组件 → 是否声明 tick prop。规则是双向的：声明了 tick 的必须收 :tick="tick"
+      // （props 不变 → 子组件不重渲染），没声明的禁止收（Vue 当透传属性落到根元素上：
+      // 真机实测 <empty-state> 收 :tick 时 Vue 路径是 <div class="empty" tick="27">，
+      // 遗留路径是 <div class="empty">，VDIFF 比属性，空态一比就红）。
+      const tickProp = new Map();
+      for (const f of viewFiles) {
+        const src = fs.readFileSync(f, 'utf8');
+        for (const chunk of src.split(/\n(?=export const )/)) {
+          const d = /^export const (\w+)\s*=\s*\{/.exec(chunk);
+          if (!d) continue;
+          const arr = /props:\s*\[([^\]]*)\]/.exec(chunk);
+          const obj = /props:\s*\{([\s\S]{0,400}?)\n\s{2}\}/.exec(chunk);
+          const has = (arr && /\btick\b/.test(arr[1])) || (obj && /^\s*tick\s*:/m.test(obj[1]));
+          tickProp.set(d[1], !!has);
+        }
+      }
+      let tickTpls = 0;
       for (const v of views) {
         const f = viewFiles.find(p => new RegExp('export const ' + v.comp + '\\b').test(fs.readFileSync(p, 'utf8')));
         if (!f) { tickErrs.push(v.tab + '：注册表里的 ' + v.comp + ' 在 js/ 下找不到定义'); continue }
         const src = fs.readFileSync(f, 'utf8');
-        const tpl = /template: `([\s\S]*?)`\n/.exec(src);
         if (!/V\.tick/.test(src)) tickErrs.push(v.tab + '：视图没读 V.tick（render() 后视图不会动，静默失效）');
-        if (tpl) {
-          const noTick = [...tpl[1].matchAll(/<([a-z][\w-]*-[\w-]+)\b([^>]*)>/g)]
-            .filter(m => !/:tick="tick"/.test(m[2])).map(m => m[1]);
-          if (noTick.length) tickErrs.push(v.tab + '：子组件没收 :tick="tick"（props 不变 → 子组件不重渲染）：' + noTick.join(' '));
+        // 扫这个文件里的**全部**模板。上一版用非全局正则，每个视图文件只看第一个模板：
+        // files.js 查的是 AttachCard，FilesView 整段没查；todos.js 同理（TodoRow 挡住
+        // TodosView），所以步骤 6 的 <empty-state> 缺 :tick 一直没人管。反向实验：删掉
+        // attach-card 的 :tick="tick" 闸门仍绿。
+        for (const tpl of src.matchAll(/template: `([\s\S]*?)`\n/g)) {
+          tickTpls++;
+          for (const m of tpl[1].matchAll(/<([a-z][\w-]*-[\w-]+)\b([^>]*)>/g)) {
+            const pascal = m[1].replace(/(^|-)(\w)/g, (_, __, c) => c.toUpperCase());
+            if (!tickProp.has(pascal)) continue;   // 扫不到定义的组件由上面的注册检查报
+            if (tickProp.get(pascal) && !/:tick="tick"/.test(m[2]))
+              tickErrs.push(v.tab + '：<' + m[1] + '> 声明了 tick prop 却没收 :tick="tick"（props 不变 → 子组件不重渲染）');
+            if (!tickProp.get(pascal) && /:tick=/.test(m[2]))
+              tickErrs.push(v.tab + '：<' + m[1] + '> 没有 tick prop 却收 :tick（透传成 DOM 属性 → 与遗留渲染漂移）');
+          }
         }
+      }
+      // 注册表完整性：视图文件导出的每个 *View 都必须在 VUE_VIEWS 里。上一版只数条目数，
+      // 反向实验：删掉注册表里的 files: FilesView 闸门仍绿，只把打印变成「注册表 2」。
+      for (const f of viewFiles) {
+        const src = fs.readFileSync(f, 'utf8');
+        for (const m of src.matchAll(/^export const (\w+View)\b/gm))
+          if (!views.some(v => v.comp === m[1]))
+            tickErrs.push(path.relative(root, f) + '：导出的 ' + m[1]
+              + ' 没进 VUE_VIEWS 注册表（视图存在但永远不会被挂载，render() 走遗留路径）');
       }
       if (bareComputed.length)
         bad('闸门⑮ 组件里的 computed 没包 live()（数据变了视图不动）', bareComputed.join(' | '));
@@ -866,7 +901,7 @@ if (SPLIT) {
         for (const [, t] of tpls)
           for (const m of t.matchAll(/(?:@|v-on:)(?:click|input|change|submit)="\s*(?:H\.)?([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
         ok('闸门⑮ Vue 模板 ' + tpls.length + ' 个编译通过；注册表 ' + views.length
-          + '  视图的 tick 链完整；模板 handler ' + names.size + ' 个全在导出表；'
+          + '  视图的 tick 链完整（扫 ' + tickTpls + ' 个模板，组件 tick prop ' + [...tickProp.values()].filter(Boolean).length + ' 个）；模板 handler ' + names.size + ' 个全在导出表；'
           + '视图里的 H.xxx ' + usedHost.size + ' 个全在 setHost');
       }
     }

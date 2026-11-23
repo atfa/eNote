@@ -7,7 +7,12 @@
    FA / q 走 setHost 的 getter（不是快照）：装配时传值的话，后面换掉的 FA 视图看不见。
 
    三态的判定顺序和遗留 renderFiles() 逐字一致：骨架屏（FA.loaded=false）优先于空态，
-   空态优先于网格 —— 首屏时 items 是空数组，把空态排在前面会先闪一下「还没有附件」。 */
+   空态优先于网格 —— 首屏时 items 是空数组，把空态排在前面会先闪一下「还没有附件」。
+
+   <empty-state> 不收 :tick：EmptyState（Tony owner）的 props 只有 icon/title/sub，多传的
+   :tick 会透传成根元素属性，真机实测 Vue 路径 <div class="empty" tick="27">、遗留路径
+   <div class="empty"> —— 空态的 VDIFF 一比就红。空态文案的响应性已由 emptyTitle: live(...)
+   覆盖，tick 对它没意义。 */
 
 import { V, H, Vue, live } from '../vue.js'
 import { EmptyState } from '../components.js'
@@ -63,7 +68,7 @@ export const FilesView = {
 <div class="card" v-if="!FA.loaded">
   <div class="skel img"></div><div class="skel l"></div><div class="skel s"></div>
 </div>
-<empty-state v-else-if="!items.length" :tick="tick" icon="clip"
+<empty-state v-else-if="!items.length" icon="clip"
              :title="emptyTitle" sub="分享图片 / PDF，或点右下角「添加附件」"/>
 <div class="agrid" v-else>
   <attach-card v-for="(a,k) in items" :key="a.id" :a="a" :k="k" :tick="tick"/>

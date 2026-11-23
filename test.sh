@@ -1707,9 +1707,10 @@ done
 FIXNOTE=$(api_get "attachments?q=vue-files-fixture" | "$PY" -c 'import json,sys
 print((json.load(sys.stdin).get("items") or [{}])[0]["noteId"])')
 # 夹具到位之后再比一次 files 的 DOM：上面那次（步骤 7 的 vdiff_tab files）跑在空库上，
-# 只比到 strip + 空态（145 字节），卡片网格这条主路径根本没进比较。
-# vdiff_tab 只调 render()，而 render() 不会去拉附件：FA.loaded=false 时两条路径都画
-# 骨架屏，比出来还是「空对空」。所以先用 filesNow() 把 FA 真加载好。
+# FA.loaded=false → 两条路径都画骨架屏（实测 hasSkel=1 hasEmpty=0，145 字节），比的是
+# 「骨架对骨架」，卡片网格这条主路径根本没进比较（上一版注释写「比到 strip + 空态」
+# 是错的，步骤 7 审查指出）。vdiff_tab 只调 render()，而 render() 不会去拉附件，
+# 所以先用 filesNow() 把 FA 真加载好。
 # jseval 钩子只在 .devmode 存在时干活（上一块刚把它删了），不 touch 就是
 # `{"ok":false,"error":"jseval disabled"}`：载荷根本没跑，日志里一条也没有（真机撞过）。
 UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
@@ -1836,6 +1837,53 @@ assert int(d["cards2"]) == int(d["cardsBefore"]) - 1, \
   "删除后卡片数 %s→%s：没少一张" % (d.get("cardsBefore"), d.get("cards2"))
 print("  ok (预览 toast / 删除确认 / strip 计数在 Vue 路径上真生效，%s 张卡)" % d.get("cards"))
 '
+# 第三遍 VDIFF：空态（FA.loaded=true 且 items=[]）。前两遍比的是骨架屏（loaded=false）
+# 和网格（items 非空），空态这条分支从没进过比较 —— 步骤 7 审查就是在这里抓到真 DOM
+# 漂移：<empty-state> 收了 :tick，而 EmptyState 的 props 只有 icon/title/sub，透传成
+# <div class="empty" tick="27">（遗留路径是 <div class="empty">）。FINT 末尾刚把夹具附件
+# 删掉，FA 正好是 loaded + 空；下面先断言页面真的是空态（.empty 在、.skel 不在），
+# 免得像前两遍那样「比的是另一种状态」。
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("FEMPTY "+m)};
+  try{
+    __enote.state.tab="files";
+    await __enote.vue.host.filesNow();
+    L("fa="+__enote.vue.host.FA.items.length);
+    L("loaded="+__enote.vue.host.FA.loaded);
+    await render();
+    var P=".pane[data-tab=files]";
+    var el=document.querySelector(P+" .empty");
+    L("empty="+(el?"yes":"no"));
+    L("skel="+(document.querySelector(P+" .skel")?"yes":"no"));
+    L("tickAttr="+(el?(el.getAttribute("tick")||"none"):"noel"));
+  }catch(e){ L("ERR="+(e&&e.message)) }
+  L("done=1");
+})()' > "$TMPDIR/jsempty.json"
+NFE=$(readtlog | wc -l)
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsempty.json'"
+for i in $(seq 1 40); do
+  readtlog | tail -n +$((NFE + 1)) | grep -q 'FEMPTY done=1' && break
+  sleep 0.5
+done
+readtlog | tail -n +$((NFE + 1)) | grep 'FEMPTY' | "$PY" -c '
+import sys, re
+lines = [l.strip() for l in sys.stdin if "FEMPTY" in l]
+d = {}
+for l in lines:
+    m = re.search(r"FEMPTY (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+assert d.get("done") == "1", "FEMPTY 载荷没跑完（无 done）：日志=%s" % lines[:2]
+assert d.get("ERR") is None, "FEMPTY 载荷抛异常：%s" % d.get("ERR")
+assert d.get("loaded") == "true", "FA.loaded 仍是 %s：这一遍比的还是骨架屏" % d.get("loaded")
+assert d.get("fa") == "0", "FA 里还有 %s 条附件：这一遍比的不是空态" % d.get("fa")
+assert d.get("empty") == "yes", "页面上没有 .empty：这一遍比的不是空态（空跑）"
+assert d.get("skel") == "no", "页面上还有骨架屏 .skel：FA.loaded 与 DOM 不一致"
+assert d.get("tickAttr") == "none", \
+  "空态根元素上多了 tick 属性（%s）：组件没声明的 prop 透传成 DOM 属性，与遗留渲染漂移" % d.get("tickAttr")
+print("  ok (FA 已加载且为空，下面的 VDIFF 比的是空态)")
+'
+vdiff_tab files
 # 夹具清理：附件由分享意图建了一条笔记，删掉笔记（连带附件文件），别污染真数据和后续用例
 asroot_global "rm -f '$EXT/$FIXNAME'" >/dev/null 2>&1 || true
 if [ -n "$FIXNOTE" ]; then api_post delete "{\"id\":\"$FIXNOTE\"}" >/dev/null 2>&1 || true; fi
