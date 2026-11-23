@@ -210,8 +210,10 @@ const goRoutes = /m\.HandleFunc\("\/api\/stats", handleStats\)/.test(fs.readFile
   && /func stats\(\) statsRes/.test(go) && /func handleImport/.test(fs.readFileSync(path.join(root, 'go/backup.go'), 'utf8'));
 console.log((goRoutes ? '  ok   ' : '  FAIL ') + 'Go 侧 /api/stats + /api/import + /api/clear 已注册');
 if (!goRoutes) bad++;
+// 步骤 10：settingsSheet() 变成分发器（注册表里有 settings 就走 pageSheetVue），所以
+// 签名不再钉「函数体第一句就是 pageSheet」，只钉「这个函数里真的调了 pageSheet('设置'」。
 const panel = /function pageSheet\(title, html\)/.test(src) && /\.panel\.page\{/.test(src)
-  && /settingsSheet\(\)\{ pageSheet\('设置'/.test(src);
+  && /settingsSheet\(\)\{[\s\S]{0,400}?pageSheet\('设置'/.test(src);
 console.log((panel ? '  ok   ' : '  FAIL ') + '设置是全屏面板（顶栏固定 + 分组）');
 if (!panel) bad++;
 const secs = ['外观', 'AI 模型', '采集', '本地 OCR', '数据', '运行状态']

@@ -417,6 +417,101 @@
   jseval 载荷 15→16 个、VDIFF 4→6 弹层遍、真机套件 59→63 项 ok（新增夹具 + clip grid /
   clip empty 两遍 VDIFF + CIT 真点击），套件时长 +约 15s（三条 clipset 夹具各隔 6s）。
 
+### 界面（P13 S3 步骤 10）：我的页（tab）+ 设置页（弹层）转 Vue
+
+* **新增 `go/ui/js/views/stats.js`**（`StatsStat` / `StatsChart` / `StatsLi` / `StatsView`）与
+  **`go/ui/js/views/settings.js`**（`SettingsSheetView`）。注册表：`VUE_VIEWS` 加
+  `mine: StatsView`（我的页是 tab），`VUE_SHEETS` 加 `settings: SettingsSheetView`
+  （设置页是弹层，不是 tab）。`settingsSheet()` 变成分发器（Vue 走
+  `pageSheetVue('settings','设置')`，否则 `pageSheet`），`$('#panel').dataset.kind='settings'`
+  两条路径都写（CSS 钩子）；`closeSheet()` 补 `unmountSheet('settings')`。
+* **`settingsRefresh()` 在 Vue 路径不重建 DOM**：改成 `sheetPaint()`（bump tick，computed 全
+   失效重算）+ 滚位还原。重建会把输入框里正在打的字清掉 —— 设置页是全站唯一有六个输入框
+   的页面，遗留路径是 innerHTML 整体重写，没这个顾虑。
+* **两条路径共用的叶子函数**：`statsHeroInner`/`statsHeroHTML`、`statsNotesCardHTML`、
+  `statsRunRowsHTML`/`statsRunInnerHTML`/`statsRunCardHTML`、`statCls`/`statHTML`/`liHTML`、
+  `ocrReadyHTML`、`chartHTML`、`settingsCollectHTML`、`settingsOcrCardHTML`、`settingsUsageHTML`、
+  `settingsKeepAliveNoteHTML`、`settingsDataCardHTML`、`settingsRunCardHTML`；遗留基准挂
+  `__enote.legacy.mine` / `.settings`，入场动画的 seen 清掉新增缝 `__enote.clearSeen`。
+* **真 bug 一：四个 handler 从步骤 2 起就是野名字**（Tony 的契约里点名要查的那处）。我的页的行是
+  `liHTML(…, 'settingsSheet()')` 把 handler 当**字符串参数**传进去，闸门① 只扇 `onclick="…"`
+  字面量，扇不到这种参数；转 module（步骤 2）后 `settingsSheet` / `scanShotsNow` /
+  `rescanShots` / `clearShots` 不再是全局 → 我的页上「设置 / 现在扫描一次 / 回捞最近 7 天 /
+  清空截图暂存」四行点了就是 `ReferenceError`（点了没反应，控制台一行日志）。四个名字补进
+  导出表，并新增**闸门①d**：扇 handler 字符串参数里的调用名（68 处）必须全在导出表里。
+* **真 bug 二：`exportJSON` 从来没定义过**。设置页的「导出 JSON」按钮与我的页那一行调的是一个
+  不存在的名字（HEAD 里 `grep -c exportJSON` = 0，以前写的是内联 `location.href=…`），本次改成
+  函数名后 module 加载时导出表求值直接抛 `ReferenceError: exportJSON is not defined` ——
+  整页 JS 死在首屏（真机跑出来的，静态闸门全绿）。补 `function exportJSON(){ location.href =
+  '/api/export' }`，两条路径共用。
+* **闸门①e（Tony 的要求，封整类「首屏 JS 全死」）**：缺的不是 `exportJSON` 那一个名字，是
+  「导出表里的右值必须是 app.js 里真存在的标识符」这条静态检查 —— 闸门① 只查「handler 名
+  ⊆ 导出表 key」，表体 `exportJSON,` 的右值没人查，`node --check` 也不查未定义标识符，所以
+  闸门与签名全绿的历史提交里带着一个首屏 ReferenceError（静态层对 module 求值期是盲的）。
+  新闸门解析表体，凡右值是裸标识符的（简写 `{ api }` 与 `{ api: api }`）必须有 `function` /
+  `var` / `let` / `const` / `class` / `import` 声明（含顶层解构），否则 FAIL 并列出名字。
+* **VDIFF 的文本节点切分规则（本步踩满）**：序列化器逐文本节点 trim 后拼接，所以遗留的
+  `'已排定 '+remindPending+' 条 · …'`（三个节点 → 「已排定12条 · …」）与模板里一个插值
+  `{{ notifySub }}`（一个节点 → 「已排定 12 条 · …」）比不过。数据卡 / 运行状态卡 / 保活
+  长说明整块改走叶子函数 v-html，提醒卡副标题按遗留的切分写三个插值，标签 chip 同理。
+  规则写进 `views/stats.js` 文件头。
+* **状态桥加 `ST`**（闭集 22→23 名，app.js / `go/web_test.go` / `tools/ui_test.js` 三处名单同步）；
+  导出表 60→69 key（新增九个的动机写在表后的注释里，表体不能写注释 —— 运行时比对是粗解析）。
+* **VDIFF 新增两遍 + 一个真点击用例**：`vdiff_tab mine`（带 ST 夹具的一遍 + 未加载骨架屏一遍，
+  断言 `stats==6`/`chips==2`/骨架屏互斥）与 `vdiff_sheet settings`（`kind=settings`、六个输入框、
+  seg 3 个、开关 ≥2、kv ≥10）；新增「设置页交互在 Vue 路径上真的生效」用例：从我的页点进设置 →
+  主题 亮→暗→亮（`data-theme` 与 seg 选中态）→ AI 开关翻了再翻回（不留下改动）→ 保存得到
+  「已保存」→ 清空全部只到确认框就取消（真机笔记不能删）→ 关闭卸载。`vdiff_tab` 夹具现在在两条
+  路径各自开跑前调一次 `__enote.clearSeen()`（入场动画的 seen 是一次性状态，不清就是「谁先画
+  谁拿到 enter」）。
+* **VDIFF 的序列化现在归一化两处「绘制时机」差异**（都是真机跑出来的偶发红，不是审出来的）：
+  ① `enter` 这个一次性入场动画标记（`enterCls` 只在某个 id 首次出现时给）从 class 里剔掉再比
+  —— 它的有无取决于两条路径谁先画、后台轮询有没有在中间插一次重绘，那是时机不是 DOM 形状
+  （动画本身由 CSS 与视觉截图覆盖）；本步第一次真机跑就是 todos 页红在 `card enter` vs `card`。
+  ② 空的 `style` 属性与没有 `style` 属性等价（`syncExpand` 把「展开详情」按钮的 display 设过
+  一遍再清掉，Vue 那侧留下 `style=""`，字符串路径没有这个属性），归一化后直接跳过该属性。
+* **夹具坑（真机跑出来的）**：`Pictures/enote-test` 的 MediaStore 行不随 root 的 `rm` 消失，
+  旧行 `date_added` 还是上次跑的时间，而扫描按 `rangeDays=1` 过滤 —— 跑满 24h 后两张测试图
+  刚好掉出窗口，`added=0` 假红（本步验收第一次跑踩到，距上次绿跑 24h01m）。夹具现在先
+  `content delete` 删行，让扫描重新登记。
+* **反向实验（全部在真机 / 静态闸门上实测）**：删 `VUE_SHEETS.settings` 条目 →
+  `go test -run TestIndexServedFromDirectory` FAIL（`web_test.go:179`）；`StatsLi` 不暴露 `H` →
+  闸门⑮ 红；`computed` 不包 `live()` → 闸门⑮ 红；`components:` 里加回已删除的 `StatsKv` →
+  闸门⑮ 红（新检查就是为这条加的）；从 HOST 与导出表同时删 `showLog` → 闸门①d 红
+  （`showLog@go/ui/js/app.js×2`）而闸门① 仍绿 —— 证明①d 扇的是① 视野外的新面；导出表加一行
+  `foo: notDefinedFn` → 闸门①e 红（`notDefinedFn`）。
+* **夹具的第二个坑**：`vdiff_tab` 的断言脚本跑在 `"$PY" -c '…'` 里，python 写 `else ''` 会被
+  shell 的单引号参数吃掉 → SyntaxError（症状是断言块整段没跑）。这类块里只能用双引号。
+* **夹具的第四个坑（`stBusy` 这个互斥标志）**：`statsNow()` 开头是 `if(stBusy) return`，一次
+  在飞的请求卡住就把后面所有调用全挡掉；套件里前一步刚清过库（`clearAllNotes` 把 ST 置 null），
+  于是点「我的」tab 不会去取统计，我的页停在骨架屏，症状是「我的页上没有设置行」。用例现在直接
+  `await api("/api/stats")` 注入状态桥（tab 仍然真点），不依赖那个标志。
+* **夹具的第三个坑**：hero 的探针第一版读 `.hver`（版本号那一行，加载前后文本完全一样），断言
+  「未加载那一遍必须含『正在统计』」就恒假 —— 「正在统计…」在 `.hstats` 里。探针选错元素等于
+  断言恒假，本步第二次真机跑红在这里。
+* **视觉**：`tools/shots_vue.sh` 扩到 14 张（新增 `vue-stats-light/dark`（ST 夹具注入，柱子 /
+  数字 / chips 都有内容）与 `vue-settings-light/dark`，步骤 10 四张唯一数自检 4/4，明暗都人工看过：
+  hero chips、6 张统计卡、图表柱子与图例、设置弹层的开关 / 分段 / 输入框值都在）。
+* **截图夹具的五个坑（本步真机踩完）**：
+  ① ST 夹具必须是完整 `/api/stats` 形状 —— 少 `ai` 时 `renderMine` 读 `s.ai.calls` 抛异常，
+  截图停在上一页（第一版 stats 图其实是附件页）；
+  ② `setTheme("dark")` 会让 Activity 走 night mode 重建、WebView 重新加载，**同一载荷里后面的
+  语句随旧页面一起丢掉**（暗色设置页拍成「整屏糊掉、面板不在上面」）→ 主题改成单独一发
+  （`settheme` 函数）+ 等 2.5s；
+  ③ 重载之后 `.sheet.on .panel` 的入场过渡有概率不启动，面板停在初始态 → `SHEETON` 摘掉 `on`
+  再强制回流挂回去，过渡一定重跑；
+  ④ toast 是 `setTheme` 之后异步弹的，清 toast 必须放载荷**末尾**（放开头等于没清）；
+  ⑤ `setTab` 没导出（导出它要动步骤 6 的基线），tabbar 高亮用 `MINEON` 直接改 class。
+  另外脚本开头加 `am force-stop`：上一轮把 app 留在主屏时 `am start --display` 只回一句
+  「delivered to currently running top-most instance」，整轮截图全是桌面（症状：唯一图片数 3/4）；
+  `SHOT_WAIT=3` —— `am start` 立刻返回，载荷在 app 里异步跑，1.5s 沉降不够。
+* 数字：Vue 模板 17→22 个（⑮ 扫 15→20）、注册表 3 视图 + 4 弹层 → **4 视图 + 5 弹层**、组件 tick
+  prop 11→13、模板 handler 24→33、`H.xxx` 74→109、暴露 `H` 的组件 8→12、导出表 60→69 key、
+  状态桥 12→13 名、jseval 载荷 16→17 个（闭集函数 15→16、render 的 await 12→11）、handler 总数
+  121→131（内联 88 + Vue 模板 33 + 新增闸门①d 扫到 68 处 handler 字符串参数）、VDIFF 3 tab +
+  6 弹层遍 → 4 tab + 7 弹层遍、静态签名 84 项、导出表右值 69 个全有声明、
+  套件 63→**69 ok**（本步绿跑 EXIT=0，日志见 `test.sh --vd` 输出）、图片 10→**14**。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome

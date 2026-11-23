@@ -48,13 +48,21 @@ shoot() {   # shoot <输出名> <额外 JS>
   f="$TMPD/vshot_$name.json"
   "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' "$js" > "$f"
   asroot_global "sh '$JSEVAL' '$f'"
-  sleep 1.5
+  # am start 立刻返回，载荷在 app 里异步跑：这个 sleep 是「等载荷跑完 + 动画沉降」的预算。
+  # 步骤 10 的载荷带 setTheme（整页重绘）+ 弹层挂载，1.5s 会拍到弹层入场动画中间帧
+  # （暗色设置页就拍成「整屏糊掉、面板不在上面」），所以那四张把预算提到 3s。
+  sleep "${SHOT_WAIT:-1.5}"
   sh "$HERE/vd.sh" shot "$OUT/$name.png" >/dev/null
   say "  → docs/shots/$name.png"
 }
 
+# 先 force-stop 再启动：上一轮（或手工调试）把 app 留在主屏时，am start --display 只会
+# 「delivered to currently running top-most instance」，app 不动，整轮截图全是桌面
+# （症状：唯一图片数 3/4 然后 die）。force-stop 不是 pm clear，LLM key / 目录设置都在。
+asroot_global "am force-stop $APP_PACKAGE" >/dev/null
+sleep 1
 asroot_global "am start --display $VDID -n $ACTIVITY" >/dev/null
-sleep 3
+sleep 4
 
 # ---------- 步骤 8：截图暂存页 / 选文件夹页 / 导入进度层 ----------
 # VDIFF 比得出 DOM，比不出「图挂不挂得出来」「遮罩盖不盖全屏」，这两页只能眼睛看。
@@ -116,6 +124,46 @@ done
 say "  剪贴板夹具已就位（$CN 条）"
 shoot vue-clip-light "setTheme('light'); await render(); clipSheet();"
 shoot vue-clip-dark "setTheme('dark'); await render(); clipSheet();"
+# ---------- 步骤 10：我的页（tab）/ 设置页（弹层）----------
+# 我的页的图要看四张统计卡的入场动画终态、标签 chips、图表（只有 ST 注进去才有柱子）；
+# 设置页要看六个输入框的 value 真渲染出来了（:value.attr 写错时输入框是空的）、主题 seg
+# 的选中态、两个开关的 on。ST 夹具走状态桥注入，不依赖真机上的笔记数。
+# 夹具字段必须齐：renderMine 读 s.ai.calls、chartHTML 读 s.days、标签卡读 s.tags，
+# 少一个就是渲染抛 TypeError，页面停在上一张图（第一版就截成了进度层盖着截图页）。
+STFIX="__enote.state.ST={notes:{total:3,done:1,raw:1,error:1,queued:1,parsing:0},"
+STFIX="$STFIX todos:{total:2,open:1,overdue:1},attach:{count:4,missing:1},bytes:1572864,"
+STFIX="$STFIX ai:{calls:12,ok:11,fail:1,avgMs:2300,model:'fixture-model',url:'https://fixture.test/v1',lastAt:'2026-11-24T01:00',lastMs:1200},"
+STFIX="$STFIX days:[{day:'2026-11-18',label:'11-18',notes:0,todos:0,done:0},{day:'2026-11-19',label:'11-19',notes:1,todos:0,done:1},{day:'2026-11-20',label:'11-20',notes:0,todos:2,done:0},{day:'2026-11-21',label:'11-21',notes:2,todos:1,done:1},{day:'2026-11-22',label:'11-22',notes:0,todos:0,done:0},{day:'2026-11-23',label:'昨天',notes:3,todos:2,done:2},{day:'2026-11-24',label:'今天',notes:3,todos:1,done:1}],"
+STFIX="$STFIX tags:[{tag:'工作',n:3},{tag:'阅读',n:1}]};"
+# 前一张图（进度层 / 剪贴板弹层）会留在屏上，注入前必须先关掉，否则截到的是叠层。
+# 顺手清掉 setTheme 的 toast（它会盖住 URL 输入框 / 笔记状态行），并把底部 tab 的高亮
+# 挪到「我的」：shoot() 只能写 state.tab（setTab 不在导出表），tabbar 的 .on 得自己点。
+SHOT_WAIT=3
+# 主题必须单独一发，不能和注入写在同一个载荷里：setTheme("dark") 会让 Activity 走
+# night mode 重建、WebView 重新加载，同一个载荷里后面的语句（ST 夹具、settingsSheet()）
+# 随旧页面一起丢掉 —— 暗色设置页就拍成「整屏糊掉、面板不在上面」（真机复现过）。
+settheme() {
+  "$PY" -c 'import json,sys; print(json.dumps({"js":"setTheme(\""+sys.argv[1]+"\")"}))' "$1" > "$TMPDIR/vtheme.json"
+  asroot_global "sh '$JSEVAL' '$TMPDIR/vtheme.json'"
+  sleep 2.5
+}
+CLEAN="shotOverlay(false); closeSheet();"
+# toast 是 setTheme 之后异步弹的，清它必须放在载荷末尾（+ 一点沉降时间，让弹层入场动画走完）。
+TOAST="await sleep(500); var _t=document.getElementById('toast'); if(_t) _t.className='';"
+MINEON="Array.prototype.forEach.call(document.querySelectorAll('.tabbar .tab'), function(b){ b.className='tab'+(b.dataset.tab==='mine'?' on':'') });"
+# 弹层入场是 .sheet.on .panel 的 transform 过渡；WebView 刚因 night mode 重建时这个过渡
+# 有概率不启动，面板停在初始态（截图就是「整屏糊掉、面板不在上面」，真机复现过）。
+# 摘掉 on 再强制回流挂回去，过渡一定重跑。
+SHEETON="var _sh=document.getElementById('sheet'); _sh.className='sheet'; void _sh.offsetWidth; _sh.className='sheet on';"
+settheme light
+shoot vue-stats-light "${CLEAN} __enote.state.tab='mine'; ${MINEON} ${STFIX} await render(); ${TOAST}"
+settheme dark
+shoot vue-stats-dark "${CLEAN} __enote.state.tab='mine'; ${MINEON} ${STFIX} await render(); ${TOAST}"
+settheme light
+shoot vue-settings-light "${CLEAN} __enote.state.tab='mine'; ${MINEON} await render(); settingsSheet(); ${SHEETON} ${TOAST}"
+settheme dark
+shoot vue-settings-dark "${CLEAN} __enote.state.tab='mine'; ${MINEON} await render(); settingsSheet(); ${SHEETON} ${TOAST}"
+SHOT_WAIT=1.5
 # 收干净：进度层关掉、弹层关掉、暂存夹具删掉，别让下一轮测试接到脏状态
 asroot_global "am start --display $VDID -n $ACTIVITY --es hook jseval --es arg '{\"js\":\"(async function(){ shotOverlay(false); closeSheet(); console.log(\\\"SHOT cleanup ok=1\\\") })()\"}'" >/dev/null
 curl -s -m 30 -X POST "http://127.0.0.1:$PORT/api/clip/clear" >/dev/null 2>&1 || true
@@ -137,3 +185,6 @@ say "步骤 8 图片唯一数：$m / 4"
 c=$(md5sum vue-clip-*.png 2>/dev/null | awk '{print $1}' | sort -u | wc -l)
 say "步骤 9 图片唯一数：$c / 2"
 [ "$c" -ge 2 ] || die "步骤 9 截图重复/缺失：clipSheet 注入没生效或剪贴板夹具没到位"
+s=$(md5sum vue-stats-*.png vue-settings-*.png 2>/dev/null | awk '{print $1}' | sort -u | wc -l)
+say "步骤 10 图片唯一数：$s / 4"
+[ "$s" -ge 4 ] || die "步骤 10 截图重复/缺失：我的页/设置页注入没生效（ST 夹具或 settingsSheet 没跑）"

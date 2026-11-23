@@ -972,6 +972,11 @@ NOTES0=$(api_state | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["
 # 权限：直接用 root 授掉，跳过系统弹窗（真机上由用户点"去授权"）
 asroot_global "pm grant $APP_PACKAGE android.permission.READ_MEDIA_IMAGES" >/dev/null 2>&1 || true
 asroot_global "rm -rf $SHOTDIR; mkdir -p $SHOTDIR"
+# MediaStore 的行不随 root 的 rm 消失（删文件不触发 MediaObserver），旧行的 date_added
+# 还是上次跑的时间。扫描按 date_added 过滤（rangeDays=1），所以跑满 24h 之后这两张刚好
+# 掉出窗口 → added=0 假红（步骤 10 验收跑第一次踩到，距上次绿跑 24h01m）。
+# 删行让扫描重新登记，date_added 就是现在；扫描本身会重建行。
+asroot_global "content delete --uri content://media/external/images/media --where \"_data LIKE '%Pictures/enote-test%'\"" >/dev/null 2>&1 || true
 # 暂存区也要清：上次跑失败留下的 t1/t2 还躺在里面，「合并 2 张」会拿到 4 张附件（真红过）。
 # 这一步必须可重跑，不然每次失败都要先手动清数据。
 STALE=$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin)["shots"]]))')
@@ -1390,15 +1395,19 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
 #
 # 步骤 6 起参数化（vdiff_tab <tab>）：每迁一个 tab 就加一行调用。只比 notes 时，todos 转
 # Vue 后的 DOM 漂移是无人值守的 —— VDIFF 绿着，但它比的是 notes。
-vdiff_tab() {   # $1 = tab 名（notes / todos / files / shots / stats / settings）
+vdiff_tab() {   # $1 = tab 名（notes / todos / files / mine）  $2 = 可选：注入 __enote.state.ST 的 JSON
 VD_TAB=$1
+VD_ST=${2:-}
 # 日志窗口：从本步起算（readtlog 不切 + 自己记 NVD）。不能用 newtlog：它从整轮
 # 开头切，上一轮跑剩的同名 token 就在窗口里，等待循环会立刻 break，断言读到的是
 # 上一轮的旧数据（假绿：VDIFF 永远 same=1，NINT 读到上一轮的 empty=false）。
 NVD=$(readtlog | wc -l)
-"$PY" - "$VD_TAB" > "$TMPDIR/jsvdiff.json" <<'PYV'
-import json, sys
+"$PY" - "$VD_TAB" "$VD_ST" > "$TMPDIR/jsvdiff.json" <<'PYV'
+import json, sys, urllib.parse
 tab = sys.argv[1]
+# 夹具要注成 JS 字符串字面量，而 jseval 载荷是 shell 单引号参数（闸门② 禁止载荷里出现
+# 单引号），JSON 里全是双引号：两边都不能直接拼。先 URI 编码，载荷里 decodeURIComponent。
+st = urllib.parse.quote(sys.argv[2] if len(sys.argv) > 2 else '')
 js = r'''(async function(){
   var TAB="__TAB__";
   var L=function(m){console.log("VDIFF "+m)};
@@ -1410,12 +1419,25 @@ js = r'''(async function(){
      兜底 + 全程 try/catch 把异常打进日志——夹具本身要永远给结论，不能跟着一起挂。 */
   try {
   __enote.state.tab=TAB;
+  /* 我的页的数据来自 /api/stats（ST），夹具不能依赖真机上的笔记数，所以从测试侧注入一份。
+     走状态桥的 setter（载荷里直接写 ST=… 只会新建 window 全局，模块里的 ST 不动）。 */
+  if("__ST__"!==""){ E.state.ST=JSON.parse(decodeURIComponent("__ST__")); L("st=1") }
+  /* 入场动画的 seen 是一次性状态（enterCls 首次见到某个 id 才返回「 enter」）：两条路径
+     必须从同一状态出发，否则先跑的那条把 id 记进 seen，后跑的那条就没有 enter。
+     真机上 tab 切换会 clearSeen()（app.js:2153），夹具里手动补上这一下。 */
+  if(E.clearSeen) E.clearSeen();
   await Promise.race([render(), new Promise(function(r){ setTimeout(r, 4000) })]);
   L("rendered=1");
   var pane=document.querySelector(".pane[data-tab="+TAB+"]");
   // 这些 skip 现在都会被 python 侧判红（比较对象缺失 = 没测）
   if(!pane){ L("skip=no-pane"); L("done=1"); return; }
+  if(E.clearSeen) E.clearSeen();
   var vueHtml=pane.innerHTML, oldHtml=E.legacy[TAB]();
+  L("isvue="+((E.vue&&E.vue.isVue&&E.vue.isVue(TAB))?1:0));
+  L("stats="+pane.querySelectorAll(".stat").length);
+  L("chips="+pane.querySelectorAll(".tagrow .chip").length);   // 标签卡的结构是 .tagrow > .chip.tag
+  L("skel="+(pane.querySelector(".skel")?1:0));
+  L("hero="+(pane.querySelector(".hstats")?pane.querySelector(".hstats").textContent.replace(/\s+/g," "):""));   // .hver 是版本号那一行，两种形态都一样；「正在统计…」在 .hstats 里
   /* 遗留字符串要过一遍和 render() 相同的收尾再比：syncExpand 会按正文高度把「展开详情」
      按钮设成 display:none，Vue 那侧的 DOM 是收尾后的，raw 字符串没有这一步。
      临时 pane 必须挂在 #view 里（syncExpand 的选择器是 #view .card）。 */
@@ -1428,7 +1450,11 @@ js = r'''(async function(){
     if(n.nodeType!==1) return "";
     var a=[],i; for(i=0;i<n.attributes.length;i++){ var nm=n.attributes[i].name;
       if(/^on/i.test(nm)) continue;   // 见下面 norm() 的注释
-      a.push(nm+"="+norm(nm, n.attributes[i].value)); }
+      var vv=norm(nm, n.attributes[i].value);
+      /* 空的 style 属性与没有 style 属性在 CSS 上完全等价：syncExpand 把「展开详情」按钮的
+         display 设过一遍再清掉，Vue 那侧就留下 style=""，字符串路径没有这个属性。 */
+      if(nm==="style" && vv==="") continue;
+      a.push(nm+"="+vv); }
     a.sort();
     var kids=[]; for(var c=n.firstChild;c;c=c.nextSibling){ var s=ser(c); if(s!=="") kids.push(s); }
     var t=n.tagName.toLowerCase();
@@ -1441,6 +1467,10 @@ js = r'''(async function(){
      DOM 里没有 onclick 属性。它们是绑定机制不是 DOM 形状，两条路径的 handler 存在性由
      闸门①（onclick）与闸门①b（@click）分别验，都要求名字在导出表里。 */
   function norm(name, v){
+    /* enter 是一次性入场动画标记（enterCls 只在某个 id 首次出现时给），它的有无取决于两条
+       路径谁先画、后台轮询有没有在中间插一次重绘 —— 那是绘制时机，不是 DOM 形状。动画本身
+       由 CSS 与视觉截图覆盖，这里归一化掉，否则夹具变成在比时序（真机上偶发红的根因）。 */
+    if(name==="class") return v.split(/\s+/).filter(function(c){return c&&c!=="enter"}).join(" ");
     if(name!=="style") return v;
     var d=document.createElement("div"); d.setAttribute("style", v); return d.style.cssText;
   }
@@ -1458,7 +1488,7 @@ js = r'''(async function(){
   }
   }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
   L("done=1");
-})()'''.replace("__TAB__", tab)
+})()'''.replace("__TAB__", tab).replace("__ST__", st)
 print(json.dumps({"js": js}))
 PYV
 # jseval 钩子只在 .devmode 存在时干活（上面一行刚把它删了），不重新 touch 就是
@@ -1474,6 +1504,7 @@ done
 readtlog | tail -n +$((NVD + 1)) | grep 'VDIFF' | "$PY" -c '
 import sys, re
 tab = sys.argv[1]
+st = sys.argv[2] if len(sys.argv) > 2 else ""   # 本块在 shell 单引号里，python 只能用双引号
 lines = [l.strip() for l in sys.stdin if "VDIFF" in l]
 d = {}
 for l in lines:
@@ -1487,13 +1518,38 @@ if d.get("skip"):
 assert d.get("done") == "1", "VDIFF 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
 assert d.get("same"), "%s：Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  旧: %s\n  Vue: %s" % (
     tab, d.get("at"), d.get("old", "")[:200], d.get("vue", "")[:200])
+# 正向断言「这一页真的由 Vue 挂载」：VDIFF 比 DOM，两条路径的 DOM 按设计逐字相同，
+# 它结构上分不出走了哪条（步骤 5 实测：注册表被合掉时 VDIFF/NINT 全绿而 Vue 一行没跑）。
+assert d.get("isvue") == "1", "%s：不在 VUE_VIEWS 注册表里，这一页根本没走 Vue" % tab
+# 步骤 10：我的页的两遍夹具各自要看到自己的形态，否则「比了个空页」也会绿。
+if tab == "mine":
+    if st:
+        assert int(d.get("stats", 0)) == 6, \
+          "我的页夹具那一遍没六张统计卡（stats=%s）：ST 注入没生效" % d.get("stats")
+        assert d.get("chips") == "2", \
+          "我的页夹具的标签 chips 不对（chips=%s）：夹具里是 工作/阅读/工作，去重后应 2 个" % d.get("chips")
+        assert "正在统计" not in (d.get("hero") or ""), \
+          "ST 已注入但 hero 还是未加载形态（hero=%r）" % d.get("hero")
+    else:
+        assert d.get("skel") == "1" and int(d.get("stats", 0)) == 0, \
+          "我的页未加载那一遍没比到骨架屏（skel=%s stats=%s）" % (d.get("skel"), d.get("stats"))
+        assert "正在统计" in (d.get("hero") or ""), \
+          "hero 的未加载形态不对（hero=%r）" % d.get("hero")
 print("  ok (%s 规范化后 DOM 逐字一致，长度 %s)" % (tab, d.get("len")))
-' "$VD_TAB"
+' "$VD_TAB" "$VD_ST"
 asroot_global "rm -f '$DATA/enote/.devmode'"
 }
 vdiff_tab notes
 vdiff_tab todos
 vdiff_tab files
+# 步骤 10：我的页。两遍：ST 未加载（hero 的「正在统计…」+ 骨架屏）与 ST 已加载（四张
+# 统计卡 + 标签 chips + 笔记状态 + 运行信息）。第二遍的夹具走状态桥注入，不依赖真机数据。
+vdiff_tab mine
+# 夹具字段取自真机 /api/stats 的形状，值固定：renderMine 读 s.ai.calls、chartHTML 读
+# s.days（七条，label 里带「昨天 / 今天」这种相对日期，夹具写死才不会随日期漂移）、
+# 标签卡读 s.tags（两条 → chips==2）。少一个字段就是 Vue 渲染抛 TypeError，症状是
+# 「VDIFF 载荷没跑完（无 done）」。
+vdiff_tab mine '{"notes":{"total":3,"done":1,"raw":1,"error":1,"queued":1,"parsing":0},"todos":{"total":2,"open":1,"overdue":1},"attach":{"count":4,"missing":1},"bytes":1572864,"ai":{"calls":12,"ok":11,"fail":1,"avgMs":2300,"model":"fixture-model","url":"https://fixture.test/v1","lastAt":"2026-11-24T01:00","lastMs":1200},"days":[{"day":"2026-11-18","label":"11-18","notes":0,"todos":0,"done":0},{"day":"2026-11-19","label":"11-19","notes":1,"todos":0,"done":1},{"day":"2026-11-20","label":"11-20","notes":0,"todos":2,"done":0},{"day":"2026-11-21","label":"11-21","notes":2,"todos":1,"done":1},{"day":"2026-11-22","label":"11-22","notes":0,"todos":0,"done":0},{"day":"2026-11-23","label":"昨天","notes":3,"todos":2,"done":2},{"day":"2026-11-24","label":"今天","notes":3,"todos":1,"done":1}],"tags":[{"tag":"工作","n":3},{"tag":"阅读","n":1}]}'
 
 step "浮层页（截图暂存 / 选文件夹）的 DOM 与字符串渲染器逐字一致"
 # vdiff_tab 比的是 tab pane；截图页与选文件夹页是 pageSheet 全屏浮层，容器是 #sheet .pbody，
@@ -1543,6 +1599,16 @@ js = r'''(async function(){
         if((b&&(b.querySelector(".clipitem")||b.querySelector(".empty")))||t>20){res();return}
         t++; setTimeout(probe,200);
       })(); });
+    } else if(NAME==="settings"){
+      /* 设置页是弹层，数据来自 /api/state（真设置，含真 API Key）与 /api/stats。
+         夹具不改数据：这一遍比的是「真机当前设置」下两条路径的 DOM，注入反而会把
+         「设置页显示的就是已保存的 key」这条真实语义绕开。 */
+      settingsSheet();
+      await new Promise(function(res){ var t=0;(function probe(){
+        var b=document.querySelector("#sheet .pbody");
+        if((b&&b.querySelector("#sUrl"))||t>20){res();return}
+        t++; setTimeout(probe,200);
+      })(); });
     } else {
       shotSheet();
       await new Promise(function(res){ var t=0;(function probe(){
@@ -1562,6 +1628,12 @@ js = r'''(async function(){
     L("foot="+(body.querySelector("#shotFoot")?body.querySelector("#shotFoot").textContent.replace(/\s+/g," "):""));
     L("count="+(body.querySelector("#folderCount")?body.querySelector("#folderCount").textContent.replace(/\s+/g," "):""));
     L("clips="+body.querySelectorAll(".clipitem").length);
+    L("sinputs="+body.querySelectorAll("#sUrl,#sKey,#sModel,#sTimeout,#sMax,#sTemp").length);
+    L("ssegn="+(body.querySelector(".seg")?body.querySelector(".seg").children.length:0));
+    L("ssw="+body.querySelectorAll(".sw").length);
+    L("skv="+body.querySelectorAll(".kv").length);
+    L("sacts="+body.querySelectorAll(".acts").length);
+    L("kind="+(((document.getElementById("panel")||{}).dataset||{}).kind||""));
     L("cfoot="+(body.querySelector("#clipFoot")?body.querySelector("#clipFoot").textContent.replace(/\s+/g," "):""));
     var vueHtml=body.innerHTML, oldHtml=E.legacy[NAME]();
     function ser(n){
@@ -1569,13 +1641,21 @@ js = r'''(async function(){
       if(n.nodeType!==1) return "";
       var a=[],i; for(i=0;i<n.attributes.length;i++){ var nm=n.attributes[i].name;
         if(/^on/i.test(nm)) continue;   // 内联 handler 是绑定机制不是 DOM 形状（见 vdiff_tab）
-        a.push(nm+"="+norm(nm, n.attributes[i].value)); }
+        var vv=norm(nm, n.attributes[i].value);
+        /* 空的 style 属性与没有 style 属性在 CSS 上完全等价：syncExpand 把「展开详情」按钮的
+           display 设过一遍再清掉，Vue 那侧就留下 style=""，字符串路径没有这个属性。 */
+        if(nm==="style" && vv==="") continue;
+        a.push(nm+"="+vv); }
       a.sort();
       var kids=[]; for(var c=n.firstChild;c;c=c.nextSibling){ var s=ser(c); if(s!=="") kids.push(s); }
       var t=n.tagName.toLowerCase();
       return "<"+t+(a.length?" "+a.join(" "):"")+">"+kids.join("")+"</"+t+">";
     }
     function norm(name, v){
+      /* enter 是一次性入场动画标记（enterCls 只在某个 id 首次出现时给），它的有无取决于两条
+         路径谁先画、后台轮询有没有在中间插一次重绘 —— 那是绘制时机，不是 DOM 形状。动画本身
+         由 CSS 与视觉截图覆盖，这里归一化掉，否则夹具变成在比时序（真机上偶发红的根因）。 */
+      if(name==="class") return v.split(/\s+/).filter(function(c){return c&&c!=="enter"}).join(" ");
       if(name!=="style") return v;
       var d=document.createElement("div"); d.setAttribute("style", v); return d.style.cssText;
     }
@@ -1646,8 +1726,19 @@ if mode == "fake":
 if mode == "empty" and name == "folders":
     assert d.get("empty") == "1" and int(d.get("rows", 0)) == 0, \
       "文件夹页空态那一遍没比到空态（empty=%s rows=%s）" % (d.get("empty"), d.get("rows"))
-print("  ok (%s %s 规范化后 DOM 逐字一致，长度 %s；items=%s rows=%s clips=%s empty=%s)" % (
-    name, mode, d.get("len"), d.get("items"), d.get("rows"), d.get("clips"), d.get("empty")))
+# 步骤 10：设置页的正向断言。VDIFF 比 DOM 分不出走了哪条路径，而设置页最易漂移的三处
+# （输入框 value 属性、主题 seg 的 on、开关的 .on）都得真的在页面上才算比到了东西。
+if name == "settings":
+    assert d.get("kind") == "settings", \
+      "设置页的 #panel dataset.kind 不是 settings（实际 %r）：CSS 钩子断了，.pbody[data-kind=settings] 的样式全丢" % d.get("kind")
+    assert int(d.get("sinputs", 0)) == 6, \
+      "设置页的六个输入框没全在（sinputs=%s）：:value.attr 写错时 value 属性会整体消失" % d.get("sinputs")
+    assert d.get("ssegn") == "3", "主题 seg 不是三个按钮（ssegn=%s）" % d.get("ssegn")
+    assert int(d.get("ssw", 0)) >= 2, "常驻后台 / 启用 AI 两个开关没都在（ssw=%s）" % d.get("ssw")
+    assert int(d.get("sacts", 0)) >= 3, "设置页的动作行少于三组（sacts=%s）" % d.get("sacts")
+print("  ok (%s %s 规范化后 DOM 逐字一致，长度 %s；items=%s rows=%s clips=%s empty=%s skv=%s sacts=%s)" % (
+    name, mode, d.get("len"), d.get("items"), d.get("rows"), d.get("clips"), d.get("empty"),
+    d.get("skv"), d.get("sacts")))
 ' "$VD_NAME" "$VD_MODE"
 asroot_global "rm -f '$DATA/enote/.devmode'"
 }
@@ -1701,6 +1792,10 @@ assert len(clips) >= 3, "剪贴板夹具只到 %d 条（需要 ≥3）：clipset
 print("  ok (剪贴板夹具 %d 条)" % len(clips))
 ' || fail "造剪贴板暂存夹具失败（剪贴板页网格那一遍没条目可比）"
 vdiff_sheet clip grid
+# 步骤 10：设置页（弹层）。它是唯一带表单的弹层，六个输入框的 value 属性、三个主题
+# 按钮的 class、两个开关的 .on 都是字符串路径与 Vue 最容易漂移的地方（:value 写 DOM
+# property 时序列化出来根本没有 value 属性，:value.attr 才有）。
+vdiff_sheet settings form
 
 step "剪贴板页交互在 Vue 路径上真的生效（勾选/全选/计数/单条删除/删除所选）"
 # 同截图页：DOM 夹具比的是「画出来一样」，computed 读普通模块变量时签名与夹具全绿
@@ -1836,6 +1931,160 @@ am_start "$ACTIVITY" "--es hook clipset --es arg ' '" >/dev/null 2>&1 || true
 sleep 2
 api_post clip/clear '' >/dev/null 2>&1 || true
 vdiff_sheet clip empty
+
+step "设置页（弹层）交互在 Vue 路径上真的生效（开页/主题/开关/保存/确认框）"
+# 设置页是本次迁移里唯一带表单的页面，也是唯一有「写完要恢复」的页面：主题、AI 开关、
+# 保存都是真写盘（/api/theme、/api/settings），用例一律点过去再点回来，不留下改动；
+# 清空全部只到确认框就取消（真机上这台机器的笔记不能删）。
+# 全部走真点击：从我的页的行点进设置（这条链步骤 2 后断过：settingsSheet 不在导出表，
+# 点了只报 ReferenceError），再点主题 seg / AI 开关 / 保存 / 清空全部。
+NSET=$(readtlog | wc -l)
+"$PY" > "$TMPDIR/jsset.json" <<'PYSET'
+import json
+js = r'''(async function(){
+  var L=function(m){console.log("SET "+m)};
+  var E=window.__enote||{};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var S=function(){return document.querySelector("#sheet .pbody")};
+  var q=function(s){return S()?S().querySelector(s):null};
+  var qa=function(s){return S()?Array.prototype.slice.call(S().querySelectorAll(s)):[]};
+  var on=function(el,cls){return new RegExp("(^| )"+cls+"( |$)").test(el&&el.className||"")};
+  var click=function(el){ if(!el) return false; el.click(); return true };
+  var byText=function(sel,txt){ var hit=null; Array.prototype.forEach.call(document.querySelectorAll(sel), function(b){ if(b.textContent.trim()===txt) hit=b }); return hit };
+  try{
+    L("legacy="+(E.legacy&&E.legacy.settings?1:0));
+    L("isvue="+(E.vue.isVueSheet("settings")?1:0));
+    var theme0=(E.state.S.settings||{}).theme||"light";
+    var notes0=E.state.S.info.notes||0;
+    /* 从我的页点进设置：同时测到「我的页的行 → settingsSheet()」这条链。
+       先关掉上一用例留下的弹层（clip 的 VDIFF 会把剪贴板页开着走），否则 S() 读到的
+       .pbody 是那一页的。 */
+    if(on(document.getElementById("sheet"),"on")) closeSheet();
+    /* 我的页的六行入口在 ST 未加载时不画（renderMine 提前 return），而 statsNow() 有个
+       stBusy 互斥标志：套件里前一步刚清过库（clearAllNotes 把 ST 置 null），那个标志卡住时
+       tab 点击不会去取统计，症状就是「我的页上没有设置行」。夹具直接取真 /api/stats 注入
+       状态桥，不依赖那个标志；tab 仍然真点（这是本用例的主题）。
+       闸门② 禁止载荷里出现反引号与单引号（shell 的单引号参数会吃掉它们），注释也一样。 */
+    E.state.ST = await api("/api/stats");
+    var tabBtn=document.querySelector(".tabbar .tab[data-tab=mine]");
+    L("tabBtn="+(tabBtn?1:0));
+    click(tabBtn);
+    /* 六行入口是 ST 到位、render 之后才有的，所以要等。 */
+    await new Promise(function(res){ var t=0;(function probe(){
+      var hit=Array.prototype.some.call(document.querySelectorAll("#view .li"), function(x){ return /设置/.test(x.textContent) });
+      if(hit||t>25){ res(); return }
+      t++; setTimeout(probe,200);
+    })(); });
+    var row=null;
+    Array.prototype.forEach.call(document.querySelectorAll("#view .li"), function(x){ if(/设置/.test(x.textContent)) row=x });
+    L("row="+(row?1:0));
+    click(row); await sleep(700);
+    L("opened="+(q("#sUrl")?1:0));
+    L("mounted="+(E.vue.sheets.settings?1:0));
+    L("kind="+(((document.getElementById("panel")||{}).dataset||{}).kind||""));
+    L("inputs="+qa("#sUrl,#sKey,#sModel,#sTimeout,#sMax,#sTemp").length);
+    /* 输入框的 value 属性：遗留路径写字符串属性，Vue 要写 :value.attr 才有（:value 走
+       DOM property，序列化出来没有 value 属性）。saveSettings() 读的是 .value，
+       新建 input 的 value 从属性来，所以这一条同时钉住「保存不会存空值」。 */
+    L("urlAttr="+(q("#sUrl")&&q("#sUrl").getAttribute("value")!==null?1:0));
+    L("kv="+qa(".kv").length);
+    var seg=q(".seg"); var btns=seg?Array.prototype.slice.call(seg.children):[];
+    L("seg="+btns.length);
+    if(btns.length===3){
+      click(btns[1]); await sleep(800);
+      L("themeDark="+document.documentElement.getAttribute("data-theme"));
+      var nb=Array.prototype.slice.call((q(".seg")||{children:[]}).children), onIdx=-1;
+      for(var i=0;i<nb.length;i++) if(on(nb[i],"on")) onIdx=i;
+      L("onIdx="+onIdx);
+      click(nb[0]); await sleep(800);
+      L("themeBack="+document.documentElement.getAttribute("data-theme"));
+    }
+    /* AI 开关：toggleAI 翻 useAI + el.classList.toggle + saveSettings（POST /api/settings）
+       再 render()。页面上第一个 .sw 是常驻后台（点它会弹确认框），第二个是启用 AI。 */
+    var swAll=document.querySelectorAll("#sheet .sw");
+    L("sw="+swAll.length);
+    var a0=swAll[1]&&on(swAll[1],"on")?1:0;
+    click(swAll[1]); await sleep(900);
+    swAll=document.querySelectorAll("#sheet .sw");
+    var a1=swAll[1]&&on(swAll[1],"on")?1:0;
+    var st1=E.state.S.settings.useAI?1:0;
+    L("aiFlip="+((a1!==a0&&st1===a1)?1:0));
+    click(swAll[1]); await sleep(900);
+    swAll=document.querySelectorAll("#sheet .sw");
+    var a2=swAll[1]&&on(swAll[1],"on")?1:0;
+    L("aiBack="+(a2===a0&&E.state.S.settings.useAI===(a0===1)?1:0));
+    var saveBtn=byText("#sheet .btn","保存");
+    L("saveBtn="+(saveBtn?1:0));
+    click(saveBtn); await sleep(900);
+    L("toast="+document.getElementById("toast").textContent.trim());
+    /* 清空全部：只测到确认框，点取消（真机数据不能删）。 */
+    var clearBtn=byText("#sheet .btn","清空全部");
+    L("clearBtn="+(clearBtn?1:0));
+    click(clearBtn); await sleep(400);
+    L("dlgOn="+(on(document.getElementById("dlg"),"on")?1:0));
+    L("dlgYes="+document.getElementById("dlgYes").textContent.trim());
+    click(document.getElementById("dlgNo")); await sleep(400);
+    L("dlgClosed="+(on(document.getElementById("dlg"),"on")?0:1));
+    /* 关闭：弹层头部是 .iconbtn 图标按钮（aria-label=返回），没有「关闭」文字按钮
+       —— 第一版按 byText("关闭") 找，找不到就是点了个空，closed 永远 0。 */
+    var closeBtn=document.querySelector("#sheet .phead .iconbtn");
+    L("closeBtn="+(closeBtn?1:0));
+    click(closeBtn); await sleep(500);
+    L("closed="+(on(document.getElementById("sheet"),"on")?0:1));
+    L("notesKept="+((E.state.S.info.notes||0)===notes0?1:0));
+    L("themeRestored="+((E.state.S.settings.theme||"light")===theme0?1:0));
+  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
+  L("done=1");
+})()'''
+print(json.dumps({"js": js}))
+PYSET
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsset.json'"
+for i in $(seq 1 40); do
+  readtlog | tail -n +$((NSET + 1)) | grep -q 'SET done=1' && break
+  sleep 0.5
+done
+readtlog | tail -n +$((NSET + 1)) | grep 'SET' | "$PY" -c '
+import sys, re
+lines = [l.strip() for l in sys.stdin if "SET " in l]
+d = {}
+for l in lines:
+    m = re.search(r"SET (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+assert d.get("done") == "1", "SET 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+assert d.get("ERR") is None, "SET 前端抛异常：%s" % d.get("ERR")
+assert d.get("legacy") == "1", "设置页的遗留基准不在（__enote.legacy.settings）"
+assert d.get("isvue") == "1", "设置页不在 VUE_SHEETS 注册表里（走的是遗留路径）"
+assert d.get("tabBtn") == "1", "底部 tabbar 找不到「我的」按钮（.tabbar .tab[data-tab=mine]）"
+assert d.get("row") == "1", "我的页上没有「设置」行"
+assert d.get("opened") == "1", "点我的页的「设置」行没打开设置页（handler 链断了）"
+assert d.get("mounted") == "1", "设置页没被 Vue 挂载"
+assert d.get("kind") == "settings", "#panel dataset.kind 不是 settings（CSS 钩子断了）"
+assert d.get("inputs") == "6", "六个输入框没全在（inputs=%s）" % d.get("inputs")
+assert d.get("urlAttr") == "1", "#sUrl 没有 value 属性：:value 写的是 DOM property，序列化出来没属性"
+assert int(d.get("kv", 0)) >= 10, "设置页的 kv 行少于 10（kv=%s）：采集/OCR/数据/运行状态 卡没画全" % d.get("kv")
+assert d.get("seg") == "3", "主题 seg 不是三个按钮（seg=%s）" % d.get("seg")
+assert d.get("themeDark") == "dark", "点「暗色」后 data-theme 不是 dark（实际 %r）" % d.get("themeDark")
+assert d.get("onIdx") == "1", "点暗色后 seg 的 on 没移到第二个按钮（onIdx=%s）" % d.get("onIdx")
+assert d.get("themeBack") == "light", "点回亮色后 data-theme 不是 light（实际 %r）" % d.get("themeBack")
+assert int(d.get("sw", 0)) == 2, "常驻后台 / 启用 AI 两个开关没都在（sw=%s）" % d.get("sw")
+assert d.get("aiFlip") == "1", "点启用 AI 开关后 class 与 settings.useAI 没一起翻"
+assert d.get("aiBack") == "1", "再点一次没回到原状态（测试把真机设置改掉了）"
+assert d.get("saveBtn") == "1", "设置页上没有「保存」按钮"
+assert "已保存" in (d.get("toast") or ""), "点保存没得到「已保存」（toast=%r）" % d.get("toast")
+assert d.get("clearBtn") == "1", "设置页数据卡上没有「清空全部」按钮"
+assert d.get("dlgOn") == "1", "点清空全部没弹确认框"
+assert d.get("dlgYes") == "删除", "确认框的确定按钮文案不对（实际 %r）" % d.get("dlgYes")
+assert d.get("dlgClosed") == "1", "点取消没关掉确认框"
+assert d.get("closeBtn") == "1", "弹层头部找不到返回按钮（.phead .iconbtn）"
+assert d.get("closed") == "1", "点关闭没关掉设置弹层（unmountSheet 没生效）"
+assert d.get("notesKept") == "1", "清空全部取消后笔记数变了（真机数据被动了）"
+assert d.get("themeRestored") == "1", "主题没恢复成测试前的值"
+print("  ok (真点击：我的页→设置、主题 亮→暗→亮、AI 开关翻回、保存、清空确认框取消、关闭卸载）"
+)
+'
+asroot_global "rm -f '$DATA/enote/.devmode'"
 
 step "截图页交互在 Vue 路径上真的生效（勾选/全选/实时计数/按钮收敛）"
 # 上面的夹具只证明「画出来一样」，不证明「点了会动」：computed 读普通模块变量（没响应式

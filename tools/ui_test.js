@@ -129,7 +129,7 @@ function setHostKeys(src) {
   return keys;
 }
 
-function exportTableKeys(src) {
+function exportTableBody(src) {
   const m = /window\.__enoteActions\s*=\s*\{/.exec(src);
   if (!m) return null;
   let depth = 0, end = -1;
@@ -139,8 +139,14 @@ function exportTableKeys(src) {
     else if (c === '}' && --depth === 0) { end = i; break; }
   }
   if (end < 0) return 'UNCLOSED';
+  return src.slice(m.index + m[0].length, end);
+}
+
+function exportTableKeys(src) {
+  const body = exportTableBody(src);
+  if (body === null || body === 'UNCLOSED') return body;
   const keys = new Set();
-  for (const part of splitTopLevel(src.slice(m.index + m[0].length, end), ',')) {
+  for (const part of splitTopLevel(body, ',')) {
     const p = part.trim();
     const short = p.match(/^([A-Za-z_$][\w$]*)$/);                 // 简写 { api }
     if (short) { keys.add(short[1]); continue; }
@@ -255,6 +261,84 @@ if (STRICT && total < HANDLER_BASELINE) {
 } else if (STRICT) {
   ok('handler 总数 ' + total + '（内联 ' + handlerCount + ' + Vue 模板 ' + vueCount
     + '）≥ 基线 ' + HANDLER_BASELINE + (vueCount ? '，Vue 模板部分已解析' : '，尚无 Vue 模板'));
+}
+
+// ---------- 闸门①d handler 字符串参数（步骤 10）----------
+// 我的页的行是 liHTML('settings','设置','…','settingsSheet()')：handler 作为**字符串参数**
+// 传给叶子函数，最后拼成 onclick。闸门① 只扇 onclick="…" 字面量，扇不到这种写法：
+// 转 module（步骤 2）后 settingsSheet / scanShotsNow / rescanShots / clearShots 四个名字
+// 不再是全局，我的页上那四行点了就是 ReferenceError，而闸门与签名全绿。
+// 本闸门扇「整串就是一个调用」的字符串字面量，名字必须在导出表里（= 在 window 上）。
+const handlerArgRe = /(['"`])\s*((?:[A-Za-z_$][\w$]*)\s*\([^'"`]*\))\s*\1/g;
+const argMissing = new Map();
+let argCount = 0;
+for (const [f, src] of jsSources) {
+  for (const m of src.matchAll(handlerArgRe)) {
+    const name = m[2].match(/^([A-Za-z_$][\w$]*)/)[1];
+    argCount++;
+    if (BUILTIN.has(name) || domain.has(name)) continue;
+    argMissing.set(name + '@' + f, (argMissing.get(name + '@' + f) || 0) + 1);
+  }
+}
+if (argMissing.size) {
+  bad('handler 字符串参数调了导出表里没有的函数（点了没反应）',
+    [...argMissing].map(([k, v]) => k + '×' + v).join(', '));
+} else {
+  ok('handler 字符串参数 ' + argCount + ' 处全部能在导出表里解析');
+}
+
+// ---------- 闸门①e 导出表的右值必须是 app.js 里真存在的名字（步骤 10）----------
+// 闸门① 只查「handler 名 ⊆ 导出表 key」，表体里那个值的右值没人查。步骤 10 的
+// exportJSON 就是这么漏过去的：表里写了 `exportJSON,`，而 app.js 里从来没定义过这个函数
+// —— module 求值到那一行就抛 ReferenceError，整页 JS 死在首屏（真机症状：页面全白，
+// 静态闸门与签名全绿）。这条把整类封掉：凡右值是裸标识符的，必须有声明。
+function declaredNames(src) {
+  const s = new Set();
+  // 注释里出现的 function X 也会被收进来：本集合只用来宽免，宽一点只会漏报不会误报。
+  for (const re of [
+    /(?:^|\n)\s*(?:export\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)/g,
+    /(?:^|\n)\s*(?:export\s+)?(?:var|let|const)\s+([A-Za-z_$][\w$]*)/g,
+    /(?:^|\n)\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)/g
+  ]) for (const m of src.matchAll(re)) s.add(m[1]);
+  // import 的本地名：import { a, b as c } / import d from / import * as ns from
+  for (const m of src.matchAll(/(?:^|\n)\s*import\s+([^'";]*?)\s*from\s*['"]/g)) {
+    for (const sp of m[1].split(/[{},]/)) {
+      const parts = sp.trim().split(/\s+as\s+/);
+      const local = (parts[parts.length - 1] || '').trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(local)) s.add(local);
+    }
+  }
+  // 顶层解构：const { a, b: c } = … / const [a, b] = …
+  for (const m of src.matchAll(/(?:^|\n)\s*(?:var|let|const)\s*[{[]([^\]}]*)[\]}]\s*=/g)) {
+    for (const sp of m[1].split(',')) {
+      const local = sp.trim().split(':').pop().trim().replace(/^\.\.\./, '');
+      if (/^[A-Za-z_$][\w$]*$/.test(local)) s.add(local);
+    }
+  }
+  return s;
+}
+if (table instanceof Set) {
+  const declared = declaredNames(uiCode);
+  const body = exportTableBody(uiCode).replace(/\/\*[\s\S]*?\*\//g, '');
+  const undef = [];
+  for (const part of splitTopLevel(body, ',')) {
+    const p = part.trim();
+    let v = null;
+    const short = p.match(/^([A-Za-z_$][\w$]*)$/);                    // 简写 { api }
+    if (short) v = short[1];
+    else {
+      const kv = p.match(/^['"]?([A-Za-z_$][\w$]*)['"]?\s*:\s*([A-Za-z_$][\w$]*)$/);  // { api: api }
+      if (kv) v = kv[2];
+    }
+    // 右值是箭头函数 / 字符串 / 模板的不在本闸门范围（求值期不会抛 ReferenceError）
+    if (v && !declared.has(v)) undef.push(v);
+  }
+  if (undef.length) {
+    bad('导出表右值调了 app.js 里没声明的名字（module 求值就抛，整页 JS 死在首屏）：'
+      + undef.join(', '), '表体是求值期代码：少一个函数定义 = 整页白屏，不是那一个按钮失灵');
+  } else {
+    ok('导出表 ' + table.size + ' 个成员的右值全部有声明（表体是 module 求值期）');
+  }
 }
 
 // ---------- 闸门①c 组件必须真的会重绘（V.tick 拉模型的前提）----------
@@ -379,13 +463,18 @@ const CLOSED_FN = ['api', 'refresh', 'render', 'missedDismiss', 'missedSheet', '
   // 步骤 8：进度层的入口/出口（测试直接调它们，比等一次真 AI 导入稳定）
   'shotOverlay', 'shotOvlSub',
   // 步骤 9：剪贴板页交互用例的入口（其余动作靠真点击 .clipitem / 按钮，不调函数）
-  'clipSheet'];
+  'clipSheet',
+  // 步骤 10：设置页交互用例的入口（开弹层；其余动作靠真点击 seg / .sw / 按钮）
+  'settingsSheet'];
 const STATE_NAMES = ['tab', 'S', 'MISSED', 'open', 'shotSel', 'shotList', 'SR',
   // 步骤 8：文件夹页夹具要整体注入 folderAll/folderSel/folderQ（闭合集 17 → 20，
   // 与 app.js 的 __enote.state、go/web_test.go 的名单三处同步）。
   // 步骤 9 再加 CLIPS / clipSel（闭合集 20 → 22）：剪贴板页夹具走真钩子，但交互用例
   // 要读这两个名字断言勾选态。
-  'folderAll', 'folderSel', 'folderQ', 'clipList', 'clipSel'];
+  'folderAll', 'folderSel', 'folderQ', 'clipList', 'clipSel',
+  // 步骤 10 加 ST（闭合集 22 → 23）：我的页 / 设置页的夹具要注入 /api/stats 的返回，
+  // 没 setter 就是 D21 那个坑（赋值只写 window，模块里的 ST 一动不动）。
+  'ST'];
 const JS_WORDS = new Set(['var', 'let', 'const', 'if', 'else', 'for', 'while', 'do', 'return',
   'function', 'await', 'async', 'new', 'typeof', 'instanceof', 'in', 'of', 'try', 'catch', 'finally',
   'throw', 'break', 'continue', 'switch', 'case', 'default', 'class', 'extends', 'super', 'void',
@@ -818,8 +907,10 @@ if (SPLIT) {
         // 早先写的 (m[1] ? missHost : miss).add(m[2]) 收进去的是「click」这种事件名，
         // 加上下面那行过滤方向反了（删的是「在集合里的」），两条合起来让这条检查恒绿：
         // 反向实验② 实测从 setHost 里删掉模板用到的函数，闸门一点反应没有。
-        for (const m of t.matchAll(/(?:@|v-on:)(click|input|change|submit)="\s*(H\.)?([A-Za-z_$][\w$]*)\s*[(\[]/g))
+        for (const m of t.matchAll(/(?:@|v-on:)(click|input|change|submit)="\s*(H\.)?([A-Za-z_$][\w$]*)\s*[(\[]/g)) {
+          if (VUE_BUILTIN.has(m[3])) continue;   // $emit / $event 这类内建，步骤 10 的 <stats-li> 用 $emit('go')
           (m[2] ? missHost : miss).add(m[3]);
+        }
       }
       // setup() 里的 H.xxx 与模板里的走同一个宿主对象，失效方式也一样（抛错 → render()
       // 静默回退字符串渲染器），所以扫整个视图文件而不只是模板：TodoRow 的 H.cbInnerHTML
@@ -882,6 +973,26 @@ if (SPLIT) {
         }
       }
       let tickTpls = 0;
+      // 组件注册名必须真的存在：`components: { A, B }` 是速记属性，名字拼错 / 删了定义留下
+      // 引用，静态闸门以前全看不见，真机上是整模块 ReferenceError（页面白屏、导出表检查红），
+      // 代价是两次完整真机跑（步骤 10 踩过：删掉 StatsKv 定义忘了删引用）。
+      for (const f of viewFiles) {
+        const src = fs.readFileSync(f, 'utf8');
+        const imports = [...src.matchAll(/import\s*\{([^}]*)\}\s*from/g)]
+          .map(m => m[1]).join(',').split(',')
+          .map(s => s.trim().split(/\s+as\s+/).pop()).filter(Boolean);
+        for (const cm of src.matchAll(/components:\s*\{([^}]*)\}/g)) {
+          for (const n of cm[1].split(',')) {
+            const id = n.trim();
+            if (!id) continue;
+            const declared = new RegExp(String.raw`(^|\n)\s*(export\s+)?(const|let|function|class)\s+` + id + String.raw`\b`).test(src)
+              || imports.includes(id);
+            if (!declared)
+              tickErrs.push(path.basename(f) + '：components: 里的 ' + id
+                + ' 没有定义（模块加载就 ReferenceError，整页 JS 死在首屏）');
+          }
+        }
+      }
       for (const v of mounted) {
         const f = viewFiles.find(p => new RegExp('export const ' + v.comp + '\\b').test(fs.readFileSync(p, 'utf8')));
         if (!f) { tickErrs.push(v.tab + '：注册表里的 ' + v.comp + ' 在 js/ 下找不到定义'); continue }

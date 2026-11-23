@@ -16,6 +16,9 @@ import { ShotsView, ShotProgress } from './views/shots.js'
 import FoldersView from './views/folders.js'
 /* 步骤 9：剪贴板暂存页 */
 import ClipSheetView from './views/clip.js'
+/* 步骤 10：我的页（统计）+ 设置页 */
+import StatsView from './views/stats.js'
+import SettingsSheetView from './views/settings.js'
 var tab = 'notes', open = {}, busy = {};
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
@@ -1419,11 +1422,7 @@ function renderSettings(){
             +'<div class="acts"><button class="btn pri" onclick="askBattery()">去关闭电池优化</button>'
             +'<button class="btn gh" onclick="askNotify()">检查通知权限</button></div>')
        : '')
-   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">开启后通知栏会有一条常驻提示，'
-   +'这是系统允许的标准保活方式；服务每 10 分钟检查一次待办，把被系统丢掉的闹钟重新排上。'
-   +'仍有厂商会在后台强行冻结应用（连闹钟一起取消），app 无法绕过；那种情况下打开 app 时'
-   +'未完成的待办都还在「待办」页。电池优化页面的名字各厂商可能不同，这只是系统设置页，'
-   +'app 不侦测品牌。</div>'
+   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">'+settingsKeepAliveNoteHTML()+'</div>'
    +'</div>'
    +'<div class="pgroup">外观</div>'
    +'<div class="card"><div class="seg" style="margin-top:2px">'
@@ -1448,46 +1447,71 @@ function renderSettings(){
    +'<button class="btn" onclick="testLLM()">测试连接</button></div>'
    +'<div id="llmOut"></div></div>';
 
-  h += '<div class="pgroup">采集</div><div class="card">'
-   +'<div class="kv"><span>剪贴板暂存</span><span style="color:var(--acc2)">前台自动 + 顶栏按钮手动</span></div>'
-   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">打开 app 时自动暂存剪贴板里的文字；'
-   +'在别的 app 复制后切回「懒得记」即可看到，顶栏剪贴板按钮也可以随时手动收一条。'
-   +'Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。'
-   +'点「解析」才发到大模型，之前内容不会离开本机。</div></div>';
+  h += '<div class="pgroup">采集</div><div class="card">'+settingsCollectHTML()+'</div>';
 
-  h += '<div class="pgroup">本地 OCR</div><div class="card">'
-   +'<div class="kv"><span>引擎状态</span><span>'+(i.ocrReady?'<b style="color:var(--ok)">● 就绪</b>':'<span style="color:var(--warn)">◌ 初始化中</span>')+'</span></div>'
-   +'<div class="kv"><span>引擎信息</span><span>'+(S.ocrInfo||'vivo 离线 OCR')+'</span></div>'
-   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">图片只在本机识别成文字，'
-   +'只有识别出的文字（和原文）会发给模型。单条笔记可在笔记卡片上「↻ 重新识别图片」。</div></div>';
+  h += '<div class="pgroup">本地 OCR</div><div class="card">'+settingsOcrCardHTML(i)+'</div>';
 
-  h += '<div class="pgroup">数据</div><div class="card">'
-   +'<div class="kv"><span>笔记 / 待办</span><span>'+(st?st.notes.total:i.notes||0)+' / '
+  h += '<div class="pgroup">数据</div><div class="card">'+settingsDataCardHTML()+'</div>';
+
+  h += '<div class="pgroup">运行状态</div><div class="card">'+settingsRunCardHTML(i)+'</div>';
+
+  h += '<div class="pgroup">用法</div><div class="card">'+settingsUsageHTML()+'</div>';
+  return h;
+}
+/* 数据卡 / 运行状态卡（步骤 10）：整块（含按钮）交给叶子函数，两条路径共用。
+   这两块的文本是「3 / 2」这种三段拼接：模板里写成一个插值就只产生一个文本节点，
+   VDIFF 的序列化器逐节点 trim 后拼出来是「3/2」，与遗留的「3 / 2」对不上。
+   结构必须逐字一致，所以整块共用而不是拄进模板。 */
+function settingsDataCardHTML(){
+  var st = ST, i = S.info;
+  return '<div class="kv"><span>笔记 / 待办</span><span>'+(st?st.notes.total:i.notes||0)+' / '
      +(st?st.todos.total:i.todos||0)+'</span></div>'
    +'<div class="kv"><span>未完成 / 已逾期</span><span>'+(st?st.todos.open:i.open||0)+' / <b style="color:var(--bad)">'
      +(st?st.todos.overdue:i.overdue||0)+'</b></span></div>'
    +'<div class="kv"><span>附件 / 占用</span><span>'+(st?(st.attach.count||0):0)+' 个 / '
      +fmtSize(st?st.bytes:0)+'</span></div>'
-   +'<div class="acts"><button class="btn gh" onclick="location.href=\'/api/export\'">导出 JSON</button>'
+   +'<div class="acts"><button class="btn gh" onclick="exportJSON()">导出 JSON</button>'
    +'<button class="btn gh" onclick="importJSON()">导入 JSON</button>'
    +'<button class="btn dg" onclick="clearAllNotes()">清空全部</button></div>'
    +'<div style="font-size:11px;color:var(--dim);margin-top:8px">导出＝全量备份（含待办与附件元数据）；'
-   +'导入按笔记 ID 合并，已存在的笔记不覆盖；清空只删笔记与附件，设置与 API Key 保留。</div></div>';
-
-  h += '<div class="pgroup">运行状态</div><div class="card">'
-   +'<div class="kv"><span>Go 服务</span><span>'+(i.server||'')+'</span></div>'
-   +'<div class="kv"><span>Go / 运行时长</span><span>'+(i.go||'')+' / '+(i.uptimeS||0)+'s</span></div>'
-   +'<div class="kv"><span>时区</span><span>'+(i.tz||'')+'</span></div>'
+   +'导入按笔记 ID 合并，已存在的笔记不覆盖；清空只删笔记与附件，设置与 API Key 保留。</div>';
+}
+function settingsRunCardHTML(i){
+  return statsRunRowsHTML(i)
    +'<div class="kv"><span>解析队列</span><span>'+(i.queue||0)+' 条待处理</span></div>'
    +'<div class="acts"><button class="btn gh" onclick="showLog()">查看日志</button>'
-   +'<button class="btn gh" onclick="showDebug()">AI 调用记录</button></div></div>';
-
-  h += '<div class="pgroup">用法</div><div class="card"><div class="body" style="margin-top:2px">'
+   +'<button class="btn gh" onclick="showDebug()">AI 调用记录</button></div>';
+}
+/* ---------- 步骤 10：设置页的纯展示块 ----------
+   这三块没有 handler，整块交给叶子函数，Vue 侧 v-html 同一份字符串 —— 长段说明文字
+   拄进模板的话，模板里多一个换行就少一个空格，VDIFF 比文本节点时很难查。 */
+function settingsCollectHTML(){
+  return '<div class="kv"><span>剪贴板暂存</span><span style="color:var(--acc2)">前台自动 + 顶栏按钮手动</span></div>'
+   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">打开 app 时自动暂存剪贴板里的文字；'
+   +'在别的 app 复制后切回「懒得记」即可看到，顶栏剪贴板按钮也可以随时手动收一条。'
+   +'Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。'
+   +'点「解析」才发到大模型，之前内容不会离开本机。</div>';
+}
+function settingsOcrCardHTML(i){
+  return '<div class="kv"><span>引擎状态</span><span>'+ocrReadyHTML(i.ocrReady)+'</span></div>'
+   +'<div class="kv"><span>引擎信息</span><span>'+(S.ocrInfo||'vivo 离线 OCR')+'</span></div>'
+   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">图片只在本机识别成文字，'
+   +'只有识别出的文字（和原文）会发给模型。单条笔记可在笔记卡片上「↻ 重新识别图片」。</div>';
+}
+function settingsUsageHTML(){
+  return '<div class="body" style="margin-top:2px">'
    +'· 在微信 / 浏览器 / 相册里点「分享」→ 选 懒得记<br>'
    +'· 文字直接发给模型；图片先在本机用离线 OCR 识别成文字，再发给模型（图片不出门）<br>'
    +'· 模型返回 JSON：标题、正文、标签、待办（含到期时间）<br>'
-   +'· 底部 ＋ 可手动记文字或选图片；返回键先关面板，再回笔记页</div></div>';
-  return h;
+   +'· 底部 ＋ 可手动记文字或选图片；返回键先关面板，再回笔记页</div>';
+}
+/* 常驻后台那段长说明（无 handler）；电池优化那一段带两个按钮，留在模板里 */
+function settingsKeepAliveNoteHTML(){
+  return '开启后通知栏会有一条常驻提示，'
+   +'这是系统允许的标准保活方式；服务每 10 分钟检查一次待办，把被系统丢掉的闹钟重新排上。'
+   +'仍有厂商会在后台强行冻结应用（连闹钟一起取消），app 无法绕过；那种情况下打开 app 时'
+   +'未完成的待办都还在「待办」页。电池优化页面的名字各厂商可能不同，这只是系统设置页，'
+   +'app 不侦测品牌。';
 }
 /* 每个 tab 一个常驻面板（R14）：来回切页不重绘整个页面，滚动位置也不会丢。
    数据变了才把「其它页」标记为待重绘，切过去时重建一次。 */
@@ -1518,12 +1542,13 @@ function buildPage(t){
 }
 /* 已迁移到 Vue 的 tab（D14 混合期的唯一开关）：加一行就迁移一个视图，删掉一行就退回字符串路径。
    步骤 5 notes；6 todos；7 files；9 clip；10 stats/mine；步骤 11 删掉遗留路径。 */
-var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView };
+var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView, mine: StatsView };
 /* 步骤 8：弹层（sheet）的注册表，与 VUE_VIEWS 同一套开关语义：加一行就迁移一个弹层，
    删掉一行就退回字符串路径。progress 不是弹层而是 body 级的进度层，生死与 sheet 一致
    （导入开始挂、导入结束销），共用 mountSheet 那张表。
    闸门⑮ 会查完整性：views/ 里 export const *View 必须出现在 VUE_VIEWS ∪ VUE_SHEETS。 */
-var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, progress: ShotProgress, clip: ClipSheetView };
+var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, progress: ShotProgress, clip: ClipSheetView,
+  settings: SettingsSheetView };
 /* 弹层开启序号（步骤 8）。closeSheet 的收起动画是 110ms，期间重开同一个弹层时迟到的
    回调会把刚 mountSheet 出来的新实例卸掉：DOM 还在 .panel 里但 app 已死，弹层空白且
    点了没反应。三个开启入口 bump，回调发现序号变了就直接放弃。 */
@@ -1711,27 +1736,16 @@ async function statsNow(){
 }
 function renderMine(){
   var i = S.info, s = ST;
-  var h = '<div class="hero"><div class="hrow"><div class="hlogo"><img src="/icon.png" alt=""></div>'
-    + '<div><h1>懒得记</h1><div class="hver">'+esc(i.go||'')+' · 本机离线 OCR · BYOK</div></div></div>'
-    + '<div class="hstats">'
-    + (s ? '<span>'+ic('note')+s.notes.total+' 条笔记</span>'
-          + '<span>'+ic('check-square')+s.todos.total+' 条待办</span>'
-          + '<span>'+ic('clip')+(s.attach.count||0)+' 个附件</span>'
-          + '<span>'+ic('db')+fmtSize(s.bytes)+'</span>'
-      : '<span>正在统计本地数据…</span>')
-    + '</div></div>';
+  var h = statsHeroHTML(i, s);
   if(!s) return h + '<div class="card"><div class="skel l"></div><div class="skel s"></div></div>';
   h += '<div class="statgrid">'
-    + stat(0, s.notes.total, '笔记', 'note') + stat(1, s.todos.total, '待办', 'check-square')
-    + stat(2, s.todos.open, '未完成', 'clock') + stat(3, s.todos.overdue, '已逾期', 'alert', 1)
-    + stat(4, s.attach.count||0, '附件', 'clip') + stat(5, s.ai.calls||0, 'AI 调用', 'sparkle') + '</div>';
+    + statHTML(0, s.notes.total, '笔记', 'note') + statHTML(1, s.todos.total, '待办', 'check-square')
+    + statHTML(2, s.todos.open, '未完成', 'clock') + statHTML(3, s.todos.overdue, '已逾期', 'alert', 1)
+    + statHTML(4, s.attach.count||0, '附件', 'clip') + statHTML(5, s.ai.calls||0, 'AI 调用', 'sparkle') + '</div>';
   h += '<div class="card"><h2>近 7 天</h2>'+chartHTML(s.days)
     + '<div class="legend"><span><i style="background:var(--acc)"></i>新增笔记</span>'
     + '<span><i style="background:var(--acc2)"></i>完成待办</span></div></div>';
-  h += '<div class="card"><h2>笔记状态</h2>'
-    + kv('AI 解析完成', s.notes.done) + kv('仅存原文', s.notes.raw)
-    + kv('解析失败', s.notes.error) + kv('队列中', (s.notes.queued||0)+(s.notes.parsing||0))
-    + kv('附件缺失文件', s.attach.missing||0) + '</div>';
+  h += '<div class="card">'+statsNotesCardHTML(s)+'</div>';
   if(s.tags && s.tags.length){
     h += '<div class="card"><h2>常见标签</h2><div class="tagrow">'
       + s.tags.map(function(t){return '<span class="chip tag">#'+esc(t.tag)+' · '+t.n+'</span>'}).join('')
@@ -1739,29 +1753,71 @@ function renderMine(){
   }
   var sf = SHOTFLAGS || {};
   h += '<div class="card"><h2>截图捕获</h2><div style="padding:0 12px 4px">'
-    + li('folder','监控文件夹', sf.enabled
+    + liHTML('folder','监控文件夹', sf.enabled
         ? ((sf.folders||0) + ' 个 · 点这里增删')
         : '未开启 · 点这里开始', 'folderSheet()')
-    + li('image','截图暂存','当前 ' + ((S.info && S.info.shot) || 0) + ' 张待整理', 'shotSheet()')
-    + li('refresh','现在扫描一次', sf.granted ? '只看上次之后的新图' : '需要先允许读取照片', 'scanShotsNow()')
-    + li('calendar','回捞最近 7 天', '把最近 7 天的截图都收一遍（不会重复）', 'rescanShots(7)')
-    + li('trash','清空截图暂存', '只删副本，不动系统相册', 'clearShots()')
+    + liHTML('image','截图暂存','当前 ' + ((S.info && S.info.shot) || 0) + ' 张待整理', 'shotSheet()')
+    + liHTML('refresh','现在扫描一次', sf.granted ? '只看上次之后的新图' : '需要先允许读取照片', 'scanShotsNow()')
+    + liHTML('calendar','回捞最近 7 天', '把最近 7 天的截图都收一遍（不会重复）', 'rescanShots(7)')
+    + liHTML('trash','清空截图暂存', '只删副本，不动系统相册', 'clearShots()')
     + '</div></div>';
   h += '<div class="card" style="padding:2px 12px">'
-    + li('settings','设置','AI 模型 / 外观 / 采集 / OCR / 数据', 'settingsSheet()')
-    + li('file-text','运行日志','Go 服务、解析队列、OCR 状态', 'showLog()')
-    + li('sparkle','AI 调用记录','本次运行的请求与返回', 'showDebug()')
-    + li('download','导出 JSON','全量备份笔记与待办', "location.href='/api/export'")
-    + li('inbox','导入 JSON','按笔记 ID 合并，不覆盖本地', 'importJSON()')
-    + li('trash','清空全部','删除所有笔记与附件', 'clearAllNotes()')
+    + liHTML('settings','设置','AI 模型 / 外观 / 采集 / OCR / 数据', 'settingsSheet()')
+    + liHTML('file-text','运行日志','Go 服务、解析队列、OCR 状态', 'showLog()')
+    + liHTML('sparkle','AI 调用记录','本次运行的请求与返回', 'showDebug()')
+    + liHTML('download','导出 JSON','全量备份笔记与待办', 'exportJSON()')
+    + liHTML('inbox','导入 JSON','按笔记 ID 合并，不覆盖本地', 'importJSON()')
+    + liHTML('trash','清空全部','删除所有笔记与附件', 'clearAllNotes()')
     + '</div>';
-  h += '<div class="card"><div class="kv"><span>Go 服务</span><span>'+(i.server||'')+'</span></div>'
-    + '<div class="kv"><span>Go / 运行时长</span><span>'+(i.go||'')+' / '+(i.uptimeS||0)+'s</span></div>'
-    + '<div class="kv"><span>时区</span><span>'+(i.tz||'')+'</span></div>'
-    + '<div class="kv"><span>OCR 引擎</span><span>'+(i.ocrReady?'<b style="color:var(--ok)">● 就绪</b>':'<span style="color:var(--warn)">◌ 初始化中</span>')+'</span></div></div>';
+  h += statsRunCardHTML(i);
   return h;
 }
-function kv(k, v){ return '<div class="kv"><span>'+k+'</span><span>'+v+'</span></div>' }
+/* VDIFF 的遗留基准（步骤 10）：我的页是 tab，基准就是 renderMine()；设置页是弹层，
+   基准是「加载完之后」的正文（壳由 pageSheet 写，所以不拼壳）。两个函数同时进导出表：
+   test.sh 的载荷跑在 module 外面，只能经 window.__enoteActions 拿到它们。
+   步骤 11 删遗留路径时一起删。 */
+function renderMineHTML(){ return renderMine() }
+function settingsHTML(){ return renderSettings() }
+/* ---------- 步骤 10：我的页 / 设置页的叶子片段 ----------
+   两条渲染路径（遗留字符串 / Vue 模板）共用同一份，VDIFF 才逐字比得过；Vue 侧经 setHost
+   的 H.xxx 调用。hero 整块是静态结构 + 三处动态值，留在叶子函数里比模板抄一遍少一处漂移面。 */
+function statsHeroInner(i, s){
+  return '<div class="hrow"><div class="hlogo"><img src="/icon.png" alt=""></div>'
+    + '<div><h1>懒得记</h1><div class="hver">'+esc(i.go||'')+' · 本机离线 OCR · BYOK</div></div></div>'
+    + '<div class="hstats">'
+    + (s ? '<span>'+ic('note')+s.notes.total+' 条笔记</span>'
+          + '<span>'+ic('check-square')+s.todos.total+' 条待办</span>'
+          + '<span>'+ic('clip')+(s.attach.count||0)+' 个附件</span>'
+          + '<span>'+ic('db')+fmtSize(s.bytes)+'</span>'
+      : '<span>正在统计本地数据…</span>')
+    + '</div>';
+}
+function statsHeroHTML(i, s){ return '<div class="hero">'+statsHeroInner(i, s)+'</div>' }
+/* 笔记状态卡（纯展示，无 handler）：整块交给叶子函数，Vue 侧 v-html 同一份字符串。
+   卡壳（<div class="card">）由两条路径各自写，内容逐字共用。 */
+function statsNotesCardHTML(s){
+  return '<h2>笔记状态</h2>'
+    + kvHTML('AI 解析完成', s.notes.done) + kvHTML('仅存原文', s.notes.raw)
+    + kvHTML('解析失败', s.notes.error) + kvHTML('队列中', (s.notes.queued||0)+(s.notes.parsing||0))
+    + kvHTML('附件缺失文件', s.attach.missing||0);
+}
+function ocrReadyHTML(ready){
+  return ready ? '<b style="color:var(--ok)">● 就绪</b>' : '<span style="color:var(--warn)">◌ 初始化中</span>';
+}
+/* 我的页最底部的运行信息卡。设置页的「运行状态」卡前三行相同、第四行是解析队列，
+   所以只共用这三行，第四行各自写。 */
+function statsRunRowsHTML(i){
+  return kvHTML('Go 服务', esc(i.server||''))
+    + kvHTML('Go / 运行时长', esc(i.go||'')+' / '+(i.uptimeS||0)+'s')
+    + kvHTML('时区', esc(i.tz||''));
+}
+function statsRunInnerHTML(i){
+  return statsRunRowsHTML(i) + kvHTML('OCR 引擎', ocrReadyHTML(i.ocrReady));
+}
+function statsRunCardHTML(i){
+  return '<div class="card">'+statsRunInnerHTML(i)+'</div>';
+}
+function kvHTML(k, v){ return '<div class="kv"><span>'+k+'</span><span>'+v+'</span></div>' }
 function chartHTML(days){
   var mx = 1;
   days.forEach(function(d){ mx = Math.max(mx, d.notes, d.done) });
@@ -1777,22 +1833,38 @@ function chartHTML(days){
   });
   return h+'</div>';
 }
-function stat(i, v, label, icon, hot){
-  return '<div class="stat'+(hot?' hot':'')+enterCls('s'+label)+'" style="--i:'+i+'">'
+function statCls(hot, label){ return 'stat'+(hot?' hot':'')+enterCls('s'+label) }
+function statHTML(i, v, label, icon, hot){
+  return '<div class="'+statCls(hot, label)+'" style="--i:'+i+'">'
     + '<div class="si">'+ic(icon)+'</div><b>'+v+'</b><span>'+label+'</span></div>';
 }
-function li(icn, t, sub, fn){
+function liHTML(icn, t, sub, fn){
   return '<div class="li" onclick="'+fn+'"><span class="lico">'+ic(icn)+'</span>'
     +'<div style="flex:1"><b style="font-size:14.5px">'+t+'</b>'
     +(sub?'<div style="font-size:11px;color:var(--dim2);margin-top:1px">'+sub+'</div>':'')+'</div>'
     +'<span style="color:var(--dim2)">›</span></div>';
 }
-function settingsSheet(){ pageSheet('设置', renderSettings()); $('#panel').dataset.kind = 'settings'; }
+function settingsSheet(){
+  /* 步骤 10：注册表里有 settings 就走 Vue（内容区交给 SettingsSheetView 挂），否则退回
+     字符串渲染器。dataset.kind 是 CSS 钩子（css/views/settings.css 靠它定位设置页），
+     两条路径都必须写，所以放在分发之前。 */
+  $('#panel').dataset.kind = 'settings';
+  if(VUE_SHEETS.settings) pageSheetVue('settings', '设置');
+  else pageSheet('设置', renderSettings());
+}
 /* 只重绘设置页本身，并把滚动位置放回去（开关、权限回来后刷新用）*/
 function settingsRefresh(){
   var p = $('#panel');
   if(!p || p.dataset.kind !== 'settings' || !$('#sheet').classList.contains('on')) return;
   var top = p.scrollTop;
+  /* Vue 路径不重建 DOM：computed 全依赖 tick，sheetPaint()  bump 一次就整页重算。
+     重建会把输入框里正在打的字清掉（设置页是全站唯一有六个输入框的页面），
+     而遗留路径本来就是 innerHTML 整体重写，没这个顾虑。 */
+  if(VUE_SHEETS.settings){
+    sheetPaint();
+    requestAnimationFrame(function(){ var q = $('#panel'); if(q) q.scrollTop = top });
+    return;
+  }
   settingsSheet();
   requestAnimationFrame(function(){ $('#panel').scrollTop = top; });
 }
@@ -1825,6 +1897,10 @@ function pageSheetVue(name, title){
   p.scrollTop = 0;
   mountSheet(name, $('#sheetBody'), VUE_SHEETS[name]);
 }
+/* 导出 JSON：遗留写法是把赋值直接写进 handler（我的页那一行是单引号套双引号属性的
+   字符串，设置页是内联属性），抽成函数后两条路径共用一份，handler 字符串里也只剩
+   一个名字。 */
+function exportJSON(){ location.href = '/api/export' }
 function importJSON(){
   if(!window.Android){ toast('导入只在 app 内可用'); return }
   toast('选择之前导出的 JSON 文件…');
@@ -2016,6 +2092,7 @@ function closeSheet(){
     if(gen !== sheetGen) return;
     s.classList.remove('on'); s.classList.remove('closing');
     unmountSheet('shots'); unmountSheet('folders'); unmountSheet('clip');
+    unmountSheet('settings');   // 步骤 10：设置页弹层
   }, 110);
 }
 $('#sheet').addEventListener('click', function(e){ if(e.target.id==='sheet') closeSheet(); });
@@ -2219,7 +2296,26 @@ var HOST = setHost({
   clipPick: clipPick, clipSelAll: clipSelAll, clipDel: clipDel,
   clipDelSel: clipDelSel, clipParse: clipParse, relTime: relTime,
   clipItemCls: clipItemCls, clipPrevText: clipPrevText, clipThumbText: clipThumbText,
-  clipMetaText: clipMetaText, clipCountHTML: clipCountHTML, clipParseText: clipParseText
+  clipMetaText: clipMetaText, clipCountHTML: clipCountHTML, clipParseText: clipParseText,
+  /* 步骤 10 加：StatsView / SettingsSheetView 的宿主接口（同上，漏一个就是静默回退字符串渲染器，
+     闸门⑮ 静态扇模板里的 H.xxx 钉住它）。
+     ST / remindPending 会被整体赋值（statsNow / refresh），必须走 getter；SHOTFLAGS 步骤 8 已有。 */
+  get ST(){ return ST }, get remindPending(){ return remindPending },
+  statCls: statCls, kvHTML: kvHTML, liHTML: liHTML, chartHTML: chartHTML,
+  statsHeroInner: statsHeroInner, statsNotesCardHTML: statsNotesCardHTML,
+  statsRunRowsHTML: statsRunRowsHTML, statsRunCardHTML: statsRunCardHTML,
+  statsRunInnerHTML: statsRunInnerHTML,
+  settingsDataCardHTML: settingsDataCardHTML, settingsRunCardHTML: settingsRunCardHTML, ocrReadyHTML: ocrReadyHTML,
+  settingsCollectHTML: settingsCollectHTML, settingsOcrCardHTML: settingsOcrCardHTML,
+  settingsUsageHTML: settingsUsageHTML, settingsKeepAliveNoteHTML: settingsKeepAliveNoteHTML,
+  fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
+  keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
+  askNotify: askNotify, askExact: askExact, askBattery: askBattery,
+  toggleKeepAlive: toggleKeepAlive, toggleAI: toggleAI, setTheme: setTheme,
+  saveSettings: saveSettings, testLLM: testLLM, showLog: showLog, showDebug: showDebug,
+  exportJSON: exportJSON, importJSON: importJSON, clearAllNotes: clearAllNotes,
+  settingsSheet: settingsSheet, scanShotsNow: scanShotsNow, rescanShots: rescanShots,
+  clearShots: clearShots
 });
 
 /* Vue 路径的观测缝（步骤 6 加，步骤 5 就没写过）。
@@ -2293,12 +2389,14 @@ window.__enoteActions = {
   addNote, addTodo, addTodoSheet, api, askBattery, askExact,
   askNotify, askShotPerm, clearAllNotes, clipDel, clipDelSel, clipParse,
   clipPick, clipSelAll, clipSheet, closeSheet, delAttach, delNote,
-  delTodo, doImportShots, expand, folderFilter, folderPick, folderPickShots,
+  delTodo, doImportShots, expand, exportJSON, folderFilter, folderPick, folderPickShots,
   folderSave, folderSelAll, folderSheet, importClip, importJSON, jump,
   missedDismiss, missedDone, missedGoTodos, missedSheet, openAttach, pickImage,
-  refresh, render, reocr, reparse, resetPrefs, saveSettings,
+  refresh, render, renderMineHTML, reocr, reparse, resetPrefs, rescanShots, saveSettings,
+  scanShotsNow, settingsHTML, settingsRefresh, settingsSheet, showDebug, showLog, statsNow,
+  clearShots,
   setPref, setTheme, shotIgnoreSel, shotOverlay, shotOvlSub, shotPick, shotSelAll, shotSetup,
-  shotGo, shotSheet, showDebug, showLog, testLLM, toAlarm, toCalendar,
+  shotGo, shotSheet, testLLM, toAlarm, toCalendar,
   toggle, toggleAI, toggleKeepAlive
 };
 Object.assign(window, window.__enoteActions);
@@ -2306,6 +2404,11 @@ Object.assign(window, window.__enoteActions);
 /* shotOverlay / shotOvlSub 加进导出表是为了测试能测到进度层：它是步骤 8 迁 Vue 的一部分
    （SHOTPROG + ShotProgress 组件），而真机上走一次 AI 解析要几十秒且依赖 LLM，用例里直接
    调这两个入/出口函数比「等真导入」稳定得多。
+   步骤 10 补上的四个（settingsSheet / scanShotsNow / rescanShots / clearShots）是**真 bug**：
+   我的页的行是 liHTML(…, 'settingsSheet()') 把 handler 当字符串传进去的，闸门① 只扇
+   onclick="…" 字面量，扇不到这种「叶子函数的参数」，转 module（步骤 2）后这四个名字不再是
+   全局，我的页上「设置 / 现在扫描一次 / 回捞最近 7 天 / 清空截图暂存」四行点了就是
+   ReferenceError。新增的闸门①d 扇 handler 字符串参数，钉住这一类。
    注意：表体里不能写注释 —— tools/ui_test.js 的 exportTableKeys() 是粗解析标识符列表，
    注释会被当成一个名字，运行时导出表比对（P6.6）立刻红。 */
 
@@ -2335,6 +2438,9 @@ window.__enote.state = {
      app.js / go/web_test.go / tools/ui_test.js 三处名单同步）。 */
   get clipList(){ return clipList }, set clipList(v){ clipList = v },
   get clipSel(){ return clipSel }, set clipSel(v){ clipSel = v },
+  /* 步骤 10 加：我的页 / 设置页的夹具要注入 ST（/api/stats 的返回），没 setter 就是 D21
+     那个坑。闭合集 22 → 23 名，app.js / go/web_test.go / tools/ui_test.js 三处名单同步。 */
+  get ST(){ return ST }, set ST(v){ ST = v },
   /* 步骤 5 加：SR 是 notesFiltered() 的第一优先级输入（if(SR.notes) return SR.notes），
      不暴露它，夹具把 S.notes 改成 [] 也画不出空态 —— 画的是服务端搜索结果那 2 条，
      症状是「Vue 视图的 computed 冻住了」，实测在这里烧了两轮探针才定位。
@@ -2372,10 +2478,16 @@ Object.assign(window.__enote, {
                因为夹具比的是加载完的状态；shotSheet()/folderSheet() 写壳时是「加载中…」。 */
             shots: shotSheetHTML, folders: folderSheetHTML,
             /* 步骤 9：剪贴板页的遗留侧（同样渲染「加载完之后」的形态）。 */
-            clip: clipSheetHTML },
+            clip: clipSheetHTML,
+            /* 步骤 10：我的页（tab）与设置页（弹层）的遗留侧。 */
+            mine: renderMineHTML, settings: settingsHTML },
   /* 夹具要在插入遗留字符串后跑一遍和 render() 相同的收尾（syncExpand 会按正文高度隐藏
      「展开详情」按钮），否则比的是「raw 字符串」对「收尾后的 DOM」。缝在 D17 上，步骤 11 一起删。 */
-  afterPaint: afterPaint
+  afterPaint: afterPaint,
+  /* 步骤 10：入场动画的 seen 是一次性状态（enterCls 首次见到某个 id 才返回 ' enter'）。
+     VDIFF 夹具要在两条路径各自开跑前清一次，否则先跑的那条把 id 记进 seen，后跑的那条
+     就没有 enter —— 我的页的四张统计卡带 enterCls，正好踩这一条（真机上 tab 切换会清）。 */
+  clearSeen: clearSeen
 });
 /* buildReady（步骤 4，Tony 提的竞态）：ready 在首屏就兑现，build 由这个独立 fetch 填，
    载荷 await ready 后立刻读 E.build 是没顺序保证的（实测不犯：seam 载荷是在桥载荷轮询完

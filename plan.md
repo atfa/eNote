@@ -1265,3 +1265,119 @@ EXIT=0，clip grid / clip empty 两遍 `same=1`，CIT 真点击全链通过（�
   删干净前不会静默空跑；步骤 11 删基准时连 `vdiff_tab` / `vdiff_sheet` 一起删）。
 * 步骤 11：`clipParse` 走真 LLM（几十秒且依赖 key），CIT 只测到按钮文案与勾选联动，
   「一键解析 N 条」真解析路径仍无客户端回归。
+
+### 9.16 S3 步骤 10 已完成（Austin：我的页（tab）+ 设置页（弹层）转 Vue）
+
+分工（Tony 的开工契约）：这一步 app.js 归 Austin，`css/views/stats.css` /
+`css/views/settings.css` 归 Tony，视觉出图（`tools/shots_vue.sh`）Tony 接、夹具 Austin 出。
+契约要求：我的页是 **tab** → `VUE_VIEWS`，设置页是 **弹层** → `VUE_SHEETS`；图表做成子组件
+（props 带 `tick`）；不改 `pageSheet()` 的契约；`$('#panel').dataset.kind='settings'` 必须保留
+（CSS 钩子）；`__enote.legacy.mine` / `.settings` 基准；状态桥三处名单同步；VDIFF 加
+`vdiff_tab mine` + `vdiff_sheet settings`；skip 分支判红。全部照做。
+
+**落地的东西**
+* `go/ui/js/views/stats.js`：`StatsStat`（props `tick`/`i`/`v`/`label`/`icon`/`hot`，class 由
+  `H.statCls` 算）+ `StatsChart`（props `tick`/`days`，柱高与入场延迟在组件里算）+
+  `StatsLi`（图标行，`emits:['go']`）+ `StatsView`（骨架屏 / 六格 / 近 7 天 / 笔记状态 /
+  常见标签 / 截图捕获 / 六行入口 / 运行信息）。
+* `go/ui/js/views/settings.js`：`SettingsSheetView` 九段（提醒 / 后台 / 外观 / AI 模型 /
+  采集 / 本地 OCR / 数据 / 运行状态 / 用法）。输入框用 `:value.attr`（`:value` 走 DOM
+  property，innerHTML 序列化出来没有 value 属性，遗留字符串有 → VDIFF 红），值一律 `x || ''`
+  （遗留 `esc(undefined)` 得到 `value=""`，`.attr` 遇 null 会 removeAttribute）。
+* `settingsSheet()` 变分发器（Vue 走 `pageSheetVue('settings','设置')`）；`settingsRefresh()`
+  在 Vue 路径改成 `sheetPaint()` + 滚位还原（重建 DOM 会把正在输入的字符清掉，设置页是全站
+  唯一有六个输入框的页面）；`closeSheet()` 补 `unmountSheet('settings')`。
+* 两条路径共用的叶子函数：`statsHeroInner`/`statsHeroHTML`、`statsNotesCardHTML`、
+  `statsRunRowsHTML`/`statsRunInnerHTML`/`statsRunCardHTML`、`statCls`/`statHTML`/`liHTML`、
+  `ocrReadyHTML`、`chartHTML`、`settingsCollectHTML`、`settingsOcrCardHTML`、
+  `settingsUsageHTML`、`settingsKeepAliveNoteHTML`、`settingsDataCardHTML`、
+  `settingsRunCardHTML`；遗留基准挂 `__enote.legacy.mine` / `.settings`，新增
+  `__enote.clearSeen`（入场动画 seen 的一次性状态，两条路径必须从同一状态出发）。
+* 状态桥加 `ST`（闭集 22→23 名，app.js / `go/web_test.go` / `tools/ui_test.js` 三处同步）；
+  导出表 60→69 key。
+* **新闸门①d**：handler 字符串参数（`liHTML(…, 'settingsSheet()')` 这类把 handler 当字符串
+  传进叶子函数的写法）里的调用名必须在导出表 —— 闸门① 只扫 `onclick="…"` 字面量，这类写法
+  完全在它的视野外（本步扫到 68 处）。
+* **闸门⑮ 新增**：`components: { A, B }` 里的每个名字必须在同文件声明或 import 进来。
+
+**三个真 bug**
+1. **我的页四行的 handler 从步骤 2 起就是野名字**：`settingsSheet` / `scanShotsNow` /
+   `rescanShots` / `clearShots` 不在导出表（「设置 / 现在扫描一次 / 回捞最近 7 天 / 清空截图
+   暂存」点了没反应，控制台一行 ReferenceError）。
+2. **`exportJSON` 从来没定义过**：设置页「导出 JSON」与我的页那一行调的是一个不存在的名字
+   （HEAD 里 `grep -c exportJSON` = 0），module 加载时导出表求值直接抛 ReferenceError →
+   整页 JS 死在首屏。静态闸门全绿，真机跑出来才看见。
+3. **`components:` 里留了已删除定义的引用**（`StatsKv`）：同样是整模块 ReferenceError、页面
+   白屏。代价是两次完整真机跑，所以闸门⑮ 加了上面那条检查（反向实验：加回 `StatsKv` 引用
+   → 闸门红）。
+
+**VDIFF 的文本节点切分规则**（本步踩满，写进 `views/stats.js` 文件头）
+序列化器逐文本节点 trim 后拼接，所以遗留的 `'已排定 '+remindPending+' 条 · …'`（三个节点 →
+「已排定12条 · …」）与模板里一个插值 `{{ notifySub }}`（一个节点 → 「已排定 12 条 · …」）
+结构上比不过。做法：数据卡 / 运行状态卡 / 保活长说明整块 v-html 复用叶子函数；提醒卡副标题、
+常见标签 chip 按遗留的拼接切分写多个插值。
+
+**VDIFF 归一化新增两处「绘制时机」差异**（都是真机跑出来的偶发红）：`enter`（一次性入场动画
+标记，`enterCls` 只在 id 首次出现时给）从 class 里剔掉再比 —— 它的有无取决于两条路径谁先画、
+后台轮询有没有在中间插一次重绘，是时机不是 DOM 形状（第一次真机跑就红在 `card enter` vs
+`card`）；空的 `style` 属性与没有 `style` 属性等价（`syncExpand` 设过 display 再清掉，Vue 那侧
+留下 `style=""`）。动画本身由 CSS 与视觉截图覆盖。
+
+**夹具的两个坑（真机跑出来的，不是审查看出来的）**
+* `Pictures/enote-test` 的 MediaStore 行不随 root 的 `rm` 消失，旧行 `date_added` 是上次跑的
+  时间，扫描按 `rangeDays=1` 过滤 → 跑满 24h 后两张测试图刚好掉出窗口，`added=0` 假红
+  （本步验收第一次跑踩到，距上次绿跑 24h01m）。夹具现在先 `content delete` 删行。
+* `"$PY" -c '…'` 的脚本在 shell 单引号参数里，python 里写 `''` 会被 shell 吃掉 →
+  SyntaxError（`vdiff_tab` 的断言脚本第一版就是这么红的）。
+* `statsNow()` 的 `stBusy` 互斥标志会挡掉后续所有调用（一次在飞的请求卡住就永久挡），套件里
+  前一步刚清过库（`clearAllNotes` 置 ST=null），点「我的」tab 不取统计 → 我的页停在骨架屏 →
+  「我的页上没有设置行」。SET 用例现在直接 `await api("/api/stats")` 注入状态桥（tab 仍真点）。
+* 我的页 hero 的探针第一版读 `.hver`（版本号那一行，加载前后文本一样），断言「未加载那一遍必须
+  含『正在统计』」永远红 —— 「正在统计…」在 `.hstats` 里。探针选错元素 = 断言恒假。
+
+**截图脚本的六个坑（`tools/shots_vue.sh` 步骤 10 段，全部真机踩过）**
+* ST 夹具必须是完整 `/api/stats` 形状：少 `ai` 时 `renderMine` 读 `s.ai.calls` 抛异常，
+  截图停在上一页（第一版 stats 图其实是附件页）。
+* `setTheme("dark")` 会让 Activity 走 night mode 重建、WebView 重新加载，**同一载荷里后面的
+  语句随旧页面一起丢掉** —— 暗色设置页拍成「整屏糊掉、面板不在上面」。主题改成单独一发
+  （`settheme` 函数）+ 等 2.5s。
+* 重载之后 `.sheet.on .panel` 的入场过渡有概率不启动，面板停在初始态 → `SHEETON` 摘掉 `on`
+  再强制回流挂回去，过渡一定重跑。
+* toast 是 `setTheme` 之后异步弹的，清 toast 必须放载荷**末尾**（放开头等于没清）。
+* `setTab` 没导出（导出它要动步骤 6 的基线），tabbar 高亮用 `MINEON` 直接改 class。
+* 脚本开头加 `am force-stop`：上一轮把 app 留在主屏时 `am start --display` 只回一句
+  「delivered to currently running top-most instance」，app 不动，整轮截图全是桌面
+  （症状：唯一图片数 3/4 然后 die）。`SHOT_WAIT=3`：`am start` 立刻返回，载荷在 app 里异步跑。
+
+**闸门①e（Tony 的要求）**：导出表的右值必须是 app.js 里真存在的标识符。`exportJSON` 那笔说明
+缺的不是那一个名字，是这条检查本身 —— 闸门① 只查「handler 名 ⊆ 导出表 key」，表体里
+`exportJSON,` 的右值没人查，`node --check` 不查未定义标识符，于是「闸门全绿 + 真机全绿」的
+历史提交里带着一个首屏 ReferenceError：**静态层对 module 求值期是盲的**。新闸门解析表体，凡
+右值是裸标识符（简写 `{ api }` 与 `{ api: api }`）必须有 `function`/`var`/`let`/`const`/`class`/
+`import` 声明（含顶层解构），否则列出名字 FAIL。反向实验：表里加一行 `foo: notDefinedFn` → 红。
+这条给步骤 11 的「恒绿闸门审计」当证据。
+
+**验收**
+* 静态：`node tools/ui_test.js` 20 项全绿（新增闸门①d、①e 与闸门⑮ 的 components 名检查）；
+  `node tools/ui_sig_test.js` 84 项 ok；`(cd go && go test ./...)` ok；`sh -n test.sh`；
+  `node --check` 逐个新 JS。
+* 真机：`GO_TEST=1 ./build.sh && ./install.sh && sh $TMPDIR/restart.sh && ./test.sh --vd`
+  全绿（套件项数见 CHANGELOG 数字行）。本步新增的三遍都在绿跑里出过数：
+  `vdiff_tab mine` 未加载 `isvue=1 stats=0 skel=1 same=1`、夹具遍 `stats=6 chips=2 same=1 len=7079`；
+  `vdiff_sheet settings form` `isvue=1 mounted=1 sinputs=6 ssegn=3 ssw=2 skv=10 sacts=3
+  kind=settings same=1 len=3881`；SET 用例 26 个探针全过（含 `closeBtn=1 closed=1 notesKept=1
+  themeRestored=1`）。
+* 反向实验七条（见 CHANGELOG）：三条闸门红 + 一条 go test FAIL + 三条真机红（`exportJSON`
+  未定义、`StatsKv` 引用、`closed=0` 的按钮选择器写错）。
+* 视觉：`tools/shots_vue.sh` 14 张（新增 `vue-stats-light/dark`、`vue-settings-light/dark`，
+  步骤 10 四张唯一数 4/4），图归 Tony 审。
+
+**记入后续步骤的账**
+* 步骤 11：删遗留渲染器时连 VDIFF 的基准与 `vdiff_tab`/`vdiff_sheet` 一起删（基准没了就是
+  恒绿闸门），`tools/ui_sig_test.js` 的 84 项签名并进 `ui_test.js` 后删掉那个文件；
+  「恒绿闸门审计」把 `exportJSON` 这笔当证据（静态层对 module 求值期是盲的 → 闸门①e 补上）。
+* 步骤 11：`clipParse` 走真 LLM（几十秒且依赖 key），CIT 只测到按钮文案与勾选联动，
+  「一键解析 N 条」真解析路径与 `clipError` 分支仍无客户端回归。
+* 步骤 12：OCR 搜索断言收紧（现在只断言命中数，不断言命中内容）。
+* 步骤 13：hex 8→0、px 57→0 的棘轮收尾；截图夹具 vds-a/vds-b 用同一段字节
+  （`make_test_png.py`）导致「两张图」在像素上不可分。
