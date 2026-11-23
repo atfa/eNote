@@ -1283,8 +1283,8 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
   /* 遗留字符串要过一遍和 render() 相同的收尾再比：syncExpand 会按正文高度把「展开详情」
      按钮设成 display:none，Vue 那侧的 DOM 是收尾后的，raw 字符串没有这一步。
      临时 pane 必须挂在 #view 里（syncExpand 的选择器是 #view .card）。 */
-  var tmp=document.createElement('div'); tmp.className='pane'; tmp.innerHTML=oldHtml;
-  (document.getElementById('view')||document.body).appendChild(tmp);
+  var tmp=document.createElement("div"); tmp.className="pane"; tmp.innerHTML=oldHtml;
+  (document.getElementById("view")||document.body).appendChild(tmp);
   try{ E.afterPaint() }catch(e){ L("afterpaint-err="+(e&&e.message)) }
   oldHtml=tmp.innerHTML; tmp.parentNode.removeChild(tmp);
   function ser(n){
