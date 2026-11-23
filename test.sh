@@ -1381,11 +1381,17 @@ NIN=$(readtlog | wc -l)
   var eb2=q(P+" .exp");
   L("expAfter="+(eb2?eb2.textContent.trim():"none"));
   if(eb2){ eb2.click(); await sleep(400); }
-  // 2) 空态：笔记清空后必须出 .empty（Vue 的 v-if 分支）
-  var saved=__enote.state.S.notes;
-  __enote.state.S.notes=[]; await render();
-  L("empty="+String(!!q(P+" .empty")));
-  __enote.state.S.notes=saved; await render();
+  // 2) 空态：笔记清空后必须出 .empty（Vue 的 v-if 分支）。
+  //    不能只改 S.notes=[]：notesFiltered() 第一优先级是服务端搜索结果 SR.notes，
+  //    它非空时画的是 SR 那几条，S 改什么都看不出；而且 app 每 ~2s 轮询 /api/state
+  //    会整体替换 S，直接赋值活不过下一次轮询。走真 API 删除才是真输入路径。
+  var A=__enote.actions;
+  var ids=__enote.state.S.notes.map(function(n){return n.id});
+  for(var i=0;i<ids.length;i++){ await A.api("/api/delete", {id: ids[i]}) }
+  await A.refresh(true); await sleep(500);
+  L("empty="+String(!!q(P+" .empty"))+" emptyCards="+cards());
+  for(var i=0;i<ids.length;i++){ await A.api("/api/add", {text:"标题 "+i}) }
+  await A.refresh(true); await sleep(1200); await A.refresh(true); await sleep(800);
   L("restored="+cards());
   // 3) 三横幅同时出现且顺序对
   __enote.state.MISSED={count:2,items:[{id:"t1",nid:"n1",title:"x",at:Date.now()-60000}]};
@@ -1432,6 +1438,8 @@ assert int(d["clampAfter"]) < int(d["clampBefore"]), \
     d["clampBefore"], d["clampAfter"])
 assert d["expAfter"] == "收起", "展开后按钮文案该是「收起」, got %r" % d["expAfter"]
 assert d["empty"] == "true", "笔记清空后没出空态块（.empty）：Vue 的 v-if 分支没生效"
+assert int(d["emptyCards"]) == 0, \
+  "走 /api/delete 清空后卡片数不是 0（实际 %s）：SR.notes 遮蔽又回来了" % d["emptyCards"]
 assert int(d["restored"]) == n, "恢复笔记后卡片数不对（%s→%s）" % (n, d["restored"])
 assert d["missed"] == "true", "造了 MISSED 数据但 .missed 横幅没渲染"
 assert d["clip"] == "true", "造了 clip 计数但 .clipbanner 横幅没渲染（live() 没包？）"
