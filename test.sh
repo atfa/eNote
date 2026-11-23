@@ -1304,6 +1304,11 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
   }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
   L("done=1");
 })()' > "$TMPDIR/jsvdiff.json"
+# jseval 钩子只在 .devmode 存在时干活（上面一行刚把它删了），不重新 touch 就是
+# `{"ok":false,"error":"jseval disabled: no .devmode"}`：载荷根本没跑，日志里一条 VDIFF 也没有，
+# 症状是「前端抛异常了？日志=[]」——不是抛异常，是根本没执行。test.sh 里每个 jseval 块都 touch。
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsvdiff.json'"
 for i in $(seq 1 40); do
   newtlog | grep -q 'VDIFF done=1' && break
@@ -1323,6 +1328,7 @@ assert d.get("same"), "Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  �
     d.get("at"), d.get("old", "")[:200], d.get("vue", "")[:200])
 print("  ok (规范化后 DOM 逐字一致，长度 %s)" % d.get("len"))
 '
+asroot_global "rm -f '$DATA/enote/.devmode'"
 
 step "前端没有运行时报错（未声明的变量会把点击静默吞掉）"
 if newtlog | grep -q 'SELFCHECK FAIL'; then
