@@ -927,3 +927,15 @@ clip 横幅没渲染、删除后卡片没掉、空态没出、横幅顺序反了
 探针证据链（写下来免得下轮重烧）：给 StripBar 加临时 `:data-tick`/`:data-i` → tick 每次 render
 递增 ✓、`S.info.notes=99` → `data-i` 2→99 ✓（证明 `live()` 可用）；同载荷里跑最小 Vue app
 （`reactive({tick})` + `computed` + `{{c}}`）0→1→3 ✓（证明 WebView 的 Vue 响应式正常）。
+
+**门禁自己是概率性的（两处 flake，都记在步骤 12 收）**：D20 把「完整跑全绿」当每步门禁，
+门禁自己红过一次就要先花一轮排除它是不是真回归，所以先记账：
+
+1. `test.sh:397` 直接取 `json.load(stdin)["notes"][0]["id"]`，那一刻 notes 为空 → `JSONDecodeError`，
+   整轮 0 步 ok，症状是「刚开跑就炸」，很容易被当成设备/构建问题（Tony 在集成 HEAD 上第一次跑红，
+   第二次同树 PASS）。前一步图片 OCR 的 llm 实测 21637ms，解析队列异步落库，所以「notes 非空」
+   不是即时保证。修法：照 NINT 恢复那步轮询等 notes 非空（上限若干秒）再取 `notes[0]`。
+2. P6.5 常驻后台：`am start --es hook keepalive --es arg on` 后 20s 内没等到 `hook keepalive: ` 行
+   （Austin 在集成 HEAD `a1732bed59` 上第一次跑红，同树第二次 PASS）。钩子是纯原生路径
+   （`MainActivity.runHook` → `KeepAlive.setEnabled` + `Reminders.sync`），本步没碰过 Java，
+   红在测试等待窗口，不在被测代码。修法同 1：轮询到行出现，窗口按 `Reminders.sync` 的实测耗时放宽。
