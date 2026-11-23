@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -45,14 +46,48 @@ func TestIndexServedFromDirectory(t *testing.T) {
 			t.Errorf("首页缺少 %s", want)
 		}
 	}
-	// 拆分后不许留内联样式/脚本：留着就是"半拆"，两边各一份真相。
+	// 拆分后不许留内联样式：留着就是"半拆"，两边各一份真相。
 	// 先剔掉 HTML 注释，否则注释里提到的 "<style>" 会自匹配。
 	code := regexp.MustCompile(`(?s)<!--.*?-->`).ReplaceAllString(body, "")
 	if strings.Contains(code, "<style>") {
 		t.Errorf("首页还有 <style> 块，样式没拆干净")
 	}
-	if regexp.MustCompile(`<script>`).MatchString(code) {
-		t.Errorf("首页还有内联 <script>，脚本没拆干净")
+	// S3（D16）之后首页允许**一个**内联脚本：feature probe。它必须在 module 之前、语法必须停在
+	// ES5：老 WebView 连 type="module" 都不认，探针写在 app.js 里就跟着模块一起静默失败；
+	// 探针自己用上新语法则是第一个解析失败的脚本——两种都回到白屏，probe 白写。
+	inline := regexp.MustCompile("(?s)<script([^>]*)>(.*?)</script>").FindAllStringSubmatch(code, -1)
+	probeBody, probeCount := "", 0
+	for _, m := range inline {
+		if strings.Contains(m[1], "src=") {
+			continue
+		}
+		probeCount++
+		if !strings.Contains(m[1], `id="probe"`) {
+			t.Errorf("首页多了内联 <script>（属性：%s）；只允许 id=\"probe\" 那一个",
+				strings.TrimSpace(m[1]))
+		}
+		probeBody = m[2]
+	}
+	if probeCount == 0 {
+		t.Errorf("首页没有内联 probe 脚本（D16：旧 WebView 要失败得响亮）")
+	}
+	for _, es5 := range []struct{ what, re string }{
+		{"箭头函数 =>", `=>`},
+		{"模板字符串 `", "`"},
+		{"const/let 声明", `(?m)^[[:space:]]*(const|let)[[:space:]]`},
+		{"可选链 ?.", `\?\.`},
+		{"空值合并 ??", `\?\?`},
+		{"class 声明", `(?m)^[[:space:]]*class[[:space:]]`},
+	} {
+		if regexp.MustCompile(es5.re).MatchString(probeBody) {
+			t.Errorf("probe 脚本用了 %s：老引擎解析不了，探针自己先死（D16）", es5.what)
+		}
+	}
+	if strings.Index(code, `id="probe"`) > strings.Index(code, `type="module"`) {
+		t.Errorf("probe 必须在 module 脚本之前：模块解析失败时 app.js 里的代码一行都不会跑")
+	}
+	if !strings.Contains(probeBody, "WATCHDOG_MS") || !strings.Contains(probeBody, "__enoteProbe") {
+		t.Errorf("probe 缺看门狗或 __enoteProbe（D16）")
 	}
 	// D9（S3 后反向）：app.js 必须是 ES module，而且必须带导出表。
 	// 页面里 70 个内联 handler 按全局作用域解析函数名；转 module 后顶层 function 变成
@@ -66,6 +101,62 @@ func TestIndexServedFromDirectory(t *testing.T) {
 		if !strings.Contains(appjs, want) {
 			t.Errorf("app.js 缺少 %s：转 module 与导出表/状态桥必须同批（D12/D21）", want)
 		}
+	}
+	// D21 状态桥的六个名字逐个钉住：只钉 `window.__enote.state = {` 这个字面量的话，
+	// 改名（比如 tab 改成 currentTab）就漏，而载荷里的 tab="notes" 会静默打到 window 上。
+	for _, s := range []string{"tab", "S", "MISSED", "open", "shotSel", "shotList"} {
+		for _, want := range []string{"get " + s + "()", "set " + s + "(v)"} {
+			if !strings.Contains(appjs, want) {
+				t.Errorf("app.js 状态桥缺 %s：载荷里对它的读写会打到 window 上，测试绿着骗过去（D21）", want)
+			}
+		}
+	}
+	// D17：__enote 必须**合并**进去。整份赋值会把上面 state 的六个 getter/setter 全冲掉，
+	// 症状是步骤 2 那 11 处载荷集体假绿（赋值打到新对象，模块里的变量一动不动）。
+	if strings.Contains(appjs, "window.__enote = {") {
+		t.Errorf("app.js 整份覆盖 window.__enote，会冲掉状态桥的 getter/setter（D17）")
+	}
+	if !strings.Contains(appjs, "Object.assign(window.__enote, {") {
+		t.Errorf("app.js 缺 Object.assign(window.__enote, {…})：D17 测试缝没接上")
+	}
+	for _, want := range []string{"ready: __ready", "build: null", "api: api", "dom: {",
+		"probe: window.__enoteProbe", "fetch('/build.json')"} {
+		if !strings.Contains(appjs, want) {
+			t.Errorf("app.js 的 __enote 缺 %s（D17）", want)
+		}
+	}
+}
+
+// D17：/build.json 是「WebView 里跑的就是刚装的这版」的凭据。设备是共享的（两个 worktree
+// 轮流装），光看日志对不上号；测试拿它和 APK 的 git sha 逐项比。
+func TestBuildJSONServed(t *testing.T) {
+	resp := doUI(t, "/build.json")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /build.json 返回 %d：build.sh 没生成它，还是 //go:embed 没收到？", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("/build.json Content-Type = %q，期望 application/json（nosniff 下类型不对就是不解析）", ct)
+	}
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "no-store") {
+		t.Errorf("/build.json Cache-Control = %q，必须 no-store：缓存了它，sha 就永远指旧版本", cc)
+	}
+	var b struct {
+		SHA     string `json:"sha"`
+		BuiltAt string `json:"builtAt"`
+		App     string `json:"app"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&b); err != nil {
+		t.Fatalf("/build.json 不是合法 JSON：%v", err)
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{12}(-dirty)?$`).MatchString(b.SHA) {
+		t.Errorf("build.json 的 sha = %q，期望 12 位 hex（未提交的树带 -dirty 后缀）", b.SHA)
+	}
+	if !regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`).MatchString(b.BuiltAt) {
+		t.Errorf("build.json 的 builtAt = %q，期望 UTC ISO8601", b.BuiltAt)
+	}
+	if b.App != "dev.xduo.enote" {
+		t.Errorf("build.json 的 app = %q，期望 dev.xduo.enote", b.App)
 	}
 }
 

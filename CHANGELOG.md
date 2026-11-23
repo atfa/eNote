@@ -72,6 +72,53 @@
   `test.sh` 的 `am_start` 遇到 Permission Denial 会用真 id 重试并更新 `VDID`。
   症状：跑测途中 display 换号后，P6.5 的 `am start --display 37` 直接退 255。
 
+### 测试缝（P13 S8 步骤 3，D16 / D17）：`__enote` + `build.json` + feature probe
+
+这一步是**纯增量**：不改任何界面行为，只把「页面到底活着没、跑的是哪一版」变成可断言的东西。
+步骤 2 的教训是静态全绿而真机白屏，所以防线必须建在运行时。
+
+* **`__enote` 测试缝**（D17，`app.js` 末尾）：`ready`（首屏画完兑现的 Promise）、`build`
+  （`/build.json` 的内容）、`api(path, body)`、`dom:{main,sheet,panel,toast,dlg}`、`probe`、
+  `markReady`。**必须 `Object.assign(window.__enote, {…})` 合并**：整份赋值会把步骤 2 的
+  `state` 六个 getter/setter 全冲掉，载荷里 `tab="notes"` 变成往新对象上写，模块里的 `tab`
+  一动不动 —— 那 11 处载荷集体假绿，比白屏难查一个量级。`go/web_test.go` 直接禁止
+  `window.__enote = {` 这种写法，Tony 的反向实验（改成整份赋值）必须让运行时哨兵变红。
+* `ready` 的兑现点做成 `markReady()`（`render()` 最后一句）而不是直接引用 Promise：`refresh()`
+  在模块末尾的 `__enote` 装配**之前**就发出去了，直接引用会拿到 `undefined`。
+* **`build.json`**（D17）：`build.sh` 在 go build/test 之前写 `go/ui/build.json`
+  = `{sha, builtAt, app}`，由 `//go:embed all:ui` 打进二进制，`/build.json` 走 no-store。
+  sha 带 `-dirty` 后缀：本轮多次全量跑在未提交的树上，不标出来就是谎话。
+  设备是共享的（两个 worktree 轮流装），测试拿它和页面里的 `__enote.build.sha` 逐项比，
+  才能断言「WebView 里跑的就是刚装的这版」；`test.sh` 的 install 行也把它打出来。
+  它是构建产物 → 进 `.gitignore`，否则每次构建都弄脏工作区，EXECUTE 签名就没法签。
+* **feature probe**（D16，`index.html` 内联）：必须是**普通内联脚本、在 module 之前、语法停在
+  ES5**。老 WebView 连 `type="module"` 都不认，模块静默不执行 —— 探针写进 app.js 就是跟着
+  一起死；探针自己用上新语法则是第一个解析失败的脚本。两种都回到白屏，probe 白写。
+  探测项按「Vue 3 能跑的最小集」定：`Proxy`/`Reflect`（Chrome 49，Vue 3 响应式）、`Symbol`（45，
+  Vue 内部标记）、`Promise`（32，fetch 链）、`Object.assign`（45，导出表/合并）、
+  `padStart`（57，app.js 时间格式化）、`Object.entries`（54，Vue 模板遍历对象）——
+  全部 ≤ module 的 Chrome 61，定高了会把本机 Chrome 159 挡在门外（假红），定低了永远不响（假绿）。
+  实测 app.js 的 ES2020+ 特性用量是 **0**（无 `?.`/`??`/`Object.entries`），门槛不该按它定。
+* **看门狗**：`WATCHDOG_MS = 12000`（Tony 提醒别太短：全量测试里首屏有慢的，P6 那几步带 sleep，
+  阈值短了会变偶发假红）。两级：`__enote.actions` 不存在 → 模块没跑；模块跑了但 `ready`
+  未兑现 → 首屏没画完。外加 capture 阶段的 `window.addEventListener('error', …, true)`，
+  模块解析/加载失败立刻报，不等看门狗。失效时页面画一张红框卡片 + `document.title` 改成
+  「界面没起来」+ `console.log('ENOTE PROBE FAIL …')`（test.sh 抓得到）。
+  步骤 2 那个 `dueMs` 重名 SyntaxError 就是这套机制要抓的形状 —— 当时页面上一句话都没有。
+* **运行时防线扩展**（`test.sh`，导出表闸门之后）：新载荷 `JSEVAL seam` 断言 `ready` 在 15s 内
+  兑现、`build.sha` == `go/ui/build.json` 里的 sha、`dom.main` 是 `view:MAIN` 且
+  `sheet/panel/toast/dlg` 齐、`api` 是函数、`probe.ok === true` 且 `moduleError` 为空。
+  这同时替掉了 Tony 点名的 `typeof api === "function"` 脆弱哨兵（它连 module 没执行都看不出来）。
+* `go/web_test.go`：内联 `<script>` 从「一律判红」改成「只允许 `id="probe"` 那一个」，并断言它
+  不含箭头/模板字符串/`const`/`let`/`?.`/`??`/`class`、位置在 module 之前；D21 状态桥的六个名字
+  **逐个钉** `get x()` / `set x(v)`（原来只钉 `window.__enote.state = {` 字面量，改名就漏）；
+  新增 `TestBuildJSONServed`（200 / `application/json` / no-store / sha 形如 12 位 hex 可带
+  `-dirty` / `builtAt` 是 UTC ISO8601）。Tony 确认 `ui_test.js` / `ui_sig_test.js` 都不统计内联
+  script 数量，加探针不碰闸门基线。
+* 两个踩过的坑：`git diff --quiet || git diff --cached --quiet || SHA="$SHA-dirty"` 会被第二个
+  `--quiet`（返回 0）短路，未提交的树标不出 `-dirty`，改成 `if ! … || ! …; then`；`index.html`
+  里**没有 `#main`**，主容器是 `<main id="view">`，所以 `dom.main` 取的是 `#view`。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome

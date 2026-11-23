@@ -126,6 +126,90 @@
   <!-- S1a：脚本从 go/ui.html 的 <script>（原 683-2524 行）搬出。
        S3 起是 ES module：顶层声明不再是全局，内联 handler 靠 app.js 末尾的
        window.__enoteActions + Object.assign(window, …) 解析（D12 原子防线，闸门① 守）。 -->
+  <!-- S3（D16）：feature probe + 看门狗。必须是**内联普通脚本**、必须在 module 之前：
+       老 WebView 连 type="module" 都不认，模块静默不执行，那时候 app.js 里的探针根本没机会跑。
+       语法必须停在 ES5（无箭头 / const / let / 模板字符串 / 可选链），否则探针自己就是第一个
+       解析失败的脚本，白屏照旧。go/web_test.go 有断言守这条。
+       干两件事：
+       1) 逐项探测 Vue 3 与 ES module 真正需要的特性，缺哪个记哪个。门槛定在「Vue 3 能跑的
+          最小集」：定高了会把本机 Chrome 159 挡在门外（假红），定低了 probe 永远不响（假绿）。
+          app.js 本身用到 ES2017（async/await、padStart）+ ES module（Chrome 61），Vue 3 额外
+          要 Proxy/Reflect（Chrome 49），所以下面每一项都 ≤ 61，module 支持由看门狗兑底。
+       2) 看门狗：__enote.ready 在 WATCHDOG_MS 内没兑现，就把原因画到页面上并 console.log，
+          包括 window.onerror 抓到的解析错误。实测过的失效正是这一类：app.js 顶层两个同名
+          function dueMs → 解析期 SyntaxError → 整模块不执行 → 页面上一句话都没有。 -->
+  <script id="probe">
+  (function () {
+    // 别调太短：全量测试里首屏有慢的（P6 那几步带 sleep），阈值短了会变偶发假红。
+    var WATCHDOG_MS = 12000;
+    var need = [
+      ['Proxy', function () { return typeof Proxy === 'function' }, 'Vue 3 响应式（Chrome 49）'],
+      ['Reflect', function () { return typeof Reflect === 'function' }, 'Vue 3 响应式（Chrome 49）'],
+      ['Symbol', function () { return typeof Symbol === 'function' }, 'Vue 3 内部标记（Chrome 45）'],
+      ['Promise', function () { return typeof Promise === 'function' }, 'app.js 的 fetch 链（Chrome 32）'],
+      ['Object.assign', function () { return typeof Object.assign === 'function' }, '导出表 / __enote 合并（Chrome 45）'],
+      ['String.prototype.padStart', function () { return typeof String.prototype.padStart === 'function' }, 'app.js 时间格式化（Chrome 57）'],
+      ['Object.entries', function () { return typeof Object.entries === 'function' }, 'Vue 模板遍历对象（Chrome 54）']
+    ];
+    var missing = [], i;
+    for (i = 0; i < need.length; i++) {
+      var has = false;
+      try { has = !!need[i][1]() } catch (e) { has = false }
+      if (!has) missing.push(need[i][0] + '（' + need[i][2] + '）');
+    }
+    var p = { ua: navigator.userAgent, missing: missing, ok: missing.length === 0,
+              moduleError: null, reported: 0, startedAt: Date.now() };
+    window.__enoteProbe = p;
+    function esc(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    // 失败要“响亮”：页面上一句人话 + console.log（test.sh 抓得到）+ 标题变了。
+    function report(why) {
+      if (p.reported) return;
+      p.reported = 1;
+      p.why = why;
+      console.log('ENOTE PROBE FAIL ' + why + ' | missing=' +
+                  (p.missing.join(',') || 'none') + ' | ua=' + p.ua);
+      document.title = '界面没起来';
+      var host = document.getElementById('view') || document.body;
+      if (!host) return;
+      host.innerHTML = '<div style="margin:16px;padding:14px;border:1px solid #c00;' +
+        'border-radius:10px;font:14px/1.6 system-ui">' +
+        '<div style="font-weight:700;color:#c00;margin-bottom:6px">界面没起来</div>' +
+        '<div>' + esc(why) + '</div>' +
+        (p.missing.length ? '<div>缺特性：' + esc(p.missing.join('、')) + '</div>' : '') +
+        '<div style="opacity:.7;font-size:12px;word-break:break-all">' + esc(p.ua) + '</div></div>';
+    }
+    window.addEventListener('error', function (ev) {
+      if (window.__enote && window.__enote.actions) return;   // 模块跑起来了，运行期错误归 app 自己
+      var msg;
+      if (ev && ev.target && ev.target.tagName === 'SCRIPT') {
+        msg = '脚本加载失败：' + (ev.target.src || ev.target.tagName);
+      } else {
+        msg = ((ev && ev.message) || String(ev)) +
+              (ev && ev.filename ? ' @' + ev.filename + ':' + ev.lineno : '');
+      }
+      p.moduleError = msg;
+      report('模块解析/加载失败：' + msg);
+    }, true);
+    setTimeout(function () {
+      var E = window.__enote;
+      if (E && E.actions) return;   // 模块跑起来了
+      report(p.moduleError ? ('模块解析失败：' + p.moduleError)
+                           : '模块没执行（老 WebView 不认 ES module？' + WATCHDOG_MS + 'ms 内 __enote 不存在）');
+    }, WATCHDOG_MS);
+    // 模块跑起来了但首屏没画出来（fetch 卡住 / 渲染抛异常）：ready 永不兑现。
+    setTimeout(function () {
+      var E = window.__enote;
+      if (!E || !E.ready || !E.ready.then) return;
+      var done = 0;
+      E.ready.then(function () { done = 1 });
+      setTimeout(function () {
+        if (!done) report('模块跑起来了，但首屏没画完（ready 在 ' + WATCHDOG_MS + 'ms 内未兑现）');
+      }, WATCHDOG_MS);
+    }, WATCHDOG_MS);
+  })();
+  </script>
   <script type="module" src="/js/app.js"></script>
 
 </body>

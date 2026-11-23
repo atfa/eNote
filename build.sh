@@ -64,6 +64,22 @@ GO_BIN_DIR=${GO_BIN_DIR:-bin}
 GO_LDFLAGS=${GO_LDFLAGS:--s -w}
 GO_FLAGS=${GO_FLAGS:-}
 GO_BIN_FLAGS=${GO_BIN_FLAGS:-}
+# D17：build.json 是「WebView 里跑的就是刚装的这版」的凭据。设备是共享的（两个 worktree
+# 轮流装），光看日志对不上号；测试拿这里的 sha 和页面里 __enote.build.sha 逐项比。
+# sha 带 -dirty 后缀：本轮多次全量跑在未提交的树上，不标出来就是谎话。
+# 必须在 go build / go test 之前写：ui/build.json 是 //go:embed all:ui 打进二进制的。
+# 每次构建都变 → 进 .gitignore，不然每次构建都把工作区弄脏。
+if [ -d "$GO_DIR/ui" ]; then
+  BUILD_SHA=$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+  # 注意别写成 `git diff --quiet || git diff --cached --quiet || ...`：第二个 --quiet 返回 0
+  # 会把链短路，未提交的工作区改动就标不出来（实测过）。
+  if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+    BUILD_SHA="$BUILD_SHA-dirty"
+  fi
+  printf '{"sha":"%s","builtAt":"%s","app":"%s"}\n' \
+    "$BUILD_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$APP_PACKAGE" > "$GO_DIR/ui/build.json"
+  echo "==> build.json: $(cat "$GO_DIR/ui/build.json")"
+fi
 ABI=
 if [ -f "$GO_DIR/go.mod" ]; then
   need go golang

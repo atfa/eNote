@@ -1249,6 +1249,15 @@ function buildPage(t){
        : t==='todos' ? renderTodos()
        : t==='files' ? renderFiles() : renderMine();
 }
+/* S3（D17）：首屏画完的记号。两个用途：__enote.ready 的兑现点，也是 index.html 里
+   看门狗（D16）的存活信号。声明成函数 + 可空回调是因为时序：refresh() 在模块末尾的
+   __enote 装配之前就被调用，render() 可能在 Promise 存好之前就跑到，直接引用会拿到 undefined。 */
+var readyResolve = null, firstPainted = false;
+function markReady(){
+  if(firstPainted) return;
+  firstPainted = true;
+  if(readyResolve) readyResolve();
+}
 function render(){
   var p = paneFor(tab);
   p.innerHTML = buildPage(tab);
@@ -1259,6 +1268,7 @@ function render(){
   clearEnter();
   syncReminders();
   syncExpand();
+  markReady();
 }
 
 /* 「展开详情」只在正文真的超过三行时才出现：先去掉 clamp 量整段高度，再加上 clamp 量三行高度，
@@ -1886,3 +1896,30 @@ window.__enote.state = {
   get shotSel(){ return shotSel }, set shotSel(v){ shotSel = v },
   get shotList(){ return shotList }, set shotList(v){ shotList = v }
 };
+
+/* ---------- S3（D17）：__enote 测试缝 ----------
+   测试要的是「能可靠地等首屏、能拿到刚装的这版是哪个 sha、能拿到 DOM 入口」，不是靠
+   `typeof api === "function"` 猜页面还活着（那个哨兵连 module 没执行都看不出来）。
+   必须用 Object.assign 合并：整份赋值会把上面 state 的六个 getter/setter 全冲掉，
+   载荷里 tab="notes" 就变成往新对象上写，模块里的 tab 一动不动 —— 步骤 2 那 11 处载荷
+   集体假绿，比白屏难查一个量级。
+   build.json 由 build.sh 生成（sha 带 -dirty 后缀），/build.json 走 no-store：设备是共享的，
+   两个 worktree 轮流装，测试得能证明「页面里跑的就是刚装的这版」。 */
+var __ready = new Promise(function(r){ readyResolve = r; if(firstPainted) r() });
+Object.assign(window.__enote, {
+  ready: __ready,
+  build: null,
+  api: api,
+  dom: {
+    main: document.getElementById('view'),
+    sheet: document.getElementById('sheet'),
+    panel: document.getElementById('panel'),
+    toast: document.getElementById('toast'),
+    dlg: document.getElementById('dlg')
+  },
+  probe: window.__enoteProbe || null,
+  markReady: markReady
+});
+fetch('/build.json').then(function(r){ return r.json() }).then(
+  function(b){ window.__enote.build = b },
+  function(e){ window.__enote.build = { sha: 'unreachable', builtAt: '', error: String(e) } });

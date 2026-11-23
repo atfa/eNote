@@ -187,7 +187,7 @@ fi
 step "install + start"
 # 设备是共享的（两个 worktree 轮流装），日志里必须能证明「这次跑的是谁的树」：
 # 被对方 force-stop / 重装时，事后争「你装的是你那版」没有证据。sha256 + HEAD + 分支三样一起打。
-say "  apk sha256=$(sha256sum "$APK" 2>/dev/null | cut -c1-16)  head=$(git -C "$HERE" rev-parse --short HEAD 2>/dev/null)  branch=$(git -C "$HERE" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+say "  apk sha256=$(sha256sum "$APK" 2>/dev/null | cut -c1-16)  head=$(git -C "$HERE" rev-parse --short HEAD 2>/dev/null)  branch=$(git -C "$HERE" rev-parse --abbrev-ref HEAD 2>/dev/null)  build=$("$PY" -c 'import json,sys;print(json.load(open(sys.argv[1]))["sha"]+"@"+json.load(open(sys.argv[1]))["builtAt"])' "$HERE/go/ui/build.json" 2>/dev/null || echo 无)"
 asroot "am force-stop '$APP_PACKAGE'" >/dev/null 2>&1 || true
 asroot "pm install -g '$APK'" >/dev/null || die "pm install failed"
 if [ "$RESET" = 1 ]; then
@@ -725,6 +725,62 @@ assert got == want, "运行时导出表与 app.js 不一致：缺 %s / 多 %s" %
     sorted(set(want) - set(got))[:5], sorted(set(got) - set(want))[:5])
 print("  ok 运行时导出表 %d key（与 app.js 逐项相等）+ 状态桥活着" % len(got))
 ' || fail "运行时导出表/状态桥检查失败"
+
+# ---------- D17 测试缝：ready / build / dom / probe ----------
+# 为什么单独一条载荷：ready 是 Promise，要 await；上面那条是同步的，不动它最稳。
+# build.sha 是整条防线的重点：设备是共享的（两个 worktree 轮流装），光看日志对不上号。
+# 拿 build.sh 写进 APK（//go:embed）的那份 sha 和页面里 __enote.build.sha 逐项比，
+# 才能断言「WebView 里跑的就是刚装的这版」；no-store 失效 / 装完没重启都会立刻红。
+# 这也替掉了以前 `typeof api === "function"` 那个脆弱哨兵：它连 module 没执行都看不出来。
+EXPECT_SHA=$("$PY" -c 'import json,sys;print(json.load(open(sys.argv[1]))["sha"])' \
+  "$HERE/go/ui/build.json" 2>/dev/null) \
+  || fail "读不到 $HERE/go/ui/build.json：build.sh 没生成它？（D17 的凭据）"
+N0S=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("JSEVAL "+m)};
+  var E=window.__enote||{};
+  var t=Date.now(), r;
+  if(!E.ready||!E.ready.then){ r="no-promise"; } else {
+    try{
+      await Promise.race([E.ready, new Promise(function(_,rej){setTimeout(function(){rej(new Error("ready-timeout"))},15000)})]);
+      r="ok";
+    }catch(e){ r="fail:"+((e&&e.message)||e) }
+  }
+  L("seam ready="+r+" ms="+(Date.now()-t));
+  L("seam build="+(E.build&&E.build.sha||"none")+" builtAt="+(E.build&&E.build.builtAt||"none"));
+  var d=E.dom||{};
+  L("seam dom main="+(d.main?d.main.id+":"+d.main.tagName:"none")+" sheet="+(d.sheet?d.sheet.id+":"+d.sheet.tagName:"none")+" panel="+(d.panel?1:0)+" toast="+(d.toast?1:0)+" dlg="+(d.dlg?1:0));
+  L("seam api="+(typeof E.api)+" markReady="+(typeof E.markReady));
+  var pr=E.probe||{};
+  L("seam probeok="+(typeof pr.ok==="boolean"?String(pr.ok):"none")+" missing="+(pr.missing&&pr.missing.length?pr.missing.join("|"):"none")+" moduleError="+(pr.moduleError?String(pr.moduleError).replace(/\s+/g,"_"):"none"));
+  L("seam done=1");
+})()' > "$TMPDIR/jsseam.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsseam.json'"
+n=0
+while [ "$n" -lt 30 ]; do
+  readtlog | tail -n +$((N0S + 1)) | grep -q 'JSEVAL seam done=1' && break
+  sleep 1; n=$((n + 1))
+done
+readtlog | tail -n +$((N0S + 1)) | grep 'JSEVAL seam' \
+  | EXPECT_SHA="$EXPECT_SHA" "$PY" -c '
+import os, sys
+lines = [l for l in sys.stdin.read().splitlines() if "JSEVAL seam " in l]
+if not lines:
+    sys.exit("D17 测试缝载荷没跑起来（页面没加载？）")
+want = os.environ["EXPECT_SHA"]
+d = dict(kv.split("=", 1) for l in lines for kv in l.split("JSEVAL seam ", 1)[1].split() if "=" in kv)
+assert d.get("ready") == "ok", "__enote.ready 没兑现（%s）：首屏没画出来，测试缝就是废的" % d.get("ready")
+assert d.get("build") == want, "页面里跑的是 %s，刚装的是 %s：no-store 失效或装完没重启" % (d.get("build"), want)
+assert d.get("main") == "view:MAIN", "__enote.dom.main = %s，期望 view:MAIN" % d.get("main")
+assert d.get("sheet") == "sheet:DIV", "__enote.dom.sheet = %s，期望 sheet:DIV" % d.get("sheet")
+for k in ("panel", "toast", "dlg"):
+    assert d.get(k) == "1", "__enote.dom.%s 拿不到" % k
+assert d.get("api") == "function", "__enote.api 是 %s：api(path, body) 是测试的入口" % d.get("api")
+assert d.get("probeok") == "true", "feature probe 报缺特性：%s" % d.get("missing")
+assert d.get("missing") == "none", "feature probe 报缺特性：%s" % d.get("missing")
+assert d.get("moduleError") == "none", "页面里有未捕获的解析/加载错误：%s" % d.get("moduleError")
+print("  ok D17 测试缝：ready 兑现(%sms) build=%s dom 齐 probe 全绿" % (d.get("ms"), d.get("build")))
+' || fail "D17 测试缝检查失败"
 
 N0C=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){

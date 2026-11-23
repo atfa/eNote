@@ -727,3 +727,31 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 * **闸门② 扫描器必须跳过字符串字面量**：`test.sh` 里 `.pane[data-tab=mine]` 的 `tab` 是 CSS
   选择器文本，裸正则匹配标识符会假红（Tony 实测）。注释同一类（app.js 注释里的
   `onclick="foo()"` 让签名闸门判红过）。
+
+### 9.7 S8 步骤 3 已完成（Austin，D16 / D17：`__enote` 测试缝 + `build.json` + feature probe）
+
+纯增量，界面行为零变化。落地内容：
+
+* `app.js` 末尾 `Object.assign(window.__enote, {ready, build, api, dom, probe, markReady})`
+  —— **合并**，不覆盖（Tony 的硬约束）。`ready` 由 `render()` 最后一句的 `markReady()` 兑现；
+  做成函数 + 可空回调是因为 `refresh()` 在模块末尾装配 `__enote` 之前就发出去了。
+  `dom.main` 取 `#view`（`index.html` 里没有 `#main`，主容器是 `<main id="view">`）。
+* `build.sh` 在 go build/test 之前写 `go/ui/build.json` = `{sha,builtAt,app}`，sha 带 `-dirty`
+  后缀；`//go:embed all:ui` 打进二进制，`/build.json` 走 no-store；文件进 `.gitignore`
+  （构建产物，否则每次构建弄脏工作区，EXECUTE 签名没法签）。
+* `index.html` 内联 `<script id="probe">`（ES5、在 module 之前）：7 项特性探测（门槛 = Vue 3
+  能跑的最小集，全部 ≤ module 的 Chrome 61）+ `WATCHDOG_MS = 12000` 两级看门狗 +
+  capture 阶段 `window.onerror`。失效时页面画红框卡片、改 `document.title`、
+  `console.log('ENOTE PROBE FAIL …')`。
+* `go/web_test.go`：内联 `<script>` 白名单（只允许 `id="probe"`）+ ES5 语法断言 + 位置必须在
+  module 之前；D21 六个状态名逐个钉 `get x()` / `set x(v)`；禁止 `window.__enote = {` 整份覆盖；
+  新增 `TestBuildJSONServed`。
+* `test.sh`：导出表闸门之后新增 `JSEVAL seam` 载荷（ready 兑现 / `build.sha` 对上刚装的这版 /
+  dom 齐 / `api` 是函数 / `probe.ok` 全绿 / `moduleError` 空），install 溯源行加打 `build=<sha>@<builtAt>`。
+
+验收（D20）：`node tools/ui_test.js`（14 闸门）+ `node tools/ui_sig_test.js`（84 签名）+
+`go test ./...` 全绿；全量 `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd` 在本步 HEAD
+跑完，结果记在 CHANGELOG 对应段的日志编号里。
+
+给步骤 4 的硬约束：`render()` 改成返回 Promise 后，`markReady()` 的兑现点必须跟着挪到渲染真的
+完成之后（现在在同步 `render()` 末尾）；`JSEVAL seam` 的 `ready` 断言会自动覆盖这件事。
