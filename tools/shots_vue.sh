@@ -56,6 +56,28 @@ shoot() {   # shoot <输出名> <额外 JS>
 asroot_global "am start --display $VDID -n $ACTIVITY" >/dev/null
 sleep 3
 
+# ---------- 步骤 8：截图暂存页 / 选文件夹页 / 导入进度层 ----------
+# VDIFF 比得出 DOM，比不出「图挂不挂得出来」「遮罩盖不盖全屏」，这两页只能眼睛看。
+# 暂存区的图只能从分享意图产生（JS 侧没有建暂存的 API），走 /api/shots/add 造夹具。
+PORT=$(asroot_global "cat '$DATA/enote/enote.log' 2>/dev/null" 2>/dev/null \
+  | grep -o '127.0.0.1:[0-9]*' | tail -1 | cut -d: -f2)
+[ -n "$PORT" ] || die "读不到本地 API 端口（app 没起来？）"
+INBOX="/data/user/0/$APP_PACKAGE/files/enote/inbox"
+FIX=''
+for f in vsh-a.png vsh-b.png vsh-c.png; do
+  "$PY" "$HERE/tools/make_test_png.py" "$TMPD/$f" 480 900 >/dev/null 2>&1 \
+    || die "造测试图失败：$f"
+  asroot_global "rm -f '$INBOX/$f'" >/dev/null 2>&1 || true
+  asroot_global "cp '$TMPD/$f' '$INBOX/$f'; chown '$UI_APP:$UI_APP' '$INBOX/$f'; chmod 644 '$INBOX/$f'" \
+    || die "推测试图到暂存区失败：$f"
+  [ -n "$FIX" ] && FIX="$FIX,"
+  FIX="$FIX{\"path\":\"$INBOX/$f\",\"name\":\"$f\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)}"
+done
+ADD=$(curl -s -m 60 -X POST "http://127.0.0.1:$PORT/api/shots/add" \
+  -d "{\"shots\":[$FIX]}" 2>/dev/null)
+echo "$ADD" | grep -q '"added":3' || die "造暂存截图夹具失败（截图页只能截到空态）：$ADD"
+say "  暂存夹具已就位（3 张）"
+
 shoot vue-notes-light "setTheme('light'); await render();"
 shoot vue-notes-dark "setTheme('dark'); await render();"
 # 空态：走真 API 清空（只改 S.notes 被两层遮蔽：SR.notes 优先 + 2s 轮询整体替换 S），截完恢复
@@ -64,6 +86,17 @@ shoot vue-notes-empty "var A=__enote.actions; var ids=__enote.state.S.notes.map(
 # shot 计数必须给：ShotBanner 的 kind 在 shot=0 且 SHOTFLAGS 全好时返回 ''（不渲染），
 # 只造 MISSED + clip 截出来只有两条，图名与证据对不上。
 shoot vue-notes-banners "__enote.state.MISSED={count:2,items:[{id:'t1',nid:'n1',title:'x',at:Date.now()-60000}]}; __enote.state.S.info.shot=5; __enote.state.S.info.clip=3; await render();"
+# 步骤 8 的三张：截图暂存页（明/暗）+ 选文件夹页 + 导入进度层。
+# 暂存页要看到真缩略图（/shotimg?id= 取不到图就是碎图），所以夹具走真 API 而不是注水数据。
+shoot vue-shots-light "setTheme('light'); await render(); shotSheet();"
+shoot vue-shots-dark "setTheme('dark'); await render(); shotSheet();"
+shoot vue-folders-light "setTheme('light'); await render(); folderSheet();"
+# 进度层：组件根带 v-if，未挂载时必须零残留（透明遮罩吃掉点击是用户能直接碰到的 bug）。
+shoot vue-progress "setTheme('light'); await render(); shotOverlay(true,3,'AI 正在解析：1 / 3 条完成');"
+# 收干净：进度层关掉、弹层关掉、暂存夹具删掉，别让下一轮测试接到脏状态
+asroot_global "am start --display $VDID -n $ACTIVITY --es hook jseval --es arg '{\"js\":\"(async function(){ shotOverlay(false); closeSheet(); console.log(\\\"SHOT cleanup ok=1\\\") })()\"}'" >/dev/null
+IDS=$(curl -s -m 30 "http://127.0.0.1:$PORT/api/shots/list" | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin).get("shots") or []]))')
+[ "$IDS" != "[]" ] && curl -s -m 60 -X POST "http://127.0.0.1:$PORT/api/shots/remove" -d "{\"ids\": $IDS}" >/dev/null
 # 恢复现场：补回刚删的笔记、主题回明色，别让下一轮测试接到脏状态。
 # 轮询等卡片数回来，不用固定 sleep：实测 3 条 /api/add 到读数要 2.04s，
 # 而原来 1200+800=2.0s 的预算只剩 0 秒余量 —— 定时依赖迟早自己变红。
@@ -74,3 +107,6 @@ n=$(md5sum vue-notes-*.png | awk '{print $1}' | sort -u | wc -l)
 say "唯一图片数：$n / 4"
 # 四张必须互不相同：空态和横幅两张尤其关键，相同说明注入没生效（不报错的坑）
 [ "$n" -ge 4 ] || die "截图内容重复：注入没生效，别把假图当验收"
+m=$(md5sum vue-shots-*.png vue-folders-*.png vue-progress.png 2>/dev/null | awk '{print $1}' | sort -u | wc -l)
+say "步骤 8 图片唯一数：$m / 4"
+[ "$m" -ge 4 ] || die "步骤 8 截图重复/缺失：弹层注入没生效（shots/folders/progress）"

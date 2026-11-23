@@ -31,6 +31,41 @@ export function mountView(tab, pane, def){
   return app;
 }
 
+/* ---------- 弹层（sheet）的挂载表（步骤 8） ----------
+   弹层与 tab 页的生死不同：tab pane 常驻（切页签只换显示），sheet 每次打开重建、关掉就
+   销毁（closeSheet 把 .panel 的 innerHTML 换掉，Vue 的根节点随之消失）。所以另开一张表，
+   并且必须显式 unmountSheet：不 unmount 的话 app 实例和它的 effect 永远留着，反复开合
+   就是只增不减的泄漏。混在 apps 一张表里，「切 tab 保留 / 关弹层销毁」这条规则就没地方表达。
+   同名重复打开先 unmount 旧的：遗留 sheet 的 DOM 已被 innerHTML 换掉，旧实例的根节点
+   是个游离节点，留着它 = 泄漏一棵永远渲染不到的子树。 */
+export const sheetApps = {};
+
+export function mountSheet(name, el, def){
+  unmountSheet(name);
+  const app = Vue.createApp(def);
+  app.config.productionTip = false;
+  app.config.devtools = false;
+  app.mount(el);
+  sheetApps[name] = app;
+  return app;
+}
+
+export function unmountSheet(name){
+  const app = sheetApps[name];
+  if (!app) return;
+  delete sheetApps[name];   // 先摘表：unmount 里的 beforeUnmount 钩子若抛异常，表里不能留个死实例
+  app.unmount();
+}
+
+/* 弹层重画：render() 只驱动 tab 页，sheet 里的状态（shotSel / folderSel / folderQ）变了
+   得有人 bump tick。少了这步就是「点了没反应」——computed 依赖 V.tick，没人 bump 就永远
+   缓存，而签名测试和静态闸门全绿（步骤 8 契约 (b)：app.js 的 shotPick / folderPick /
+   folderFilter 在 Vue 路径上都要调它）。 */
+export function sheetPaint(){
+  V.tick++;
+  return Vue.nextTick();
+}
+
 /* 组件里读模块状态的 computed 必须包 live()：S / MISSED / SHOTFLAGS 是普通
    模块变量，不是响应式的，computed 没有响应式依赖就永远缓存 —— 数据变了视图不动
    （症状：删光剪贴板后首页横幅不消失，实测踩过）。live() 让 computed 依赖 V.tick，
