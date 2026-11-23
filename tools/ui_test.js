@@ -340,6 +340,12 @@ const g2 = [];
 const refsAll = new Set();
 let bareStateAll = [], renderCalls = 0, renderAwaited = 0;
 jsevalPayloads.forEach((body, idx) => {
+  // 载荷得能编译：包装漏改 async / 括号不平衡都是整段 SyntaxError，症状是 JSEVAL token
+  // 集体消失（「用例没跑」而不是「用例红了」）。new Function 只编译不执行，正好当语法闸门。
+  try { new Function(body) } catch (e) {
+    g2.push('载荷 ' + (idx + 1) + ' 编译不过：' + e.message + '（整段不执行，JSEVAL token 会集体消失）');
+    return;
+  }
   if (body.indexOf('`') >= 0) g2.push('载荷 ' + (idx + 1) + ' 用了模板字符串，扫描器不认（改成字符串拼接）');
   const clean = stripJsLiterals(body);
   const loc = payloadLocals(clean);
