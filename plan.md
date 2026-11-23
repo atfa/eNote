@@ -713,3 +713,17 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 * **测试可追溯性**：`test.sh` 的 install 步骤打印 APK sha256 + `git rev-parse --short HEAD` +
   分支名。设备是共享的，两个 worktree 轮流装，被对方 force-stop 时日志能自证跑的是谁的树
   （本轮被对方的安装打断过两次）。
+
+步骤 2 落地后给步骤 3/4 的硬约束（Tony 提，Austin 记）：
+
+* **步骤 3 不许整份覆盖 `window.__enote`**：现在 app.js 末尾是
+  `window.__enote = window.__enote || {}` + `actions` + `state`（六个 getter/setter）。
+  D17 的 `ready / build / api / dom` 必须用 `Object.assign(window.__enote, {...})` 合并进去——
+  整份赋值会把 `state` 的代理全冲掉，症状是步骤 2 那 11 处载荷集体**假绿**（赋值打到新对象，
+  模块里的变量一动不动）。运行时防线里 `assert state == object` 会先红，这是哨兵该起的作用。
+  同时把 `state` 的六个名字在 `go/web_test.go` 的 D9 反向断言里逐个钉住（现在只钉
+  `window.__enote.state = {` 这个字面量，改名就漏）。
+* **闸门② 的闭集是 16 个**（函数 10 + 状态 6，含 `shotList`），不是 plan 正文写的 10。
+* **闸门② 扫描器必须跳过字符串字面量**：`test.sh` 里 `.pane[data-tab=mine]` 的 `tab` 是 CSS
+  选择器文本，裸正则匹配标识符会假红（Tony 实测）。注释同一类（app.js 注释里的
+  `onclick="foo()"` 让签名闸门判红过）。
