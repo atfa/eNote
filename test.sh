@@ -1266,6 +1266,10 @@ step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收�
 # 属性按名排序、空白折叠、文本 trim。CSS 和测试选择器看的是 tag/class/attr，不看属性顺序，
 # 所以「规范化后相等」才是对的契约。步骤 6/7/9/10 直接复用（加对应 tab 即可）。
 
+# 日志窗口：从本步起算（readtlog 不切 + 自己记 NVD）。不能用 newtlog：它从整轮
+# 开头切，上一轮跑剩的同名 token 就在窗口里，等待循环会立刻 break，断言读到的是
+# 上一轮的旧数据（假绿：VDIFF 永远 same=1，NINT 读到上一轮的 empty=false）。
+NVD=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("VDIFF "+m)};
   var E=window.__enote||{};
@@ -1330,10 +1334,10 @@ UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsvdiff.json'"
 for i in $(seq 1 40); do
-  newtlog | grep -q 'VDIFF done=1' && break
+  readtlog | tail -n +$((NVD + 1)) | grep -q 'VDIFF done=1' && break
   sleep 0.5
 done
-newtlog | grep 'VDIFF' | "$PY" -c '
+readtlog | tail -n +$((NVD + 1)) | grep 'VDIFF' | "$PY" -c '
 import sys, re
 lines = [l.strip() for l in sys.stdin if "VDIFF" in l]
 d = {}
@@ -1419,7 +1423,7 @@ NIN=$(readtlog | wc -l)
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsnint.json'"
 for i in $(seq 1 60); do
-  newtlog | grep -q 'NINT ndone=1' && break
+  readtlog | tail -n +$((NIN + 1)) | grep -q 'NINT ndone=1' && break
   sleep 0.5
 done
 # 取窗口读未切的 readtlog：对 newtlog 再 tail 一次是双重跳过（见步骤开头那段注释）。
