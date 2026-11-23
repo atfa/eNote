@@ -9,8 +9,9 @@
       今天的语义就是「每次 render() 全量重绘」，tick 是它的一比一翻译（见 vue.js 顶部说明）。
    5. 事件用 @click 绑宿主方法，事件对象用 $event。
 
-   类名冻结（D15）：模板产出的 class 必须与遗留字符串渲染器逐字相同，
-   ui_sig_test.js 的 84 项签名 + test.sh 的 10 个 class 断言是硬验收。 */
+   类名冻结（D15）：模板产出的 class 与迁移前逐字相同，
+   tools/ui_test.js 的闸门 + 签名段 + test.sh 的 class 断言是硬验收
+   （步骤 11 已删掉遗留字符串渲染器，「与它逐字相同」的基准没了，类名契约改由这些静态断言守）。 */
 
 import { H, Vue, live } from './vue.js'
 // 基础组件 <empty-state> 归 Tony（owner 见文件头注释），在这里统一注册。

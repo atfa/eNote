@@ -1,6 +1,7 @@
 # P11 设计：截图捕获（自动扫描新截图 → 暂存区 → 一次导入笔记）
 
-> 状态：**已实现**（2026-11-22，P11 落地，`test.sh` P11 段 + `go test` + `ui_sig_test` 全绿）。
+> 状态：**已实现**（2026-11-22，P11 落地，`test.sh` P11 段 + `go test` + `ui_test` 全绿；
+> 当时的静态检查叫 `ui_sig_test.js`，S6 步骤 11 已并入 `tools/ui_test.js`）。
 > 实现与本文的差异只有两处，都是落地时按代码结构定的：
 > 1. 没有 `/api/shots/import`——OCR 只能在 Java 侧（ML Kit）做，导入由 `Android.importShots`
 >    发起，Go 只负责暂存/去重/忽略表（多图合并走 `kind=images` 入队）。
@@ -243,7 +244,7 @@ LLM 生成；未配置 AI 或失败 → `截图 N 张 · 11-22 10:12`。
 `go test`：`shots_test.go` 锁定水位边界（`dateAdded==watermark` 不重复、5 分钟重叠窗口、
 上限 50、sha1 去重、忽略表永久生效、空文件/坏图跳过）。
 
-`tools/ui_sig_test.js`：banner 顺序 `missed→shot→clip`、截图页三按钮、进度层警示文案
+`tools/ui_test.js` 的签名段：banner 顺序 `missed→shot→clip`、截图页三按钮、进度层警示文案
 （含「不要锁屏」「不要退出」关键词）、文件夹 sheet 结构。
 
 ## 8. 已确认的决策（2026-11-22）
@@ -282,5 +283,5 @@ LLM 生成；未配置 AI 或失败 → `截图 N 张 · 11-22 10:12`。
 4. 路由 `/api/shots/*` + `/shotimg`。
 5. `ui.html`：`shotBanner()`、`shotSheet()`、`folderSheet()`、`importShots(mode)`、
    进度层 `progressOverlay()`、我的页那一组开关。
-6. `test.sh` P11 段 + `ui_sig_test` 断言。
+6. `test.sh` P11 段 + `ui_test.js` 签名断言。
 7. `plan.md` / `CHANGELOG.md` / README「已知限制」更新（权限说明、文件夹选择、vivo 路径差异）。

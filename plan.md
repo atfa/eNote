@@ -579,7 +579,8 @@ Duo GOAL 双人协作（Austin 驱动 / Tony 验证），共享计划 v3 已签�
 * **D7** 高级感 = 一套间距刻度 + 一套圆角 + 阴影层级 + 字号刻度（`tabular-nums`）+ 图标尺寸统一 +
   空状态 + 骨架屏 + `:focus-visible` + safe-area + light/dark/auto 对齐 + `prefers-reduced-motion`。
   **不加 sepia**（全库 0 命中，那是加功能）。P5.6"切页不要整页入场动画"的结论保留。
-* **D8** `tools/ui_sig_test.js` 活到 S6 才改名 `ui_test.js`，中途不丢防闪烁覆盖；
+* **D8** `tools/ui_sig_test.js` 活到 S6 才改名 `ui_test.js`，中途不丢防闪烁覆盖
+  （S3 步骤 11 落地：84 项签名并入 `ui_test.js`，那个文件删掉，静态闸门 3 → 2）；
   三条新闸门：① 内联 handler 调的函数名必须存在 ② `test.sh` jseval 引用的全局名 ⊆ 导出表
   ③ 裸 hex 只允许在 `tokens.css`。
 * **D9** ES module 化推到 S3：S1 若转 module，70 个 handler 全静默失效 = 一次性制造 70 个 P12，
@@ -657,7 +658,8 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 * P8.5 提醒面板点的是 `.msrow[1]`（第二行）来验证「点整行跳笔记」，重置后只剩 1 条逾期项 →
   `row[1]` 不存在 → `jumped=0` 假红。现在用例自己 `POST /api/todo` 造 2 条已到点的待办。
 
-验收：`node tools/ui_test.js`（13 闸门）+ `node tools/ui_sig_test.js`（84 项）+ `go test ./...`
+验收（当时的口径，S3 步骤 11 之后签名已并入 `ui_test.js`）：`node tools/ui_test.js`（13 闸门）
++ `node tools/ui_sig_test.js`（84 项）+ `go test ./...`
 + `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd`（25 步）全绿。
 
 ### 9.6 S8 步骤 2 已完成（Austin + Tony，D12 原子防线 + D21 状态桥）
@@ -749,7 +751,7 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 * `test.sh`：导出表闸门之后新增 `JSEVAL seam` 载荷（ready 兑现 / `build.sha` 对上刚装的这版 /
   dom 齐 / `api` 是函数 / `probe.ok` 全绿 / `moduleError` 空），install 溯源行加打 `build=<sha>@<builtAt>`。
 
-验收（D20）：`node tools/ui_test.js`（14 闸门）+ `node tools/ui_sig_test.js`（84 签名）+
+验收（D20，当时的口径）：`node tools/ui_test.js`（14 闸门）+ `node tools/ui_sig_test.js`（84 签名）+
 `go test ./...` 全绿；全量 `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd` 在本步 HEAD
 跑完，结果记在 CHANGELOG 对应段的日志编号里。
 
@@ -1373,11 +1375,92 @@ EXIT=0，clip grid / clip empty 两遍 `same=1`，CIT 真点击全链通过（�
   步骤 10 四张唯一数 4/4），图归 Tony 审。
 
 **记入后续步骤的账**
-* 步骤 11：删遗留渲染器时连 VDIFF 的基准与 `vdiff_tab`/`vdiff_sheet` 一起删（基准没了就是
-  恒绿闸门），`tools/ui_sig_test.js` 的 84 项签名并进 `ui_test.js` 后删掉那个文件；
+* 步骤 11（已做，见 9.17）：删遗留渲染器时连 VDIFF 的基准与 `vdiff_tab`/`vdiff_sheet` 一起删
+  （基准没了就是恒绿闸门），`tools/ui_sig_test.js` 的 84 项签名并进 `ui_test.js` 后删掉那个文件；
   「恒绿闸门审计」把 `exportJSON` 这笔当证据（静态层对 module 求值期是盲的 → 闸门①e 补上）。
 * 步骤 11：`clipParse` 走真 LLM（几十秒且依赖 key），CIT 只测到按钮文案与勾选联动，
   「一键解析 N 条」真解析路径与 `clipError` 分支仍无客户端回归。
 * 步骤 12：OCR 搜索断言收紧（现在只断言命中数，不断言命中内容）。
-* 步骤 13：hex 8→0、px 57→0 的棘轮收尾；截图夹具 vds-a/vds-b 用同一段字节
-  （`make_test_png.py`）导致「两张图」在像素上不可分。
+* 步骤 13：hex 8→0、px 57→0 的棘轮收尾 —— **扫描范围要一起扩到 `js/**`**（闸门③ 只扫
+  `go/ui/css/**`，Vue 模板里的内联 style 现在看不见，见 9.17）；截图夹具 vds-a/vds-b 用同一段
+  字节导致「两张图」在像素上不可分（步骤 11 已改成各自 `make_test_png.py` 现造）。
+
+### 9.17 S3 步骤 11 已完成（Austin：删光遗留 JS 与 sigOf，静态闸门 3→2）
+
+**删掉的东西**（这一步只做删除与合并，不加功能）
+* `go/ui/js/app.js` **2499 → 1986 行**（−513）：`render()` 变成 Vue-only（注册表里没有的 tab
+  直接 `console.error` + `markReady()`），`shotSheet`/`loadShots`/`shotPick`/`shotSelAll`、
+  `folderSheet`/`loadFolders`/`folderPick`/`folderSelAll`/`folderPickShots`/`folderFilter`、
+  `clipSheet`/`loadClips`/`clipPick`/`clipSelAll`、`settingsSheet`/`settingsRefresh` 里的
+  `VUE_SHEETS.*` 分支全部拆掉（`settingsRefresh()` 现在就是 `return sheetPaint()`）；
+  `__enote.legacy`（VDIFF 的基准缝）与 `afterPaint` 整块删除，导出表 69 → 67 key
+  （`renderMineHTML` / `settingsHTML` 随实现一起没）。
+* **47 个只有死代码引用的函数**分两批删（可达性不动点扫描：根 = 导出表 ∪ `setHost` ∪
+  内联 handler ∪ 模板里的 `H.xxx` ∪ 顶层语句；注释里的名字算引用，所以只会漏删不会多删）：
+  `buildPage` `shotCountLabel` `openTodoFromMissed` `missedBanner` `shotBanner`
+  `folderListHTML` `folderSheetHTML` `folderCountHTML` `folderRows` `folderSelCount`
+  `clipBanner` `clipPrevHTML` `clipThumbHTML` `clipMetaHTML` `clipItemHTML` `clipListHTML`
+  `clipSheetHTML` `renderNotes` `renderTodos` `renderFiles` `renderMine` `renderSettings`
+  `fileStrip` `filesSkeleton` `attachCardHTML` `statsHeroHTML` `statsRunCardHTML`
+  `chartHTML` `statHTML` `settingsHTML` `shotGridHTML` `shotSheetHTML` `shotCountHTML`
+  `clipCountHTML` 等；`setHost` 同步摘掉 `chartHTML` / `statsRunCardHTML` 两个叶子
+  （**`clipCountHTML` 必须留**：`views/clip.js` 的 `countHtml: live(() => H.clipCountHTML())`
+  还在用，删了闸门⑮ 立刻红 —— 这条是反向实验验出来的）。
+* **`sigOf` → `stateSig` + `SIG_SKIP` 排除表**（契约翻转，见下）。
+* `test.sh` **2733 → 2351 行**（−382）、`step` 34 → 30：VDIFF 整段（两个 step + `vdiff_tab`
+  + `vdiff_sheet` + 全部调用）删除，剪贴板页的 VDIFF 三步合并成「夹具 + 真点击交互」一步，
+  附件页两次 `vdiff_tab files` 删除（夹具/空态的 DOM 断言保留成独立断言），
+  设置页载荷的 `legacy=` 探针与 `assert d["legacy"]=="1"` 随缝一起删。
+* `tools/ui_sig_test.js`（645 行、84 项）**删除**，签名段整体并入 `tools/ui_test.js`
+  （1066 → 1679 行）；`test.sh` 里两个 node 步骤合成一步
+  「ui: 静态闸门（轮询指纹 / 内联 handler 存在性 / 调色板一致性 / hex·px 棘轮）」
+  → **静态闸门从三份减到两份**（`ui_test.js` + `go test`）。
+
+**契约翻转：手工挑字段 → 整份序列化 + 排除表**
+原 `sigOf` 手工挑要参与指纹的字段，漏一个就是静默不重绘（踩过 `info.shot` 漏了 →
+首页横幅永不出现）。`stateSig` 反过来：`JSON.stringify([notes, info(去掉排除表), settings,
+截图开关])`，只维护一张 `SIG_SKIP = {uptimeS, tz, go, dir}` 排除表。代价是「列表不展示的
+字段变了会多画一次」——多画一次是可见的、Vue 的 patch 很便宜；漏字段的不重绘是静默的。
+`/api/state` 里 `uptimeS`/`queue`/`clip`/`shot`/`server`/`go`/`tz`/`ocrReady`/`dir` 九个字段
+只有 `shot`/`server`/`ocrReady`/`queue` 参与界面，其余进排除表。
+
+**`go/web_test.go` 的遗留禁令**（新增，防「删掉的死代码被谁救回来」）：
+`TestIndexServedFromDirectory` 断言 app.js 里不得出现 `function buildPage` / `buildPage(tab)`
+/ `function sigOf` / `__enote.legacy` / `legacy: {`。
+
+**19 条反向实验全红得对**（`.test/s11_neg.sh`，脚本开头一次性备份 10 个文件到 `$TMPDIR/s11neg`，
+`trap ... EXIT` 恢复，绝不用 `git checkout`）：签名段 6 条（排除表去掉 uptimeS / 清空排除表 /
+指纹不含 notes / 不含 settings / 不含截图开关 / 不含 info）、`go test` 禁令 3 条（sigOf 回来 /
+legacy 缝回来 / `buildPage(tab)` 回来）、结构闸门 10 条（载荷调闭集外的 `settingsSheet` /
+导出表右值不存在 / 内联 handler 指向不存在的函数 / 模板 handler 总数掉到基线下（须删 2 个，
+删 1 个刚好等于基线 73）/ 模板用 `setHost` 外的名字 / css 裸 hex / css 裸 px / 顶部 banner
+顺序 / 组件没暴露 `H`）。**其中「指纹不含截图开关」第一版没抓到**：签名段根本没有 SHOTFLAGS
+的行为断言（`SHOTFLAGS` 只是被 eval 的 `stateSig` 闭包到的一个夹具常量）—— 补了三条
+（文件夹数变化要重绘 / 开关变化要重绘 / 改回来指纹也改回来）才红得对。
+
+**本步查出的两处静态层能力边界（记进步骤 13）**
+1. **闸门③ 的 hex/px 棘轮只扫 `go/ui/css/**`**：Vue 模板与 app.js 字符串里的内联
+   `style="color:#123456"` / `width:999px` 它完全看不见（实验验出：模板里加裸 hex/px 闸门全绿）。
+   步骤 13 要把 hex 8→0、px 57→0 收尾，扫描范围必须一起扩到 `js/**`，否则「棘轮归零」是假的。
+2. **组件里把 `live(() => …)` 换成普通函数，静态闸门全绿**（真机那条交互用例才抓得到）：
+   computed 没依赖就永远缓存，症状是「点了没反应」。闸门⑮ 只查「渲染路径引用了 tick」，
+   一个组件里剩一个 `live` 就满足。
+
+**Tony 审计清单（步骤 8–10 的账，本步记账）**
+* 恒绿闸门审计以那 19 条反向实验为证据；`exportJSON` 那笔证明**静态层对 module 求值期是盲的**
+  （闸门①e 已补）。
+* `prefPayload` 的 `done:'all'` 分支没有客户端回归（只有 Go 侧测到）。
+* 断言里应显式写出 `src` / `status` / `pri` / `kind`，不要只断言数量。
+* 闸门⑮ 的 tick 扫描本步已扩到 `js/**` 全部模板（含 `components.js`）：扫的模板 20 → **25**。
+* `tools/shots_*.sh` 的 md5 唯一数自检不得空过：已核实 `[ "$n" -ge 4 ] || die`，glob 不匹配时
+  `n=0` 会 die，不是空过。
+* 截图夹具 `vds-a.png` / `vds-b.png` 以前都 `cp` 同一个 `$IMG`（`.test/ocr-test.png`）→
+  字节相同，「两张图」在像素上不可分。本步改成各自用 `tools/make_test_png.py` 现造
+  （掺随机噪点带 → 字节必不同）。
+* SIT 里 `q()[0].click()` 这类索引选择器应换成稳定 id（步骤 12/13 顺手做）。
+
+**本步 HEAD 的验证**：`node tools/ui_test.js` 111 ok / 0 FAIL、`(cd go && go test ./...)` ok、
+`node --check go/ui/js/app.js` + `bash -n test.sh` ok、`.test/s11_neg.sh` 19 红得对 / 0 没抓到；
+真机 `GO_TEST=1 ./build.sh && ./install.sh && sh $TMPDIR/restart.sh && ./test.sh --vd`
+**30 步全绿**（EXIT=0，0 FAIL，0 skip；`  ok` 行 69 → 146，因为静态闸门步骤现在把 111 项
+node 断言逐行内联打印，删掉的 VDIFF 三步 + 两次 `vdiff_tab files` 共 −14 项真机断言）。

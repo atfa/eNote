@@ -26,7 +26,7 @@
 界面是 `go/ui/` 目录（`index.html` + `css/` + `js/` + `vendor/`），由 Go 的 HTTP 服务在 `127.0.0.1` 上提供，WebView 加载。
 以前是单文件 `go/ui.html`（2527 行），P13 拆成了目录，见 `plan.md` §9。
 图标是一整套 24dp 线性 SVG（内嵌 sprite，随 `currentColor` 变色）；启动器图标用
-用户自己的一套 PNG（5 个密度 + 自适应图层），`tools/ui_sig_test.js` 会锁住它，
+用户自己的一套 PNG（5 个密度 + 自适应图层），`tools/ui_test.js` 会锁住它，
 防止有人又换回矢量重绘。
 
 ---
@@ -287,7 +287,7 @@ src/dev/xduo/enote/     Java 壳（8 个类）+ com/vivo/aiocr/general（OCR SDK
 go/                     Go 业务层 + ui/（内嵌 UI：index.html + css/ + js/ + vendor/）+ icon.png（go:embed）
 res/                    启动器图标（矢量 XML，由 tools/gen_icon.py 生成）
 tools/gen_icon.py       图标几何（矢量 XML + PNG 一起出）
-tools/ui_sig_test.js    UI 结构契约测试（53 项，无浏览器，纯静态断言）
+tools/ui_test.js        UI 静态闸门 + 签名断言（无浏览器，纯静态断言）
 docs/shots/             README 截图（由 .test/shots/ 缩图生成）
 assets/mdl_ocr/         OCR 模型（9 MB）
 jniLibs/arm64-v8a/      OCR 引擎 .so（6.7 MB）

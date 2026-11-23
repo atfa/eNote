@@ -1,7 +1,8 @@
 # 更新日志
 
 版本按开发阶段（Pn）记录，全部在手机上完成。界面改动都经过后台屏截图核对 +
-`tools/ui_sig_test.js`（71 项 UI 结构契约）+ `go test ./...`。
+`tools/ui_test.js`（111 项 UI 结构契约，S3 步骤 11 起吸收了原 `ui_sig_test.js` 的 84 项签名）
++ `go test ./...`。
 
 ## 0.1（当前）
 
@@ -511,6 +512,59 @@
   121→131（内联 88 + Vue 模板 33 + 新增闸门①d 扫到 68 处 handler 字符串参数）、VDIFF 3 tab +
   6 弹层遍 → 4 tab + 7 弹层遍、静态签名 84 项、导出表右值 69 个全有声明、
   套件 63→**69 ok**（本步绿跑 EXIT=0，日志见 `test.sh --vd` 输出）、图片 10→**14**。
+
+### 界面（P13 S3 步骤 11）：删光遗留 JS 与 sigOf，静态闸门 3 → 2
+
+* **遗留渲染器整块拆掉**：`render()` 变成 Vue-only（注册表里没有的 tab 直接 `console.error` +
+  `markReady()`，不再回落到字符串拼接），`shotSheet`/`loadShots`/`shotPick`/`shotSelAll`、
+  文件夹页 6 个函数、剪贴板页 4 个函数、`settingsSheet`/`settingsRefresh` 里的
+  `VUE_SHEETS.*` / `sheetApps.*` 分支全部删掉；`__enote.legacy`（VDIFF 的基准缝）与
+  `afterPaint` 整块删除，导出表 69 → 67 key（`renderMineHTML` / `settingsHTML` 随实现没）。
+  `app.js` **2499 → 1986 行（−513）**，删掉 **47 个只有死代码引用的函数**。
+  删除用可达性不动点扫描（根 = 导出表 ∪ `setHost` ∪ 内联 handler ∪ 模板里的 `H.xxx` ∪
+  顶层语句；注释里的名字算引用，所以只会漏删不会多删），扫描器本身第一版有 bug：
+  按行数 `{`/`}` 会把 `function f(){ return x }` 判成「没开始」而吞掉下一个函数，改成逐字符扫。
+  **`clipCountHTML` 必须留**（`views/clip.js` 的 `countHtml: live(() => H.clipCountHTML())`
+  还在用）—— 这条是反向实验验出来的，不是靠读代码。
+* **`sigOf` → `stateSig` + `SIG_SKIP` 排除表（契约翻转）**：原来手工挑要参与指纹的字段，
+  漏一个就是静默不重绘（踩过 `info.shot` 漏了 → 首页横幅永不出现）；现在反过来整份
+  `JSON.stringify([notes, info(去掉排除表), settings, 截图开关])`，只维护
+  `SIG_SKIP = {uptimeS, tz, go, dir}`。代价是「列表不展示的字段变了会多画一次」——
+  多画一次可见、Vue 的 patch 很便宜；漏字段的不重绘是静默的。签名行为断言 9 → **16** 项。
+* **静态闸门 3 → 2**：`tools/ui_sig_test.js`（645 行、84 项）删除，签名段并入
+  `tools/ui_test.js`（1066 → **1679** 行，**111 ok**，原 20 + 84 = 104，+7 全在签名行为）；
+  `test.sh` 里两个 node 步骤合成一步「ui: 静态闸门（轮询指纹 / 内联 handler 存在性 /
+  调色板一致性 / hex·px 棘轮）」。剩下的两份静态闸门 = `ui_test.js` + `go test ./...`。
+* **VDIFF 随基准一起删**（基准没了就是恒绿闸门）：`test.sh` **2733 → 2351 行（−382）**、
+  `step` **34 → 30**——两个 VDIFF step + `vdiff_tab` + `vdiff_sheet` + 全部调用（含
+  `vdiff_tab files` 两次、`vdiff_sheet clip grid` / `clip empty` / `settings form`）删除，
+  剪贴板页的 VDIFF 三步合并成「夹具 + 真点击交互」一步，夹具文字 `VDIFF 甲/乙/丙` →
+  `夹具甲/乙/丙`；设置页载荷的 `legacy=` 探针与 `assert d["legacy"]=="1"` 随缝一起删。
+  剪贴板夹具的两张图改成各自用 `tools/make_test_png.py` 现造（原来两次 `cp '$IMG'` →
+  字节相同，「两张图」在像素上不可分）。
+* **`go/web_test.go` 加遗留禁令**：`TestIndexServedFromDirectory` 断言 app.js 里不得出现
+  `function buildPage` / `buildPage(tab)` / `function sigOf` / `__enote.legacy` / `legacy: {`
+  —— 防「删掉的死代码被谁救回来」。
+* **19 条反向实验全红得对**（`.test/s11_neg.sh`：脚本开头一次性备份 10 个文件到 `$TMPDIR`，
+  `trap ... EXIT` 恢复，绝不用 `git checkout`；变异脚本必须原子——只在最后一步写文件）：
+  签名 6 条（排除表去掉 uptimeS / 清空排除表 / 指纹不含 notes / 不含 settings / 不含截图开关 /
+  不含 info）、`go test` 禁令 3 条、结构闸门 10 条（载荷调闭集外的 `settingsSheet` / 导出表右值
+  不存在 / 内联 handler 指向不存在的函数 / 模板 handler 总数掉到基线下（须删 2 个，删 1 个刚好
+  等于基线 73）/ 模板用 `setHost` 外的名字 / css 裸 hex / css 裸 px / 顶部 banner 顺序 /
+  组件没暴露 `H`）。**「指纹不含截图开关」第一版没抓到**：签名段根本没有 SHOTFLAGS 的行为断言
+  （它只是被 eval 的 `stateSig` 闭包到的一个夹具常量）—— 补了三条行为断言才红得对。
+  已知盲区（记进步骤 13）：闸门③ 的 hex/px 棘轮**只扫 `go/ui/css/**`**，Vue 模板里的内联
+  `style` 看不见；组件里把 `live(() => …)` 换成普通函数静态层全绿（computed 没依赖就永远缓存）。
+  闸门⑮ 的 tick 扫描本步已扩到 `js/**` 全部模板（含 `components.js`）：扫的模板 20 → **25**。
+* 数字：`app.js` 2499→**1986**、`test.sh` 2733→**2351**（step 34→**30**）、`ui_test.js`
+  1066→**1679**（另删 `ui_sig_test.js` 645 行）、静态闸门 3→**2**、静态项数 104→**111 ok**、
+  签名行为断言 9→**16**、导出表 69→**67** key、内联 handler 88→**31**（删掉的字符串渲染器里带的
+  内联 `onclick`）、handler 总数 131→**74**（内联 31 + Vue 模板 43，基线 70→**73**）、
+  闸门①d handler 字符串参数 68→**16**、jseval 载荷 17→**15** 个（闭集函数 16→15、
+  render 的 await 11→10）、裸 hex **8** ≤ 8、裸 px **57** ≤ 57。真机套件 **30 步全绿**
+  （EXIT=0，0 FAIL，0 skip）：`  ok` 行 69 → **146** —— 静态闸门步骤现在把 111 项 node 断言
+  逐行内联打印（原来那一步只打 20 行、签名那一步一行不打），删掉的 VDIFF 三步 + 两次
+  `vdiff_tab files` 共 −14 项真机断言。
 
 ### 界面（P7）
 

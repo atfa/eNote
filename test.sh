@@ -596,16 +596,11 @@ assert d['missing'] == 0, d
 " || fail "deleting a note must delete its attachment files"
 say "  ok (pdf share, list counts match the disk, search by name, delete)"
 
-step "ui: 轮询只在数据变化时重绘（不闪）"
-if command -v node >/dev/null 2>&1; then
-  node "$HERE/tools/ui_sig_test.js" | sed 's/^/  /' || fail "轮询指纹回归失败"
-else
-  say "  跳过（没有 node）"
-fi
-
-step "ui: 静态闸门（内联 handler 存在性 / 调色板一致性 / hex·px 棘轮）"
+step "ui: 静态闸门（轮询指纹 / 内联 handler 存在性 / 调色板一致性 / hex·px 棘轮）"
 # P12 那类「点了没反应」在真机上测不出来：onclick 里调一个不存在的函数，页面不报错、
-# 端到端全绿。只能静态抓，所以放在这里，跟 ui_sig_test.js 一样是必跑项。
+# 端到端全绿。只能静态抓，所以放在这里，是必跑项。
+# 步骤 11：原来分两步跑 ui_sig_test.js（轮询指纹）与 ui_test.js（结构闸门）。步骤 11 把
+# 签名那 84 项并进 ui_test.js（它要读的源码文件与结构闸门完全一样），两步合成一步。
 if command -v node >/dev/null 2>&1; then
   node "$HERE/tools/ui_test.js" | sed 's/^/  /' || fail "界面静态闸门失败"
 else
@@ -1186,8 +1181,8 @@ N0T=$(readtlog | wc -l)
   // 步骤 8：Vue 弹层的 DOM 在 nextTick 之后才落地（遗留路径是同步 innerHTML）。
   // 不等这一拍，count0 读到的是空容器，q("#folderCount") 直接 null → 载荷抛异常。
   await new Promise(function(r){ setTimeout(r,400) });
-  // 正向断言「真的走了 Vue 路径」：VDIFF 结构上分不出两条路径（DOM 按设计逐字相同），
-  // 只靠它的话，VUE_SHEETS 注册了但分发没接上也是绿的。
+  // 正向断言「真的走了 Vue 路径」：只看 DOM 分不出谁画的（Vue 的产出按设计就和字符串
+  // 渲染器逐字一致），只靠 DOM 的话，VUE_SHEETS 注册了但分发没接上也是绿的。
   L("isvue="+(__enote.vue.isVueSheet("folders")?1:0));
   L("mounted="+(__enote.vue.sheets.folders?1:0));
   L("count0="+q("#folderCount").textContent.replace(/\s+/g," "));
@@ -1305,8 +1300,8 @@ assert n2 == n0, "勾回来之后应该回到 %d: %r" % (n0, c2)
 mine = val("mine")
 assert re.match(r"^监控文件夹\d+个$", mine), "我的页数量没刷新: %r" % mine
 assert int(re.search(r"(\d+)", mine).group(1)) == n2, "我的页数量该跟选择一致: %r vs %s" % (mine, n2)
-# 步骤 8：正向断言走的是 Vue 路径。VDIFF 比的是 DOM，而两条路径的 DOM 按设计逐字相同，
-# 它结构上分不出走了哪条 —— 没有这两行，VUE_SHEETS 注册了但分发没接上也是绿的。
+# 步骤 8：正向断言走的是 Vue 路径。只看 DOM 结构上分不出谁画的（Vue 的产出按设计就和
+# 字符串渲染器逐字一致）—— 没有这两行，VUE_SHEETS 注册了但分发没接上也是绿的。
 assert val("isvue") == "1", "文件夹页没走 Vue 路径（isVueSheet(folders) 为假）"
 assert val("mounted") == "1", "文件夹页的 Vue 应用没挂载（__enote.vue.sheets.folders 为空）"
 assert val("scrollKept") == "1", "勾选之后弹层滚动位置跳了"
@@ -1344,7 +1339,7 @@ NT=$(readtlog | wc -l)
   __enote.state.tab="notes"; await render(); shotSheet();
   setTimeout(async function(){
     __enote.state.shotSel={};
-    // 步骤 8：正向断言截图页真的由 Vue 挂载（同文件夹页，VDIFF 分不出两条路径）
+    // 步骤 8：正向断言截图页真的由 Vue 挂载（同文件夹页：只看 DOM 分不出谁画的）
     L("isvue="+(__enote.vue.isVueSheet("shots")?1:0));
     L("mounted="+(__enote.vue.sheets.shots?1:0));
     L("n1_go="+(q("#shotGo")?q("#shotGo").textContent:"?"));
@@ -1387,385 +1382,18 @@ PYONE
 api_post shots/remove "{\"ids\":$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin)["shots"] if x["name"]=="one-shot.png"]))')}" >/dev/null
 asroot_global "rm -f '$EXT/one-shot.png' '$DATA/enote/.devmode'"
 
-step "Vue 产出的 DOM 与字符串渲染器逐字一致（迁移期硬验收）"
-# 签名 84 项是源码级正则，抓不到 DOM 漂移；Vue 会规范化模板（属性顺序、空白节点、
-# class 合并顺序）。这里在真 WebView 里把两条路径各渲染一次，把 DOM 规范化后逐字比：
-# 属性按名排序、空白折叠、文本 trim。CSS 和测试选择器看的是 tag/class/attr，不看属性顺序，
-# 所以「规范化后相等」才是对的契约。
-#
-# 步骤 6 起参数化（vdiff_tab <tab>）：每迁一个 tab 就加一行调用。只比 notes 时，todos 转
-# Vue 后的 DOM 漂移是无人值守的 —— VDIFF 绿着，但它比的是 notes。
-vdiff_tab() {   # $1 = tab 名（notes / todos / files / mine）  $2 = 可选：注入 __enote.state.ST 的 JSON
-VD_TAB=$1
-VD_ST=${2:-}
-# 日志窗口：从本步起算（readtlog 不切 + 自己记 NVD）。不能用 newtlog：它从整轮
-# 开头切，上一轮跑剩的同名 token 就在窗口里，等待循环会立刻 break，断言读到的是
-# 上一轮的旧数据（假绿：VDIFF 永远 same=1，NINT 读到上一轮的 empty=false）。
-NVD=$(readtlog | wc -l)
-"$PY" - "$VD_TAB" "$VD_ST" > "$TMPDIR/jsvdiff.json" <<'PYV'
-import json, sys, urllib.parse
-tab = sys.argv[1]
-# 夹具要注成 JS 字符串字面量，而 jseval 载荷是 shell 单引号参数（闸门② 禁止载荷里出现
-# 单引号），JSON 里全是双引号：两边都不能直接拼。先 URI 编码，载荷里 decodeURIComponent。
-st = urllib.parse.quote(sys.argv[2] if len(sys.argv) > 2 else '')
-js = r'''(async function(){
-  var TAB="__TAB__";
-  var L=function(m){console.log("VDIFF "+m)};
-  var E=window.__enote||{};
-  // 这些 skip 现在都会被 python 侧判红（比较对象缺失 = 没测）
-  if(!E.legacy||!E.legacy[TAB]){ L("skip=no-legacy"); L("done=1"); return; }
-  /* 上一版夹具「一条 VDIFF 也没打出来」：Vue 分支里某个组件渲染抛异常时，nextTick 的
-     promise 永不兑现，await render() 挂死，症状就是「载荷没跑完」。所以 render() 加 4s
-     兜底 + 全程 try/catch 把异常打进日志——夹具本身要永远给结论，不能跟着一起挂。 */
-  try {
-  __enote.state.tab=TAB;
-  /* 我的页的数据来自 /api/stats（ST），夹具不能依赖真机上的笔记数，所以从测试侧注入一份。
-     走状态桥的 setter（载荷里直接写 ST=… 只会新建 window 全局，模块里的 ST 不动）。 */
-  if("__ST__"!==""){ E.state.ST=JSON.parse(decodeURIComponent("__ST__")); L("st=1") }
-  /* 入场动画的 seen 是一次性状态（enterCls 首次见到某个 id 才返回「 enter」）：两条路径
-     必须从同一状态出发，否则先跑的那条把 id 记进 seen，后跑的那条就没有 enter。
-     真机上 tab 切换会 clearSeen()（app.js:2153），夹具里手动补上这一下。 */
-  if(E.clearSeen) E.clearSeen();
-  await Promise.race([render(), new Promise(function(r){ setTimeout(r, 4000) })]);
-  L("rendered=1");
-  var pane=document.querySelector(".pane[data-tab="+TAB+"]");
-  // 这些 skip 现在都会被 python 侧判红（比较对象缺失 = 没测）
-  if(!pane){ L("skip=no-pane"); L("done=1"); return; }
-  if(E.clearSeen) E.clearSeen();
-  var vueHtml=pane.innerHTML, oldHtml=E.legacy[TAB]();
-  L("isvue="+((E.vue&&E.vue.isVue&&E.vue.isVue(TAB))?1:0));
-  L("stats="+pane.querySelectorAll(".stat").length);
-  L("chips="+pane.querySelectorAll(".tagrow .chip").length);   // 标签卡的结构是 .tagrow > .chip.tag
-  L("skel="+(pane.querySelector(".skel")?1:0));
-  L("hero="+(pane.querySelector(".hstats")?pane.querySelector(".hstats").textContent.replace(/\s+/g," "):""));   // .hver 是版本号那一行，两种形态都一样；「正在统计…」在 .hstats 里
-  /* 遗留字符串要过一遍和 render() 相同的收尾再比：syncExpand 会按正文高度把「展开详情」
-     按钮设成 display:none，Vue 那侧的 DOM 是收尾后的，raw 字符串没有这一步。
-     临时 pane 必须挂在 #view 里（syncExpand 的选择器是 #view .card）。 */
-  var tmp=document.createElement("div"); tmp.className="pane"; tmp.innerHTML=oldHtml;
-  (document.getElementById("view")||document.body).appendChild(tmp);
-  try{ E.afterPaint() }catch(e){ L("afterpaint-err="+(e&&e.message)) }
-  oldHtml=tmp.innerHTML; tmp.parentNode.removeChild(tmp);
-  function ser(n){
-    if(n.nodeType===3) return (n.nodeValue||"").replace(/\s+/g," ").trim();
-    if(n.nodeType!==1) return "";
-    var a=[],i; for(i=0;i<n.attributes.length;i++){ var nm=n.attributes[i].name;
-      if(/^on/i.test(nm)) continue;   // 见下面 norm() 的注释
-      var vv=norm(nm, n.attributes[i].value);
-      /* 空的 style 属性与没有 style 属性在 CSS 上完全等价：syncExpand 把「展开详情」按钮的
-         display 设过一遍再清掉，Vue 那侧就留下 style=""，字符串路径没有这个属性。 */
-      if(nm==="style" && vv==="") continue;
-      a.push(nm+"="+vv); }
-    a.sort();
-    var kids=[]; for(var c=n.firstChild;c;c=c.nextSibling){ var s=ser(c); if(s!=="") kids.push(s); }
-    var t=n.tagName.toLowerCase();
-    return "<"+t+(a.length?" "+a.join(" "):"")+">"+kids.join("")+"</"+t+">";
-  }
-  /* style 属性的两种写法在 CSS 里完全等价，但序列化不同：字符串路径写的是 「style="--i:0"」，
-     Vue 的 :style 走 el.style.setProperty，浏览器读回来是 「--i: 0;」。夹具比的是语义，
-     所以两边都过一遍同一个规范化（用浏览器自己的 cssText）。 */
-  /* 内联 handler 属性不比：遗留路径写 「onclick="expand(「id」)"」，Vue 用 @click（addEventListener），
-     DOM 里没有 onclick 属性。它们是绑定机制不是 DOM 形状，两条路径的 handler 存在性由
-     闸门①（onclick）与闸门①b（@click）分别验，都要求名字在导出表里。 */
-  function norm(name, v){
-    /* enter 是一次性入场动画标记（enterCls 只在某个 id 首次出现时给），它的有无取决于两条
-       路径谁先画、后台轮询有没有在中间插一次重绘 —— 那是绘制时机，不是 DOM 形状。动画本身
-       由 CSS 与视觉截图覆盖，这里归一化掉，否则夹具变成在比时序（真机上偶发红的根因）。 */
-    if(name==="class") return v.split(/\s+/).filter(function(c){return c&&c!=="enter"}).join(" ");
-    if(name!=="style") return v;
-    var d=document.createElement("div"); d.setAttribute("style", v); return d.style.cssText;
-  }
-  function canon(h){
-    var d=new DOMParser().parseFromString("<div id=\"r\">"+h+"</div>","text/html");
-    return ser(d.body.firstChild);
-  }
-  var A=canon(oldHtml), B=canon(vueHtml);
-  if(A===B){ L("same=1"); L("len="+A.length); }
-  else {
-    var i=0; while(i<A.length&&i<B.length&&A.charAt(i)===B.charAt(i)) i++;
-    L("at="+i);
-    L("old="+JSON.stringify(A.slice(Math.max(0,i-80),i+80)));
-    L("vue="+JSON.stringify(B.slice(Math.max(0,i-80),i+80)));
-  }
-  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
-  L("done=1");
-})()'''.replace("__TAB__", tab).replace("__ST__", st)
-print(json.dumps({"js": js}))
-PYV
-# jseval 钩子只在 .devmode 存在时干活（上面一行刚把它删了），不重新 touch 就是
-# `{"ok":false,"error":"jseval disabled: no .devmode"}`：载荷根本没跑，日志里一条 VDIFF 也没有，
-# 症状是「前端抛异常了？日志=[]」——不是抛异常，是根本没执行。test.sh 里每个 jseval 块都 touch。
-UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
-asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
-asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsvdiff.json'"
-for i in $(seq 1 40); do
-  readtlog | tail -n +$((NVD + 1)) | grep -q 'VDIFF done=1' && break
-  sleep 0.5
-done
-readtlog | tail -n +$((NVD + 1)) | grep 'VDIFF' | "$PY" -c '
-import sys, re
-tab = sys.argv[1]
-st = sys.argv[2] if len(sys.argv) > 2 else ""   # 本块在 shell 单引号里，python 只能用双引号
-lines = [l.strip() for l in sys.stdin if "VDIFF" in l]
-d = {}
-for l in lines:
-    m = re.search(r"VDIFF (\w+)=(.*)", l)
-    if m: d[m.group(1)] = m.group(2).strip()
-# skip 一律算红：混合期早就结束，五个 tab / 四个弹层的遗留基准全在，缺任何一个都是
-# 「比较对象没了」——这一遍等于没测。反向实验：删掉 __enote.legacy.clip 后整套全绿，
-# 就是被这里的 ok 分支骗过去的（Tony 提出，步骤 9 收掉）。
-if d.get("skip"):
-    raise AssertionError("%s 这一遍没比成（%s）：VDIFF 的基准/挂载点缺失，不许绿" % (tab, d["skip"]))
-assert d.get("done") == "1", "VDIFF 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
-assert d.get("same"), "%s：Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  旧: %s\n  Vue: %s" % (
-    tab, d.get("at"), d.get("old", "")[:200], d.get("vue", "")[:200])
-# 正向断言「这一页真的由 Vue 挂载」：VDIFF 比 DOM，两条路径的 DOM 按设计逐字相同，
-# 它结构上分不出走了哪条（步骤 5 实测：注册表被合掉时 VDIFF/NINT 全绿而 Vue 一行没跑）。
-assert d.get("isvue") == "1", "%s：不在 VUE_VIEWS 注册表里，这一页根本没走 Vue" % tab
-# 步骤 10：我的页的两遍夹具各自要看到自己的形态，否则「比了个空页」也会绿。
-if tab == "mine":
-    if st:
-        assert int(d.get("stats", 0)) == 6, \
-          "我的页夹具那一遍没六张统计卡（stats=%s）：ST 注入没生效" % d.get("stats")
-        assert d.get("chips") == "2", \
-          "我的页夹具的标签 chips 不对（chips=%s）：夹具里是 工作/阅读/工作，去重后应 2 个" % d.get("chips")
-        assert "正在统计" not in (d.get("hero") or ""), \
-          "ST 已注入但 hero 还是未加载形态（hero=%r）" % d.get("hero")
-    else:
-        assert d.get("skel") == "1" and int(d.get("stats", 0)) == 0, \
-          "我的页未加载那一遍没比到骨架屏（skel=%s stats=%s）" % (d.get("skel"), d.get("stats"))
-        assert "正在统计" in (d.get("hero") or ""), \
-          "hero 的未加载形态不对（hero=%r）" % d.get("hero")
-print("  ok (%s 规范化后 DOM 逐字一致，长度 %s)" % (tab, d.get("len")))
-' "$VD_TAB" "$VD_ST"
-asroot_global "rm -f '$DATA/enote/.devmode'"
-}
-vdiff_tab notes
-vdiff_tab todos
-vdiff_tab files
-# 步骤 10：我的页。两遍：ST 未加载（hero 的「正在统计…」+ 骨架屏）与 ST 已加载（四张
-# 统计卡 + 标签 chips + 笔记状态 + 运行信息）。第二遍的夹具走状态桥注入，不依赖真机数据。
-vdiff_tab mine
-# 夹具字段取自真机 /api/stats 的形状，值固定：renderMine 读 s.ai.calls、chartHTML 读
-# s.days（七条，label 里带「昨天 / 今天」这种相对日期，夹具写死才不会随日期漂移）、
-# 标签卡读 s.tags（两条 → chips==2）。少一个字段就是 Vue 渲染抛 TypeError，症状是
-# 「VDIFF 载荷没跑完（无 done）」。
-vdiff_tab mine '{"notes":{"total":3,"done":1,"raw":1,"error":1,"queued":1,"parsing":0},"todos":{"total":2,"open":1,"overdue":1},"attach":{"count":4,"missing":1},"bytes":1572864,"ai":{"calls":12,"ok":11,"fail":1,"avgMs":2300,"model":"fixture-model","url":"https://fixture.test/v1","lastAt":"2026-11-24T01:00","lastMs":1200},"days":[{"day":"2026-11-18","label":"11-18","notes":0,"todos":0,"done":0},{"day":"2026-11-19","label":"11-19","notes":1,"todos":0,"done":1},{"day":"2026-11-20","label":"11-20","notes":0,"todos":2,"done":0},{"day":"2026-11-21","label":"11-21","notes":2,"todos":1,"done":1},{"day":"2026-11-22","label":"11-22","notes":0,"todos":0,"done":0},{"day":"2026-11-23","label":"昨天","notes":3,"todos":2,"done":2},{"day":"2026-11-24","label":"今天","notes":3,"todos":1,"done":1}],"tags":[{"tag":"工作","n":3},{"tag":"阅读","n":1}]}'
-
-step "浮层页（截图暂存 / 选文件夹）的 DOM 与字符串渲染器逐字一致"
-# vdiff_tab 比的是 tab pane；截图页与选文件夹页是 pageSheet 全屏浮层，容器是 #sheet .pbody，
-# 生命周期跟着 open/close 走（每次开页 mount、关页 unmount），所以单独一套 vdiff_sheet。
-# 遗留侧调 __enote.legacy.shots() / .folders()：它们与 Vue 组件共用同一批叶子函数
-# （shotGridHTML / shotFootHTML / folderRowHTML / folderFootHTML），比的是加载完的状态。
-vdiff_sheet() {   # $1 = shots | folders   $2 = grid | empty | fake
-VD_NAME=$1
-VD_MODE=$2
-# 日志窗口从本步起算（同 vdiff_tab：用 newtlog 会读到上一轮的 VDS 行，假绿）
-NVS=$(readtlog | wc -l)
-"$PY" - "$VD_NAME" "$VD_MODE" > "$TMPDIR/jsvdiff_sheet.json" <<'PYVS'
-import json, sys
-name, mode = sys.argv[1], sys.argv[2]
-js = r'''(async function(){
-  var NAME="__NAME__", MODE="__MODE__";
-  var L=function(m){console.log("VDS "+m)};
-  var E=window.__enote||{};
-  // 这些 skip 现在都会被 python 侧判红（比较对象缺失 = 没测）
-  if(!E.legacy||!E.legacy[NAME]){ L("skip=no-legacy"); L("done=1"); return }
-  try{
-    L("isvue="+(E.vue.isVueSheet(NAME)?1:0));
-    /* 夹具注入：选文件夹页的数据来自 Android.shotFolders()（MediaStore 枚举），这台机器
-       上有几个目录不由测试决定，所以「有目录」那一遍从测试侧注入三个（含一个 missing，
-       用来测「已不存在」分支与已选浮顶的排序）。注入必须在 folderSheet() 之后：
-       loadFolders() 会用真数据覆盖 folderAll。 */
-    if(NAME==="folders"){
-      folderSheet();
-      await new Promise(function(res){ var t=0;(function probe(){
-        var b=document.querySelector("#sheet .pbody");
-        if((b&&b.querySelector(".frow,.empty"))||t>20){res();return} t++; setTimeout(probe,200);
-      })(); });
-      if(MODE==="fake"){
-        E.state.folderAll=[{path:"/sdcard/Pictures/Screenshots",count:3,shot:true},
-                           {path:"/sdcard/Download",count:1,shot:false},
-                           {path:"/sdcard/DCIM/Camera",count:0,shot:false,missing:true}];
-        E.state.folderSel={"/sdcard/Pictures/Screenshots":true,"/sdcard/Download":false,"/sdcard/DCIM/Camera":true};
-      } else if(MODE==="empty"){ E.state.folderAll=[]; E.state.folderSel={}; }
-      E.vue.folderPaint();
-      await new Promise(function(r){setTimeout(r,200)});
-    } else if(NAME==="clip"){
-      /* 剪贴板页的夹具来自系统剪贴板（shell 侧用 clipset 钩子预先造好，Go 侧没有
-         「建暂存」的 HTTP 接口），这里只负责开页并等 loadClips() 画完。 */
-      clipSheet();
-      await new Promise(function(res){ var t=0;(function probe(){
-        var b=document.querySelector("#sheet .pbody");
-        if((b&&(b.querySelector(".clipitem")||b.querySelector(".empty")))||t>20){res();return}
-        t++; setTimeout(probe,200);
-      })(); });
-    } else if(NAME==="settings"){
-      /* 设置页是弹层，数据来自 /api/state（真设置，含真 API Key）与 /api/stats。
-         夹具不改数据：这一遍比的是「真机当前设置」下两条路径的 DOM，注入反而会把
-         「设置页显示的就是已保存的 key」这条真实语义绕开。 */
-      settingsSheet();
-      await new Promise(function(res){ var t=0;(function probe(){
-        var b=document.querySelector("#sheet .pbody");
-        if((b&&b.querySelector("#sUrl"))||t>20){res();return}
-        t++; setTimeout(probe,200);
-      })(); });
-    } else {
-      shotSheet();
-      await new Promise(function(res){ var t=0;(function probe(){
-        var b=document.querySelector("#sheet .pbody");
-        if((b&&(b.querySelector(".shotitem")||b.querySelector(".empty")))||t>20){res();return}
-        t++; setTimeout(probe,200);
-      })(); });
-    }
-    var body=document.querySelector("#sheet .pbody");
-    // 弹层容器不在（#sheet .pbody）→ 没对象可比，python 侧判红
-    if(!body){ L("skip=no-sheet"); L("done=1"); return }
-    L("mounted="+(E.vue.sheets[NAME]?1:0));
-    L("items="+body.querySelectorAll(".shotitem").length);
-    L("rows="+body.querySelectorAll(".frow").length);
-    L("rowsHidden="+body.querySelectorAll(".frow[style*=\"display: none\"],.frow[style*=\"display:none\"]").length);
-    L("empty="+(body.querySelector(".empty")?1:0));
-    L("foot="+(body.querySelector("#shotFoot")?body.querySelector("#shotFoot").textContent.replace(/\s+/g," "):""));
-    L("count="+(body.querySelector("#folderCount")?body.querySelector("#folderCount").textContent.replace(/\s+/g," "):""));
-    L("clips="+body.querySelectorAll(".clipitem").length);
-    L("sinputs="+body.querySelectorAll("#sUrl,#sKey,#sModel,#sTimeout,#sMax,#sTemp").length);
-    L("ssegn="+(body.querySelector(".seg")?body.querySelector(".seg").children.length:0));
-    L("ssw="+body.querySelectorAll(".sw").length);
-    L("skv="+body.querySelectorAll(".kv").length);
-    L("sacts="+body.querySelectorAll(".acts").length);
-    L("kind="+(((document.getElementById("panel")||{}).dataset||{}).kind||""));
-    L("cfoot="+(body.querySelector("#clipFoot")?body.querySelector("#clipFoot").textContent.replace(/\s+/g," "):""));
-    var vueHtml=body.innerHTML, oldHtml=E.legacy[NAME]();
-    function ser(n){
-      if(n.nodeType===3) return (n.nodeValue||"").replace(/\s+/g," ").trim();
-      if(n.nodeType!==1) return "";
-      var a=[],i; for(i=0;i<n.attributes.length;i++){ var nm=n.attributes[i].name;
-        if(/^on/i.test(nm)) continue;   // 内联 handler 是绑定机制不是 DOM 形状（见 vdiff_tab）
-        var vv=norm(nm, n.attributes[i].value);
-        /* 空的 style 属性与没有 style 属性在 CSS 上完全等价：syncExpand 把「展开详情」按钮的
-           display 设过一遍再清掉，Vue 那侧就留下 style=""，字符串路径没有这个属性。 */
-        if(nm==="style" && vv==="") continue;
-        a.push(nm+"="+vv); }
-      a.sort();
-      var kids=[]; for(var c=n.firstChild;c;c=c.nextSibling){ var s=ser(c); if(s!=="") kids.push(s); }
-      var t=n.tagName.toLowerCase();
-      return "<"+t+(a.length?" "+a.join(" "):"")+">"+kids.join("")+"</"+t+">";
-    }
-    function norm(name, v){
-      /* enter 是一次性入场动画标记（enterCls 只在某个 id 首次出现时给），它的有无取决于两条
-         路径谁先画、后台轮询有没有在中间插一次重绘 —— 那是绘制时机，不是 DOM 形状。动画本身
-         由 CSS 与视觉截图覆盖，这里归一化掉，否则夹具变成在比时序（真机上偶发红的根因）。 */
-      if(name==="class") return v.split(/\s+/).filter(function(c){return c&&c!=="enter"}).join(" ");
-      if(name!=="style") return v;
-      var d=document.createElement("div"); d.setAttribute("style", v); return d.style.cssText;
-    }
-    function canon(h){
-      var d=new DOMParser().parseFromString("<div id=\"r\">"+h+"</div>","text/html");
-      return ser(d.body.firstChild);
-    }
-    var A=canon(oldHtml), B=canon(vueHtml);
-    if(A===B){ L("same=1"); L("len="+A.length); }
-    else {
-      var i=0; while(i<A.length&&i<B.length&&A.charAt(i)===B.charAt(i)) i++;
-      L("at="+i);
-      L("old="+JSON.stringify(A.slice(Math.max(0,i-80),i+80)));
-      L("vue="+JSON.stringify(B.slice(Math.max(0,i-80),i+80)));
-    }
-  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
-  try{ closeSheet() }catch(e){}
-  L("done=1");
-})()'''.replace("__NAME__", name).replace("__MODE__", mode)
-print(json.dumps({"js": js}))
-PYVS
-UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
-asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
-asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsvdiff_sheet.json'"
-for i in $(seq 1 40); do
-  readtlog | tail -n +$((NVS + 1)) | grep -q 'VDS done=1' && break
-  sleep 0.5
-done
-readtlog | tail -n +$((NVS + 1)) | grep 'VDS' | "$PY" -c '
-import sys, re
-name, mode = sys.argv[1], sys.argv[2]
-lines = [l.strip() for l in sys.stdin if "VDS" in l]
-d = {}
-for l in lines:
-    m = re.search(r"VDS (\w+)=(.*)", l)
-    if m: d[m.group(1)] = m.group(2).strip()
-# skip 一律算红：混合期早就结束，五个 tab / 四个弹层的遗留基准全在，缺任何一个都是
-# 「比较对象没了」——这一遍等于没测。反向实验：删掉 __enote.legacy.clip 后整套全绿，
-# 就是被这里的 ok 分支骗过去的（Tony 提出，步骤 9 收掉）。
-if d.get("skip"):
-    raise AssertionError("%s 这一遍没比成（%s）：VDIFF 的基准/挂载点缺失，不许绿" % (name, d["skip"]))
-assert d.get("done") == "1", "VDS 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
-assert d.get("ERR") is None, "%s：浮层页前端抛异常：%s" % (name, d.get("ERR"))
-# 正向断言「这一页真的由 Vue 挂载」：VDIFF 比 DOM，而两条路径的 DOM 按设计逐字相同，
-# 它结构上分不出走了哪条 —— 只比 DOM 的夹具在「Vue 根本没跑」时也会绿。
-assert d.get("isvue") == "1", "%s：不在 VUE_SHEETS 注册表里，这一页根本没走 Vue" % name
-assert d.get("mounted") == "1", "%s：注册表有但 app 没挂载（pageSheetVue 没调到 mountSheet？）" % name
-assert d.get("same"), "%s %s：Vue 产出的 DOM 与字符串渲染器不一致 @%s\n  旧: %s\n  Vue: %s" % (
-    name, mode, d.get("at"), d.get("old", "")[:200], d.get("vue", "")[:200])
-if mode == "grid" and name == "shots":
-    assert int(d.get("items", 0)) >= 2, "截图页网格那一遍没卡片（items=%s）：夹具没到位，这一遍是空跑" % d.get("items")
-if mode == "grid" and name == "clip":
-    assert int(d.get("clips", 0)) >= 2, "剪贴板页那一遍没条目（clips=%s）：clipset 夹具没到位，这一遍是空跑" % d.get("clips")
-    # 冻结语义：clipSel 首次见到某 id 默认**选中**，所以刚加载完是全选，计数条是
-    # 「N 条已选 · 共 N 条」（不是 0 条已选）。
-    assert d.get("cfoot") == "%s 条已选 · 共 %s 条" % (d.get("clips"), d.get("clips")), \
-      "剪贴板页计数条不对（实际 %r）：默认全选中，计数条应是「N 条已选 · 共 N 条」" % d.get("cfoot")
-if mode == "empty" and name == "shots":
-    assert d.get("empty") == "1" and int(d.get("items", 0)) == 0, \
-      "截图页空态那一遍没比到空态（empty=%s items=%s）" % (d.get("empty"), d.get("items"))
-if mode == "empty" and name == "clip":
-    assert d.get("empty") == "1" and int(d.get("clips", 0)) == 0, \
-      "剪贴板页空态那一遍没比到空态（empty=%s clips=%s）：系统剪贴板上那条旧文本会被前台轮询重新暂存" % (d.get("empty"), d.get("clips"))
-    assert d.get("cfoot") == "0 条已选", \
-      "剪贴板页空态的计数条不对（实际 %r）：空暂存时是「<b>0</b> 条已选」，不带「· 共 N 条」" % d.get("cfoot")
-if mode == "fake":
-    assert int(d.get("rows", 0)) == 3, "文件夹页夹具该有 3 行（rows=%s）" % d.get("rows")
-if mode == "empty" and name == "folders":
-    assert d.get("empty") == "1" and int(d.get("rows", 0)) == 0, \
-      "文件夹页空态那一遍没比到空态（empty=%s rows=%s）" % (d.get("empty"), d.get("rows"))
-# 步骤 10：设置页的正向断言。VDIFF 比 DOM 分不出走了哪条路径，而设置页最易漂移的三处
-# （输入框 value 属性、主题 seg 的 on、开关的 .on）都得真的在页面上才算比到了东西。
-if name == "settings":
-    assert d.get("kind") == "settings", \
-      "设置页的 #panel dataset.kind 不是 settings（实际 %r）：CSS 钩子断了，.pbody[data-kind=settings] 的样式全丢" % d.get("kind")
-    assert int(d.get("sinputs", 0)) == 6, \
-      "设置页的六个输入框没全在（sinputs=%s）：:value.attr 写错时 value 属性会整体消失" % d.get("sinputs")
-    assert d.get("ssegn") == "3", "主题 seg 不是三个按钮（ssegn=%s）" % d.get("ssegn")
-    assert int(d.get("ssw", 0)) >= 2, "常驻后台 / 启用 AI 两个开关没都在（ssw=%s）" % d.get("ssw")
-    assert int(d.get("sacts", 0)) >= 3, "设置页的动作行少于三组（sacts=%s）" % d.get("sacts")
-print("  ok (%s %s 规范化后 DOM 逐字一致，长度 %s；items=%s rows=%s clips=%s empty=%s skv=%s sacts=%s)" % (
-    name, mode, d.get("len"), d.get("items"), d.get("rows"), d.get("clips"), d.get("empty"),
-    d.get("skv"), d.get("sacts")))
-' "$VD_NAME" "$VD_MODE"
-asroot_global "rm -f '$DATA/enote/.devmode'"
-}
-# 截图页夹具：暂存区的图只能由分享意图产生（JS 侧没有建暂存的 API），走 /api/shots/add。
-# 夹具不到位时「网格那一遍」比的是两条空态 —— 空跑，所以先断言 added。
-UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+# 步骤 11：VDIFF（Vue DOM 与遗留字符串渲染器逐字一致，迁移期硬验收）整段删除。
+# 它比的是「Vue 产出的 DOM」对「遗留字符串渲染器产出的 HTML」；步骤 10 之后四个 tab +
+# 四个弹层全走 Vue，遗留渲染器只剩没人调用的死代码，步骤 11 把它们整批删了，这个命题
+# 就没有对象了。删掉之后 Vue 的 DOM 契约由这些用例守着：各页交互用例（真点击 + 真 DOM
+# 断言）、tools/ui_test.js 闸门⑮（模板里的 class/id 与 CSS 逐字对）、以及 shots 截图对比。
+# 截图页交互夹具要用的暂存目录（原来定义在 VDIFF 段里）。
 VDS_EXT="/data/user/0/$APP_PACKAGE/files/enote/inbox"
-for f in vds-a.png vds-b.png; do
-  asroot_global "rm -f '$VDS_EXT/$f'; cp '$IMG' '$VDS_EXT/$f'; chown '$UI_APP:$UI_APP' '$VDS_EXT/$f'; chmod 644 '$VDS_EXT/$f'" || true
-done
-api_post shots/add "{\"shots\":[{\"path\":\"$VDS_EXT/vds-a.png\",\"name\":\"vds-a.png\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)},\
-{\"path\":\"$VDS_EXT/vds-b.png\",\"name\":\"vds-b.png\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)}]}" \
-  | grep -q '"added":2' || fail "造暂存截图夹具失败（截图页网格那一遍没卡片可比）"
-vdiff_sheet shots grid
-# 空态那一遍：清掉夹具再比（两条路径都画空态，恰好是步骤 7 被 :tick 透传漂移坑过的那一支）
-VDSIDS=$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin).get("shots") or []]))')
-[ "$VDSIDS" != "[]" ] && api_post shots/remove "{\"ids\": $VDSIDS}" >/dev/null
-vdiff_sheet shots empty
-vdiff_sheet folders fake
-vdiff_sheet folders empty
-asroot_global "rm -f '$VDS_EXT/vds-a.png' '$VDS_EXT/vds-b.png'"
 
-# ---- 步骤 9：剪贴板暂存页（clipSheet）的 VDIFF + 真点击交互 ----
+# ---- 步骤 9：剪贴板暂存页（clipSheet）的夹具 + 真点击交互 ----
 # 暂存条目只能由系统剪贴板产生：Go 侧只暴露 list/remove/parse/clear，写入走 JNI
 # nativeClipAdd（前台轮询 / clipset 钩子）。三条文本必须互不相同：clipAdd 按内容
 # 签名去重，重复文本只留一条，夹具就永远凑不到 3 条。
-step "剪贴板页 Vue 与遗留渲染逐字一致（有内容 / 空态）"
 api_post clip/clear '' >/dev/null 2>&1 || true
 CLIPFIX=$(date +%s)
 # 三条之间必须隔 >5s：Go 侧 clipAdd 有「同来源 5s 内 → 覆盖最新一条」的规则
@@ -1773,7 +1401,7 @@ CLIPFIX=$(date +%s)
 # 只到 1 条，网格那一遍没条目可比）。6s = 那 5s 去抖窗口 + 1s 余量；三条夹具给整套
 # 增加约 12s（步骤 9 记账）。文本也要互不相同，完全相同的那条会被直接丢弃。
 IFI=0
-for t in "VDIFF 甲 $CLIPFIX" "VDIFF 乙 $CLIPFIX" "VDIFF 丙 $CLIPFIX"; do
+for t in "夹具甲 $CLIPFIX" "夹具乙 $CLIPFIX" "夹具丙 $CLIPFIX"; do
   [ "$IFI" -gt 0 ] && sleep 6
   am_start "$ACTIVITY" "--es hook clipset --es arg '$t'"
   IFI=$((IFI + 1))
@@ -1790,21 +1418,16 @@ d = json.load(sys.stdin)
 clips = d.get("clips") or []
 assert len(clips) >= 3, "剪贴板夹具只到 %d 条（需要 ≥3）：clipset 钩子没被前台读取收进暂存区" % len(clips)
 print("  ok (剪贴板夹具 %d 条)" % len(clips))
-' || fail "造剪贴板暂存夹具失败（剪贴板页网格那一遍没条目可比）"
-vdiff_sheet clip grid
-# 步骤 10：设置页（弹层）。它是唯一带表单的弹层，六个输入框的 value 属性、三个主题
-# 按钮的 class、两个开关的 .on 都是字符串路径与 Vue 最容易漂移的地方（:value 写 DOM
-# property 时序列化出来根本没有 value 属性，:value.attr 才有）。
-vdiff_sheet settings form
+' || fail "造剪贴板暂存夹具失败（剪贴板页交互用例没条目可点）"
 
 step "剪贴板页交互在 Vue 路径上真的生效（勾选/全选/计数/单条删除/删除所选）"
 # 同截图页：DOM 夹具比的是「画出来一样」，computed 读普通模块变量时签名与夹具全绿
 # 而界面纹丝不动（步骤 6 的 ClipBanner）。这里全部走真点击，包括 .clipdel 的
 # stopPropagation（点删除顺手把这条勾上是最容易漏的回归）。
-# 未覆盖的一支：clipError（#clipList 里的「加载失败」）要 /api/clip/list 抛错才进得去，
-# 测试侧没有让 Go 报错的通道（fetch 在 WebView 里，钩子改不了它）。这一支目前只由
-# clipListHTML() 与 Vue 模板共用同一份字符串保证一致（VDIFF 的 empty 那遍比的是空态，
-# 不是失败态）；步骤 11 删掉遗留路径后要用「注入假 fetch」补。
+# 未覆盖的一支（步骤 11 记账）：clipError（#clipList 里的「加载失败」）要 /api/clip/list
+# 抛错才进得去，测试侧没有让 Go 报错的通道（fetch 在 WebView 里，钩子改不了它）。以前
+# 这一支靠「遗留字符串渲染器与 Vue 模板共用一份字符串」间接保证，步骤 11 删掉遗留渲染器
+# 之后连这层间接保证都没了 —— 要补得先做「注入假 fetch」。
 NCIT=$(readtlog | wc -l)
 "$PY" - > "$TMPDIR/js_clip_int.json" <<'PYCIT'
 import json
@@ -1885,7 +1508,7 @@ d = {}
 for l in lines:
     m = re.search(r"CIT (\w+)=(.*)", l)
     if m: d[m.group(1)] = m.group(2).strip()
-# skip 算红（同 vdiff_*）：clip 页没挂 Vue 或夹具没到位，这一遍就是空跑
+# skip 算红：clip 页没挂 Vue 或夹具没到位，这一遍就是空跑
 if d.get("skip"):
     raise AssertionError("剪贴板页交互这一遍没跑成（%s）：Vue 没挂载或夹具没到位" % d["skip"])
 assert d.get("done") == "1", "CIT 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
@@ -1925,12 +1548,11 @@ print("  ok (真点击 %s 条：勾选 %s→%s、计数 %r、全选/全不选、
     n, d.get("on0"), d.get("on1"), d.get("foot1")))
 '
 asroot_global "rm -f '$DATA/enote/.devmode'"
-# 删光之后的空态那一遍：先把系统剪贴板清成空白（Go 侧 TrimSpace 后为空 → clipAdd 直接
-# 拒），否则前台轮询会立刻把剪贴板上那条旧文本重新暂存，空态那一遍比的是 1 条列表。
+# 删光之后的空态：先把系统剪贴板清成空白（Go 侧 TrimSpace 后为空 → clipAdd 直接拒），
+# 否则前台轮询会立刻把剪贴板上那条旧文本重新暂存，空态那一遍比的是 1 条列表。
 am_start "$ACTIVITY" "--es hook clipset --es arg ' '" >/dev/null 2>&1 || true
 sleep 2
 api_post clip/clear '' >/dev/null 2>&1 || true
-vdiff_sheet clip empty
 
 step "设置页（弹层）交互在 Vue 路径上真的生效（开页/主题/开关/保存/确认框）"
 # 设置页是本次迁移里唯一带表单的页面，也是唯一有「写完要恢复」的页面：主题、AI 开关、
@@ -1952,12 +1574,11 @@ js = r'''(async function(){
   var click=function(el){ if(!el) return false; el.click(); return true };
   var byText=function(sel,txt){ var hit=null; Array.prototype.forEach.call(document.querySelectorAll(sel), function(b){ if(b.textContent.trim()===txt) hit=b }); return hit };
   try{
-    L("legacy="+(E.legacy&&E.legacy.settings?1:0));
     L("isvue="+(E.vue.isVueSheet("settings")?1:0));
     var theme0=(E.state.S.settings||{}).theme||"light";
     var notes0=E.state.S.info.notes||0;
     /* 从我的页点进设置：同时测到「我的页的行 → settingsSheet()」这条链。
-       先关掉上一用例留下的弹层（clip 的 VDIFF 会把剪贴板页开着走），否则 S() 读到的
+       先关掉上一用例留下的弹层（剪贴板页交互那一遍会把剪贴板页开着走），否则 S() 读到的
        .pbody 是那一页的。 */
     if(on(document.getElementById("sheet"),"on")) closeSheet();
     /* 我的页的六行入口在 ST 未加载时不画（renderMine 提前 return），而 statsNow() 有个
@@ -2054,7 +1675,6 @@ for l in lines:
     if m: d[m.group(1)] = m.group(2).strip()
 assert d.get("done") == "1", "SET 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
 assert d.get("ERR") is None, "SET 前端抛异常：%s" % d.get("ERR")
-assert d.get("legacy") == "1", "设置页的遗留基准不在（__enote.legacy.settings）"
 assert d.get("isvue") == "1", "设置页不在 VUE_SHEETS 注册表里（走的是遗留路径）"
 assert d.get("tabBtn") == "1", "底部 tabbar 找不到「我的」按钮（.tabbar .tab[data-tab=mine]）"
 assert d.get("row") == "1", "我的页上没有「设置」行"
@@ -2151,8 +1771,13 @@ print(json.dumps({"js": js}))
 PYIT
 UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+# 两张图用 tools/make_test_png.py 现造（各自掺一条随机噪点带 → 字节不同）。
+# 以前两张都是 cp 同一个 $IMG，字节完全一样：「两张暂存截图」在像素上不可分，
+# 缩略图渲染成同一张、网格去重之类的问题根本看不出来（Tony 审计指出）。
 for f in vds-a.png vds-b.png; do
-  asroot_global "rm -f '$VDS_EXT/$f'; cp '$IMG' '$VDS_EXT/$f'; chown '$UI_APP:$UI_APP' '$VDS_EXT/$f'; chmod 644 '$VDS_EXT/$f'" || true
+  "$PY" "$HERE/tools/make_test_png.py" "$HERE/.test/$f" 360 640 \
+    || fail "造截图夹具失败（make_test_png.py）"
+  asroot_global "rm -f '$VDS_EXT/$f'; cp '$HERE/.test/$f' '$VDS_EXT/$f'; chown '$UI_APP:$UI_APP' '$VDS_EXT/$f'; chmod 644 '$VDS_EXT/$f'" || true
 done
 api_post shots/add "{\"shots\":[{\"path\":\"$VDS_EXT/vds-a.png\",\"name\":\"vds-a.png\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)},\
 {\"path\":\"$VDS_EXT/vds-b.png\",\"name\":\"vds-b.png\",\"mime\":\"image/png\",\"dateAdded\":$(date +%s)}]}" \
@@ -2170,7 +1795,7 @@ d = {}
 for l in lines:
     m = re.search(r"SIT (\w+)=(.*)", l)
     if m: d[m.group(1)] = m.group(2).strip()
-# skip 算红（同 vdiff_*）：shots 页没挂 Vue 或夹具没到位，这一遍就是空跑
+# skip 算红：shots 页没挂 Vue 或夹具没到位，这一遍就是空跑
 if d.get("skip"):
     raise AssertionError("截图页交互这一遍没跑成（%s）：Vue 没挂载或夹具没到位" % d["skip"])
 assert d.get("done") == "1", "SIT 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
@@ -2272,7 +1897,7 @@ NIN=$(readtlog | wc -l)
   L("delBefore="+n0); L("delAfter="+cards());
   L("ndone=1");
 })()' > "$TMPDIR/jsnint.json"
-# 同 VDIFF 夹具那个坑：jseval 钩子只在 .devmode 存在时干活，上一块刚把它删了。
+# jseval 钩子只在 .devmode 存在时干活，上一块刚把它删了；不重新 touch 就是空跑。
 # 不 touch 就是「载荷根本没跑」，症状是「前端抛异常了？已收到=[]」。
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsnint.json'"
@@ -2312,8 +1937,8 @@ asroot_global "rm -f '$DATA/enote/.devmode'"
 step "Todos 交互在 Vue 路径上真的生效（勾选 → done 翻转 → 再点回来）"
 # Notes 那条 NINT 只覆盖笔记页；todos 转 Vue 后如果没人点它，「tick 链断了 → 点了没反应」
 # 这一整类失效在待办页是空的（P12 同款）。这条把三件事钉在真机上：
-#   1) Vue 路径是活的（__enote.vue.isVue('todos') 且视图真挂载了）—— 步骤 5 的用例结构上
-#      区分不了渲染路径（VDIFF 比 DOM，而两条路径的 DOM 按设计逐字相同），这条是补的正向断言；
+#   1) Vue 路径是活的（__enote.vue.isVue('todos') 且视图真挂载了）—— 只看 DOM 结构上
+#      区分不了渲染路径（Vue 的产出按设计就和字符串渲染器逐字一致），这条是补的正向断言；
 #   2) 点 .cb 真的提交到服务端（done 翻转），再点回来；
 #   3) 搜索态下 Vue 渲染的行数 = 服务端 SR.todoIds 的条数（SR 是模块 var，
 #      computed 没依赖就永远缓存 → 搜索后待办列表不动）。
@@ -2337,7 +1962,7 @@ NIT=$(readtlog | wc -l)
         var f=findByText(st,text); if(f) fx.push({nid:f.n.id,tid:f.t.id}); return f })
   };
   try{
-    // 1) Vue 路径必须是活的：装配掉了 / 注册表没 todos 时，本步测的是字符串渲染器
+    // 1) Vue 路径必须是活的：装配掉了 / 注册表没 todos 时，本步测的不是 Vue 路径
     L("isVue="+(__enote.vue?__enote.vue.isVue("todos"):"no-vue"));
     L("mounted="+(__enote.vue?!!__enote.vue.apps.todos:"no-vue"));
     // 2) 夹具：至少两条「未完成」待办（一条给勾选测试，两条给搜索态测试）
@@ -2460,7 +2085,7 @@ for l in lines:
     if m: d[m.group(1)] = m.group(2).strip()
 assert d.get("done") == "1", "TINT 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
 assert d.get("isVue") == "true", \
-  "__enote.vue.isVue(todos) 不是 true：Vue 装配掉了或注册表没 todos，本步测的是字符串渲染器"
+  "__enote.vue.isVue(todos) 不是 true：Vue 装配掉了或注册表没 todos，本步测的不是 Vue 路径"
 assert d.get("mounted2") == "true", "切到 todos 并 render() 后 TodosView 仍没挂载"
 assert d.get("tid") == "ok", "造不出待办夹具数据，本步断言会是空跑"
 assert d.get("row") == "found", "待办页找不到夹具项对应的行（.ttx 文本对不上）"
@@ -2491,7 +2116,7 @@ print("  ok (勾选/复原/SR 搜索态在 Vue 路径上真生效；.cb 圆圈�
 asroot_global "rm -f '$DATA/enote/.devmode'"
 
 step "附件页交互在 Vue 路径上真的生效（预览 toast / 删除确认 / strip 计数）"
-# 步骤 7 的 FilesView 转 Vue。VDIFF 只证明「画出来一样」，这条用真点击钉住四件事：
+# 步骤 7 的 FilesView 转 Vue。这条用真点击钉住四件事：
 # Vue 路径是活的、卡片点击能弹预览 toast、删除按钮走确认框并真删到服务端、
 # 顶部 strip 的计数读的是实时 FA（不是装配时那份快照）。
 # 夹具只能从 shell 侧造：附件由分享意图产生，JS 侧没有建附件的 API（/api/attach 只有 delete）。
@@ -2521,11 +2146,8 @@ done
 [ -n "$FIXAID" ] || fail "共享的夹具附件没出现在 /api/attachments：夹具不存在，下面的断言会是空跑"
 FIXNOTE=$(api_get "attachments?q=vue-files-fixture" | "$PY" -c 'import json,sys
 print((json.load(sys.stdin).get("items") or [{}])[0]["noteId"])')
-# 夹具到位之后再比一次 files 的 DOM：上面那次（步骤 7 的 vdiff_tab files）跑在空库上，
-# FA.loaded=false → 两条路径都画骨架屏（实测 hasSkel=1 hasEmpty=0，145 字节），比的是
-# 「骨架对骨架」，卡片网格这条主路径根本没进比较（上一版注释写「比到 strip + 空态」
-# 是错的，步骤 7 审查指出）。vdiff_tab 只调 render()，而 render() 不会去拉附件，
-# 所以先用 filesNow() 把 FA 真加载好。
+# 夹具到位之后再刷新一次附件页：render() 不会去拉附件（filesNow() 才会），不先加载好
+# FA，下面的交互用例比的是骨架屏，没有真卡片可点。
 # jseval 钩子只在 .devmode 存在时干活（上一块刚把它删了），不 touch 就是
 # `{"ok":false,"error":"jseval disabled"}`：载荷根本没跑，日志里一条也没有（真机撞过）。
 UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
@@ -2557,9 +2179,8 @@ assert d.get("done") == "1", "FLOAD 载荷没跑完：日志=%s" % lines[:2]
 assert d.get("ERR") is None, "FLOAD 抛异常：%s" % d.get("ERR")
 assert d.get("loaded") == "true", "FA.loaded 仍是 %s：filesNow() 没拉到数据" % d.get("loaded")
 assert int(d.get("fa", "0")) >= 1, "FA 里只有 %s 条附件，夹具没进去" % d.get("fa")
-print("  ok (FA 已加载 %s 条，下面的 VDIFF 比的是真卡片)" % d["fa"])
+print("  ok (FA 已加载 %s 条，下面的交互用例有真卡片可点)" % d["fa"])
 '
-vdiff_tab files
 NFT=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("FINT "+m)};
@@ -2571,7 +2192,7 @@ NFT=$(readtlog | wc -l)
     var n=c.querySelector(".aname");
     if(!r && n && n.textContent===FIX) r=c }); return r };
   try{
-    // 1) Vue 路径必须是活的：装配掉了 / 注册表没 files 时，本步测的是字符串渲染器
+    // 1) Vue 路径必须是活的：装配掉了 / 注册表没 files 时，本步测的不是 Vue 路径
     L("isVue="+(__enote.vue?__enote.vue.isVue("files"):"no-vue"));
     if(!(__enote.vue && __enote.vue.host && __enote.vue.host.filesNow)){
       L("ERR=no-host"); L("done=1"); return }
@@ -2615,7 +2236,7 @@ NFT=$(readtlog | wc -l)
   }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
   L("done=1");
 })()' > "$TMPDIR/jsfint.json"
-# vdiff_tab 末尾会删 .devmode（jseval 钩子只在它存在时干活），不重新 touch 就是
+# 上一块末尾会删 .devmode（jseval 钩子只在它存在时干活），不重新 touch 就是
 # 「载荷根本没跑，日志里一条 FINT 也没有」。
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsfint.json'"
@@ -2632,7 +2253,7 @@ for l in lines:
     if m: d[m.group(1)] = m.group(2).strip()
 assert d.get("done") == "1", "FINT 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
 assert d.get("isVue") == "true", \
-  "__enote.vue.isVue(files) 不是 true：Vue 装配掉了或注册表没 files，本步测的是字符串渲染器"
+  "__enote.vue.isVue(files) 不是 true：Vue 装配掉了或注册表没 files，本步测的不是 Vue 路径"
 assert d.get("mounted2") == "true", "切到 files 并 filesNow() 后 FilesView 仍没挂载"
 assert d.get("ERR") is None, "FINT 载荷抛异常：%s" % d.get("ERR")
 assert d.get("card") == "found", "附件页找不到夹具卡片（.aname 对不上）：Vue 没画出附件卡片？"
@@ -2652,12 +2273,10 @@ assert int(d["cards2"]) == int(d["cardsBefore"]) - 1, \
   "删除后卡片数 %s→%s：没少一张" % (d.get("cardsBefore"), d.get("cards2"))
 print("  ok (预览 toast / 删除确认 / strip 计数在 Vue 路径上真生效，%s 张卡)" % d.get("cards"))
 '
-# 第三遍 VDIFF：空态（FA.loaded=true 且 items=[]）。前两遍比的是骨架屏（loaded=false）
-# 和网格（items 非空），空态这条分支从没进过比较 —— 步骤 7 审查就是在这里抓到真 DOM
-# 漂移：<empty-state> 收了 :tick，而 EmptyState 的 props 只有 icon/title/sub，透传成
-# <div class="empty" tick="27">（遗留路径是 <div class="empty">）。FINT 末尾刚把夹具附件
-# 删掉，FA 正好是 loaded + 空；下面先断言页面真的是空态（.empty 在、.skel 不在），
-# 免得像前两遍那样「比的是另一种状态」。
+# 空态那一遍（FA.loaded=true 且 items=[]）：步骤 7 的审查在这里抓到过真 DOM 漂移 ——
+# <empty-state> 收了 :tick，而 EmptyState 的 props 只有 icon/title/sub，透传成
+# <div class="empty" tick="27">。FINT 末尾刚把夹具附件删掉，FA 正好是 loaded + 空；
+# 下面先断言页面真的是空态（.empty 在、.skel 不在），免得「断言的是另一种状态」。
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("FEMPTY "+m)};
@@ -2695,10 +2314,9 @@ assert d.get("fa") == "0", "FA 里还有 %s 条附件：这一遍比的不是空
 assert d.get("empty") == "yes", "页面上没有 .empty：这一遍比的不是空态（空跑）"
 assert d.get("skel") == "no", "页面上还有骨架屏 .skel：FA.loaded 与 DOM 不一致"
 assert d.get("tickAttr") == "none", \
-  "空态根元素上多了 tick 属性（%s）：组件没声明的 prop 透传成 DOM 属性，与遗留渲染漂移" % d.get("tickAttr")
-print("  ok (FA 已加载且为空，下面的 VDIFF 比的是空态)")
+  "空态根元素上多了 tick 属性（%s）：组件没声明的 prop 透传成 DOM 属性" % d.get("tickAttr")
+print("  ok (FA 已加载且为空，空态 DOM 形状正确（无 tick 属性）)")
 '
-vdiff_tab files
 # 夹具清理：附件由分享意图建了一条笔记，删掉笔记（连带附件文件），别污染真数据和后续用例
 asroot_global "rm -f '$EXT/$FIXNAME'" >/dev/null 2>&1 || true
 if [ -n "$FIXNOTE" ]; then api_post delete "{\"id\":\"$FIXNOTE\"}" >/dev/null 2>&1 || true; fi

@@ -252,7 +252,12 @@ if (vueMissing.size) {
 
 // 迁移期基线：步骤 4 实测 69 处内联 handler（onclick 68 + oninput 1）。
 // 视图转 Vue 后内联的减少、模板的增加，总数不该掉——掉了就是迁移时把控件丢了。
-const HANDLER_BASELINE = 70;   // 闸门① 同一次扫描实测的内联数，不是 python 数的 69（那个漏了 oninput="event…"）
+//
+// 步骤 11 把基线从 70 降到 73 的实测值：迁移期同一个按钮在「遗留字符串渲染器」和
+// 「Vue 模板」里各写一份，闸门把两份都数进去，所以 88 这个数是虚高的；遗留渲染器删完
+// 只剩 73（内联 30 + 模板 43），这才是「界面上真有的控件数」。基线跟着降到 73 ——
+// 它守的是「迁移时整条控件被丢掉」，虚高的基线会让这一步永远红，而红一次就没人看了。
+const HANDLER_BASELINE = 73;   // 步骤 11 删光遗留渲染器后的实测值（内联 30 + Vue 模板 43）
 const total = handlerCount + vueCount;
 if (STRICT && total < HANDLER_BASELINE) {
   bad('handler 总数从 ' + HANDLER_BASELINE + ' 掉到 ' + total
@@ -464,8 +469,10 @@ const CLOSED_FN = ['api', 'refresh', 'render', 'missedDismiss', 'missedSheet', '
   'shotOverlay', 'shotOvlSub',
   // 步骤 9：剪贴板页交互用例的入口（其余动作靠真点击 .clipitem / 按钮，不调函数）
   'clipSheet',
-  // 步骤 10：设置页交互用例的入口（开弹层；其余动作靠真点击 seg / .sw / 按钮）
-  'settingsSheet'];
+  // 步骤 10 的 settingsSheet 在步骤 11 移出闭集：设置页交互用例是从「我的」页真点
+  // 「设置」那一行进来的（比直接调函数强），VDIFF 的 settings 那一遍（唯一调它的载荷）
+  // 随遗留基准一起删。闭集里留着没人引用的名字会让闸门② 认不出「改名」，所以要同步缩小。
+  ];
 const STATE_NAMES = ['tab', 'S', 'MISSED', 'open', 'shotSel', 'shotList', 'SR',
   // 步骤 8：文件夹页夹具要整体注入 folderAll/folderSel/folderQ（闭合集 17 → 20，
   // 与 app.js 的 __enote.state、go/web_test.go 的名单三处同步）。
@@ -993,26 +1000,39 @@ if (SPLIT) {
           }
         }
       }
-      for (const v of mounted) {
-        const f = viewFiles.find(p => new RegExp('export const ' + v.comp + '\\b').test(fs.readFileSync(p, 'utf8')));
-        if (!f) { tickErrs.push(v.tab + '：注册表里的 ' + v.comp + ' 在 js/ 下找不到定义'); continue }
-        const src = fs.readFileSync(f, 'utf8');
-        if (!/V\.tick/.test(src)) tickErrs.push(v.tab + '：视图没读 V.tick（render() 后视图不会动，静默失效）');
-        // 扫这个文件里的**全部**模板。上一版用非全局正则，每个视图文件只看第一个模板：
-        // files.js 查的是 AttachCard，FilesView 整段没查；todos.js 同理（TodoRow 挡住
-        // TodosView），所以步骤 6 的 <empty-state> 缺 :tick 一直没人管。反向实验：删掉
-        // attach-card 的 :tick="tick" 闸门仍绿。
+      // 一个模板里的嵌套组件标签逐个查 tick 契约（双向：声明了 tick 的必须收，没声明的禁止收）。
+      // 扫的是文件里的**全部**模板。上一版用非全局正则，每个视图文件只看第一个模板：
+      // files.js 查的是 AttachCard，FilesView 整段没查；todos.js 同理（TodoRow 挡住
+      // TodosView），所以步骤 6 的 <empty-state> 缺 :tick 一直没人管。反向实验：删掉
+      // attach-card 的 :tick="tick" 闸门仍绿。
+      function scanTick(src, label) {
         for (const tpl of src.matchAll(/template: `([\s\S]*?)`\n/g)) {
           tickTpls++;
           for (const m of tpl[1].matchAll(/<([a-z][\w-]*-[\w-]+)\b([^>]*)>/g)) {
             const pascal = m[1].replace(/(^|-)(\w)/g, (_, __, c) => c.toUpperCase());
             if (!tickProp.has(pascal)) continue;   // 扫不到定义的组件由上面的注册检查报
             if (tickProp.get(pascal) && !/:tick="tick"/.test(m[2]))
-              tickErrs.push(v.tab + '：<' + m[1] + '> 声明了 tick prop 却没收 :tick="tick"（props 不变 → 子组件不重渲染）');
+              tickErrs.push(label + '：<' + m[1] + '> 声明了 tick prop 却没收 :tick="tick"（props 不变 → 子组件不重渲染）');
             if (!tickProp.get(pascal) && /:tick=/.test(m[2]))
-              tickErrs.push(v.tab + '：<' + m[1] + '> 没有 tick prop 却收 :tick（透传成 DOM 属性 → 与遗留渲染漂移）');
+              tickErrs.push(label + '：<' + m[1] + '> 没有 tick prop 却收 :tick（透传成 DOM 属性 → 与遗留渲染漂移）');
           }
         }
+      }
+      const mountedFiles = new Set();
+      for (const v of mounted) {
+        const f = viewFiles.find(p => new RegExp('export const ' + v.comp + '\\b').test(fs.readFileSync(p, 'utf8')));
+        if (!f) { tickErrs.push(v.tab + '：注册表里的 ' + v.comp + ' 在 js/ 下找不到定义'); continue }
+        mountedFiles.add(f);
+        const src = fs.readFileSync(f, 'utf8');
+        if (!/V\.tick/.test(src)) tickErrs.push(v.tab + '：视图没读 V.tick（render() 后视图不会动，静默失效）');
+        scanTick(src, v.tab);
+      }
+      // 扫描范围扩到 js/ 下全部模板（含 components.js）：组件模板里也会嵌套别的组件，
+      // tick 契约一样成立。上一版只扫挂载视图所在的文件，components.js 里那 5 个模板
+      // 没人管（Tony 审计指出）。
+      for (const f of viewFiles) {
+        if (mountedFiles.has(f)) continue;
+        scanTick(fs.readFileSync(f, 'utf8'), path.relative(root, f));
       }
       // 注册表完整性：视图文件导出的每个 *View 都必须在 VUE_VIEWS ∪ VUE_SHEETS 里。上一版只数条目数，
       // 反向实验：删掉注册表里的 files: FilesView 闸门仍绿，只把打印变成「注册表 2」。
@@ -1059,6 +1079,599 @@ if (SPLIT) {
     }
   }
 }
+
+/* ================= 签名段（步骤 11：原 tools/ui_sig_test.js 的 84 项并入） =================
+   这一段的定位和上面十二道闸门不同：闸门查「结构」（handler 能不能解析、注册表完不完整），
+   签名段查「行为契约还在」—— 每条断言都对应一次真实用户反馈或线上踩坑（P6 切页动画、
+   P12 点了没反应、逾期差 8 小时、图标被换回矢量…），断言写成对源码的正则，是因为
+   这些行为在真机上不可测（要肉眼判断「有没有闪」「对齐没对齐」）。
+   整段包在 IIFE 里：原文件是顶层脚本，const 名（src / code / panel / data / icon …）
+   与上面十二道闸门大面积撞车，撞了就是 SyntaxError，套一层作用域最省事。
+   步骤 11 同时删掉 tools/ui_sig_test.js：静态闸门从三份（ui_test / ui_sig_test / go test）
+   收敛到两份（ui_test / go test），test.sh 少一个必跑项。 */
+(function sigSection(){
+  // 拼接视图：go/ui/ 下除 vendor/ 之外的 css/js/html 按路径排序拼接（等价拆分前那一个 ui.html）
+  const src = ui;
+  function sig(name, pass) { if (pass) ok(name); else bad(name, '签名断言失败（行为契约不在了）'); }
+  // 步骤 11：遗留字符串形式（strip()+missedBanner()+…）随渲染器一起删，只剩组件标签。
+  // strip-bar 的闭合标签要容许（`<strip-bar :tick="tick"></strip-bar>`），旧正则用 \s*
+  // 卡在那里，转 Vue 当天就假红过一次。
+  const TOP_FORMS = [
+    /<strip-bar[\s\S]{0,80}?<missed-banner[\s\S]{0,400}?<shot-banner[\s\S]{0,400}?<clip-banner/,
+  ];
+  const notesTopOrder = (s) => TOP_FORMS.some((re) => re.test(s));
+  // 横幅被引用的次数：字符串调用 clipBanner() 和组件标签 <clip-banner> 都计数
+  const bannerRefs = (s, name) => {
+    const kebab = name.replace(/([A-Z])/g, (m) => '-' + m.toLowerCase());
+    return (s.match(new RegExp(name + '\\(\\)', 'g')) || []).length
+      + (s.match(new RegExp('<' + kebab + '[ />]', 'g')) || []).length;
+  };
+  // 卡片片段：函数调用形式或组件标签形式。
+  // \b 是必需的：不带它，factsBlock 改名成 factsBlockRenamed 也能对上（前缀匹配），
+  // 反向实验验出来签名会假绿。
+  const frag = (s, fn, tag) => new RegExp('\\b' + fn + '\\(').test(s) || new RegExp('<' + tag + '[ />]').test(s);
+  /* 轮询指纹（步骤 11：原 sigOf 已删，改成 stateSig + SIG_SKIP 排除表）。
+     从 app.js 抽真源码来测，避免复制粘贴走样 —— 排除表是行为契约，测的必须是线上那份。 */
+  const mSkip = src.match(/var SIG_SKIP = \{[^}]*\};/);
+  const mSig = src.match(/function stateSig\(d\)\{[\s\S]*?\n\}/);
+  if (!mSkip || !mSig) { bad('轮询指纹', 'app.js 里找不到 SIG_SKIP / stateSig'); return; }
+  // 名字不能叫 stateSig：eval 里声明的函数要和外层区分开，同名会撞
+  // 「Identifier 'stateSig' has already been declared」（踩过）。
+  const SHOTFLAGS = { enabled: 1, folders: 2, granted: 1 };
+  const sigFn = eval(mSkip[0] + ';' + mSig[0] + '; stateSig');
+
+  const base = () => JSON.parse(JSON.stringify({
+    notes: [
+      { id: 'a', title: '甲', status: 'done', updatedAt: '2026-01-01T10:00', todos: [{id:'t1'}], attachments: [] },
+      { id: 'b', title: '乙', status: 'raw',  updatedAt: '2026-01-01T09:00', todos: [], attachments: [{id:'x'}] }
+    ],
+    info: { todos: 3, open: 2, overdue: 0, queue: 0, ocrReady: true },
+    settings: { theme: 'light' }
+  }));
+
+  const checks = [];
+  function eq(name, a, b, want) { checks.push([name, (a === b) === want, want ? 'same' : 'different']); }
+
+  const s0 = sigFn(base()), s1 = sigFn(base());
+  eq('同一个 state 两次指纹相同', s0, s1, true);
+
+  let d = base(); d.notes[0].status = 'parsing';
+  eq('笔记状态变化', s0, sigFn(d), false);
+
+  d = base(); d.notes[1].todos.push({ id: 't2' });
+  eq('待办增删', s0, sigFn(d), false);
+
+  d = base(); d.notes[0].title = '甲改';
+  eq('标题变化', s0, sigFn(d), false);
+
+  d = base(); d.notes[0].attachments.push({ id: 'y' });
+  eq('附件增删', s0, sigFn(d), false);
+
+  d = base(); d.notes.push({ id: 'c', title: '丙', status: 'done', updatedAt: 'x', todos: [], attachments: [] });
+  eq('新增笔记', s0, sigFn(d), false);
+
+  d = base(); d.info.open = 1;
+  eq('未完成数变化', s0, sigFn(d), false);
+
+  d = base(); d.settings.theme = 'dark';
+  eq('主题变化', s0, sigFn(d), false);
+
+  /* 步骤 11 的契约翻转：原 sigOf 手工挑字段，「列表不展示的字段变化」期望不重绘；
+     stateSig 是「整份序列化 + 排除表」，这类变化现在会多画一次 —— 多画一次是可见的、
+     Vue 的 patch 很便宜，而漏字段的不重绘是静默的（踩过：漏 i.shot 时首页横幅永不出现）。
+     真正钉住的是排除表：uptimeS 每秒都变，留着它 = 每 2s 全量重绘（就是当初的闪烁）。 */
+  d = base(); d.notes[0].content = '正文变了（列表不显示正文，现在会重绘一次）';
+  eq('未展示字段变化 → 多画一次（新契约，原 sigOf 期望不重绘）', s0, sigFn(d), false);
+
+  d = base(); d.info.uptimeS = 99999;
+  eq('uptimeS 变化不重绘（排除表：它每秒都变）', s0, sigFn(d), true);
+
+  d = base(); d.info.tz = { zone: 'Asia/Shanghai', offsetSec: 28800 };
+  eq('tz 变化不重绘（排除表：界面不展示）', s0, sigFn(d), true);
+
+  d = base(); d.info.shot = 7;
+  eq('新截图条数变化要重绘（原 sigOf 漏过这一项，首页横幅就不出现）', s0, sigFn(d), false);
+
+  d = base(); d.info.server = 'https://other.test';
+  eq('服务端地址变化要重绘（状态点/未配置提示都依赖它）', s0, sigFn(d), false);
+
+  /* 截图开关不在 /api/state 里（它是 JS 侧 var SHOTFLAGS，由 Android.shotFlags 异步回填），
+     所以只能单独拼进指纹。踩过：选完文件夹我的页还显示旧数字。反向实验：把 stateSig 末尾
+     那个 [sf.enabled, sf.folders, sf.granted] 数组删掉，这两条一起红。 */
+  SHOTFLAGS.folders = 3;
+  eq('截图文件夹数变化要重绘（踩过：选完文件夹我的页还显示旧数字）', s0, sigFn(base()), false);
+  SHOTFLAGS.enabled = 0;
+  eq('截图监控开关变化要重绘（横幅按开关分状态显示）', s0, sigFn(base()), false);
+  SHOTFLAGS.enabled = 1; SHOTFLAGS.folders = 2;
+  eq('截图开关改回来指纹也改回来（不是恒变）', s0, sigFn(base()), true);
+
+  for (const [cname, cpass, cnote] of checks) {
+    if (cpass) ok('轮询指纹：' + cname + ' → 期望' + cnote);
+    else bad('轮询指纹：' + cname + ' → 期望' + cnote);
+  }
+  // 轮询必须是安静模式，否则又回到每秒重绘
+  const quiet = /setInterval\(function\(\)\{ if\(!document\.hidden\) refresh\(true\); \}/.test(src);
+  sig('轮询走 refresh(true) 安静模式', quiet);
+  // 附件卡不能再有无条件入场动画（那是闪一下的来源）
+  const acard = /^\.acard\{[^}]*animation:/m.test(src);
+  sig('附件卡没有无条件动画', !acard);
+  // P6：整页切页入场动画已删除，切页必须是瞬时的（enterT 那套「播完移除」也随之消失）
+  const noPageEnter = !/enterT = setTimeout/.test(src) && !/main\.enter/.test(src);
+  sig('不再有整页切页入场动画', noPageEnter);
+
+  // ---------- 底部 5 按钮 / 自绘对话框 / 返回键 ----------
+  const java = read('src/dev/xduo/enote/MainActivity.java');
+  const keepalive = read('src/dev/xduo/enote/KeepAlive.java');
+
+  // “记一笔”在导航栏第三格，形成 5 个按钮
+  const bar = src.match(/<nav class="tabbar"[\s\S]*?<\/nav>/);
+  const inBar = bar && /class="tab"[^>]*todos[\s\S]*?<button class="fab" id="fab"[\s\S]*?data-tab="files"/.test(bar[0]);
+  sig('“记一笔”在底栏第三格（5 个按钮）', inBar);
+
+  // 指示条必须 left:0，否则它和按钮差一个 padding，看起来左对齐
+  const indLeft = /\.tabbar \.ind\{position:absolute;left:0/.test(src);
+  sig('导航指示条居中对齐（left:0）', indLeft);
+
+  // 原生 confirm/alert 会顶着一行“网址为 http://127.0.0.1 的网页显示：”
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const native = /\bconfirm\(|\balert\(/.test(code);
+  sig('页面不再用原生 confirm/alert', !native);
+  const jsDlg = /public boolean onJsConfirm\(/.test(java) && /public boolean onJsAlert\(/.test(java);
+  sig('Java 把 alert/confirm 转发给页面对话框', jsDlg);
+
+  // 面板要有关闭按钮
+  const pclose = /class="pclose" onclick="closeSheet\(\)"/.test(src);
+  sig('浮动面板有关闭按钮', pclose);
+
+  // 返回键 / 侧滑返回：先关面板、回笔记页，主页上连返两次才退 app
+  const back = /window\.uiBack = function\(\)/.test(src)
+    && /evaluateJavascript\("window\.uiBack \? uiBack\(\) : 0"/.test(java);
+  sig('返回键先关面板再退 app', back);
+  const back2 = /public void onBackPressed\(\)/.test(java) && /再返回一次退出/.test(java);
+  sig('侧滑返回走同一逻辑，主页连返两次才退出', back2);
+
+  // “我的”页是最后一页，左滑不该拉伸回弹
+  const noStretch = /setOverScrollMode\(View\.OVER_SCROLL_NEVER\)/.test(java);
+  sig('WebView 关闭横向拉伸回弹', noStretch);
+
+  // “我的”页去掉装饰动画
+  const heroPlain = !/main\.enter \.hero\{animation/.test(src) && !/main\.enter \.stat\{animation/.test(src);
+  sig('我的页没有装饰性入场动画', heroPlain);
+
+  // S2 之后间距/字号/圆角都走刻度 token，断言要守的是结构契约，不是字面 px。
+  // tok('14px','--s3') 生成 (14px|var(--s3))：迁移前后都绿，两边都写死会假红。
+  function tok(lit, token) { return '(' + lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '|var\\(' + token + '\\))'; }
+
+  // 页面内容左右留白（卡片不贴屏幕边）
+  const pad = new RegExp('main#view\{padding:0 ' + tok('14px', '--s3') + ' 104px\}').test(src);
+  sig('页面左右有留白', pad);
+
+  // 主题开关只在设置面板里，“我的”页不重复列一项
+  const oneTheme = !/themeSheet\(\)/.test(code) && /外观[\s\S]{0,400}setTheme/.test(src);
+  sig('主题入口只保留设置面板里那一个', oneTheme);
+
+  // 涟漪只能在被裁剪的按钮里：选择器带上 .li 时，水波会画到 viewport 上，铺满全屏 = 闪屏
+  const ripSel = (src.match(/closest\('([^']*)'\)/) || [])[1] || '';
+  const ripOk = ripSel.length > 0 && !/\.li\b/.test(ripSel)
+    && /\.tabbar \.fab\{[^}]*position:relative/.test(src) && /\.seg button\{[^}]*overflow:hidden/.test(src);
+  sig('涟漪不会溢出按钮（不闪屏）', ripOk);
+
+  // ---------- R11 到期倒计时 ----------
+  // 每个未完成待办都要有倒计时徽标，并且是就地改写文本（整页重绘会闪）
+  const cd = /function cdText\(due\)/.test(src) && /data-due="/.test(src)
+    && /setInterval\(tickCD, \d+\)/.test(src) && /function tickCD\(\)/.test(src);
+  sig('待办显示到期倒计时，且按秒级定时就地更新', cd);
+  const cdWords = /不足/.test(src) && /逾期/.test(src) && /天'/.test(src) && /小时'/.test(src) && /分钟'/.test(src);
+  sig('倒计时文案：不足N天/小时/分钟、逾期N…', cdWords);
+  // 笔记页与待办页都要挂上
+  const cdBoth = (src.match(/cdChip\(/g) || []).length >= 2;
+  sig('笔记页与待办页都显示倒计时', cdBoth);
+
+  // ---------- 勾选完成的动画反馈 ----------
+  const anim = /\.todo\.justdone \.ttx::after,[^{]*\{[\s\S]*?animation:strike/.test(src)
+    && /\.todo\.leaving\{/.test(src) && /\.todo\.enter\{animation:todoenter/.test(src)
+    && /row\.classList\.add\('leaving'\)/.test(src);
+  sig('勾选 → 划线动画 → 原位淡出 → 新位置高亮入场', anim);
+  // 动画期间不能被轮询重绘打断
+  const lock = /if\(Date\.now\(\) < animLock\)\{ paintStatus\(\); return \}/.test(src);
+  sig('动画期间轮询不重绘（不打断划线动画）', lock);
+
+  // ---------- R5 我的页统计 + 全屏设置面板 ----------
+  /* 步骤 11：chartHTML / statHTML / statsHeroHTML 三个遗留渲染器删了，柱状图与统计卡
+     是 StatsChart / StatsView 的 computed（css/stats.css 的 .chart 原样复用）。
+     契约不变：数据必须来自 /api/stats，图必须是纯 CSS（无 canvas/svg）。 */
+  const stats = /api\/stats/.test(src) && /function statsNow\(\)/.test(src)
+    && /export const StatsChart/.test(src) && /<stats-chart/.test(src)
+    && /^\.chart\{/m.test(src) && /function statCls\(/.test(src);
+  sig('我的页统计来自 /api/stats，近 7 天为纯 CSS 柱状图', stats);
+  const go = read('go/stats.go');
+  const goweb = read('go/web.go')
+    + read('go/shots.go');
+  const gopipe = read('go/pipeline.go');
+  const goRoutes = /m\.HandleFunc\("\/api\/stats", handleStats\)/.test(read('go/web.go'))
+    && /func stats\(\) statsRes/.test(go) && /func handleImport/.test(read('go/backup.go'));
+  sig('Go 侧 /api/stats + /api/import + /api/clear 已注册', goRoutes);
+  // 步骤 10：settingsSheet() 变成分发器（注册表里有 settings 就走 pageSheetVue），所以
+  // 签名不再钉「函数体第一句就是 pageSheet」，只钉「这个函数里真的调了 pageSheet('设置'」。
+  const panel = /function pageSheet\(title, html\)/.test(src) && /\.panel\.page\{/.test(src)
+    && /settingsSheet\(\)\{[\s\S]{0,400}?pageSheetVue\('settings', '设置'/.test(src);
+  sig('设置是全屏面板（顶栏固定 + 分组）', panel);
+  const secs = ['外观', 'AI 模型', '采集', '本地 OCR', '数据', '运行状态']
+    .every(function (t) { return src.indexOf(t) > 0 });
+  sig('设置面板分组齐全（外观/AI/采集/OCR/数据/状态）', secs);
+  const data = /function importJSON\(\)/.test(src) && /function clearAllNotes\(\)/.test(src)
+    && /Android\.pickJSON\(\)/.test(src) && /REQ_IMPORT/.test(java) && /api\/import/.test(java);
+  sig('导出 / 导入（选文件→POST /api/import）/ 清空 全通', data);
+
+  // ---------- 时区：Go 用 UTC 会算错「逾期」 ----------
+  const tz = /nativeInit\(String filesDir, int tzOffsetSec, String tzId\)/.test(
+      read('src/dev/xduo/enote/Bridge.java'))
+    && /func applyTZ\(offSec int, id string\)/.test(read('go/app.go'))
+    && /time\.Local = time\.FixedZone/.test(read('go/app.go'));
+  sig('Java 把时区传给 Go，逾期/按天统计不再差 8 小时', tz);
+
+  // ---------- 改名 + 竖琴图标 ----------
+  const man = read('AndroidManifest.xml');
+  const named = /android:label="懒得记"/.test(man) && !/android:label="eNote"/.test(man)
+    && /<title>懒得记<\/title>/.test(src);
+  sig('应用名改为「懒得记」', named);
+  // 启动图标：用户自己提供的那套 PNG（android-launcher-icons.zip），不是矢量重绘版。
+  // 我一度把整套换成矢量，用户明确要求还原 —— 这里锁死，别再动它。
+  const densities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
+  const icon = densities.every(d =>
+      fs.existsSync(path.join(root, `res/drawable-${d}/ic_launcher_background.png`)) &&
+      fs.existsSync(path.join(root, `res/drawable-${d}/ic_launcher_foreground.png`)) &&
+      fs.existsSync(path.join(root, `res/mipmap-${d}/ic_launcher.png`)))
+    && !fs.existsSync(path.join(root, 'res/drawable/ic_launcher_background.xml'))   // 别又换成矢量
+    && !fs.existsSync(path.join(root, 'res/drawable/ic_launcher_foreground.xml'))
+    && /@drawable\/ic_launcher_background/.test(
+        read('res/mipmap-anydpi-v26/ic_launcher.xml'))
+    && /@drawable\/ic_launcher_foreground/.test(
+        read('res/mipmap-anydpi-v26/ic_launcher.xml'))
+    && /android:roundIcon="@mipmap\/ic_launcher"/.test(man)
+    && fs.existsSync(path.join(root, 'go/icon.png'))
+    && /\/icon\.png/.test(goweb) && src.includes('src="/icon.png"');
+  sig('启动图标：用户提供的 PNG 图层（5 套密度 + 自适应 XML）', icon);
+
+  // 「重要」标签不能比时间标签高出一截：两者都要 inline-block + 固定行高
+  // 三种小标签（.chip 重要 / .due 到期 / .cd 倒计时）盒模型必须完全一致，容器 flex 居中
+  function ruleBody(cls) {
+    const m = src.match(new RegExp('^\\.' + cls + '\\{([^}]*)\\}', 'm'));
+    return m ? m[1] : '';
+  }
+  // 三类胶囊（chip / due / cd）必须共用同一套盒模型，高度才会一致——这是「重要」标签
+  // 和时间标签对齐的根因。条目写成断言函数，刻度 token 和旧字面值都接受。
+  const NEED = [
+    b => b.includes('display:inline-flex'),
+    b => b.includes('align-items:center'),
+    b => /font-size:(10\.5px|var\(--fs-xs\))/.test(b),
+    b => b.includes('line-height:1.4'),
+    b => /padding:1px (7px|var\(--s2\))/.test(b),
+    b => /border:(1px|var\(--hair\)) solid/.test(b),
+  ];
+  const chipH = ['chip', 'due', 'cd'].every(c => NEED.every(f => f(ruleBody(c))))
+    && /^\.tx small\{display:flex;flex-wrap:wrap;align-items:center;gap:(4px|var\(--s1\))/m.test(src);
+  sig('「重要」与时间标签同高（统一盒模型 + flex 居中）', chipH);
+
+  // 导出 JSON 是整页跳转，返回键得先回退网页历史，不然回不到 app
+  const backHist = /if \(w\.canGoBack\(\)\) \{ w\.goBack\(\); return; \}/.test(java);
+  sig('返回键先回退网页历史（导出页能退出）', backHist);
+
+  // ---- R12/R13/R14 ----
+  const gollm = read('go/llm.go');
+  const gostore = read('go/store.go');
+  const gosearch = read('go/search.go');
+  const bridge = read('src/dev/xduo/enote/Bridge.java');
+
+  // 关键信息：六问框架进提示词，落到 Note.Facts，卡片渲染，搜索能命中
+  const facts = /facts/.test(gollm) && /何时/.test(gollm) && /何人/.test(gollm) && /何地/.test(gollm)
+    && /何事/.test(gollm) && /为何/.test(gollm) && /下一步/.test(gollm)
+    && /Facts\s+\[\]Fact/.test(gostore) && /func cleanFacts/.test(gollm)
+    && /关键信息/.test(gosearch)
+    && /function factsBlock/.test(src) && frag(src, 'factsBlock', 'facts-block') && /class="facts"/.test(src);
+  sig('关键信息：六问提取 + 落库 + 卡片渲染 + 可搜索', facts);
+
+  // 到期提醒：系统日历 + 系统闹钟 intent（零权限），有 due 才显示按钮
+  const remind = /ACTION_INSERT[\s\S]{0,400}CalendarContract\.Events/.test(java)
+    && /CalendarContract\.EXTRA_EVENT_BEGIN_TIME/.test(java) && /CalendarContract\.EXTRA_EVENT_END_TIME/.test(java)
+    && /com\.android\.alarm\.permission\.SET_ALARM/.test(man)
+    && /AlarmClock\.ACTION_SET_ALARM/.test(java) && /EXTRA_SKIP_UI/.test(java)
+    && /addToCalendar/.test(bridge) && /setAlarm/.test(bridge)
+    && /function remindBtns/.test(src) && /toCalendar\(/.test(src) && /toAlarm\(/.test(src)
+    && /if\(!t\.due\|\|t\.done\) return ''/.test(src)
+    && (src.match(/remindBtns\(/g)||[]).length >= 3;   // 笔记卡片 + 待办页两处都要有
+  sig('待办可一键写入系统日历 / 设为闹钟（intent，无权限）', remind);
+
+  // logo 铺满按钮：UA button{padding} 会挤出一圈白框
+  const logo = /\.iconbtn\{[^}]*padding:0/.test(src) && /img\.brand\{width:100%;height:100%/.test(src);
+  sig('顶栏 logo 铺满按钮（去掉白底外框留白）', logo);
+
+
+  // ---- R7/P6 剪贴板采集 ----
+  // 后台读剪贴板在 Android 10+ 被系统禁止（只有默认输入法/有焦点 app 可以），
+  // 所以方案定稿为前台监听：MainActivity onResume 注册 ClipboardManager 监听，
+  // Go 侧 clip.json 暂存 + 去重，UI 横幅 + 批量勾选 + 一键解析。
+  const goclip = read('go/clip.go');
+  const mainact = read('src/dev/xduo/enote/MainActivity.java');
+  const clip = /func clipAdd/.test(goclip) && /func clipParse/.test(goclip)
+    && /5\*time\.Second/.test(goclip) && /clip\.json/.test(goclip)
+    && /nativeClipAdd/.test(goclip)
+    && /addPrimaryClipChangedListener/.test(mainact) && /drainClipboard/.test(mainact)
+    && /onResume\(\)/.test(mainact)
+    && !/ClipWatchService/.test(man)            // 无障碍方案已移除（读不到内容）
+    && /export const ClipBanner/.test(src) && /function clipSheet/.test(src)
+    && /\/api\/clip\/parse/.test(src) && /\/api\/clip\/list/.test(src)
+    && bannerRefs(src, 'clipBanner') >= 1;   // 横幅挂在笔记页顶部（步骤 11 后笔记页只有一份模板，
+                                             // 遗留那三份分支的「三处都挂」由闸门⑮ 的模板扫描兜）
+  sig('剪贴板前台采集 + 暂存去重 + 横幅/批量页/一键解析', clip);
+
+  // Android 10+ 只让「当前焦点窗口」读剪贴板，onResume 比窗口拿焦点早，那一次必然被拒
+  // （ClipboardService: Denying clipboard access ... not in focus，返回 null 而不报错）。
+  // 修：onWindowFocusChanged 里重试 + 退避重试，再加顶栏 📋 手动入口兼底。
+  const clipFocus = /onWindowFocusChanged/.test(mainact) && /clipWaitingFocus/.test(mainact)
+    && /clipTries/.test(mainact)
+    && /public void clipImport/.test(read('src/dev/xduo/enote/Bridge.java'))
+    && /id="clipBtn"/.test(src) && /Android\.clipImport/.test(src) && /window\.onClipRead/.test(src)
+    // 后台监听器只记录「剪贴板变了」（读才受限），回来读不到时页面给一键入口
+    && /markClipChanged/.test(keepalive) && /clipHint/.test(keepalive)
+    && /Android\.clipHint/.test(src) && /剪贴板刚有更新/.test(src);
+  sig('剪贴板焦点重试（通知点进来读得到的修复）+ 顶栏 📋 手动导入', clipFocus);
+
+  // 恒真式去重签名（kindSig 忽略 c 自己）让第一条之后的复制全被当重复丢弃：
+  // 签名必须用存储项自己的字段，并且有「三次不同复制存三条」的回归护栏。
+  const clipSig = /func \(c \*Clip\) sig\(\) string/.test(goclip)
+    && /last\.sig\(\) == sig/.test(goclip) && !/kindSig\(kind, text, path\) == sig/.test(goclip);
+  const clipSigTest = /TestClipAddKeepsDistinctCopies/.test(read('go/clip_test.go'));
+  sig('剪贴板去重签名用存储项自己的字段（恒真式回归）', clipSig && clipSigTest);
+
+  // 计数以页面列出的条目为准（全局 clipSel 只增不减会把旧 id 算进去）；条目可单条删除
+  const clipDel = /function clipRemove/.test(src) && /\/api\/clip\/remove/.test(src)
+    && /class="clipdel"/.test(src) && /function clipDelSel/.test(src)
+    && /已选 /.test(src) && /clipSel = keep/.test(src);
+  sig('剪贴板计数按页面条目算 + 单条/批量删除', clipDel);
+
+  // 监控到变化要主动发通知，不是等用户下拉界面；常驻通知兼作条数状态条
+  const clipNotify = /CLIP_NOTIFY_ID/.test(keepalive) && /static void notifyClip/.test(keepalive)
+    && /CHANNEL_CLIP/.test(keepalive) && /updateNotification/.test(keepalive)
+    && /notifyClip/.test(read('src/dev/xduo/enote/Bridge.java'))
+    && /剪贴板暂存 /.test(keepalive);
+  sig('剪贴板主动通知 + 常驻通知显示暂存条数', clipNotify);
+
+  // tab 切换不再有整页浮现动画（用户要求：干净利落，避免闪烁）
+  const cleanTab = !/main\.enter/.test(src) && !/@keyframes fadein/.test(src)
+    && /\.todo\.enter/.test(src);              // 完成待办的高亮动画保留
+  sig('切页无整页浮现动画（完成动画保留）', cleanTab);
+
+  // 待办行左侧竖条：所有行统一 3px 透明占位，重要行只改颜色 → checkbox 对齐
+  const priBar = /border-left:3px solid transparent/.test(src)
+    && /\.pri-high\{border-left-color:var\(--bad\)\}/.test(src)
+    && new RegExp('padding:9px ' + tok('2px', '--s0') + ' 9px ' + tok('8px', '--s2')).test(src);
+  sig('待办竖条统一占位（checkbox 对齐）', priBar);
+
+  // P6.5 常驻后台：设置页开关 + 引导 + 前台服务/电池优化接口都存在
+  const ka = /function toggleKeepAlive\(el\)/.test(src)
+    && /Android\.setKeepAlive\(on\)/.test(src)
+    && /function askBattery\(\)/.test(src)
+    && /常驻后台/.test(src)
+    && /去关闭电池优化/.test(src);
+  sig('设置页有常驻后台开关和电池优化引导', ka);
+
+  // 提醒通知带真实 id，点进来能定位到那条待办
+  const route = /list\.push\(\{id:n\.id\+'\|'\+t\.id, noteId:n\.id, todoId:t\.id,/.test(src)
+    && /function openTodo\(nid, tid\)/.test(src);
+  sig('通知点击带 noteId/todoId 并定位待办', route);
+
+  // P8 补看错过的提醒：横幅只在有内容时出现，点开是清单，点一条能跳回笔记
+  const missed = /export const MissedBanner/.test(src)
+    && /function missedSheet\(\)/.test(src)
+    && /function loadMissed\(\)/.test(src)
+    && /api\/missed/.test(src)
+    && /v-if="m && m\.count"/.test(src);   // 没有就不占位（遗留是 return ''，Vue 是整条不渲染）
+  sig('错过的提醒横幅 + 清单（没有内容时不占位）', missed);
+
+  // 横幅用 warn 色跟「剪贴板」横幅区分开；图标顶对齐，两行文案时不会被拉低
+  const missedCss2 = /\.missed\{[^}]*var\(--warn-s\)/.test(src)
+    && /\.missed\{[^}]*align-items:flex-start/.test(src)
+    && new RegExp('\.missed \.mi\{[^}]*margin-top:' + tok('2px', '--s0')).test(src)
+    && /\.msrow\{/.test(src);
+  sig('错过的提醒用 warn 色（区别于剪贴板横幅）', missedCss2);
+
+  // 按钮文字必须和按钮居中：.btn 是 inline-flex，text-align 管不到 flex 子项，得用 justify-content
+  const btnCenter = /\.btn\{[^}]*display:inline-flex;[^}]*justify-content:center/.test(src)
+    && /\.dlg \.dacts \.btn\{/.test(src);
+  sig('所有按钮文字居中（inline-flex + justify-content）', btnCenter);
+
+  // 二级页面 = 整页，不是底部弹层：不要 grip，也不要有 border-top 的那条缝
+  const pageSheetCss = /\.panel\.page\{[^}]*border-top:0/.test(src)
+    && /\.panel\.page \.grip\{display:none\}/.test(src);
+  const noGripInPageSheet = !/p\.innerHTML = '<div class="grip"><\/div><div class="phead">/.test(src);
+  sig('二级页面贴顶（无 grip / 无分隔缝）', (pageSheetCss && noGripInPageSheet));
+
+  // 切页不重绘：每个 tab 一个常驻面板 + 各自记住滚动位置
+  const panes = /var panes = \{\}, paneBuilt = \{\}/.test(src)
+    && /function paneFor\(t\)/.test(src)
+    && /function invalidatePanes\(keep\)/.test(src)
+    && /tabScroll = \{notes:0, *todos:0, *files:0, *mine:0\}/.test(src)
+    && /if\(fresh\)\{[^}]{0,200}render\(\);\s*\} else \{\s*showPane\(\)/.test(src)
+    && /tabScroll\[lastTab\] = window\.scrollY/.test(src);
+  sig('切页复用面板 + 恢复各自的滚动位置', panes);
+
+  // 附件页统计行到列表的留白跟笔记页一致（.agrid margin-top）。
+  // S2 密度把 10px 换成 var(--s2)=8px，断言要的是「两页留白一致」，不是那个字面 px，
+  // 所以两个都接受；具体数值由 tools/ui_test.js 的刻度棘轮守。
+  const fileGap = /\.agrid\{display:grid;[^}]*margin-top:(10px|var\(--s2\))\}/.test(src);
+  sig('附件页统计行到列表的留白和笔记页一致', fileGap);
+
+  // checklist 圆框：未勾选的圈直径要跟勾选后的实心圆一样大（以前 border 画圈是整 18px，偏大）
+  const cbSize = /\.cb\{flex:0 0 18px;height:18px/.test(src)
+    && /\.cb:before\{[^}]*width:15px;height:15px/.test(src)     // 圈和实心圆都是 15px
+    && /\.cb\.on:before\{background:var\(--grad\)/.test(src)
+    && !/\.cb\{[^}]*border:1\.5px solid var\(--dim2\)/.test(src);
+  sig('checklist 圆框 18px（不再过大）', cbSize);
+
+  // 交互入口用到的状态表必须真的声明过（expand 曾因 expAnim 未声明而静默失效）
+  const decl = /var expAnim = \{\}/.test(src)
+    && /var tab = 'notes', open = \{\}/.test(src)
+    && /var seen = \{\}/.test(src);
+  sig('expAnim / open / seen 都有声明（点击不再静默失效）', decl);
+
+  // 启动自检：真跑一遍各页渲染 + 展开详情，出错打到控制台（test.sh 会因此失败）
+  const selfCheck = /function selfCheck\(\)/.test(src) && /SELFCHECK FAIL/.test(src)
+    && /probe\('expand'/.test(src);
+  sig('启动自检覆盖各页渲染与「展开详情」', selfCheck);
+
+  // 正文三行以内不显示「展开详情」：按钮靠实测高度决定显隐
+  const expRule = /function syncExpand\(\)/.test(src) && /full - three > 1/.test(src)
+    && /btn\.exp/.test(src) && /syncExpand\(\);/.test(src) && /\.exp/.test(src);
+  sig('展开按钮只在正文超过三行时出现', expRule);
+
+  // 三行截断必须是 max-height（pre-wrap 下 line-clamp 不生效，正文会整段显示）
+  const clampRule = /\.body\.clamp\{max-height:calc\(3 \* 1\.65em \+ 18px\)/.test(src)
+    && !/-webkit-line-clamp:3/.test(src) && /\.body:not\(\.clamp\)\{max-height:none/.test(src);
+  sig('正文三行截断用 max-height（line-clamp 对 pre-wrap 无效）', clampRule);
+
+  // ---- P11 截图捕获 ----
+  const shotsGo = read('go/shots.go');
+  const shotsJava = read('src/dev/xduo/enote/Shots.java');
+  const manifest = read('AndroidManifest.xml');
+
+  const shotBannerOrder = notesTopOrder(src)
+    && /export const ShotBanner/.test(src);
+  sig('首页横幅顺序：错过提醒 → 新截图 → 剪贴板', shotBannerOrder);
+
+  const shotGrid = /\.shotgrid\{display:grid;grid-template-columns:repeat\(3,1fr\)/.test(src)
+    && /function shotSheet\(\)/.test(src) && /function loadShots\(\)/.test(src)
+    && /shotSelAll\(true\)/.test(src) && /合并成一条笔记/.test(src) && /各存一条/.test(src);
+  sig('截图暂存页：3 列网格 + 多选 + 合并/各存/原样存/忽略', shotGrid);
+
+  // 处理期间必须明确写"别黑屏、别退出"（用户要求），并且真的保持屏幕常亮
+  const shotWarn = /不要锁屏/.test(src) && /不要退出 App|也不要退出 App/.test(src)
+    && /请保持屏幕常亮/.test(src) && /FLAG_KEEP_SCREEN_ON/.test(java)
+    && /keepScreenOn/.test(bridge);
+  sig('导入进度层有"别黑屏/别退出"提示，且真的保持常亮', shotWarn);
+
+  // 进度层一直挂到 AI 解析结束（OCR+入队太快，收早了提示就白写了）
+  const shotWait = /function waitShotsDone\(/.test(src) && /AI 正在解析/.test(src)
+    && /noteIds/.test(read('src/dev/xduo/enote/Shots.java'));
+  sig('进度层等到 AI 解析结束才收起', shotWait);
+
+  // 文件夹可多选：首次向导 + 设置页入口，默认勾上截图目录
+  const shotFolders = /function folderSheet\(\)/.test(src) && /function folderSave\(\)/.test(src)
+    && /function folderPickShots\(\)/.test(src) && /只能选截图目录|只选截图目录/.test(src)
+    && /setShotFolders/.test(bridge) && /RELATIVE_PATH/.test(shotsJava)
+    && /BUCKET|looksLikeShot/.test(shotsJava);
+  sig('监控文件夹可多选（MediaStore 枚举，默认勾截图目录）', shotFolders);
+
+  // 首次不回捞历史 + 5 分钟重叠窗口 + sha1 去重 + 上限
+  const shotWater = /first run, watermark set to now/.test(shotsJava)
+    && /OVERLAP_SEC = 300/.test(shotsJava) && /SHA-1/.test(shotsJava)
+    && /MAX_PER_SCAN = 50/.test(shotsJava) && /shotKeepMax\s+= 200/.test(shotsGo)
+    && /Ignored/.test(shotsGo);
+  sig('水位：首次不回捞 / 5 分钟重叠 / sha1 去重 / 忽略表', shotWater);
+
+  // 多张合成一条笔记：kind=images，N 个附件，一次 LLM
+  const shotMerge = /case "images":/.test(read('go/pipeline.go'))
+    && /strings\.Join\(parts/.test(read('go/pipeline.go'))
+    && /kind", "images"/.test(shotsJava);
+  sig('合并模式：多附件一条笔记 + 只调一次 LLM', shotMerge);
+
+  const shotRoutes = ['/api/shots/list', '/api/shots/add', '/api/shots/remove', '/api/shots/ignore']
+    .every(r => goweb.indexOf(r) >= 0) && /m\.HandleFunc\("\/shotimg"/.test(goweb);
+  sig('截图接口齐全（list/add/remove/ignore + /shotimg）', shotRoutes);
+
+  const shotPerm = /READ_MEDIA_IMAGES/.test(manifest) && /READ_EXTERNAL_STORAGE/.test(manifest)
+    && /maxSdkVersion="32"/.test(manifest) && /mediaGranted/.test(shotsJava);
+  sig('存储/媒体权限按版本分开声明', shotPerm);
+
+  // 初次运行要主动问一次"选哪些文件夹"，而不是只挂个横幅等用户自己点
+  const shotIntro = /function shotIntroOnce\(\)/.test(src)
+    && /localStorage\.getItem\('shotIntro'\)/.test(src)
+    && /setItem\('shotIntro','1'\)/.test(src)
+    && /要不要自动收集截图/.test(src);
+  sig('初次运行主动引导选监控文件夹（只问一次）', shotIntro);
+
+  // 长列表页的确定按钮必须固定在底部（用户反馈：滚到底才能点确定太难用）
+  const stickyFoot = /\.pfoot\{position:sticky;bottom:0/.test(src)
+    && /id="folderCount"/.test(src)
+    && (src.match(/class="pfoot"/g) || []).length >= 3;   // 文件夹 / 截图 / 剪贴板
+  sig('文件夹页/截图页/剪贴板页的操作按钮固定在底部', stickyFoot);
+
+  // 已选数量实时显示 + 已选项排到最前（勾一个立刻重排并改数字）
+  // 步骤 8：folderPick 现在先走 Vue 分发（return sheetPaint()），遗留路径才是 folderRender()；
+  // 两条都是「改完立刻重画」，所以两个名字都算。slice 要盖到分发那一行之后（注释变长了）。
+  const pickBody = (src.split('function folderPick(')[1] || '').slice(0, 400);
+  const liveCount = /个已选 · 共 /.test(src)
+    && /已选（且未消失）的排最前/.test(src)
+    && /saveText/.test(src)                     // 底部「开始监控」文案跟着已选数变
+    && /sheetPaint\(\)/.test(pickBody);
+  sig('文件夹页实时显示已选数量、已选项排到最前', liveCount);
+
+  // 选完文件夹回到「我的」要立刻看到新统计：强制重建当前页 + 重算统计
+  // 步骤 8：必须切 'function folderSave(){'。只切 'function folderSave' 会先命中新加的
+  // folderSaveText()，slice(0,900) 落在它身上 → 四项全 false，而 folderSave 本体完好（假红）。
+  const saveBody = (src.split('function folderSave(){')[1] || '').slice(0, 900);
+  const afterSave = /paneDirty\[tab\] = 1/.test(saveBody)
+    && /setTab\(\)/.test(saveBody)
+    && /statsNow\(\)/.test(saveBody)
+    && /shotFlags\(function\(\)\{/.test(saveBody);
+  sig('选完文件夹回到我的页立刻刷新统计', afterSave);
+
+  // 只有一张截图时不该摆两个等价按钮（用户反馈）：一张只留「创建笔记」
+  const oneBtn = /one: live\(\(\) => selCount\.value <= 1\)/.test(src)
+    && /<= 1 \? '创建笔记' : '合并成一条笔记'/.test(src)
+    && /id="shotSplit"/.test(src) && /id="shotRaw"/.test(src)
+    && /display:none/.test(src);
+  sig('只选一张时只显示「创建笔记」一个按钮', oneBtn);
+
+  // 清理暂存不能删掉笔记正在用的文件（缩略图 404 的根因）
+  const keepGuard = /func \(s \*ShotStore\) dropUnlessKept/.test(goweb)
+    && /keepFn func\(\) map\[string\]bool/.test(goweb)
+    && /shotStore\.setKeep\(func\(\) map\[string\]bool/.test(gopipe)
+    && /dropUnlessKept\(keep, x\.Path\)/.test(goweb);
+  sig('清理/忽略/裁剪暂存时不删笔记在用的文件', keepGuard);
+
+  // API Key 不打码：设置页打开就能看到已保存的 key（用户明确说不在意明文，
+  // 打码反而让人以为没存住、反复重填）
+  const plainKey = /func maskedSettings\(\) Settings \{\n\treturn config\.get\(\)/.test(goweb)
+    && /id="sKey" :value\.attr="s\.apiKey \|\| ''"/.test(src)
+    && /class="fhint"/.test(src);
+  sig('API Key 明文显示在设置里（不再打码）', plainKey);
+
+  // settings.json 必须原子写 + .bak 兜底：写到一半被杀掉不能把 key 弄丢
+  const atomicCfg = /func \(c \*Config\) set\(s Settings\) error \{[\s\S]{0,1400}os\.Rename\(tmp, c\.path\)/.test(goweb)
+    || /os\.Rename\(tmp, c\.path\)/.test(read('go/config.go'));
+  sig('settings.json 原子写（.tmp + rename + .bak 兜底）', atomicCfg);
+
+  // 首页横幅（剪贴板/截图/错过的提醒）不在 /api/search 结果里：
+  // 搜索结果没变但条数变了时必须强制重绘，否则删光剪贴板、扫到新截图后横幅都不刷新
+  const forcePaint = /async function searchNow\(force\)/.test(src)
+    && /if\(k === SRK && !force\)/.test(src)
+    && /searchNow\(dirty\)/.test(src);
+  sig('横幅变化会强制重绘（searchNow(force)）', forcePaint);
+
+  // 错过的提醒面板：只能看没法处理过（用户反馈），要有「完成」和「我知道了」
+  const missedOps = /function missedDone\(/.test(src) && /function missedDismiss\(/.test(src)
+    && /这批我知道了/.test(src) && /class="todo msrow"/.test(src);
+  sig('错过的提醒面板：每行可完成 + 「这批我知道了」', missedOps);
+
+  // 面板里的跳转必须用真存在的函数：goTab/goNote 不存在，点了没反应（用户反馈）
+  const missedJump = /function missedGoTodos\(\)\{\s*closeSheet\(\); tab = 'todos'; setTab\(true\)/.test(src)
+    && /onclick="jump\(\\''\+t\.nid/.test(src) && !/function goTab\(/.test(src) && !/function goNote\(/.test(src);
+  sig('错过的提醒面板：跳转用真存在的函数（setTab / jump）', missedJump);
+
+  // 勾 ✓ 要复用待办页那套划线 + 淡出动画，不能静默改状态（用户反馈：看不出点到没有）
+  const missedAnim = /function missedDone\(ev, nid, tid, el\)[\s\S]{0,240}toggle\(nid, tid, el\)/.test(src);
+  sig('错过的提醒面板：勾 ✓ 复用待办页动画（划线 + 淡出）', missedAnim);
+
+  // 截图要实时：进程一起来就监听 MediaStore，截完图 1~2 秒进暂存区
+  const javaApp = read('src/dev/xduo/enote/EnoteApp.java');
+  const javaShots = read('src/dev/xduo/enote/Shots.java');
+  const shotWatch = /Shots\.watch\(this\)/.test(javaApp)
+    && /registerContentObserver\(\s*MediaStore\.Images\.Media\.EXTERNAL_CONTENT_URI/.test(javaShots)
+    && /postDelayed\(wTask, 1200\)/.test(javaShots);
+  sig('相册变化实时监听（ContentObserver + 1.2s 去抖）', shotWatch);
+
+})();
 
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);

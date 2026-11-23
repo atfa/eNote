@@ -132,13 +132,9 @@ func TestIndexServedFromDirectory(t *testing.T) {
 			t.Errorf("app.js 的 __enote 缺 %s（D17）", want)
 		}
 	}
-	// D13：render() 的契约是 Promise。视图转 Vue 后刷新是微任务，调用点不 await 就断言不到
-	// 新 DOM；今天的实现是同步 innerHTML，return 时 DOM 已更新，Promise.resolve() 就是真语义。
-	// 钉这个是因为契约比实现先动：步骤 5-10 换实现时调用点（3 处 jseval 载荷）一行不用改。
-	// D13/D14：render() 的契约是 Promise，混合期两条分支都得兑现：遗留路径是同步
-	// innerHTML（return 时 DOM 已更新，Promise.resolve() 就是真语义），Vue 路径是
-	// vuePaint().then(...)。钉这个是因为契约比实现先动：步骤 5-10 换实现时调用点
-	// （3 处 jseval 载荷）一行不用改。
+	// D13/D14：render() 的契约是 Promise。步骤 11 起只剩一条路径：遗留字符串渲染器
+	// （buildPage 那一支）连同 VDIFF 基准一起删了，所以钉的是「Vue 分支必须兑现 Promise」
+	// + 「遗留分支不许回来」。契约比实现先动：调用点（几处 jseval 载荷）一行没改。
 	if n := strings.Count(appjs, "function render(){"); n != 1 {
 		t.Errorf("app.js 里 function render(){ 出现 %d 次（应为 1）：函数声明提升会让后一份覆盖前一份，Vue 分发静默失效", n)
 	}
@@ -148,22 +144,20 @@ func TestIndexServedFromDirectory(t *testing.T) {
 			body = body[:j]
 		}
 		for _, want := range []string{
-			"return Promise.resolve();",              // 遗留分支
-			"return vuePaint().then(done, done);",    // Vue 分支（D14）
+			"return vuePaint().then(done, done);",        // Vue 分支（D14）
 			"try { afterPaint() } finally { markReady() }", // 首屏记号无条件打出去
-			"markReady();",                           // 遗留分支的首屏记号
 		} {
 			if !strings.Contains(body, want) {
 				t.Errorf("app.js 的 render() 缺 %q（D13/D14）", want)
 			}
 		}
-		// markReady 的语义是「首屏画完」。遗留分支是同步的，所以下面这个顺序有意义；
-		// Vue 分支的 DOM 在 nextTick 之后才落地，只能靠 done 在 then/catch 两条分支上都挂上
-		// （上面那条）+ done 内部 try/finally 保证它一跑就打记号。
-		legacy := body[strings.Index(body, "p.innerHTML = buildPage(tab);"):]
-		mi, ri := strings.Index(legacy, "markReady();"), strings.Index(legacy, "return Promise.resolve();")
-		if mi < 0 || ri < 0 || mi > ri {
-			t.Errorf("遗留分支里 markReady() 必须在 return 之前（D13/D17）")
+		// 步骤 11：遗留字符串渲染器删光，注册表是唯一路径。这条是「不许回来」的钉子：
+		// buildPage 一旦复活，render() 就多一条没人测的分支（VDIFF 已随基准一起删，
+		// 那条分支红不了也绿不了，正是「恒绿闸门」最坏的样子）。
+		for _, ban := range []string{"function buildPage", "buildPage(tab)", "function sigOf", "__enote.legacy", "legacy: {"} {
+			if strings.Contains(appjs, ban) {
+				t.Errorf("app.js 里又出现 %q：步骤 11 已删光遗留渲染路径与 VDIFF 基准", ban)
+			}
 		}
 	}
 	// D14：混合期的唯一开关——注册表。加一行迁移一个视图，删一行退回字符串路径。

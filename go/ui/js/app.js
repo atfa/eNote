@@ -270,16 +270,6 @@ function emptyState(icon, t, sub){
 }
 /* 错过的提醒（后台被冻结时到点的那些）：只在有内容时出现，点开看清单 */
 var MISSED = null;   // 服务端只在启动时算一次，之后 refresh 覆盖 S 时要把它贴回去
-function missedBanner(){
-  var m = MISSED;
-  if(!m || !m.count) return '';
-  var more = m.count > (m.items || []).length;
-  return '<div class="missed" onclick="missedSheet()"><span class="mi">'+ic('bell')+'</span>'
-    + '<div style="flex:1;min-width:0"><b>错过 ' + m.count + ' 条提醒</b>'
-    + '<div class="cbsub">' + (more ? '只列出最早到点的 ' + (m.items || []).length + ' 条' : '你不在的时候到点了，闹钟可能没响')
-    + '</div></div>'
-    + '<span class="cbar">查看 ›</span></div>';
-}
 async function loadMissed(){
   try{
     var d = await api('/api/missed');
@@ -341,11 +331,6 @@ function missedDismiss(){
   toast('好，这批不再提示');
 }
 /* 点清单里的一条：跳到笔记并展开那条待办 */
-function openTodoFromMissed(nid, tid){
-  if(window.Android && Android.openNote) { Android.openNote(nid); return }
-  if(nid) { open[nid] = 1; }
-  setTab('notes');
-}
 // ---- 截图捕获（P11）：扫描监控文件夹 → 横幅 → 多选 → 导入笔记 ----
 var SHOTFLAGS = null;    // {enabled, granted, folders:n, watermark}  便宜的状态，每次 refresh 都行
 var shotSel = {};        // 暂存区里被勾选的截图 id
@@ -380,35 +365,6 @@ function shotGo(kind){
   else if(kind==='nofolder') folderSheet();
   else shotSheet();
 }
-function shotBanner(){
-  var f = SHOTFLAGS || {};
-  var n = (S.info && S.info.shot) || 0;
-  if(n > 0){
-    return '<div class="shotbanner" onclick="shotSheet()"><span class="si">'+ic('image')+'</span>'
-      + '<div style="flex:1;min-width:0"><b>发现 ' + (n >= 50 ? '50+' : n) + ' 张新截图</b>'
-      + '<div class="cbsub">点开勾选：可以合并成一条笔记，也可以各存一条</div></div>'
-      + '<span class="cbar">整理 ›</span></div>';
-  }
-  if(!f.enabled){
-    return '<div class="shotbanner" onclick="shotSetup()"><span class="si">'+ic('image')+'</span>'
-      + '<div style="flex:1;min-width:0"><b>自动收集截图</b>'
-      + '<div class="cbsub">选几个文件夹盯着，新截图自动变成笔记</div></div>'
-      + '<span class="cbar">开启 ›</span></div>';
-  }
-  if(!f.granted){
-    return '<div class="shotbanner" onclick="askShotPerm()"><span class="si">'+ic('alert')+'</span>'
-      + '<div style="flex:1;min-width:0"><b>需要允许读取照片</b>'
-      + '<div class="cbsub">不给权限就发现不了新截图（只读，不上传）</div></div>'
-      + '<span class="cbar">去授权 ›</span></div>';
-  }
-  if(!f.folders){
-    return '<div class="shotbanner" onclick="folderSheet()"><span class="si">'+ic('folder')+'</span>'
-      + '<div style="flex:1;min-width:0"><b>还没选监控文件夹</b>'
-      + '<div class="cbsub">至少选一个目录（默认会勾上截图目录）</div></div>'
-      + '<span class="cbar">去选择 ›</span></div>';
-  }
-  return '';
-}
 /** 首次开启：开开关 → 要权限 → 选文件夹 */
 function shotSetup(){
   if(!(window.Android && Android.setShotEnabled)) return toast('截图捕获只在 app 内可用');
@@ -432,70 +388,14 @@ window.shotsScanned = function(n){
   shotFlags(function(){ if(n > 0) refresh(); });
 };
 // ---- 截图暂存页：3 列网格 + 多选 ----
-/* 网格的字符串渲染器（步骤 8 抽出）：loadShots() 与 VDIFF 的遗留侧 shotSheetHTML() 共用
-   这一份。夹具比的是真代码，不是另拄一遍 —— 另拄一份的写法会在下一次改网格时静默分叉，
-   而 VDIFF 依旧绿（它比的是那一份拄件）。 */
-function shotGridHTML(){
-  if(!shotList.length) return emptyState('image', '没有待整理的截图', '新截图出现时会先在这里排队');
-  var h = '<div class="shotgrid">';
-  shotList.forEach(function(x){
-    var on = !!shotSel[x.id];
-    h += '<div class="shotitem'+(on?' on':'')+'" onclick="shotPick(\''+x.id+'\',this)">'
-      + '<img src="/shotimg?id='+encodeURIComponent(x.id)+'" alt="" loading="lazy">'
-      + '<div class="shottime">'+esc(fmtClock(x.dateAdded || 0))+'</div>'
-      + '<div class="shotck">'+ic('check')+'</div></div>';
-  });
-  return h + '</div>';
-}
 /** 计数条的 HTML（loadShots 后的形态；shotSheet() 写壳时是「已选 0 张」纯文本） */
-function shotCountHTML(){
-  var n = 0, total = shotList.length;
-  shotList.forEach(function(x){ if(shotSel[x.id]) n++ });
-  return '<b>' + n + '</b> 张已选 · 共 ' + total + ' 张';
-}
 /** VDIFF 的遗留侧：一次调用给出「加载完之后 .pbody 里应该长什么样」。
    按钮的内联 style 要按 syncShotBtns(n) 的结果写（一张时只留「创建笔记」），
    否则比出来的是「未同步」的 DOM，真机红。 */
-function shotSheetHTML(){
-  var n = 0;
-  shotList.forEach(function(x){ if(shotSel[x.id]) n++ });
-  var one = n <= 1;
-  return '<div class="cliptop">'
-    + '<button class="btn sm" id="shotSelAll" onclick="shotSelAll(true)">全选</button>'
-    + '<button class="btn sm" id="shotSelNone" onclick="shotSelAll(false)">全不选</button>'
-    + '<div class="sp"></div>'
-    + '<button class="btn sm dg" onclick="shotIgnoreSel()">忽略所选</button></div>'
-    + '<div id="shotGrid" class="clipload">' + shotGridHTML() + '</div>'
-    + '<div class="pfoot" style="display:block">'
-    + '<div class="count" id="shotFoot" style="margin-bottom:8px">' + shotCountHTML() + '</div>'
-    + '<div style="display:flex;gap:8px">'
-    + '<button class="btn pri" id="shotGo" style="flex:'+(one?'1':'1.6')+'" onclick="doImportShots(\'merge\')">'
-    + (one ? '创建笔记' : '合并成一条笔记') + '</button>'
-    + '<button class="btn" id="shotSplit" style="flex:1'+(one?';display:none':'')+'" onclick="doImportShots(\'split\')">各存一条</button>'
-    + '<button class="btn" id="shotRaw" style="flex:1'+(one?';display:none':'')+'" onclick="doImportShots(\'raw\')">原样存</button>'
-    + '</div></div>';
-}
 function shotSheet(){
-  if(VUE_SHEETS.shots){
-    shotLoading = true; shotError = '';
-    pageSheetVue('shots', '新截图');
-    loadShots();
-    return;
-  }
-  // 缩略图最多 50 张，操作按钮同样固定在底部条里（跟文件夹页一致）
-  pageSheet('新截图', '<div class="cliptop">'
-    + '<button class="btn sm" id="shotSelAll" onclick="shotSelAll(true)">全选</button>'
-    + '<button class="btn sm" id="shotSelNone" onclick="shotSelAll(false)">全不选</button>'
-    + '<div class="sp"></div>'
-    + '<button class="btn sm dg" onclick="shotIgnoreSel()">忽略所选</button></div>'
-    + '<div id="shotGrid" class="clipload">加载中…</div>'
-    + '<div class="pfoot" style="display:block">'
-    + '<div class="count" id="shotFoot" style="margin-bottom:8px">已选 0 张</div>'
-    + '<div style="display:flex;gap:8px">'
-    + '<button class="btn pri" id="shotGo" style="flex:1.6" onclick="doImportShots(\'merge\')">合并成一条笔记</button>'
-    + '<button class="btn" id="shotSplit" style="flex:1" onclick="doImportShots(\'split\')">各存一条</button>'
-    + '<button class="btn" id="shotRaw" style="flex:1" onclick="doImportShots(\'raw\')">原样存</button>'
-    + '</div></div>');
+  // 步骤 11：只剩 Vue 一条路径（ShotsView），字符串渲染器与它的 pageSheet 分支一起删了
+  shotLoading = true; shotError = '';
+  pageSheetVue('shots', '新截图');
   loadShots();
 }
 async function loadShots(){
@@ -507,14 +407,10 @@ async function loadShots(){
     shotList.forEach(function(x){ keep[x.id] = shotSel[x.id] !== undefined ? shotSel[x.id] : true });
     shotSel = keep;
     shotLoading = false; shotError = '';
-    if(sheetApps.shots){ return sheetPaint() }   // Vue 路径：数据写完 bump tick 就够
-    var g = $('#shotGrid');
-    if(g) g.innerHTML = shotGridHTML();
-    shotCountLabel();
+    return sheetPaint();   // 数据写完 bump tick 就够
   }catch(e){
     shotLoading = false; shotError = 'fail';
-    if(sheetApps.shots){ return sheetPaint() }
-    var g2 = $('#shotGrid'); if(g2) g2.innerHTML = '<div class="empty">加载失败</div>';
+    return sheetPaint();
   }
 }
 function fmtClock(sec){
@@ -524,26 +420,11 @@ function fmtClock(sec){
 }
 function shotPick(id, el){
   shotSel[id] = !shotSel[id];
-  if(sheetApps.shots){ return sheetPaint() }   // Vue：class 由 computed 重算，el 不传
-  if(el) el.classList.toggle('on', !!shotSel[id]);
-  shotCountLabel();
+  return sheetPaint();   // class 由 computed 重算，el 不传
 }
 function shotSelAll(on){
   shotList.forEach(function(x){ shotSel[x.id] = !!on });
-  if(sheetApps.shots){ return sheetPaint() }
-  var g = $('#shotGrid');
-  if(g){
-    var items = g.querySelectorAll('.shotitem');
-    for(var i=0;i<items.length;i++) items[i].classList.toggle('on', !!on);
-  }
-  shotCountLabel();
-}
-function shotCountLabel(){
-  var n = 0, total = shotList.length;
-  shotList.forEach(function(x){ if(shotSel[x.id]) n++ });
-  var el = $('#shotFoot') || $('#shotCount');
-  if(el) el.innerHTML = shotCountHTML();
-  syncShotBtns(n);
+  return sheetPaint();
 }
 /**
  * 只有一张的时候「合并成一条」和「各存一条」是同一件事，摆两个按钮只会让人犹豫
@@ -725,79 +606,12 @@ async function shotIgnoreSel(){
    排序规则只有一份：已选（且未消失）的排最前，组内按张数多的优先，再按路径字典序。
    views/folders.js 里的 sortRows 是同一规则的 JS 版 —— 两处都要改才能不漂移，
    VDIFF 的 folder 用例（含已选 / 含 missing）就是钉住这件事的。 */
-function folderRows(){
-  return folderAll.slice().sort(function(a, b){
-    var sa = (folderSel[a.path] && !a.missing) ? 1 : 0;
-    var sb = (folderSel[b.path] && !b.missing) ? 1 : 0;
-    if(sa !== sb) return sb - sa;
-    if((b.count||0) !== (a.count||0)) return (b.count||0) - (a.count||0);
-    return a.path < b.path ? -1 : (a.path > b.path ? 1 : 0);
-  });
-}
-function folderListHTML(){
-  if(!folderAll.length) return emptyState('folder', '读不到文件夹', '需要先允许读取照片（我的 → 截图捕获 → 去授权）');
-  var h = '';
-  folderRows().forEach(function(f){
-    var on = !!folderSel[f.path];
-    h += '<div class="frow'+(on?' on':'')+(f.missing?' gone':'')+'" data-path="'+esc(f.path)+'" '
-      + 'onclick="folderPick(\''+esc(f.path)+'\')">'
-      + '<div class="fcb">'+ic('check')+'</div>'
-      + '<div style="flex:1;min-width:0"><div class="fname">'+esc(folderLabel(f.path))+'</div>'
-      + '<div class="fpath">'+esc(f.path)+'</div></div>'
-      + '<div class="fmeta">'+(f.missing ? '已不存在' : (f.count||0)+' 张')+'</div></div>';
-  });
-  return h;
-}
 /** 计数与主按钮文案（missing 的行既不进「共 M 个」也不进「已选 N 个」） */
-function folderSelCount(){
-  var n = 0, total = 0;
-  folderAll.forEach(function(f){
-    if(f.missing) return;
-    total++;
-    if(folderSel[f.path]) n++;
-  });
-  return { n: n, total: total };
-}
-function folderCountHTML(){
-  var c = folderSelCount();
-  return '<b>' + c.n + '</b> 个已选 · 共 ' + c.total + ' 个';
-}
-function folderSaveText(){
-  var c = folderSelCount();
-  return c.n ? '开始监控这 ' + c.n + ' 个' : '开始监控';
-}
 /** VDIFF 的遗留侧：加载完之后 .pbody 应该长什么样（一次给出最终 DOM） */
-function folderSheetHTML(){
-  return '<div class="cliptop">'
-    + '<button class="btn sm" id="folderSelAll" onclick="folderSelAll(true)">全选</button>'
-    + '<button class="btn sm" id="folderSelNone" onclick="folderSelAll(false)">全不选</button>'
-    + '<button class="btn sm" onclick="folderPickShots()">只选截图目录</button></div>'
-    + '<div style="margin:8px 0 4px"><input id="folderQ" class="fin" placeholder="搜索文件夹" '
-    + 'oninput="folderFilter(this.value)"></div>'
-    + '<div id="folderList" class="clipload">' + folderListHTML() + '</div>'
-    + '<div class="pfoot"><div class="count" id="folderCount">' + folderCountHTML() + '</div>'
-    + '<div class="sp"></div>'
-    + '<button class="btn pri" onclick="folderSave()">' + folderSaveText() + '</button></div>';
-}
 function folderSheet(){
-  if(VUE_SHEETS.folders){
-    folderQ = '';
-    pageSheetVue('folders', '选择监控文件夹');
-    loadFolders();
-    return;
-  }
-  // 确定按钮放底部固定条里：文件夹可能有几十个，滚到底才能点确定太难用了（用户反馈）
-  var h = '<div class="cliptop">'
-    + '<button class="btn sm" id="folderSelAll" onclick="folderSelAll(true)">全选</button>'
-    + '<button class="btn sm" id="folderSelNone" onclick="folderSelAll(false)">全不选</button>'
-    + '<button class="btn sm" onclick="folderPickShots()">只选截图目录</button></div>'
-    + '<div style="margin:8px 0 4px"><input id="folderQ" class="fin" placeholder="搜索文件夹" '
-    + 'oninput="folderFilter(this.value)"></div>'
-    + '<div id="folderList" class="clipload">加载中…</div>'
-    + '<div class="pfoot"><div class="count" id="folderCount">已选 0 个</div>'
-    + '<div class="sp"></div>'
-    + '<button class="btn pri" onclick="folderSave()">开始监控</button></div>';
-  pageSheet('选择监控文件夹', h);
+  // 步骤 11：只剩 Vue 一条路径（FoldersView）。确定按钮放底部固定条里的契约搬进了模板
+  folderQ = '';
+  pageSheetVue('folders', '选择监控文件夹');
   loadFolders();
 }
 function loadFolders(){
@@ -812,8 +626,7 @@ function loadFolders(){
     if(Object.keys(want).length) folderSel[f.path] = !!want[f.path];
     else folderSel[f.path] = !!f.shot;
   });
-  if(sheetApps.folders){ return sheetPaint() }
-  folderRender();
+  return sheetPaint();
 }
 function folderRender(){
   var g = $('#folderList');
@@ -857,30 +670,21 @@ function folderLabel(path){
 }
 function folderPick(path){
   folderSel[path] = !folderSel[path];
-  // Vue：v-for 带 :key，勾选只是移动已有节点，滚动位置天然不动，不需要 folderRender 那套
-  // 「记住 scrollTop 再放回」；遗留路径要，因为它是整段 innerHTML 重建。
-  if(sheetApps.folders){ return sheetPaint() }
-  folderRender();          // 重排 + 刷新计数：选中的浮到最上面
+  // v-for 带 :key，勾选只是移动已有节点，滚动位置天然不动（遗留路径那套「记住 scrollTop
+  // 再放回」随字符串渲染器一起删了）
+  return sheetPaint();     // 重排 + 刷新计数：选中的浮到最上面
 }
 function folderSelAll(on){
   folderAll.forEach(function(f){ if(!f.missing) folderSel[f.path] = !!on });
-  if(sheetApps.folders){ return sheetPaint() }
-  folderRender();
+  return sheetPaint();
 }
 function folderPickShots(){
   folderAll.forEach(function(f){ folderSel[f.path] = !!f.shot && !f.missing });
-  if(sheetApps.folders){ return sheetPaint() }
-  folderRender();
+  return sheetPaint();
 }
 function folderFilter(t){
   folderQ = String(t || '');
-  if(sheetApps.folders){ return sheetPaint() }   // Vue：computed 里过滤，节点直接不渲染
-  var q = folderQ.toLowerCase();
-  var rows = document.querySelectorAll('#folderList .frow');
-  for(var i=0;i<rows.length;i++){
-    var p = (rows[i].getAttribute('data-path')||'').toLowerCase();
-    rows[i].style.display = (!q || p.indexOf(q) >= 0) ? '' : 'none';
-  }
+  return sheetPaint();     // computed 里过滤，节点直接不渲染
 }
 function folderSave(){
   var want = folderAll.filter(function(f){ return folderSel[f.path] && !f.missing })
@@ -960,22 +764,6 @@ async function clearShots(){
     }
   });
 }
-function clipBanner(){
-  var n = (S.info && S.info.clip) || 0;
-  if(!n){
-    // 后台看到剪贴板变了，但前台读被系统拒了 → 给个一键入口，不要默默失败
-    var hint = window.Android && Android.clipHint && Android.clipHint() === '1';
-    if(!hint) return '';
-    return '<div class="clipbanner" onclick="importClip()">'+ic('clipboard')
-      +'<div style="flex:1"><b>剪贴板刚有更新</b>'
-      +'<div class="cbsub">系统不让后台读，点这里收进暂存</div></div>'
-      +'<span class="cbar">收进来 ›</span></div>';
-  }
-  return '<div class="clipbanner" onclick="clipSheet()">'+ic('clipboard')
-    +'<div style="flex:1"><b>剪贴板暂存 '+n+' 条</b>'
-    +'<div class="cbsub">复制的内容已留在这里，点开勾选再处理</div></div>'
-    +'<span class="cbar">整理 ›</span></div>';
-}
 function openClip(){ clipSheet(); }
 /** 顶栏 📋：手动把当前剪贴板收进暂存队列（此刻窗口有焦点，系统允许读）。 */
 function importClip(){
@@ -993,45 +781,15 @@ window.onClipRead = function(n, added){
    原始值 + {{ }}（Vue 自己转义），所以模板侧不调 esc —— 调了就双重转义。
    需要转义的片段因此有两个版本：*HTML 给遗留，*Text 给 Vue。 */
 function clipItemCls(c){ return 'clipitem' + (clipSel[c.id] ? ' on' : '') }
-function clipPrevHTML(c){
-  var t = String(c.text || '')
-  return esc(t.slice(0, 160)) + (c.text && c.text.length > 160 ? '…' : '')
-}
 function clipPrevText(c){
   var t = String(c.text || '')
   return t.slice(0, 160) + (c.text && c.text.length > 160 ? '…' : '')
 }
 /* 剪贴板里的图片没有缩略图（只有名字），画一个图标 + 「图片 · 名字」。
    整段是一个字符串 → 解析后是一个文本节点；Vue 侧用 v-html 同一个字符串才等价。 */
-function clipThumbHTML(c){ return ic('image') + ' 图片' + (c.name ? ' · ' + esc(c.name) : '') }
 function clipThumbText(c){ return ' 图片' + (c.name ? ' · ' + c.name : '') }
-function clipMetaHTML(c){ return esc(c.app || '剪贴板') + ' · ' + relTime(c.createdAt) }
 function clipMetaText(c){ return (c.app || '剪贴板') + ' · ' + relTime(c.createdAt) }
-function clipItemHTML(c){
-  var on = !!clipSel[c.id]
-  var body = c.kind === 'image'
-    ? '<div class="climthumb">' + clipThumbHTML(c) + '</div>'
-    : '<div class="cliprev">' + clipPrevHTML(c) + '</div>'
-  return '<div class="clipitem' + (on ? ' on' : '') + '" onclick="clipPick(\'' + c.id + '\',this)">'
-    + '<div class="clicb">' + ic('check') + '</div>'
-    + '<div class="clipbody">' + body
-    + '<div class="climeta">' + clipMetaHTML(c) + '</div></div>'
-    /* 这里原来写的是 JSON.stringify(c.id)，双引号套在双引号属性里：浏览器在第一个内层
-       引号处就截断，DOM 里得到 onclick="clipDel(event,"（半个表达式，点一下抛 SyntaxError，
-       删除按钮从来没生效过）外加一个以 id 命名的野属性。步骤 9 的 VDIFF 一比就红。
-       id 由 newID() 生成，只含 [0-9a-z]，用单引号插值（与上面 clipPick 一致）。 */
-    + '<button class="clipdel" onclick="clipDel(event,\'' + c.id + '\')"'
-    + ' aria-label="删除这条">' + ic('x') + '</button></div>'
-}
 /** #clipList 里的内容：加载中 / 加载失败 / 空 / 列表（判定顺序与 loadClips 一致） */
-function clipListHTML(){
-  if(clipLoading) return '加载中…'
-  if(clipError) return '<div class="empty">加载失败</div>'
-  if(!clipList.length) return emptyState('inbox', '暂存区是空的')
-  var h = ''
-  clipList.forEach(function(c){ h += clipItemHTML(c) })
-  return h
-}
 /** 底部计数条：空暂存时是「<b>0</b> 条已选」（loadClips 的空态分支），有条目才是全式 */
 function clipCountHTML(){
   if(!clipList.length) return '<b>0</b> 条已选'
@@ -1041,44 +799,11 @@ function clipCountHTML(){
 }
 /** clipCount() 里那句按钮文案：只选一条时不带数字（一条没什么可「一键」的） */
 function clipParseText(n){ return n > 1 ? ('一键解析 ' + n + ' 条') : '一键解析' }
-/** VDIFF 的遗留侧：一次调用给出「加载完之后 .pbody 里应该长什么样」（同 shotSheetHTML） */
-function clipSheetHTML(){
-  var n = 0
-  clipList.forEach(function(c){ if(clipSel[c.id]) n++ })
-  return '<div class="cliptop">'
-    + '<button class="btn sm" id="clipSelAll" onclick="clipSelAll(true)">全选</button>'
-    + '<button class="btn sm" id="clipSelNone" onclick="clipSelAll(false)">全不选</button></div>'
-    + '<div id="clipList" class="clipload">' + clipListHTML() + '</div>'
-    + '<div class="pfoot" style="display:block">'
-    + '<div class="count" id="clipFoot" style="margin-bottom:8px">' + clipCountHTML() + '</div>'
-    + '<div style="display:flex;gap:8px">'
-    + '<button class="btn" style="flex:1" id="clipDelSel" onclick="clipDelSel()">删除所选</button>'
-    + '<button class="btn" style="flex:1.2" id="clipRaw" onclick="clipParse(false)">原样存为笔记</button>'
-    + '<button class="btn pri" style="flex:1.2" id="clipParseBtn" onclick="clipParse(true)">'
-    + clipParseText(n) + '</button>'
-    + '</div></div>'
-}
 function clipSheet(){
-  // 暂存条数可能很多：操作按钮固定到底部，别让人滚到底才看得见（跟文件夹页一致）
-  if(VUE_SHEETS.clip){
-    clipLoading = true; clipError = ''
-    pageSheetVue('clip', '剪贴板暂存')
-    loadClips()
-    return
-  }
-  pageSheet('剪贴板暂存', '<div class="cliptop">'
-    +'<button class="btn sm" id="clipSelAll" onclick="clipSelAll(true)">全选</button>'
-    +'<button class="btn sm" id="clipSelNone" onclick="clipSelAll(false)">全不选</button>'
-    +'</div>'
-    +'<div id="clipList" class="clipload">加载中…</div>'
-    +'<div class="pfoot" style="display:block">'
-    +'<div class="count" id="clipFoot" style="margin-bottom:8px"></div>'
-    +'<div style="display:flex;gap:8px">'
-    +'<button class="btn" style="flex:1" id="clipDelSel" onclick="clipDelSel()">删除所选</button>'
-    +'<button class="btn" style="flex:1.2" id="clipRaw" onclick="clipParse(false)">原样存为笔记</button>'
-    +'<button class="btn pri" style="flex:1.2" id="clipParseBtn" onclick="clipParse(true)">一键解析</button>'
-    +'</div></div>');
-  loadClips();
+  // 步骤 11：只剩 Vue 一条路径（ClipSheetView）；条数很多时操作按钮固定在底部的契约在模板里
+  clipLoading = true; clipError = ''
+  pageSheetVue('clip', '剪贴板暂存')
+  loadClips()
 }
 async function loadClips(){
   try{
@@ -1090,40 +815,21 @@ async function loadClips(){
     clipList.forEach(function(c){ keep[c.id] = clipSel[c.id] !== undefined ? clipSel[c.id] : true });
     clipSel = keep;
     clipLoading = false; clipError = '';
-    if(sheetApps.clip){ return sheetPaint() }   // Vue 路径：数据写完 bump tick 就够
-    var el2 = $('#clipList'); if(el2) el2.innerHTML = clipListHTML();
-    clipCount();
+    return sheetPaint();   // 数据写完 bump tick 就够
   }catch(e){
     clipError = String(e);
-    // Vue 路径：#clipList 的子节点是 Vue 管的，直接写 innerHTML 会与它的虚拟 DOM 抢；
-    // bump tick 让 clipListHTML 的三态判定重算就够了。
-    if(sheetApps.clip){ return sheetPaint() }
-    var el3 = $('#clipList'); if(el3) el3.innerHTML = '<div class="empty">加载失败</div>';
+    // #clipList 的子节点是 Vue 管的，直接写 innerHTML 会与它的虚拟 DOM 抢；
+    // bump tick 让模板的三态判定重算就够了。
+    return sheetPaint();
   }
 }
 function clipPick(id, el){
   clipSel[id] = !clipSel[id];
-  if(sheetApps.clip){ return sheetPaint() }
-  el.classList.toggle('on', !!clipSel[id]);
-  clipCount();
+  return sheetPaint();
 }
 function clipSelAll(v){
   Object.keys(clipSel).forEach(function(k){ clipSel[k]=v; });
-  if(sheetApps.clip){ return sheetPaint() }
-  var items = document.querySelectorAll('.clipitem');
-  for(var i=0;i<items.length;i++){ items[i].classList.toggle('on', v); }
-  clipCount();
-}
-function clipCount(){
-  if(sheetApps.clip){ return sheetPaint() }   // Vue：计数与按钮文案都是 computed，bump tick 即可
-  // 以页面上真正列出来的条目为准，不拿全局 map 计数
-  var items = document.querySelectorAll('.clipitem');
-  var n = 0;
-  for(var i=0;i<items.length;i++){ if(items[i].classList.contains('on')) n++; }
-  var el = $('#clipFoot') || $('#clipCount');
-  if(el) el.innerHTML = '<b>' + n + '</b> 条已选 · 共 ' + items.length + ' 条';
-  var b = $('#sheet .pfoot .btn.pri');
-  if(b) b.textContent = clipParseText(n);
+  return sheetPaint();   // 计数与按钮文案都是 computed，bump tick 即可
 }
 function clipSelected(){
   return Object.keys(clipSel).filter(function(k){return clipSel[k]});
@@ -1314,16 +1020,6 @@ function attachHTML(n){
   if(!n.attachments || n.attachments.length <= 1) return '';
   return '<span class="hit">'+ic('clip')+n.attachments.length+' 个附件</span>';
 }
-function renderNotes(){
-  var list = notesFiltered();
-  if(!S.notes.length) return strip()+missedBanner()+shotBanner()+clipBanner() + emptyState('inbox', '还没有笔记',
-      '在任何 app 里点「分享 → 懒得记」，文字和图片会自动变成笔记与待办');
-  if(!list.length) return strip()+missedBanner()+shotBanner()+clipBanner() + emptyState('search', '没有符合条件的笔记',
-      '换个关键词，或点右上角重置筛选');
-  var h = strip()+missedBanner()+shotBanner()+clipBanner();
-  list.forEach(function(n, k){ h += noteCard(n, k) });
-  return h;
-}
 function notesFiltered(){
   if(SR.notes) return SR.notes; // 服务端结果（已排序）
   var p = P(), a = S.notes.filter(function(n){
@@ -1361,103 +1057,8 @@ function groupTodos(){
 }
 function tomorrow(){var d=new Date(Date.now()+864e5),p=n=>String(n).padStart(2,'0');
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
-function renderTodos(){
-  var g = groupTodos(), h = strip(), icons = {'已逾期':'warn-tri','今天':'fire','明天':'calendar','本周':'calendar-check','以后':'seed','无日期':'pin','已完成':'check-circle'};
-  var any = false, k = 0;
-  var p = P();
-  Object.keys(g).forEach(function(k0){
-    if(k0==='已完成' && p.done==='open') return;
-    if(k0!=='已完成' && p.done==='done') return;
-    var items = g[k0].filter(function(o){
-      if(SR.todoIds) return SR.todoIds[o.n.id+'|'+o.t.id];
-      if(p.pri!=='all' && (o.t.priority||'normal')!==p.pri) return false;
-      return hit([o.t.text, o.n.title, o.n.content].join(' '));
-    });
-    if(!items.length) return; any = true;
-    if(p.sort==='pri') items.sort(function(a,b){return rank(b.t)-rank(a.t)});
-    h += '<div class="sec">'+ic(icons[k0], 's')+k0+' · '+items.length+'</div><div class="card'+enterCls('g'+k0)+'" style="--i:'+(k++)+'">';
-    items.forEach(function(o){
-      // 结构在这里，叶子 HTML 由 cbInnerHTML / todoTxHTML 生成 —— Vue 的 TodoRow 调同一对函数，
-      // 两条路径共用一份 HTML 生成代码，DOM 才会逐字一致（VDIFF 逐字比的就是这个）
-      h += '<div class="todo'+todoRowCls(o.n,o.t)+'">'
-        +'<div class="cb'+(o.t.done?' on':'')+'" onclick="toggle(\''+o.n.id+'\',\''+o.t.id+'\',this)">'+cbInnerHTML()+'</div>'
-        +'<div class="tx">'+todoTxHTML(o.t,o.n)+'</div></div>';
-    });
-    h += '</div>';
-  });
-  if(!any) return h + emptyState('check-circle', '没有符合条件的待办', '分享一段文字，AI 会自动提取待办');
-  return h;
-}
 function rank(t){ return ({high:3,normal:2,low:1})[t.priority||'normal'] }
 function hit(s){ if(!q) return true; return (s||'').toLowerCase().indexOf(q.toLowerCase())>=0 }
-function renderSettings(){
-  var s = S.settings, i = S.info, st = ST;
-  var h = '<div class="pgroup">提醒</div>'
-   +'<div class="card"><div class="row between" style="margin-top:2px"><div><b>到期待办提醒</b>'
-   +'<div style="font-size:11px;color:var(--dim)">'+ (notifyGranted()
-        ? '已排定 '+remindPending+' 条 · 按系统闹钟登记，尽量不被后台清理'
-        : '需要通知权限 · 开启后到点用系统通知提醒') +'</div></div>'
-   +'<button class="btn sm '+(notifyGranted()?'gh':'')+'" onclick="askNotify()">'
-   + (notifyGranted() ? '已开启' : '开启通知') +'</button></div>'
-   + (exactGranted() ? '' :
-       '<div class="row between" style="margin-top:8px"><div><b>精确提醒</b>'
-      +'<div style="font-size:11px;color:var(--dim)">允许「闹钟和提醒」后不再被系统延迟</div></div>'
-      +'<button class="btn sm" onclick="askExact()">去开启</button></div>')
-   +'</div>'
-   +'<div class="pgroup">后台</div>'
-   +'<div class="card"><div class="row between" style="margin-top:2px"><div><b>常驻后台</b>'
-   +'<div style="font-size:11px;color:var(--dim)">'+ (keepAliveOn()
-        ? (batteryIgnoring() ? '已开启 · 已豁免电池优化' : '已开启 · 建议再豁免电池优化')
-        : '关闭 · 只在打开 app 时可靠，后台可能收不到提醒') +'</div></div>'
-   +'<div class="sw'+(keepAliveOn()?' on':'')+'" onclick="toggleKeepAlive(this)"></div></div>'
-   + (keepAliveOn()
-       ? (batteryIgnoring()
-          ? '<div class="kv" style="margin-top:10px"><span>电池优化</span>'
-            +'<span style="color:var(--ok)">已豁免，不会被冻结</span></div>'
-          : '<div style="margin-top:10px;font-size:12px;color:var(--dim);line-height:1.8">'
-            +'部分系统会在后台冻结应用，连闹钟一起丢掉。标准做法是把它加进电池优化白名单：<br>'
-            +'① 点下面的按钮；<br>② 在列表里找到「懒得记」；<br>'
-            +'③ 选「不限制 / 允许后台活动」。<br>'
-            +'如果系统另外还有「后台高耗电」「自启动」之类的开关，一并允许。</div>'
-            +'<div class="acts"><button class="btn pri" onclick="askBattery()">去关闭电池优化</button>'
-            +'<button class="btn gh" onclick="askNotify()">检查通知权限</button></div>')
-       : '')
-   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">'+settingsKeepAliveNoteHTML()+'</div>'
-   +'</div>'
-   +'<div class="pgroup">外观</div>'
-   +'<div class="card"><div class="seg" style="margin-top:2px">'
-   + ['light','dark','auto'].map(function(m){
-       return '<button class="'+(m===(s.theme||'light')?'on':'')+'" onclick="setTheme(\''+m+'\')">'
-         + ic(m==='light'?'sun':m==='dark'?'moon':'monitor')+({light:'亮色', dark:'暗色', auto:'跟随系统'}[m]) + '</button>'}).join('')
-   +'</div><div style="font-size:11px;color:var(--dim);margin-top:8px">默认亮色；'
-   +'选「跟随系统」时随手机夜间模式切换，状态栏与导航栏同步变色</div></div>';
-
-  h += '<div class="pgroup">AI 模型（BYOK）</div><div class="card">'
-   +'<div class="row between" style="margin-top:2px"><div><b>启用 AI 解析</b>'
-   +'<div style="font-size:11px;color:var(--dim)">关闭后只保存原文，不调用模型</div></div>'
-   +'<div class="sw'+(s.useAI?' on':'')+'" onclick="toggleAI(this)"></div></div>'
-   +'<label>API Base URL（OpenAI 兼容）</label><input id="sUrl" value="'+esc(s.baseUrl)+'" placeholder="https://your-server:8080/v1">'
-   +'<label>API Key</label><input id="sKey" value="'+esc(s.apiKey)+'" placeholder="sk-...">'
-   +'<div class="fhint">明文存在本机 app 私有目录（别的 app 读不到），这里显示的就是已保存的 key，换 key 直接改这一栏</div>'
-   +'<label>模型名</label><input id="sModel" value="'+esc(s.model)+'">'
-   +'<div class="grid2"><div><label>超时（秒）</label><input id="sTimeout" value="'+(s.timeoutS||90)+'"></div>'
-   +'<div><label>最大 tokens</label><input id="sMax" value="'+(s.maxTokens||2048)+'"></div></div>'
-   +'<label>温度 temperature</label><input id="sTemp" value="'+(s.temperature==null?'0.2':s.temperature)+'">'
-   +'<div class="acts"><button class="btn pri" onclick="saveSettings()">保存</button>'
-   +'<button class="btn" onclick="testLLM()">测试连接</button></div>'
-   +'<div id="llmOut"></div></div>';
-
-  h += '<div class="pgroup">采集</div><div class="card">'+settingsCollectHTML()+'</div>';
-
-  h += '<div class="pgroup">本地 OCR</div><div class="card">'+settingsOcrCardHTML(i)+'</div>';
-
-  h += '<div class="pgroup">数据</div><div class="card">'+settingsDataCardHTML()+'</div>';
-
-  h += '<div class="pgroup">运行状态</div><div class="card">'+settingsRunCardHTML(i)+'</div>';
-
-  h += '<div class="pgroup">用法</div><div class="card">'+settingsUsageHTML()+'</div>';
-  return h;
-}
 /* 数据卡 / 运行状态卡（步骤 10）：整块（含按钮）交给叶子函数，两条路径共用。
    这两块的文本是「3 / 2」这种三段拼接：模板里写成一个插值就只产生一个文本节点，
    VDIFF 的序列化器逐节点 trim 后拼出来是「3/2」，与遗留的「3 / 2」对不上。
@@ -1535,11 +1136,6 @@ function showPane(){
     panes[k].style.display = (k === tab) ? '' : 'none';
   });
 }
-function buildPage(t){
-  return t==='notes' ? renderNotes()
-       : t==='todos' ? renderTodos()
-       : t==='files' ? renderFiles() : renderMine();
-}
 /* 已迁移到 Vue 的 tab（D14 混合期的唯一开关）：加一行就迁移一个视图，删掉一行就退回字符串路径。
    步骤 5 notes；6 todos；7 files；9 clip；10 stats/mine；步骤 11 删掉遗留路径。 */
 var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView, mine: StatsView };
@@ -1564,25 +1160,25 @@ function render(){
   showPane();
   paintStatus();
   clearEnter();
-  if(VUE_VIEWS[tab]){
-    if(!apps[tab]) mountView(tab, p, VUE_VIEWS[tab]);
-    paneBuilt[tab] = 1; paneDirty[tab] = 0;
-    /* D13/D14：Vue 的 DOM 在 nextTick 之后才落地，所以 DOM 测量与 markReady 都得摄到那一拍。
-       done 同时挂在 then 和 catch 两条分支上，done 内部用 try/finally：链上任何一环 reject、
-       某个副作用抛了，也要把首屏记号打出去，否则 index.html 的看门狗（D16，12s）会把
-       「画完了但某个副作用抛了」误判成白屏，症状从「一处没刷新」升级成「整页重建」。 */
-    var done = function(){ try { afterPaint() } finally { markReady() } };
-    return vuePaint().then(done, done);
+  /* 步骤 11 起这是唯一一条渲染路径：四个 tab 全在 VUE_VIEWS 里，字符串渲染器（页面级
+     *HTML() 与页面级 render*()）整批删掉了。注册表缺 tab 时不静默回退——回退到已经不
+     存在的渲染器只会白屏，直接 console.error 报出来（SELFCHECK 与「没有运行时报错」那
+     两步会抓到）。 */
+  if(!VUE_VIEWS[tab]){
+    console.error('VUE_VIEWS 注册表缺 tab：' + tab);
+    markReady();
+    return Promise.resolve();
   }
-  p.innerHTML = buildPage(tab);
+  if(!apps[tab]) mountView(tab, p, VUE_VIEWS[tab]);
   paneBuilt[tab] = 1; paneDirty[tab] = 0;
-  afterPaint();
-  markReady();
-  /* D13：render 的契约是 Promise。遗留路径是同步 innerHTML，return 时 DOM 已经更新完，
-     所以 Promise.resolve() 就是真语义；Vue 路径返回 nextTick().then(...)，调用点一行不用改。
-     app.js 内部 16 处调用点一律不 await（Tony 逐条核过：没有一处紧跟读新 DOM），
-     只有 test.sh 的 3 处 jseval 载荷 await —— 那里是「点完立刻断言 DOM」的场景。 */
-  return Promise.resolve();
+  /* D13/D14：Vue 的 DOM 在 nextTick 之后才落地，所以 DOM 测量与 markReady 都得摄到那一拍。
+     done 同时挂在 then 和 catch 两条分支上，done 内部用 try/finally：链上任何一环 reject、
+     某个副作用抛了，也要把首屏记号打出去，否则 index.html 的看门狗（D16，12s）会把
+     「画完了但某个副作用抛了」误判成白屏，症状从「一处没刷新」升级成「整页重建」。
+     D13：render 的契约是 Promise（调用点一律不 await，只有 test.sh 的 jseval 载荷 await
+     —— 那里是「点完立刻断言 DOM」的场景），所以返回 nextTick 那条链。 */
+  var done = function(){ try { afterPaint() } finally { markReady() } };
+  return vuePaint().then(done, done);
 }
 /* S3（D17）：首屏画完的记号。两个用途：__enote.ready 的兑现点，也是 index.html 里
    看门狗（D16）的存活信号。声明成函数 + 可空回调是因为时序：refresh() 在模块末尾的
@@ -1593,8 +1189,8 @@ function markReady(){
   firstPainted = true;
   if(readyResolve) readyResolve();
 }
-/* render() 在 buildPage() 旁边（步骤 5 加了 Vue 分发，往上看）：这里不能再有一份同名函数，
-   函数声明提升会让后一份覆盖前一份，Vue 分发会静默失效。web_test.go 钉了「全文只有一个 render 定义」。 */
+/* 这里不能再有一份同名 render 函数：函数声明提升会让后一份覆盖前一份，Vue 分发会静默失效。
+   web_test.go 钉了「全文只有一个 render 定义」。 */
 
 /* 「展开详情」只在正文真的超过三行时才出现：先去掉 clamp 量整段高度，再加上 clamp 量三行高度，
    两者一样就说明没被截断，按钮没意义，直接藏起来（否则每张短笔记都挂一个点了没反应的按钮）。 */
@@ -1655,9 +1251,6 @@ async function filesNow(){
   }catch(e){ FA.loaded = false; SRK = '' }
   render();
 }
-function fileStrip(){
-  return '<div class="strip">' + fileStripInner() + '</div>';
-}
 /* 步骤 7 拆出的叶子：Vue 的 FilesView 直接画 <div class="strip" v-html=...>，
    两条路径共用一份 inner HTML，VDIFF 才能逐字比（步骤 5/6 定下的模式：结构在模板里，
    叶子片段同源）。 */
@@ -1665,10 +1258,6 @@ function fileStripInner(){
   if(!FA.total) return '附件 <b>0</b>';
   return '附件 <b>'+FA.total+'</b> · '+fmtSize(FA.bytes)
     + (FA.missing ? ' · <i>'+FA.missing+' 个文件缺失</i>' : '');
-}
-function filesSkeleton(){
-  return '<div class="card"><div class="skel img"></div>'
-    + '<div class="skel l"></div><div class="skel s"></div></div>';
 }
 function attachCardCls(a){
   return 'acard' + (a.missing ? ' gone' : '') + enterCls('a' + a.id);
@@ -1678,30 +1267,6 @@ function attachMetaHTML(a){
 }
 function attachGlyphHTML(a){
   return ic(KIND[a.kind] || 'clipfile', 'xl');
-}
-function attachCardHTML(a, k){
-  return '<div class="' + attachCardCls(a) + '" style="--i:' + Math.min(k, 8) + '" '
-    + 'onclick="openAttach(\'' + a.id + '\')">'
-    + (a.kind === 'image' && !a.missing
-        ? '<img class="athumb" loading="lazy" src="/file?id=' + a.id + '">'
-        : '<div class="aglyph">' + attachGlyphHTML(a) + '</div>')
-    + '<div class="aname">' + esc(a.name) + '</div>'
-    + '<div class="ameta">' + attachMetaHTML(a) + '</div>'
-    + '<div class="anote">' + esc(a.noteTitle || '') + '</div>'
-    + (a.missing ? '<div class="amiss">文件已不在</div>' : '')
-    + '<div class="arow" onclick="event.stopPropagation()">'
-    + '<button class="btn sm gh" onclick="jump(\'' + a.noteId + '\')">' + ic('note') + '笔记</button>'
-    + '<button class="btn sm dg" onclick="delAttach(\'' + a.id + '\')">' + ic('trash') + '删除</button>'
-    + '</div></div>';
-}
-function renderFiles(){
-  if(!FA.loaded) return fileStrip() + filesSkeleton();
-  if(!FA.items.length) return fileStrip() + emptyState('clip',
-      q ? '没有匹配的附件' : '还没有附件',
-      '分享图片 / PDF，或点右下角「添加附件」');
-  var h = fileStrip() + '<div class="agrid">';
-  FA.items.forEach(function(a, k){ h += attachCardHTML(a, k) });
-  return h + '</div>';
 }
 function openAttach(id){
   var a = null;
@@ -1734,52 +1299,9 @@ async function statsNow(){
   stBusy = false;
   if(tab==='mine') render();
 }
-function renderMine(){
-  var i = S.info, s = ST;
-  var h = statsHeroHTML(i, s);
-  if(!s) return h + '<div class="card"><div class="skel l"></div><div class="skel s"></div></div>';
-  h += '<div class="statgrid">'
-    + statHTML(0, s.notes.total, '笔记', 'note') + statHTML(1, s.todos.total, '待办', 'check-square')
-    + statHTML(2, s.todos.open, '未完成', 'clock') + statHTML(3, s.todos.overdue, '已逾期', 'alert', 1)
-    + statHTML(4, s.attach.count||0, '附件', 'clip') + statHTML(5, s.ai.calls||0, 'AI 调用', 'sparkle') + '</div>';
-  h += '<div class="card"><h2>近 7 天</h2>'+chartHTML(s.days)
-    + '<div class="legend"><span><i style="background:var(--acc)"></i>新增笔记</span>'
-    + '<span><i style="background:var(--acc2)"></i>完成待办</span></div></div>';
-  h += '<div class="card">'+statsNotesCardHTML(s)+'</div>';
-  if(s.tags && s.tags.length){
-    h += '<div class="card"><h2>常见标签</h2><div class="tagrow">'
-      + s.tags.map(function(t){return '<span class="chip tag">#'+esc(t.tag)+' · '+t.n+'</span>'}).join('')
-      + '</div></div>';
-  }
-  var sf = SHOTFLAGS || {};
-  h += '<div class="card"><h2>截图捕获</h2><div style="padding:0 12px 4px">'
-    + liHTML('folder','监控文件夹', sf.enabled
-        ? ((sf.folders||0) + ' 个 · 点这里增删')
-        : '未开启 · 点这里开始', 'folderSheet()')
-    + liHTML('image','截图暂存','当前 ' + ((S.info && S.info.shot) || 0) + ' 张待整理', 'shotSheet()')
-    + liHTML('refresh','现在扫描一次', sf.granted ? '只看上次之后的新图' : '需要先允许读取照片', 'scanShotsNow()')
-    + liHTML('calendar','回捞最近 7 天', '把最近 7 天的截图都收一遍（不会重复）', 'rescanShots(7)')
-    + liHTML('trash','清空截图暂存', '只删副本，不动系统相册', 'clearShots()')
-    + '</div></div>';
-  h += '<div class="card" style="padding:2px 12px">'
-    + liHTML('settings','设置','AI 模型 / 外观 / 采集 / OCR / 数据', 'settingsSheet()')
-    + liHTML('file-text','运行日志','Go 服务、解析队列、OCR 状态', 'showLog()')
-    + liHTML('sparkle','AI 调用记录','本次运行的请求与返回', 'showDebug()')
-    + liHTML('download','导出 JSON','全量备份笔记与待办', 'exportJSON()')
-    + liHTML('inbox','导入 JSON','按笔记 ID 合并，不覆盖本地', 'importJSON()')
-    + liHTML('trash','清空全部','删除所有笔记与附件', 'clearAllNotes()')
-    + '</div>';
-  h += statsRunCardHTML(i);
-  return h;
-}
-/* VDIFF 的遗留基准（步骤 10）：我的页是 tab，基准就是 renderMine()；设置页是弹层，
-   基准是「加载完之后」的正文（壳由 pageSheet 写，所以不拼壳）。两个函数同时进导出表：
-   test.sh 的载荷跑在 module 外面，只能经 window.__enoteActions 拿到它们。
-   步骤 11 删遗留路径时一起删。 */
-function renderMineHTML(){ return renderMine() }
-function settingsHTML(){ return renderSettings() }
 /* ---------- 步骤 10：我的页 / 设置页的叶子片段 ----------
-   两条渲染路径（遗留字符串 / Vue 模板）共用同一份，VDIFF 才逐字比得过；Vue 侧经 setHost
+   这些片段函数是 Vue 模板的渲染帮手（经 setHost 暴露给组件）；步骤 11 删掉遗留字符串
+   渲染器之后它们只剩一个调用者，留着是因为模板里拼 HTML 的写法与它们逐字一致；Vue 侧经 setHost
    的 H.xxx 调用。hero 整块是静态结构 + 三处动态值，留在叶子函数里比模板抄一遍少一处漂移面。 */
 function statsHeroInner(i, s){
   return '<div class="hrow"><div class="hlogo"><img src="/icon.png" alt=""></div>'
@@ -1792,7 +1314,6 @@ function statsHeroInner(i, s){
       : '<span>正在统计本地数据…</span>')
     + '</div>';
 }
-function statsHeroHTML(i, s){ return '<div class="hero">'+statsHeroInner(i, s)+'</div>' }
 /* 笔记状态卡（纯展示，无 handler）：整块交给叶子函数，Vue 侧 v-html 同一份字符串。
    卡壳（<div class="card">）由两条路径各自写，内容逐字共用。 */
 function statsNotesCardHTML(s){
@@ -1814,30 +1335,8 @@ function statsRunRowsHTML(i){
 function statsRunInnerHTML(i){
   return statsRunRowsHTML(i) + kvHTML('OCR 引擎', ocrReadyHTML(i.ocrReady));
 }
-function statsRunCardHTML(i){
-  return '<div class="card">'+statsRunInnerHTML(i)+'</div>';
-}
 function kvHTML(k, v){ return '<div class="kv"><span>'+k+'</span><span>'+v+'</span></div>' }
-function chartHTML(days){
-  var mx = 1;
-  days.forEach(function(d){ mx = Math.max(mx, d.notes, d.done) });
-  var h = '<div class="chart">';
-  days.forEach(function(d, k){
-    h += '<div class="col" title="'+esc(d.day)+'：'+d.notes+' 条笔记 / '+d.done+' 条完成">'
-      + '<div class="bars">'
-      + '<div class="bar n" style="height:'+Math.max(2,Math.round(d.notes/mx*76))
-        +'px;animation-delay:'+(k*40)+'ms"></div>'
-      + '<div class="bar d" style="height:'+Math.max(2,Math.round(d.done/mx*76))
-        +'px;animation-delay:'+(k*40+60)+'ms"></div>'
-      + '</div><div class="lb">'+esc(d.label)+'</div></div>';
-  });
-  return h+'</div>';
-}
 function statCls(hot, label){ return 'stat'+(hot?' hot':'')+enterCls('s'+label) }
-function statHTML(i, v, label, icon, hot){
-  return '<div class="'+statCls(hot, label)+'" style="--i:'+i+'">'
-    + '<div class="si">'+ic(icon)+'</div><b>'+v+'</b><span>'+label+'</span></div>';
-}
 function liHTML(icn, t, sub, fn){
   return '<div class="li" onclick="'+fn+'"><span class="lico">'+ic(icn)+'</span>'
     +'<div style="flex:1"><b style="font-size:14.5px">'+t+'</b>'
@@ -1845,28 +1344,20 @@ function liHTML(icn, t, sub, fn){
     +'<span style="color:var(--dim2)">›</span></div>';
 }
 function settingsSheet(){
-  /* 步骤 10：注册表里有 settings 就走 Vue（内容区交给 SettingsSheetView 挂），否则退回
-     字符串渲染器。dataset.kind 是 CSS 钩子（css/views/settings.css 靠它定位设置页），
-     两条路径都必须写，所以放在分发之前。 */
+  /* 步骤 11：只剩 Vue 一条路径（SettingsSheetView）。dataset.kind 是 CSS 钩子
+     （css/views/settings.css 靠它定位设置页），pageSheetVue 里写。 */
   $('#panel').dataset.kind = 'settings';
-  if(VUE_SHEETS.settings) pageSheetVue('settings', '设置');
-  else pageSheet('设置', renderSettings());
+  pageSheetVue('settings', '设置');
 }
 /* 只重绘设置页本身，并把滚动位置放回去（开关、权限回来后刷新用）*/
 function settingsRefresh(){
   var p = $('#panel');
   if(!p || p.dataset.kind !== 'settings' || !$('#sheet').classList.contains('on')) return;
   var top = p.scrollTop;
-  /* Vue 路径不重建 DOM：computed 全依赖 tick，sheetPaint()  bump 一次就整页重算。
-     重建会把输入框里正在打的字清掉（设置页是全站唯一有六个输入框的页面），
-     而遗留路径本来就是 innerHTML 整体重写，没这个顾虑。 */
-  if(VUE_SHEETS.settings){
-    sheetPaint();
-    requestAnimationFrame(function(){ var q = $('#panel'); if(q) q.scrollTop = top });
-    return;
-  }
-  settingsSheet();
-  requestAnimationFrame(function(){ $('#panel').scrollTop = top; });
+  /* 不重建 DOM：computed 全依赖 tick，sheetPaint() bump 一次就整页重算。
+     重建会把输入框里正在打的字清掉（设置页是全站唯一有六个输入框的页面）。 */
+  sheetPaint();
+  requestAnimationFrame(function(){ var q = $('#panel'); if(q) q.scrollTop = top });
 }
 /* 从系统设置页回来后重新读一次权限/保活状态；顺便重画，让「剪贴板刚有更新」提示立刻出现 */
 window.onAppResume = function(){
@@ -1956,25 +1447,31 @@ function resetPrefs(){
    2s 一次的 /api/state 很便宜，但 render() 要重建整个列表、重载缩略图、
    重播入场动画。所以先比指纹，没变就只刷新右上角状态点。 */
 var SIG = '', drawn = false;
-function sigOf(d){
-  var ns = (d && d.notes) || [], i = (d && d.info) || {}, h = 0, k, j, s;
-  for(k = 0; k < ns.length; k++){
-    var n = ns[k];
-    s = (n.id||'') + (n.status||'') + (n.updatedAt||'') + (n.title||'') +
-        (n.todos ? n.todos.length : 0) + (n.attachments ? n.attachments.length : 0);
-    for(j = 0; j < s.length; j++) h = (h*31 + s.charCodeAt(j)) | 0;
-  }
-  // 注意：签名里漏了 i.shot 的话，新截图只改变条数时不会重绘，首页横幅就不会出现（踩过）
+/* 轮询指纹的排除表：/api/state 里每秒都在变、界面又不展示的字段。
+   不排掉的话「数据没变就不重绘」这条契约（D8）直接失效——uptimeS 每秒 +1，
+   每一轮都算「变了」，四个 tab 每秒全量重绘一次，正是本文件顶部说的闪屏来源。
+   排除表就是行为契约，tools/ui_test.js 有断言钉住它（改名 / 删字段即红）。 */
+var SIG_SKIP = { uptimeS:1, tz:1, go:1, dir:1 };
+
+/* 整份 /api/state 的指纹。步骤 11 把原来的「逐字段手挑」换成「整份序列化 + 排除表」：
+   手挑那份漏一个字段就是静默不重绘（注释里记着 i.shot 踩过），整份序列化把这类漏项
+   封掉——新字段默认进签名，只有明确列进排除表的才不参与。
+   契约翻转（步骤 11 记录）：笔记正文 content 变化现在会触发重绘（旧签名只取
+   id/status/updatedAt/title/子项数，正文改了不重绘）。这是更严的方向，代价是
+   「AI 解析写完正文」那一拍多一次重绘。
+   shot / server 不能排：截图页的 banner 读 info.shot、设置页显示 info.server，
+   排掉就是「外部改了数据界面不更新」。 */
+function stateSig(d){
+  var i = {}, src = (d && d.info) || {}, k;
+  for(k in src){ if(!SIG_SKIP[k]) i[k] = src[k] }
   var sf = (typeof SHOTFLAGS === 'object' && SHOTFLAGS) || {};   // 启动早期还没有 flags
-  return [ns.length, h, i.todos, i.open, i.overdue, i.queue, i.clip, i.shot, i.ocrReady?1:0,
-          (d && d.settings && d.settings.theme) || '',
-          // 截图开关/文件夹数也进签名：配置改了界面必须跟着变（踩过：选完文件夹我的页还显示旧数字）
-          (sf.enabled?1:0) + '' + (sf.folders||0) + (sf.granted?1:0)].join('|');
+  return JSON.stringify([d && d.notes, i, (d && d.settings) || {},
+    [sf.enabled?1:0, sf.folders||0, sf.granted?1:0]]);
 }
 async function refresh(quiet){
   if(Date.now() < animLock){ paintStatus(); return }
   try{ var d = await api('/api/state'); S = d; if(MISSED) S.missed = MISSED;
-       var dirty = !quiet || !drawn || sigOf(d) !== SIG;
+       var dirty = !quiet || !drawn || stateSig(d) !== SIG;
        if(!prefsLoaded && S.settings && S.settings.ui){
          prefsLoaded = true;
          var fp = flattenPrefs(S.settings.ui);
@@ -1988,7 +1485,7 @@ async function refresh(quiet){
        if(themeOf() !== curTheme){ curTheme = themeOf(); applyTheme(); dirty = true; }
        paintStatus();
        if(!dirty) return;
-       SIG = sigOf(d); drawn = true;
+       SIG = stateSig(d); drawn = true;
        searchNow(dirty); }
   catch(e){ var d = $('#dot'); if(d) d.className='dot bad'; if(!drawn) render(); }
 }
@@ -2301,9 +1798,9 @@ var HOST = setHost({
      闸门⑮ 静态扇模板里的 H.xxx 钉住它）。
      ST / remindPending 会被整体赋值（statsNow / refresh），必须走 getter；SHOTFLAGS 步骤 8 已有。 */
   get ST(){ return ST }, get remindPending(){ return remindPending },
-  statCls: statCls, kvHTML: kvHTML, liHTML: liHTML, chartHTML: chartHTML,
+  statCls: statCls, kvHTML: kvHTML, liHTML: liHTML,
   statsHeroInner: statsHeroInner, statsNotesCardHTML: statsNotesCardHTML,
-  statsRunRowsHTML: statsRunRowsHTML, statsRunCardHTML: statsRunCardHTML,
+  statsRunRowsHTML: statsRunRowsHTML,
   statsRunInnerHTML: statsRunInnerHTML,
   settingsDataCardHTML: settingsDataCardHTML, settingsRunCardHTML: settingsRunCardHTML, ocrReadyHTML: ocrReadyHTML,
   settingsCollectHTML: settingsCollectHTML, settingsOcrCardHTML: settingsOcrCardHTML,
@@ -2319,10 +1816,9 @@ var HOST = setHost({
 });
 
 /* Vue 路径的观测缝（步骤 6 加，步骤 5 就没写过）。
-   它是给测试用的，不是生产门禁：render() 走哪条路径只看 VUE_VIEWS[tab]（app.js:1317），
-   没这个缝时 Vue 照跑。缺它的代价是「测不出来」：VDIFF 比的是 DOM，而两条路径的 DOM
-   按设计就逐字相同，它结构上无法区分走了哪条；真要是 Vue 没跑，VDIFF/NINT 会全绿。
-   所以 test.sh 的 TINT 用 isVue(tab) + apps[tab] 正向断言「目标 tab 真的由 Vue 挂载」。
+   它是给测试用的，不是生产门禁：render() 走哪条路径只看 VUE_VIEWS[tab]，没这个缝时
+   Vue 照跑。缺它的代价是「测不出来」：DOM 长得一样就分不出谁画的，所以 test.sh 的
+   TINT 用 isVue(tab) + apps[tab] 正向断言「目标 tab 真的由 Vue 挂载」。
    必须在首次 refresh() 之前（mountView 会写 apps[tab]）。 */
 window.__enote = window.__enote || {};
 window.__enote.vue = { app:null, views:VUE_VIEWS, apps:apps,
@@ -2332,10 +1828,9 @@ window.__enote.vue = { app:null, views:VUE_VIEWS, apps:apps,
                           sheets 就是 sheetApps，夹具用它确认 mount/unmount 真的发生了。 */
                        sheets:sheetApps, VUE_SHEETS:VUE_SHEETS,
                        isVueSheet:function(name){ return !!VUE_SHEETS[name] },
-                       /* 夹具注入 folderAll/folderSel 后要重画一次。folderRender 不在导出表
-                          （加了会动 handler 基线），走观测缝。两条路径都要能用：Vue 路径 =
-                          sheetPaint()，遗留路径 = 真重画。 */
-                       folderPaint:function(){ return sheetApps.folders ? sheetPaint() : folderRender() },
+                       /* 夹具注入 folderAll/folderSel 后要重画一次。名字留着 folderPaint
+                          是 test.sh 夹具与签名断言写死的契约；四个弹层现在共用 sheetPaint()。 */
+                       folderPaint:function(){ return sheetPaint() },
                        /* 进度层夹具用：直接驱动一次进度层（不跑真导入也能验 DOM） */
                        shotPaint:function(){ return sheetPaint() },
                        clipPaint:function(){ return sheetPaint() },
@@ -2358,8 +1853,13 @@ function selfCheck(){
   var errs = [], probe = function(name, fn){
     try { fn() } catch(e){ errs.push(name + ': ' + ((e && e.message) || e)) }
   };
-  probe('renderNotes', renderNotes); probe('renderTodos', renderTodos);
-  probe('renderFiles', renderFiles); probe('renderMine', renderMine);
+  /* 步骤 11 起四个 tab 只能走 render()（字符串渲染器已删）：逐个切过去渲染一次，
+     组件的 setup / computed 抛异常会直接进 SELFCHECK FAIL。 */
+  var tab0 = tab;
+  ['notes','todos','files','mine'].forEach(function(t){
+    probe('render:' + t, function(){ setTab(t); });
+  });
+  setTab(tab0);
   var n = (S.notes || [])[0];
   if(n){
     probe('expand', function(){
@@ -2382,7 +1882,7 @@ setTimeout(selfCheck, 1200);
    所以「转 module」和这张表必须同批落地，中间态不能存在；tools/ui_test.js 闸门① 是这条
    防线的执行者：handler 里调用的函数名必须 ⊆ 本表 key ∪ 内建，少一个就报出函数名和次数。
    Object.assign(window, …) 是「70 处 handler 逐字不动」的唯一办法：内联 handler 里的函数名走全局查找。
-   （注：这段注释里不能写 onclick="…" 这种字面量，ui_sig_test.js 会把它当成真 handler 扫。）
+   （注：这段注释里不能写 onclick="…" 这种字面量，tools/ui_test.js 闸门① 会把它当成真 handler 扫。）
    表必须是**单处对象字面量**（闸门① 用配对括号扫 key），别拆成多处 __enoteActions.foo = foo。
    成员 = 内联 handler 调用的 54 个 ∪ jseval 载荷独有的 api/refresh/render = 57。 */
 window.__enoteActions = {
@@ -2392,8 +1892,8 @@ window.__enoteActions = {
   delTodo, doImportShots, expand, exportJSON, folderFilter, folderPick, folderPickShots,
   folderSave, folderSelAll, folderSheet, importClip, importJSON, jump,
   missedDismiss, missedDone, missedGoTodos, missedSheet, openAttach, pickImage,
-  refresh, render, renderMineHTML, reocr, reparse, resetPrefs, rescanShots, saveSettings,
-  scanShotsNow, settingsHTML, settingsRefresh, settingsSheet, showDebug, showLog, statsNow,
+  refresh, render, reocr, reparse, resetPrefs, rescanShots, saveSettings,
+  scanShotsNow, settingsRefresh, settingsSheet, showDebug, showLog, statsNow,
   clearShots,
   setPref, setTheme, shotIgnoreSel, shotOverlay, shotOvlSub, shotPick, shotSelAll, shotSetup,
   shotGo, shotSheet, testLLM, toAlarm, toCalendar,
@@ -2470,23 +1970,10 @@ Object.assign(window.__enote, {
   },
   probe: window.__enoteProbe || null,
   markReady: markReady,
-  /* D17 夹具缝（Tony 提，步骤 5）：DOM 逐字一致对比要在真 WebView 里把两条路径各渲染一次。
-     视图转 Vue 后遗留字符串渲染器不再被 render() 调用，但它是「今天长什么样」的唯一真相，
-     留着它才谈得上「行为零变化」是可证明的。步骤 6/7/9/10 各加一个 tab，步骤 11 随渲染器一起删。 */
-  legacy: { notes: renderNotes, todos: renderTodos, files: renderFiles,
-            /* 步骤 8：弹层的遗留侧（VDIFF 的基准）。它们渲染的是「加载完之后」的 DOM，
-               因为夹具比的是加载完的状态；shotSheet()/folderSheet() 写壳时是「加载中…」。 */
-            shots: shotSheetHTML, folders: folderSheetHTML,
-            /* 步骤 9：剪贴板页的遗留侧（同样渲染「加载完之后」的形态）。 */
-            clip: clipSheetHTML,
-            /* 步骤 10：我的页（tab）与设置页（弹层）的遗留侧。 */
-            mine: renderMineHTML, settings: settingsHTML },
-  /* 夹具要在插入遗留字符串后跑一遍和 render() 相同的收尾（syncExpand 会按正文高度隐藏
-     「展开详情」按钮），否则比的是「raw 字符串」对「收尾后的 DOM」。缝在 D17 上，步骤 11 一起删。 */
-  afterPaint: afterPaint,
-  /* 步骤 10：入场动画的 seen 是一次性状态（enterCls 首次见到某个 id 才返回 ' enter'）。
-     VDIFF 夹具要在两条路径各自开跑前清一次，否则先跑的那条把 id 记进 seen，后跑的那条
-     就没有 enter —— 我的页的四张统计卡带 enterCls，正好踩这一条（真机上 tab 切换会清）。 */
+  /* 步骤 11：D17 的遗留基准缝（VDIFF 用来对比字符串渲染器的 legacy 那组）与 afterPaint
+     一起删了 —— 字符串渲染器整批删除之后，「与它逐字一致」这个命题没有对象了。
+     clearSeen 留着：切 tab 强制重绘与「外部改数据后立刻刷新」那几个用例都靠它，
+     它不是迁移期的临时物。 */
   clearSeen: clearSeen
 });
 /* buildReady（步骤 4，Tony 提的竞态）：ready 在首屏就兑现，build 由这个独立 fetch 填，
