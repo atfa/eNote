@@ -1354,10 +1354,13 @@ step "Notes 交互在 Vue 路径上真的生效（tick 链断则点了没反应�
 # 普通模块变量（S / open / MISSED），没有响应式依赖 → 永远缓存 → 界面纹丝不动，
 # 而签名 84 项和 DOM 夹具都是绿的。Austin 在真机首跑就踩到（ClipBanner 的 computed），
 # 这条用真点击把四类交互钉住：展开 / 空态 / 三横幅 / 删除。
-# 日志窗口：newtlog 已经按 BASE 切过一层（newtlog = readtlog | tail -n +$((BASE+1))），
-# 下面只要 grep token。这里不能再 tail -n +$((NIN+1))：NIN 是整份日志的绝对行号，
-# 对已经切短的流再切一次直接切空，症状就是「已收到=[]」，看着像载荷没跑。
-# （真机首跑踩过：先误判成 .devmode，补了 touch 依旧红，根因在这里。）
+# 日志窗口：从本步起算取日志行。两个坑都踩过，都在这行上：
+# 1) 不能对 newtlog 再 tail -n +$((NIN+1))：newtlog 内部已经是 readtlog | tail -n +$((BASE+1))，
+#    NIN 是整份日志的绝对行号，对切短的流二次切直接切空，症状是「已收到=[]」，
+#    看着像载荷没跑（真机首跑先误判成 .devmode，补了 touch 依旧红，根因在这里）。
+# 2) 要读未切的 readtlog 并自己记 NIN：从本步起算比从 BASE 起算紧，
+#    不会把上一轮残留的同名 token 扫进来。
+NIN=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("NINT "+m)};
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
@@ -1413,7 +1416,8 @@ for i in $(seq 1 60); do
   newtlog | grep -q 'NINT ndone=1' && break
   sleep 0.5
 done
-newtlog | grep 'NINT' | "$PY" -c '
+# 取窗口读未切的 readtlog：对 newtlog 再 tail 一次是双重跳过（见步骤开头那段注释）。
+readtlog | tail -n +$((NIN + 1)) | grep 'NINT' | "$PY" -c '
 import sys, re
 d = {}
 for l in sys.stdin:
