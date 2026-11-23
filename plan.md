@@ -1464,3 +1464,33 @@ legacy 缝回来 / `buildPage(tab)` 回来）、结构闸门 10 条（载荷调�
 真机 `GO_TEST=1 ./build.sh && ./install.sh && sh $TMPDIR/restart.sh && ./test.sh --vd`
 **30 步全绿**（EXIT=0，0 FAIL，0 skip；`  ok` 行 69 → 146，因为静态闸门步骤现在把 111 项
 node 断言逐行内联打印，删掉的 VDIFF 三步 + 两次 `vdiff_tab files` 共 −14 项真机断言）。
+
+**Tony 审查打回一次：真机套件两次跑一次红一次绿（764686b525，同一 apk 同一设备）**
+红的那次是附件页交互用例：`test.sh` 断言 `FA.loaded 仍是 false：filesNow() 没拉到数据`
+（日志 `$TMPDIR/t11v.log` 末尾）。根因在测试而不在产品：附件页那三块载荷都是**单发一次
+`await filesNow()` + 固定 sleep 就直接断言**，而 `app.js` 的 `filesNow()` 用
+`var my = ++searchSeq` / `if(my !== searchSeq) return` 丢弃过期结果 —— `searchSeq` 是**服务端
+搜索共用的序号**，套件里前后步骤都在 `am start`、切 tab、写数据，只要期间 app 自己触发了一次
+refresh/搜索，测试 await 的那次结果就被整次丢掉，`FA.loaded` 永远停在 false。绿的那次只是
+没撞上。已修：FLOAD / FINT / FEMPTY 三块都改成轮询（照剪贴板横幅那条的写法，最多 12 次、
+每次 250ms，每次重新发起 `filesNow()`，轮询到目标状态才继续；超时才 fail，并把 `tries=`
+打进日志和断言消息，红的时候能一眼看出是「没拉到」还是「拉到了但 DOM 不对」）。
+
+**「单发 await + 固定 sleep 再断言」这一族的审计（步骤 12 一次性收）**
+标准写法是 test.sh:819 剪贴板横幅那条（`while(i<12){ await refresh(true); if(...) return i;
+await sleep(250); i++; }`）；下面是本步 HEAD 剩下的同类，按危险程度排：
+1. **文件夹弹层（test.sh:1180–1183）**：`folderSheet()` 后固定 `sleep(400)`，然后
+   `rows()[0].getAttribute("data-path")`（1190 行）直接取第一行 —— 服务端文件夹列表慢一点就是
+   `Cannot read properties of undefined` 载荷抛异常，红得没有信息量。
+2. **截图弹层（test.sh:1339–1354）**：`shotSheet()` 后固定 `setTimeout(...,1200)`，然后
+   `__enote.state.shotList[0].id`（1349 行）直接取 —— 同上（夹具是刚 share 进去的，最容易慢）。
+3. **设置页 SET（test.sh:1602–1653）**：点击后固定 `sleep(400)`~`sleep(900)` 再断言，
+   保存/开关是服务端往返，慢设备上是假红；没有任何轮询。
+4. **TINT（test.sh:2036 / 2047）**：`toggle` 后固定 `sleep(1700)`（LLM 往返），网络慢必假红。
+5. **NINT（test.sh:1871 / 1877）**：`await A.refresh(true); await sleep(500)` 与一处轮询混用，
+   轮询那条（`cards()<n0`）是好的，固定 sleep 那两条同类。
+6. **SIT（test.sh:1726）**：列表到位用了轮询（好），但点击后是固定 300ms；`q()[0]` 这类索引
+   选择器另记（见上面的审计清单）。
+产品侧同一类（**记进步骤 13**）：`filesNow()` 的 `searchSeq` 与 `statsNow()` 的 `stBusy` 都是
+「一次在飞请求被抢占/卡住 → 这一页此后不再刷新」，用户侧症状是附件页/我的页停在骨架屏，
+只能切走再切回来。测试侧轮询只是把症状盖住，产品侧要单独修（抢占后允许重试 / `stBusy` 加超时）。

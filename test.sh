@@ -2154,9 +2154,21 @@ UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("FLOAD "+m)};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
   try{
     __enote.state.tab="files";
-    await __enote.vue.host.filesNow();
+    // filesNow() 的结果会被服务端搜索的 searchSeq 抢占（app.js 里 if(my !== searchSeq) return），
+    // 单发一次 await 可能整次被丢掉 → FA.loaded 永远停在 false：真机撞过两次跑一次红一次绿，
+    // 套件里前后步骤都在 am start / 切 tab / 写数据，期间一定会有自己的 refresh。照剪贴板横幅
+    // 那条的写法轮询（最多 12 次、每次 250ms），轮询不到才让下面的断言红。
+    var tries=0;
+    while(tries<12){
+      tries++;
+      await __enote.vue.host.filesNow();
+      if(__enote.vue.host.FA.loaded===true) break;
+      await sleep(250);
+    }
+    L("tries="+tries);
     L("fa="+__enote.vue.host.FA.items.length);
     L("loaded="+__enote.vue.host.FA.loaded);
   }catch(e){ L("ERR="+(e&&e.message)) }
@@ -2177,7 +2189,8 @@ for l in lines:
     if m: d[m.group(1)] = m.group(2).strip()
 assert d.get("done") == "1", "FLOAD 载荷没跑完：日志=%s" % lines[:2]
 assert d.get("ERR") is None, "FLOAD 抛异常：%s" % d.get("ERR")
-assert d.get("loaded") == "true", "FA.loaded 仍是 %s：filesNow() 没拉到数据" % d.get("loaded")
+assert d.get("loaded") == "true", \
+  "FA.loaded 仍是 %s：filesNow() 轮询 %s 次没拉到数据" % (d.get("loaded"), d.get("tries"))
 assert int(d.get("fa", "0")) >= 1, "FA 里只有 %s 条附件，夹具没进去" % d.get("fa")
 print("  ok (FA 已加载 %s 条，下面的交互用例有真卡片可点)" % d["fa"])
 '
@@ -2198,7 +2211,16 @@ NFT=$(readtlog | wc -l)
       L("ERR=no-host"); L("done=1"); return }
     // filesNow 不在导出表（它不是内联 handler），测试刷新走 __enote.vue.host 观测缝
     __enote.state.tab="files";
-    await __enote.vue.host.filesNow();      // 内部会 render()
+    // 同 FLOAD：单发 filesNow() 会被 searchSeq 抢占，FA 停在骨架屏 → 下面「找不到夹具卡片」，
+    // 红的是测试的竞态而不是产品。轮询到「已加载且有卡片」再看 DOM。
+    var ftries=0;
+    while(ftries<12){
+      ftries++;
+      await __enote.vue.host.filesNow();    // 内部会 render()
+      if(__enote.vue.host.FA.loaded===true && __enote.vue.host.FA.items.length>0) break;
+      await sleep(250);
+    }
+    L("tries="+ftries);
     await sleep(500);
     L("mounted2="+(__enote.vue?!!__enote.vue.apps.files:"no-vue"));
     // 2) 渲染保真度：FA 里有几条就画几张卡，strip 的计数是实时 FA（不是装配时那份快照）
@@ -2256,7 +2278,9 @@ assert d.get("isVue") == "true", \
   "__enote.vue.isVue(files) 不是 true：Vue 装配掉了或注册表没 files，本步测的不是 Vue 路径"
 assert d.get("mounted2") == "true", "切到 files 并 filesNow() 后 FilesView 仍没挂载"
 assert d.get("ERR") is None, "FINT 载荷抛异常：%s" % d.get("ERR")
-assert d.get("card") == "found", "附件页找不到夹具卡片（.aname 对不上）：Vue 没画出附件卡片？"
+assert d.get("card") == "found", \
+  "附件页找不到夹具卡片（.aname 对不上）：Vue 没画出附件卡片？filesNow 轮询 %s 次、FA=%s 条" % (
+    d.get("tries"), d.get("fa"))
 assert d.get("fa") == d.get("cards"), \
   "FA 里 %s 条而页面画了 %s 张卡：渲染保真度对不上（live() 没读 FA？）" % (
     d.get("fa"), d.get("cards"))
@@ -2280,9 +2304,18 @@ print("  ok (预览 toast / 删除确认 / strip 计数在 Vue 路径上真生�
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("FEMPTY "+m)};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
   try{
     __enote.state.tab="files";
-    await __enote.vue.host.filesNow();
+    // 同 FLOAD：轮询到「已加载且为空」再看空态 DOM，否则比的可能是骨架屏。
+    var tries=0;
+    while(tries<12){
+      tries++;
+      await __enote.vue.host.filesNow();
+      if(__enote.vue.host.FA.loaded===true && __enote.vue.host.FA.items.length===0) break;
+      await sleep(250);
+    }
+    L("tries="+tries);
     L("fa="+__enote.vue.host.FA.items.length);
     L("loaded="+__enote.vue.host.FA.loaded);
     await render();
@@ -2309,7 +2342,8 @@ for l in lines:
     if m: d[m.group(1)] = m.group(2).strip()
 assert d.get("done") == "1", "FEMPTY 载荷没跑完（无 done）：日志=%s" % lines[:2]
 assert d.get("ERR") is None, "FEMPTY 载荷抛异常：%s" % d.get("ERR")
-assert d.get("loaded") == "true", "FA.loaded 仍是 %s：这一遍比的还是骨架屏" % d.get("loaded")
+assert d.get("loaded") == "true", \
+  "FA.loaded 仍是 %s：filesNow() 轮询 %s 次，这一遍比的还是骨架屏" % (d.get("loaded"), d.get("tries"))
 assert d.get("fa") == "0", "FA 里还有 %s 条附件：这一遍比的不是空态" % d.get("fa")
 assert d.get("empty") == "yes", "页面上没有 .empty：这一遍比的不是空态（空跑）"
 assert d.get("skel") == "no", "页面上还有骨架屏 .skel：FA.loaded 与 DOM 不一致"

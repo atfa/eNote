@@ -565,6 +565,17 @@
   （EXIT=0，0 FAIL，0 skip）：`  ok` 行 69 → **146** —— 静态闸门步骤现在把 111 项 node 断言
   逐行内联打印（原来那一步只打 20 行、签名那一步一行不打），删掉的 VDIFF 三步 + 两次
   `vdiff_tab files` 共 −14 项真机断言。
+* **Tony 审查打回一次：真机套件两次跑一次红一次绿**（同一 apk 同一设备，红的那次
+  `FA.loaded 仍是 false：filesNow() 没拉到数据`）。根因在测试不在产品：附件页那三块载荷
+  （FLOAD / FINT / FEMPTY）都是**单发一次 `await filesNow()` + 固定 sleep 就直接断言**，而
+  `filesNow()` 用 `searchSeq`（**服务端搜索共用的序号**）丢弃过期结果 —— 套件里前后步骤都在
+  `am start`、切 tab、写数据，只要期间 app 自己触发了一次 refresh，测试 await 的那次结果就被
+  整次丢掉，`FA.loaded` 永远停在 false；绿的那次只是没撞上。三块都改成轮询（最多 12 次、每次
+  250ms，每次重新发起，轮询到目标状态才继续；超时才 fail，`tries=` 打进日志与断言消息）。
+  同一族剩下的「单发 await + 固定 sleep」用例（文件夹弹层 / 截图弹层 / 设置页 / TINT / NINT）
+  已逐条列进 `plan.md` §9.17 的审计，步骤 12 一次性收；产品侧同一类（`filesNow()` 的
+  `searchSeq`、`statsNow()` 的 `stBusy` 一次被抢占/卡住 → 这一页此后不再刷新，用户侧症状是
+  附件页/我的页停在骨架屏）记进步骤 13。
 
 ### 界面（P7）
 
