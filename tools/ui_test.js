@@ -39,13 +39,13 @@ const uiDir = path.join(root, 'go/ui');
 const SPLIT = fs.existsSync(uiDir);
 const uiFiles = SPLIT ? walkDir(uiDir) : [fs.readFileSync(path.join(root, 'go/ui.html'), 'utf8')];
 const ui = uiFiles.join('\n');
-// 只要 JS 源（带路径），给闸门① 当解析域用。
+// 只要 JS 源（带文件名），给闸门①③ 当解析域用。文件名要留着：闸门③ 逐文件查重名。
 function walkJs(d) {
   let out = [];
   for (const f of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
     const p = path.join(d, f.name);
     if (f.isDirectory()) { if (f.name !== 'vendor') out = out.concat(walkJs(p)); }
-    else if (/\.js$/.test(f.name)) out.push(fs.readFileSync(p, 'utf8'));
+    else if (/\.js$/.test(f.name)) out.push([path.relative(root, p), fs.readFileSync(p, 'utf8')]);
   }
   return out;
 }
@@ -85,7 +85,8 @@ function stripComments(src) {
 // 只对 JS 源做剔注释：HTML 里 https:// 的 `//` 会被当成行注释，整行连收尾引号一起吞掉
 // （实测 index.html 剔完从 14707 字节剩 307），CSS 的 /* */ 又会被 JS 扫描器误读。
 // 所以逐文件剔，且只剔 .js。未拆分的 go/ui.html 旧形态不剔（它是 HTML 包 script）。
-const uiCode = SPLIT ? walkJs(uiDir).map(stripComments).join('\n') : ui;
+const jsSources = SPLIT ? walkJs(uiDir) : [['go/ui.html', ui]];
+const uiCode = jsSources.map(([, s]) => stripComments(s)).join('\n');
 // 内联 handler 全部写在 JS 的字符串拼接里（实测 index.html 里 0 个、app.js 里 70 个），
 // 所以要先还原 \' 和 \" 转义，才能按 onclick="..." 抓全。
 const uiUnescaped = uiCode.replace(/\\'/g, "'").replace(/\\"/g, '"');
@@ -196,6 +197,60 @@ if (missing.size) {
   ok('内联 handler ' + handlerCount + ' 处全部能在导出表里解析（导出 ' + domain.size + ' 个）');
 } else {
   ok('内联 handler ' + handlerCount + ' 处引用的函数全部存在（页面顶层声明 ' + declared.size + ' 个）');
+}
+
+// ---------- 闸门③ 顶层声明不得重名（module 化是颗解析期炸弹）----------
+// 真事：app.js 有两份 function dueMs（:131 / :968）。普通脚本里 function 声明提升，
+// 后者覆盖前者，:131 那份从写下来就没跑过——静默遮蔽，测试全绿。ES module 不允许顶层
+// 同名 function：解析期 SyntaxError，整个模块不执行。症状就是 Austin 第 6 轮全量抓到的
+// 那组诡异组合：index.html 正常、/js/app.js 取到 82306 字节且内容含导出表，
+// 但 typeof api === "undefined"、页面全空。
+//
+// 判红规则用 node --input-type=module 实测过：
+//   var + var            合法（module 里也合法）
+//   var + function       module 里 SyntaxError，普通脚本合法
+//   function + function  SyntaxError
+// 所以「重名且至少两个不是 var」（Austin 原规则）会漏 var+function，正确规则是
+// **重名且其中至少一个不是 var**。
+//
+// 只看顶格（列 0）的声明：本仓库嵌套代码一律缩进，顶格是顶层的可靠代理，也不会把
+// Vue 组件 methods 里的同名方法算进来。逐文件查：module 作用域是按文件算的，
+// 跳文件重名在 module 里合法。
+function topLevelDecls(src) {
+  const out = new Map();
+  const add = (kind, name, line) => {
+    if (!out.has(name)) out.set(name, []);
+    out.get(name).push([kind, line]);
+  };
+  src.split('\n').forEach((ln, i) => {
+    let m = /^function\s+([A-Za-z_$][\w$]*)/.exec(ln);
+    if (m) { add('function', m[1], i + 1); return; }
+    m = /^(let|const)\s+([A-Za-z_$][\w$]*)/.exec(ln);
+    if (m) { add(m[1], m[2], i + 1); return; }
+    m = /^var\s+/.exec(ln);
+    if (!m) return;
+    // var a = 1, b = 2 这种逗号声明串：只取行首第一个名字会漏掉后面的。
+    for (const part of splitTopLevel(ln.slice(4), ',')) {
+      const n = /^\s*([A-Za-z_$][\w$]*)/.exec(part);
+      if (n) add('var', n[1], i + 1);
+    }
+  });
+  return out;
+}
+const dupReports = [];
+for (const [file, code] of jsSources) {
+  for (const [name, list] of topLevelDecls(stripComments(code))) {
+    if (list.length < 2) continue;
+    if (!list.some(([k]) => k !== 'var')) continue;   // 全 var 重名：module 里也合法
+    const kinds = list.map(([k, l]) => k + '@' + l).join(' + ');
+    dupReports.push(file + ' 的 ' + name + '：' + kinds);
+  }
+}
+if (dupReports.length) {
+  bad('顶层声明重名（module 化后是解析期 SyntaxError，整模块不执行 = 白屏；普通脚本里是静默遮蔽）',
+    dupReports.join(' | '));
+} else {
+  ok('顶层声明无重名（' + jsSources.length + ' 个 JS 文件，var+var 合法不计）');
 }
 
 // ---------- 闸门② test.sh 的 jseval 引用的全局名必须存在 ----------
