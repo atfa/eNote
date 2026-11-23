@@ -1410,7 +1410,9 @@ for i in $(seq 1 60); do
   newtlog | grep -q 'NINT ndone=1' && break
   sleep 0.5
 done
-newtlog | tail -n +$((NIN + 1)) | grep 'NINT' | "$PY" -c '
+# newtlog 已经 tail -n +$((BASE+1)) 了，再 tail 一次是双重跳过（症状：载荷明明跑完、
+# 日志里 NINT 全在，断言却收到 []）。test.sh 里的既有写法是 readtlog | tail。
+readtlog | tail -n +$((NIN + 1)) | grep 'NINT' | "$PY" -c '
 import sys, re
 d = {}
 for l in sys.stdin:
