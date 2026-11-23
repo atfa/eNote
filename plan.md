@@ -763,3 +763,16 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
   全绿看不出来，所以 `go/web_test.go` 加 `TestProbeSelfTest`：抽出探针脚本在 node `vm` 里用最小
   window/document 桩跑一遍，断言 `ok === true` 且 `missing` 为空。**给步骤 5–10 的规矩：往 probe
   加探测项，必须同时保证自测在 node 上绿**（node 与 V8 同源，特性齐全时判定必然一致）。
+
+步骤 3 落地后给步骤 4 的三条（Tony 审 5865998ceb 提，都不阻塞，步骤 4 反正要动 `test.sh`）：
+
+* **probe 里 `Object.entries` 那条的依据是假的**：vendored Vue 3.5.46 里 `Object.entries` **0 次**
+  （它用 `Object.keys`，4 次）。功能无害（Chrome 54 ≤ module 的 61，模块能跑的 WebView 必过），
+  但依据写了个不存在的依赖，按「每条断言可核」的标准要改：依据改成「版本下限哨兵」，或换成
+  `Object.keys`。改完必须同时过 `TestProbeSelfTest`。
+* **`go test ./...` 在干净树上必红**：`build.json` 进了 `.gitignore`，新 worktree / 新 clone 没这
+  文件，`TestBuildJSONServed` 直接 404（Tony 这次是手写一个假 build.json 才跑起来的）。文件不存在
+  时改成 `t.Skip("先跑 build.sh")`，文件在时格式断言照旧严格。
+* **seam 有个潜在竞态**：`ready` 在首屏兑现，`build` 由独立的 `fetch('/build.json')` 填，载荷
+  `await ready` 后立刻读 `E.build`，顺序没保证（实测不犯：seam 载荷是在桥载荷轮询完几秒后注入的）。
+  app.js 把那个 fetch 的 promise 存成 `__enote.buildReady`，载荷里带超时 await 一下。
