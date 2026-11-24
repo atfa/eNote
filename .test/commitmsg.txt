@@ -1,29 +1,32 @@
-界面（S3 步骤 16b）：六个视图的叶子 HTML 字符串 → 真组件，v-html 33 → 7
+界面（S3 步骤 16c）：最后六个字符串弹层翻成真组件，内联 onclick 21 → 1
 
-字符串函数是步骤 10 的产物，理由是「两条渲染路径共用同一份字符串，零漂移面」。
-步骤 11 删掉遗留渲染器之后只剩 Vue 一条路径，理由消失，负担留下：闸门⑮ 编译模板时
-那块结构是一个字符串（卡片少个 .kv 它看不见），卡里的按钮写成字符串里的内联 onclick
-（绕过闸门①b 与闸门⑮，P12「点了没反应」那一类），每次重绘整段 innerHTML。
+新建 go/ui/js/views/sheets.js（6 个组件）：排序与筛选、错过的提醒、记一笔、
+添加待办、运行日志、AI 调用记录。它们是 app.js 里最后一批 HTML 字符串，也是
+最后 21 处内联 onclick 的所在地 —— 字符串里的 handler 绕过闸门①b 与闸门⑮，
+正是 P12「点了没反应」那一类。
 
-- 新增 go/ui/js/components/blocks.js：StatsHero（含 .hero 外壳）、StatsNotesCard、
-  StatsRunCard、SettingsDataCard、SettingsRunCard、SettingsOcrCard
-- leaf.js 加 6 个叶子：KvRow、OcrReady、FileStrip、AttachGlyph、AttachMeta、ClipCount
-- stats.js / settings.js / files.js / clip.js 改成组件标签；folders.js / shots.js 的
-  勾选框图标与底部计数条（#folderCount / #shotFoot）从 v-html 搬进模板
-- app.js 删掉 17 个字符串函数（净 -114 行），HOST 去掉这 17 个名字、加 attachGlyphName：
-  原 attachGlyphHTML 一半是算法（按 kind 查图标名）、一半是模板（包 ic()），现在前半留作
-  函数、后半是 <ico :n="…"/>。设置页采集卡与用法卡是纯静态文本，直接写进模板
-- KvRow 三种形态（返工一次）：纯文本 / 值自带样式（vstyle）/ 富文本（默认插槽）/
-  HTML 串（v-html）。第一版让插槽套在值 span 里面，DOM 多出一层 span，等价性工具当场抓到。
-  教训：插槽不是免费的，它插进哪里就多一层什么
-- DOM 等价性：.test/probe_dom2_setup.sh 分享一张 PDF 造真附件，.test/probe_dom2.sh 读真机
-  同一份状态（ST / S.info / FA / clipList / clipSel）抓 13 块 DOM，.test/dom_equiv2.js 用
-  git show HEAD 抽出迁移前的字符串函数在 node 里跑同一份状态逐字比。归一化在 16a 四条之外
-  加两条且各有理由：style 属性文本（Vue 写 el.style.cssText，浏览器重序列化成
-  `margin-top: var(--s0);`，计算样式相同）、uptimeS（状态 dump 与抓 DOM 隔了几秒）。
-  结果：13 块全部逐字一致
-- 数字：v-html= 属性 33 → 7（剩下 shell.js 三处其中弹层两处归 16c、empty-state.js 按设计、
-  leaf.js 是 KvRow 兜底、shots.js 是服务端 HTML 串、app.js 那处是注释）；内联 onclick 21 处
-  与 ic() 27 处全部集中在 app.js 的六个字符串弹层里，那是 16c
-- 验收：ui_test.js 119 项全绿；GO_TEST=1 ./build.sh 绿；./install.sh Success；
-  test.sh --vd 163 项 ok / 0 FAIL / PASS（与步骤 15/16a 基线逐条相同）
+- 弹层开合收敛成一条路径：删 pageSheet()/sheet()，新增 sheetVue(name, full)，
+  pageSheetVue() 返回 nextTick 的 Promise（D13）；SheetHost 删掉 mode:'html'
+  分支与 v-html="s.sheet.html"，shell.sheet 少掉 mode/html 两个字段。
+- 卡片形态内容多包在 #sheetBody 里（唯一结构差别），CSS 那条 .sheet .panel>h2
+  同步补成 .sheet .panel>h2, .sheet #sheetBody>h2，否则标题钻到 ✕ 底下。
+- 行为守住的三处：showLog/showDebug 仍是取完数据才弹；错过的提醒的 ✓ 仍复用
+  toggle() 的划线淡出动画；setPref/resetPrefs 的副作用链一字未动。
+- 删死代码 pageSheet / sheet / group / cdChip；app.js 1917 → 1864 行。
+- 闸门跟着搬：⑲ 的 .pfoot 名单 app.js → views/sheets.js；四条签名断言换锚点
+  （pclose 读 shell.js、cdChip 计数读 leaf.js 的 <cd-chip>、pageSheet 改钉
+  sheetVue、错过的提醒跳转改钉 @click.prevent="H.jump(t.nid)"）。
+- 等价性：.test/probe_sheets.sh 抓真机九个弹层场景的 #sheetBody 与同一份输入，
+  .test/dom_equiv3.js 用 git show HEAD 抽出迁移前的字符串函数在沙箱里跑同一份
+  输入逐字比 → 9/9 全部一致（归一化只加一条：esc 的 &quot; 与 Vue textContent
+  的 " 序列化差异，两边 textContent 相同）。
+
+数字：内联 onclick 21 → 1（剩下截图导入的「选文件夹」浮层，不是弹层）；
+handler 总数 81（内联 1 + Vue 模板 80，基线 73）；v-html 属性 7 → 6；
+VUE_SHEETS 11 条。
+
+验收：ui_test.js 119 项全绿；GO_TEST=1 ./build.sh 绿；./install.sh Success；
+./test.sh --vd 163 项 ok / 0 FAIL / PASS（与步骤 15/16a/16b 基线逐条相同）；
+.test/dom_equiv3.js 9 个场景 DOM 逐字一致。
+
+文档：plan.md §9.25、CHANGELOG「界面（P13 S3 步骤 16c）」。
