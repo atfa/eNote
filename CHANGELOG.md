@@ -1,7 +1,7 @@
 # 更新日志
 
 版本按开发阶段（Pn）记录，全部在手机上完成。界面改动都经过后台屏截图核对 +
-`tools/ui_test.js`（111 项 UI 结构契约，S3 步骤 11 起吸收了原 `ui_sig_test.js` 的 84 项签名）
+`tools/ui_test.js`（115 项 UI 结构契约，S3 步骤 11 起吸收了原 `ui_sig_test.js` 的 84 项签名）
 + `go test ./...`。
 
 ## 0.1（当前）
@@ -620,6 +620,37 @@
   教训：新增一条会产生笔记的步骤，等于把后面所有 `notes[0]` 的语义换掉了。
 * 数字：`test.sh` 2351→**2624** 行、step 30→**31**、真机 `  ok` 146→**149**、静态闸门仍 **111 ok**、
   真机连续三次全绿（`$TMPDIR/t12e.log` / `t12f.log` / `t12g.log`）。
+
+### 界面（P13 S3 步骤 13）：竞态与超时、裸 hex/px 清零、sheet 生命周期、窄屏计数
+
+这一步收的是 §9.17/§9.18 明写「记进步骤 13」的账。四笔都是同一类：不是新 bug，
+是**防线的覆盖范围落后于代码形态**。
+
+* **一页一序号 + 请求超时（产品侧）**：`filesNow()` 以前借用服务端搜索的 `searchSeq` 做抢占判定，
+  笔记页搜索一在飞，附件页这次请求的结果就被整次丢掉 → 附件页永久停在骨架屏，只能切走再切回来。
+  `statsNow()` 的 `stBusy` 同类：没有超时，一次永不返回的 fetch 把我的页永久钉在骨架屏。
+  现在每页用自己的序号（`filesSeq`），三个页面数据源都走新的 `apiTimeout`（12s，超时只放弃等待），
+  失败写可观测的 `FA.error` / `stErr` / `srErr`，骨架屏上给文案 + 「立即重试」，附件页额外自动重试两次。
+* **闸门⑰**：函数体切片检查（签名改了直接报「闸门在假绿」）—— 不许出现 `searchSeq`、必须走
+  `apiTimeout`、失败必须记 error 且模板里可见可点。**真机 FPRE** 钉住并发抢占：
+  反向实验（把 `filesNow` 改回借用 `searchSeq`）实测 `loaded=false`，断言必红。
+* **裸 hex 8→0、裸 px 57→0，闸门③ 扫描范围扩到 `js/**`**：Vue 把结构搬进 js 后，新样式写在
+  `style="…"` 里，而闸门③ 只扫 `css/**` —— 内联样式完全在账本外。现在只抽 style 属性内容
+  （整扫 js 会把 `$('#fab')` 当成颜色），加两条假绿自检。刻度外的值就近归档，新增
+  `--clear-bottom:104px` / `--on-solid` / `--mask-opaque` 三个 token。
+  **闸门④** 把 app.js 写进 meta theme-color 的两个字面量纳入调色板一致性（第 6 处副本）。
+* **sheet 生命周期**：`pageSheetVue` 只拆同名 sheet，而它会把 `.panel` 的 innerHTML 整块换掉 ——
+  开过剪贴板页再开设置页，剪贴板那个 app 实例连同 effect 全泄漏在面板里；`closeSheet` 那边是
+  手写四个名字，新增 sheet 忘了加就是静默泄漏。新增 `unmountAllSheets(keep)`（进度层是例外，
+  它挂在 body 级的 `#shotOvlRoot`），**闸门⑱** 钉住不许再写硬编码名单，**真机 SLEAK** 断言
+  `clip→settings` 之后 mount 表只剩 settings、关掉之后为空。
+* **窄屏底部计数（步骤 8 记账）**：`.pfoot .count` 的 `min-width:0` 让计数在窄屏被压到比文字还窄，
+  在「个已选 · 共」中间断行。现在计数整条不许断，挤不下就让按钮整条掉到第二行；
+  真机加了四条窄屏断言（一行 / 不被裁 / 按钮不出条 / 不重叠）。
+
+**验证**：`node tools/ui_test.js` **115 ok / 0 FAIL**（新增闸门⑰⑱；裸 hex 0 ≤ 0、裸 px 0 ≤ 0）、
+`(cd go && go test ./...)` ok、`bash -n test.sh` ok；真机 `./test.sh --skip-build --vd` 全绿，
+`  ok` 行 149 → 152（新增 FPRE / SLEAK / 窄屏计数）。
 
 ### 界面（P7）
 

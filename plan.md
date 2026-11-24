@@ -1581,3 +1581,92 @@ jseval 调用点 13 → 14**。
   解析回来整份重写 todos，`todo add / toggle / delete` 用例取的是 `notes[0]`，
   于是红在「the toggled todo is not what we wrote」。改成取 `status=="done"` 的那条笔记。
   教训：**新增一条会产生笔记的步骤，等于把后面所有 `notes[0]` 的语义换掉了**。
+
+### 9.19 S3 步骤 13 已完成（Austin：竞态与超时、棘轮清零 + 闸门③ 扩到 js、sheet 生命周期、窄屏计数）
+
+**这一步收的是 §9.17/§9.18 明写「记进步骤 13」的四笔账**，加一笔测试侧的收尾。四笔都是
+「闸门还在、账本已经不管这一页」那一类：不是新 bug，是防线的覆盖范围落后于代码形态。
+
+**① 产品侧竞态：一页一序号 + 请求超时 + 骨架屏可重试（`dec562b`）**
+
+`filesNow()` 用服务端搜索共用的 `searchSeq` 做抢占判定 —— 笔记页搜索一在飞，附件页这次请求的
+结果就被整次丢掉（`if(my !== searchSeq) return`），`FA.loaded` 永远 `false`，附件页停在骨架屏，
+只能切走再切回来。`statsNow()` 的 `stBusy` 同类：它没有超时，一次永不返回的 fetch（真机撞过：
+WebView 进后台再回来，在飞的 fetch 永不 resolve）把我的页永久钉在骨架屏。§9.18 的测试侧轮询
+只是把症状盖住，这一步修根因：
+
+* `filesSeq`（附件页自己的序号），`filesNow()` 不再碰 `searchSeq`；`searchNow()` 继续用 `searchSeq`。
+* 新增 `apiTimeout(path, body, ms)`（`REQ_TIMEOUT_MS = 12000`）：超时只放弃等待，**不取消** fetch
+  （结果被丢弃即可，序号判定照旧有效），三个页面数据源（`filesNow`/`statsNow`/`searchNow`）都改走它。
+* 失败要留下可观测状态：`FA.error = errText(e)`（`'加载超时'`/`'加载失败'`）、`stErr`、`srErr`；
+  骨架屏上给出文案 + 「立即重试」按钮（`H.filesNow()` / `H.statsNow()` / `H.searchNow(true)`），
+  附件页另加自动重试 `filesRetry < 2`（退避 1.5s/3s）。`stBusy` 加 `stSince` 时间戳兜底：
+  超过 `REQ_TIMEOUT_MS + 2000` 就允许下一次，卡死不再永久。
+* **闸门⑰**（`tools/ui_test.js`）钉住这三条不变量：函数体用 `body('async function filesNow(){')`
+  切片（签名改了就直接报「闸门⑰ 找不到 filesNow()」，不许静默空跑），检查 `++filesSeq` /
+  不出现 `searchSeq` / 走 `apiTimeout` / `error:errText(e)` / `setTimeout(filesNow`，
+  以及三个模板里 error 状态可见可点。
+* **真机 FPRE**（`test.sh`，接在 FLOAD 之后）：附件页请求在飞时并发发起笔记页搜索，断言
+  `FA.loaded=='true'` 且 `fa=='0'`。目标状态与断言同源：夹具是 `vue-files-fixture.pdf`，
+  所以 `kind=image` 一定 0 条；被抢占时 FA 停在上一份（`loaded=true, fa=1`）或停在骨架屏
+  （`loaded=false`）。**反向实验验过**：把 `filesNow` 改回 `++searchSeq`/`if(my !== searchSeq)`，
+  重新 build + install，探针给出 `before=0 after=0 loaded=false`（永久骨架屏），断言必红。
+  第一版夹具类型猜错（以为夹具是 png，实际是 pdf）→ 真机红在「FA 里是上一份结果（fa=1）」，
+  探针量出 `pdfitems=1 allitems=1 pngitems=0` 才定下用 `kind=image`。
+
+**② 棘轮清零：hex 8→0、px 57→0，闸门③ 扫描范围扩到 `js/**`（`1e8dac1`）**
+
+Vue 把结构搬进 js 之后，新样式越来越多写在 `style="…"` / `:style="'…'"` 里，而闸门③ 只扫
+`go/ui/css/**` —— 内联样式完全在账本之外。
+
+* 闸门③ 现在把 `js/**`（vendor 除外）里 `style="…"` / `:style="'…'"` 的**内容**抽出来一起计数。
+  只抽 style 属性，不整扫 js：整扫会把 `$('#fab')` 当成颜色（实测假阳性 `#fab`）。
+  两条假绿自检：没扫到 js 文件、抽出来的 style 里一个 `var(--` 也没有 → 报红。
+* 迁移由 `.test/s13ratchet.py` 做（锚点计数式，全部命中才写文件，11 个文件）。css 8 处 hex +
+  57 处 px、js 内联 48 处 px 全部上刻度；刻度外的值就近归档：`9px→--s2`、`10px→--s2`、
+  `11px→--s3`（padding）/`--r2`（radius）、`13px→--s3`、`13.5px→--fs-md`、`12.5px→--fs-sm`、
+  `14.5px→--fs-base`、`23px→--fs-xl`、`38px→--fs-2xl`、`44px→--fs-display`、`15px/11px→--r2`、
+  `19px→--r3`、`2px/3px/5px→--r1`（细条上半径自动夹到高度一半，视觉不变）、`1px→--hair`、
+  `26px→--s5`、`56px→--s6`。新增 token：`--clear-bottom:104px`（body 96 与 #list 104 是同一个
+  意思两个数，统一取大的）、`--on-solid:#ffffff`（彩色底上的白，明暗两档都是白）、
+  `--mask-opaque:#000000`（mask-image 的几何参数，暗色下也必须是纯黑）。
+* `.sheet .panel>h2` 的 `padding-right:38px` → `calc(var(--s6) + var(--s3))`（44px）：关闭按钮占
+  `right:10px` + 32px = 42px，原来 38px 就已经会让标题钻到按钮底下。
+* **闸门④ 把 app.js 的 meta theme-color 切换值纳入调色板一致性**（第 6 处调色板副本）：
+  找不到那句 `mc.setAttribute('content', t === 'dark' ? …)` 就报「闸门④ 在假绿」。
+* 三条签名断言改成 token 形式（页面留白 / 胶囊同高 / 待办竖条占位），迁移前后都绿。
+
+**③ sheet 生命周期：开/关弹层都全量拆（`vue.js` + `app.js`）**
+
+`pageSheetVue` 会把 `.panel` 的 innerHTML 整块换掉，而它只拆同名 sheet（`mountSheet` 里那句
+`unmountSheet(name)`）—— 开过剪贴板页再开设置页，剪贴板那个 app 实例连同 effect / computed
+缓存全留在表里，根节点已是游离节点，渲染永远到不了它。`closeSheet` 那边更糟：手写四个名字
+（`shots/folders/clip/settings`），新增 sheet 忘了加就是静默泄漏。DOM 上看不出、截图上看不出，
+只有 mount 表知道。
+
+* `vue.js` 新增 `unmountAllSheets(keep)`：遍历 `sheetApps` 全拆，`keep` 是例外名单。
+  进度层必须活过弹层（`shotsImported` 会先 `closeSheet` 再等 AI 解析完），它挂在 body 级的
+  `#shotOvlRoot` 而不是 `.panel` 里，所以两处调用都是 `unmountAllSheets(['progress'])`。
+* **闸门⑱** 钉住：`pageSheetVue` 与 `closeSheet` 都必须调 `unmountAllSheets(['progress'])`，
+  且两处都不许再出现硬编码的 `unmountSheet('x')` 名单；找不到这两个函数就报「闸门⑱ 在假绿」。
+* **真机 SLEAK**：`clipSheet()` → `settingsSheet()` 之后断言
+  `Object.keys(__enote.vue.sheets) === 'settings'`（剪贴板那个必须已被拆），`closeSheet()` 之后
+  断言表为空。反向实验：把 `pageSheetVue` 换回 `unmountSheet(name)` → 闸门⑱ 立刻红。
+
+**④ 文件夹页底部计数的窄屏形状（步骤 8 记账）**
+
+`.pfoot` 是 `display:flex`，`.count` 写着 `flex:1;min-width:0` —— 窄屏下它被压到比自己的文字还窄，
+于是在「个已选 · 共」中间断行，按钮往上挤，看起来像坏了。现在 `.pfoot` 允许 `flex-wrap:wrap`，
+`.count` 去掉 `min-width:0` 并加 `white-space:nowrap`：计数整条不许断，挤不下就让按钮连同 `.sp`
+整条掉到第二行。真机实测（面板宽度探针）：300px 时 `countH=22`（行高 17，仍是一行）、
+260px 时 `footH` 57→87（按钮换行、计数完整不裁不重叠）。`test.sh` 的文件夹页用例加了四条窄屏
+断言（计数一行 / 不被裁 / 按钮不出条 / 不重叠），阈值取行高 1.6 倍：一行实测 21~22px，两行 40px+。
+
+**记进步骤 14 的账**
+
+* 闸门⑮ 的弱点：把 `H.xxx` 的 `live(() => …)` 换成普通函数，所有静态闸门全绿，而 computed 永久
+  缓存 → 用户侧「点了没反应」。需要一条能区分「computed 的 getter」与「普通函数」的检查。
+* SIT 里还有 `q()[0]` 这类索引选择器，DOM 顺序一变就测到别的元素；换成稳定 id。
+* `prefPayload` 的 `done:'all'` 只有服务端覆盖，客户端（待办页筛选）没有回归。
+* 断言要显式写出 `src`/`status`/`pri`/`kind`，不要只断言数量（§9.17 审计条目，步骤 12 收了一半）。
+* `clipParse` 的真 LLM 路径与 `clipError` 分支没有客户端回归（现在只在 Go 侧测）。

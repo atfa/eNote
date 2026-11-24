@@ -7,7 +7,7 @@
 var S = {notes:[], settings:{}, info:{}};
 /* S3（D14）：Vue 装配层与视图注册表。混合期（步骤 5-10）里已迁移的 tab 走 Vue，
    其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
-import { V, Vue, setHost, mountView, mountSheet, unmountSheet, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
+import { V, Vue, setHost, mountView, mountSheet, unmountSheet, unmountAllSheets, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
 import { NotesView } from './views/notes.js'
 import TodosView from './views/todos.js'
 import FilesView from './views/files.js'
@@ -1420,6 +1420,11 @@ function pageSheet(title, html){
    （vdiff_sheet 比的就是它的 innerHTML）。 */
 function pageSheetVue(name, title){
   sheetGen++;
+  /* 步骤 13：先把所有旧 sheet 拆干。以前只拆同名（mountSheet 里那句 unmountSheet(name)），
+     于是「开过剪贴板页再开设置页」会把剪贴板那个 app 连同 effect 一起泄漏在面板里：
+     innerHTML 已经把它的根节点换成游离节点，它自己不知道，渲染永远到不了它。
+     进度层不在 .panel 里（body 级的 #shotOvlRoot），要活过弹层，所以列为例外。 */
+  unmountAllSheets(['progress']);
   var p = $('#panel');
   p.className = 'panel page';
   p.innerHTML = '<div class="phead"><button class="iconbtn" onclick="closeSheet()" aria-label="返回">'+ic('chev')+'</button>'
@@ -1628,8 +1633,9 @@ function closeSheet(){
        AI 解析完，进度层必须活过弹层。 */
     if(gen !== sheetGen) return;
     s.classList.remove('on'); s.classList.remove('closing');
-    unmountSheet('shots'); unmountSheet('folders'); unmountSheet('clip');
-    unmountSheet('settings');   // 步骤 10：设置页弹层
+    /* 步骤 13：以前这里手写四个名字（shots/folders/clip/settings），新增 sheet 忘了加
+       就是静默泄漏。名单现在只有一份：sheetApps 这张表。progress 是例外（见上）。 */
+    unmountAllSheets(['progress']);
   }, 110);
 }
 $('#sheet').addEventListener('click', function(e){ if(e.target.id==='sheet') closeSheet(); });

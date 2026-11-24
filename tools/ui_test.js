@@ -1745,6 +1745,40 @@ if (SPLIT) {
   if (filesBody && statsBody && searchBody) ok('闸门⑰ 三个页面数据源都是一页一序号 + 超时 + 可重试');
 }
 
+/* ---------- 闸门⑱：sheet 生命周期（步骤 13）----------
+   pageSheetVue 会把 .panel 的 innerHTML 整块换掉：上一个 sheet（哪怕名字不同）的根节点
+   从此是游离节点，app 实例 / effect / computed 缓存全都留着，渲染永远到不了它。
+   closeSheet 以前手写四个名字（shots/folders/clip/settings），新增 sheet 忘了加就是
+   静默泄漏 —— DOM 上、截图上都看不出，只有 mount 表知道。所以钉住：开新 sheet 与关
+   sheet 都走 unmountAllSheets，进度层（body 级的 #shotOvlRoot，要活过弹层）是例外。 */
+{
+  const appSrc = read('go/ui/js/app.js');
+  const vueSrc = read('go/ui/js/vue.js');
+  const leaks = [];
+  if (!/export function unmountAllSheets\s*\(/.test(vueSrc) || !/Object\.keys\(sheetApps\)/.test(vueSrc))
+    leaks.push('vue.js 没导出 unmountAllSheets（或它不遍历 sheetApps）');
+  const bodyOf = (head) => {
+    const i = appSrc.indexOf(head);
+    if (i < 0) return null;
+    const j = appSrc.indexOf('\n}', i);
+    return appSrc.slice(i, j < 0 ? appSrc.length : j);
+  };
+  const pv = bodyOf('function pageSheetVue(');
+  if (!pv) leaks.push('找不到 pageSheetVue（闸门⑱ 在假绿）');
+  else {
+    if (!/unmountAllSheets\(\['progress'\]\)/.test(pv)) leaks.push('pageSheetVue 没全量拆 sheet（进度层要列为例外）');
+    if (pv.indexOf("unmountSheet('") >= 0) leaks.push('pageSheetVue 里又写了硬编码的 unmountSheet 名单');
+  }
+  const cs = bodyOf('function closeSheet(');
+  if (!cs) leaks.push('找不到 closeSheet（闸门⑱ 在假绿）');
+  else {
+    if (!/unmountAllSheets\(\['progress'\]\)/.test(cs)) leaks.push('closeSheet 没全量拆 sheet（进度层要列为例外）');
+    if (cs.indexOf("unmountSheet('") >= 0) leaks.push('closeSheet 里又写了硬编码的 unmountSheet 名单（新增 sheet 会静默泄漏）');
+  }
+  if (leaks.length) bad('sheet 生命周期被破坏', leaks.join('；'));
+  else ok('闸门⑱ 开/关弹层都全量拆 sheet，进度层是例外');
+}
+
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);
 for (const s of fails) console.log('FAIL ' + s);

@@ -57,6 +57,18 @@ export function unmountSheet(name){
   app.unmount();
 }
 
+/* 步骤 13：全量拆弹层。pageSheetVue 会把 .panel 的 innerHTML 整块换掉，上一个 sheet
+   （哪怕名字不同）的根节点从此是个游离节点：实例、effect、computed 缓存全都留着，
+   渲染却永远到不了它 —— 开过剪贴板页再开设置页，剪贴板那个 app 就泄漏到 app 关闭。
+   closeSheet 以前是手写名单（shots/folders/clip/settings），新增 sheet 忘了加就是
+   静默泄漏；现在名单只有一份，就是 sheetApps 这张表本身。
+   keep 是例外：进度层挂在 body 级的 #shotOvlRoot，不在 .panel 里，要活过弹层
+   （shotsImported → AI 解析全部完成才收）。 */
+export function unmountAllSheets(keep){
+  const k = keep || [];
+  Object.keys(sheetApps).forEach(n => { if (k.indexOf(n) < 0) unmountSheet(n) });
+}
+
 /* 弹层重画：render() 只驱动 tab 页，sheet 里的状态（shotSel / folderSel / folderQ）变了
    得有人 bump tick。少了这步就是「点了没反应」——computed 依赖 V.tick，没人 bump 就永远
    缓存，而签名测试和静态闸门全绿（步骤 8 契约 (b)：app.js 的 shotPick / folderPick /

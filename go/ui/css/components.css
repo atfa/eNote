@@ -144,10 +144,15 @@
 .clipacts{display:flex;gap:var(--s2);margin-top:var(--s3)}
 .clipacts .btn{flex:1}
 /* 二级页底部固定操作条：列表很长时不用一路滑到底才点得到确定（用户反馈） */
-.pfoot{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:var(--s2);margin:var(--s3) -var(--s3) -var(--s6);padding:var(--s2) var(--s3) calc(var(--s3) + env(safe-area-inset-bottom));
+/* 步骤 13（步骤 8 记账）：窄屏下计数不许在「个已选 · 共」中间断行。计数是
+   flex 项且 min-width:0 时，它会被压缩到比自己的文字还窄 → 折成两行、按钮往上挤，
+   看起来像坏了。现在计数整条不许断（white-space:nowrap）且不许被压到文字以下
+   （min-width 回到 auto），整条 flex 允许换行：挤不下就按钮连同 .sp 整条掉到第二行，
+   计数永远完整可读。 */
+.pfoot{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;flex-wrap:wrap;gap:var(--s2);margin:var(--s3) -var(--s3) -var(--s6);padding:var(--s2) var(--s3) calc(var(--s3) + env(safe-area-inset-bottom));
   background:var(--header-bg);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:var(--hair) solid var(--line)}
 .pfoot .sp{flex:1}
-.pfoot .count{font-size:var(--fs-sm);color:var(--dim);line-height:1.35;flex:1;min-width:0}
+.pfoot .count{font-size:var(--fs-sm);color:var(--dim);line-height:1.35;flex:1;white-space:nowrap}
 /* 底部条里的按钮不许被挤掉字（用户反馈：「这批我知道了」被裁成「这批我知道」） */
 .pfoot .btn{flex:0 0 auto}
 .pfoot .count b{color:var(--acc);font-size:var(--fs-base);font-weight:700;margin-right:var(--s0)}

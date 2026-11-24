@@ -1333,6 +1333,18 @@ N0T=$(readtlog | wc -l)
     var f=q("#sheet .pfoot"),b=f.getBoundingClientRect();
     L("sticky="+getComputedStyle(f).position);
     L("footVisible="+((b.bottom<=window.innerHeight+2&&b.top>=0&&b.height>20)?1:0));
+    // 窄屏底部计数不许折行（步骤 8 记账，步骤 13 修）：把面板压到 300px（手机竖屏宽度），
+    // 计数必须仍是一行、不被裁；按不动就整条掉到第二行，且按钮完整可见。
+    var pw0=panel.style.width; panel.style.width="300px";
+    var fc=q("#folderCount"), fb=q("#sheet .pfoot .btn.pri")||q("#sheet .pfoot .btn");
+    var lh=parseFloat(getComputedStyle(fc).lineHeight)||16;
+    L("narrowCountH="+Math.round(fc.getBoundingClientRect().height));
+    L("narrowLineH="+Math.round(lh));
+    L("narrowClip="+(fc.scrollWidth<=Math.ceil(fc.clientWidth)+1?1:0));
+    var fbr=fc.getBoundingClientRect(), fpr=f.getBoundingClientRect(), fbb=fb.getBoundingClientRect();
+    L("narrowBtnIn="+((fbb.right<=fpr.right+1&&fbb.left>=fpr.left-1&&fbb.bottom<=fpr.bottom+1)?1:0));
+    L("narrowOverlap="+(fbr.right<=fbb.left+1||fbb.top>=fbr.bottom-1?1:0));
+    panel.style.width=pw0;
     // 勾选之后滚动位置不能跳：遗留路径靠「记住 scrollTop 再放回」，Vue 靠 v-for 的 :key
     // 原地移动节点。内容不够高（真机上往往只 3~5 个文件夹）时滚不动，那就只能记
     // scrollable=0：断言退化为「不报假红」，Python 侧会把 scrollable 打出来，空跑一眼可见。
@@ -1430,6 +1442,15 @@ assert after != first, "取消勾选的文件夹应该沉下去，还在第一�
 assert val("orderOK") == "1", "已选的文件夹没有全部排在前面"
 assert val("sticky") == "sticky", "底部操作条不是固定的: %r" % val("sticky")
 assert val("footVisible") == "1", "滚到中间时底部操作条不在视口里"
+# 窄屏（300px 面板）下底部计数的形状：一行、不被裁、不与按钮重叠（步骤 8 的账）
+nch, nlh = int(val("narrowCountH")), int(val("narrowLineH"))
+# 行高 17px：一行实测 21~22px（计数里的 <b> 是 --fs-base，行盒略高于行高），两行 40px+。
+# 阈值取 1.6 倍：一行绿，两行必红，中间有安全垫。
+assert nch <= int(nlh * 1.6), \
+  "窄屏下底部计数折成了 %s px 高（行高 %s px，应是一行）：计数在「个已选 · 共」中间断行，看起来像坏了" % (nch, nlh)
+assert val("narrowClip") == "1", "窄屏下计数被裁了（scrollWidth > clientWidth）：宁缺勿裁，应整条换行"
+assert val("narrowBtnIn") == "1", "窄屏下按钮掉出操作条了"
+assert val("narrowOverlap") == "1", "窄屏下计数与按钮重叠（应各自一行）"
 c2 = val("count2")
 n2 = int(c2.split(" 个")[0])
 assert n2 == n0, "勾回来之后应该回到 %d: %r" % (n0, c2)
@@ -1459,6 +1480,56 @@ print("  ok (固定条 sticky、计数 %d→%d 实时、已选在前、过滤 %s
       "Vue 挂载、40 行假夹具下勾选后滚动不跳（delta=%s px）、返回后我的页同步为 %d)"
       % (n0, n1, val("fkey"), val("fshown"), val("allSel"), val("fakeDelta"), n2))
 PYCHK
+asroot_global "rm -f '$DATA/enote/.devmode'"
+
+step "P10.7 开过 A 弹层再开 B 弹层，A 的 Vue 应用必须被拆掉（sheet 生命周期）"
+# 步骤 13 的账：pageSheetVue 只拆同名 sheet，而它会把 .panel 的 innerHTML 整块换掉 ——
+# 上一个 sheet（名字不同）的根节点从此是游离节点，app 实例 + effect + computed 缓存全都
+# 留着，渲染永远到不了它。closeSheet 那边以前手写四个名字，新增 sheet 忘了加就是静默泄漏。
+# 这两条都是「看不见的泄漏」：DOM 上看不出、截图上看不出，只有 mount 表知道。
+UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+NSL=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("SLEAK "+m)};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  try{
+    var H=__enote.vue.host;
+    var K=function(){return Object.keys(__enote.vue.sheets).sort().join(",")};
+    H.clipSheet();
+    await sleep(400);
+    L("clip="+K());
+    H.settingsSheet();
+    await sleep(400);
+    L("set="+K());
+    closeSheet();
+    await sleep(600);
+    L("closed="+K());
+  }catch(e){ L("ERR="+(e&&e.message)) }
+  L("done=1");
+})()' > "$TMPDIR/jssleak.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jssleak.json'"
+for i in $(seq 1 60); do
+  readtlog | tail -n +$((NSL + 1)) | grep -q 'SLEAK done=1' && break
+  sleep 0.5
+done
+readtlog | tail -n +$((NSL + 1)) | grep 'SLEAK' | "$PY" -c '
+import sys, re
+lines = [l.strip() for l in sys.stdin if "SLEAK" in l]
+d = {}
+for l in lines:
+    m = re.search(r"SLEAK (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+assert d.get("done") == "1", "SLEAK 载荷没跑完（.devmode 没 touch？jseval 没跑？）：日志=%s" % lines[:2]
+assert d.get("ERR") is None, "SLEAK 抛异常：%s" % d.get("ERR")
+assert "clip" in d.get("clip", ""), "剪贴板弹层没挂载（__enote.vue.sheets=%s）" % d.get("clip")
+assert d.get("set") == "settings", \
+  "开设置页之后剪贴板那个 sheet 的 app 还在表里（sheets=%s，期望只有 settings）：" % d.get("set") + \
+  "pageSheetVue 只拆同名，上一个 sheet 的根节点已被 innerHTML 换成游离节点，实例永远泄漏"
+assert d.get("closed") == "", \
+  "关掉弹层之后还有 sheet 活着（sheets=%s，期望空）：closeSheet 的卸载名单漏了名字" % d.get("closed")
+print("  ok (clip→settings 只留 settings，关掉之后 mount 表清空)")
+'
 asroot_global "rm -f '$DATA/enote/.devmode'"
 
 step "P11 只有一张截图时只留一个按钮（用户反馈：两个等价按钮只会让人犹豫）"
