@@ -9,7 +9,8 @@
       真机实测 <empty-state> 收 :tick 时 Vue 路径是 <div class="empty" tick="27">，遗留
       路径是 <div class="empty"> —— VDIFF 比属性，空态一比就红（步骤 7 审查抓到）。
       闸门⑮ 现在按组件的 props 双向钉这条。
-   3. 结构在模板里，叶子片段（图标/chip/待办行）走 v-html 复用 app.js 里的现成函数。
+   3. 结构在模板里，叶子片段（图标/chip/meta/关键信息/待办行）是 components/leaf.js 里的
+      真组件（步骤 16），不再走 v-html。
    4. 事件用 @click="H.xxx(...)"，函数名必须 ⊆ 导出表（闸门①(a)）。 */
 
 import { V, H, Vue, live } from '../vue.js'

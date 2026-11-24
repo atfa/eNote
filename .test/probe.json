@@ -1,0 +1,1 @@
+{"js": "console.log(\"PROBE4 notes=\"+__enote.state.S.notes.length+\" eq=\"+/__enote/.test(\"eq1\"))"}

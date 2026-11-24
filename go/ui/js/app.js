@@ -164,22 +164,6 @@ function fmtTime(iso){if(!iso)return '';var d=new Date(iso);if(isNaN(d))return i
   var p=n=>String(n).padStart(2,'0'), t=new Date();
   var same = d.toDateString()===t.toDateString();
   return (same?'今天':(d.getMonth()+1)+'/'+d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}
-function srcChip(n){
-  if(n.source==='clipboard-text') return '<span class="chip">剪贴板</span>';
-  if(n.source==='clipboard-image') return '<span class="chip img">剪贴板图片</span>';
-  if(n.source==='share-text') return '<span class="chip">分享文字</span>';
-  if(n.source==='share-image') return '<span class="chip img">分享图片</span>';
-  if(n.source==='manual-image') return '<span class="chip img">图片</span>';
-  return '<span class="chip">手动</span>';
-}
-function statusChip(n){
-  if(n.status==='queued') return '<span class="chip pend"><span class="spin"></span> 排队中</span>';
-  if(n.status==='parsing') return '<span class="chip pend"><span class="spin"></span> AI 解析中</span>';
-  if(n.status==='done') return '<span class="chip ai">✦ AI '+(n.aiModel||'')+' · '+(n.aiMs||0)+'ms</span>';
-  if(n.status==='raw') return '<span class="chip pend">仅原文</span>';
-  if(n.status==='error') return '<span class="chip err">失败</span>';
-  return '';
-}
 /* ---------- 到期倒计时（R11）----------
    每个未完成待办显示距截止的剩余时间：不足2天 / 不足3小时 / 不足15分钟，过期则「逾期N…」。
    文本由 tickCD() 每 20 秒就地改写 textContent，不重建 DOM（整页重绘会闪）。 */
@@ -972,104 +956,11 @@ function toAlarm(nid,tid,ev){
   if(!window.Android||!Android.setAlarm){ toast('闹钟只在 app 内可用'); return }
   Android.setAlarm(dueMs(t.due), t.text);
 }
-function remindBtns(n,t){
-  if(!t.due||t.done) return '';
-  return ' <span class="remind" title="写入系统日历" onclick="toCalendar(\''+n.id+'\',\''+t.id+'\',event)">'+ic('calendar')+'</span>'
-       + ' <span class="remind" title="设为闹钟" onclick="toAlarm(\''+n.id+'\',\''+t.id+'\',event)">'+ic('alarm')+'</span>';
-}
-/* factsBlock 的内层单独抽出来（factsInner）：Vue 模板里 v-html 必须挂在一个真实元素上，
-   整块 v-html 会多一层 <div>，DOM 与今天不一致（VDIFF 夹具实测抓到）。字符串路径继续用
-   factsBlock，两条路径共用 factsInner。 */
-function factsInner(n){
-  var f = n.facts||[]; if(!f.length) return '';
-  return '<div class="fh">'+ic('search')+'关键信息</div>'
-    + f.map(function(x,ki){return '<div class="fr" style="--k:'+ki+'"><span class="fq">'+esc(x.q)+'</span>'
-        + '<span class="fa">'+esc(x.a)+'</span></div>'}).join('');
-}
-function factsBlock(n){
-  var h = factsInner(n);
-  return h ? '<div class="facts">'+h+'</div>' : '';
-}
-/* 勾选框内部：一个对勾图标。字符串渲染和 Vue 的 TodoRow 共用，
-   两条路径的 DOM 必须逐字一致（VDIFF 逐字比的就是这个）。 */
-function cbInnerHTML(){ return ic('check'); }
-
 /* .todo 的类名串：done / pri-high / 入场动画。Vue 模板用 :class 算出来的必须和这里一致。 */
 function todoRowCls(n, t){
   return (t.done?' done':'')+(t.priority==='high'?' pri-high':'')+todoEnterCls(n,t);
 }
 
-/* 待办行的文字块：到期时间、优先级小标签、提醒按钮、来源笔记链接。
-   和 cbInnerHTML 一起构成 .todo 的两个子元素 —— 结构在 Vue 模板里，叶子 HTML 在这里，
-   这样两条路径共用同一份 HTML 生成代码，不会一份逻辑写两遍再各自漂移。 */
-function todoTxHTML(t, n){
-  return '<span class="ttx">'+esc(t.text)
-    +'<small>'+(t.due?'<span class="due'+(t.due<now()&&!t.done?' over':'')+'">'+ic('calendar')+fmtTime(t.due)+'</span> '+cdChip(t)+remindBtns(n,t):'')
-    +'<a href="#" onclick="jump(\''+n.id+'\');return false">'+esc(n.title||'查看笔记')+'</a></small></span>';
-}
-
-function todoRow(t, n, compact){
-  var d='', dcls='due';  if(t.due){
-    var overdue = t.due < now(), today = t.due.slice(0,10)===now().slice(0,10);
-    if(overdue && !t.done) dcls+=' over'; else if(today) dcls+=' today';
-    d='<span class="'+dcls+'">'+ic('calendar')+fmtTime(t.due)+'</span>'+cdChip(t)+remindBtns(n,t);
-  }
-  var extra = [];
-  if(t.priority==='high') extra.push('<span class="chip err">'+ic('bolt')+'重要</span>');
-  if(t.priority==='low') extra.push('<span class="chip">'+ic('chevup')+'低</span>');
-  if(!compact && t.source==='manual') extra.push('<span class="chip">'+ic('edit')+'手动</span>');
-  return '<div class="todo'+(t.done?' done':'')+(t.priority==='high'?' pri-high':'')+todoEnterCls(n,t)+'"'
-    +' id="t'+n.id+'_'+t.id+'">'
-    +'<div class="cb'+(t.done?' on':'')+'" onclick="toggle(\''+n.id+'\',\''+t.id+'\',this)">'+ic('check')+'</div>'
-    +'<div class="tx"><span class="ttx">'+esc(t.text)+'</span><small>'+d+' '+extra.join(' ')+'</small></div>'
-    +(compact?'':'<button class="btn sm gh" aria-label="删除待办" onclick="delTodo(\''+n.id+'\',\''+t.id+'\')">'+ic('x')+'</button>')
-    +'</div>';
-}
-function noteCard(n, k){
-  var exp = !!open[n.id];
-  var body = n.content || '(无正文)';
-  var h = '<div class="card'+enterCls('n'+n.id)+'" id="n'+n.id+'" style="--i:'+Math.min(k||0,8)+'">';
-  h += '<div class="row between"><p class="t">'+esc(n.title || '未命名笔记')+'</p></div>';
-  h += '<div class="meta">'+metaHTML(n)+'</div>';
-  var w = whereHTML(n);
-  if(w) h += '<div class="hits">'+w+'</div>';
-  var a = attachHTML(n);
-  if(a) h += '<div class="hits">'+a+'</div>';
-  if(n.imagePath) h += '<img class="thumb" src="/img?id='+n.id+'">';
-  h += factsBlock(n);
-  h += '<div class="body'+(exp?'':' clamp')+'">'+esc(body)+'</div>';
-  if(n.error) h += '<div class="errbox">'+esc(n.error)+'</div>';
-  if(n.todos && n.todos.length){
-    h += '<div style="margin-top:var(--s2)">'+n.todos.map(function(t){return todoRow(t,n,true)}).join('')+'</div>';
-  }
-  h += '<div class="acts">';
-  h += '<button class="btn sm gh exp" onclick="expand(\''+n.id+'\')">'+ic(exp?'chevup':'chev')+(exp?'收起':'展开详情')+'</button>';
-  if(n.status==='done'||n.status==='raw')
-    h += '<button class="btn sm" onclick="reparse(\''+n.id+'\')">'+ic('refresh')+'重新解析</button>';
-  if(n.imagePath) h += '<button class="btn sm" onclick="reocr(\''+n.id+'\')">'+ic('scan')+'重新识别图片</button>';
-  h += '<button class="btn sm" onclick="addTodoSheet(\''+n.id+'\')">'+ic('plus')+'待办</button>';
-  h += '<button class="btn sm dg" onclick="delNote(\''+n.id+'\')">'+ic('trash')+'删除</button>';
-  h += '</div></div>';
-  return h;
-}
-/* 笔记卡片的三块叶子 HTML（meta / 搜索命中 / 附件），从 noteCard() 里抽出来而不是复制：
-   混合期遗留字符串渲染器与 Vue 组件共用同一份，产出的 DOM 逐字一致，签名断言只有一份真相。 */
-function metaHTML(n){
-  return srcChip(n)+statusChip(n)
-    + '<span>'+ic('clock', 's')+' '+fmtTime(n.createdAt.toISOString?n.createdAt:n.createdAt)+'</span>'
-    + (n.tags||[]).map(function(t){return '<span class="chip tag">'+ic('tag')+' '+esc(t)+'</span>'}).join('');
-}
-function whereHTML(n){
-  var w = SR.where[n.id];
-  if(!w || !w.length) return '';
-  return w.map(function(x){
-    return '<span class="hit'+(x==='来自图片文字'?' img':'')+'">'+ic(x==='来自图片文字'?'image':'search')+esc(x)+'</span>'
-  }).join('');
-}
-function attachHTML(n){
-  if(!n.attachments || n.attachments.length <= 1) return '';
-  return '<span class="hit">'+ic('clip')+n.attachments.length+' 个附件</span>';
-}
 function notesFiltered(){
   if(SR.notes) return SR.notes; // 服务端结果（已排序）
   var p = P(), a = S.notes.filter(function(n){
@@ -1866,8 +1757,11 @@ var HOST = setHost({
   get S(){ return S }, get SR(){ return SR }, get tab(){ return tab },
   get open(){ return open }, get MISSED(){ return MISSED }, get SHOTFLAGS(){ return SHOTFLAGS },
   notesFiltered: notesFiltered, enterCls: enterCls, ic: ic, esc: esc, fmtTime: fmtTime,
-  srcChip: srcChip, statusChip: statusChip, factsBlock: factsBlock, factsInner: factsInner, todoRow: todoRow,
-  metaHTML: metaHTML, whereHTML: whereHTML, attachHTML: attachHTML,
+  /* 步骤 16：叶子 HTML 函数（srcChip / statusChip / factsInner / factsBlock / todoRow /
+     metaHTML / whereHTML / attachHTML / cbInnerHTML / todoTxHTML / remindBtns）翻成了
+     components/leaf.js 里的真组件，这张表里只留组件要读的算法：类名串、倒计时文案、
+     时间格式、当前时间串（到期判定）、两个系统 intent 入口。 */
+  now: now, cdCls: cdCls, cdText: cdText, toCalendar: toCalendar, toAlarm: toAlarm,
   clipHint: function(){ return !!(window.Android && Android.clipHint && Android.clipHint() === '1') },
   expand: expand, reparse: reparse, reocr: reocr, addTodoSheet: addTodoSheet, delNote: delNote,
   missedSheet: missedSheet, shotSheet: shotSheet, shotSetup: shotSetup, askShotPerm: askShotPerm,
@@ -1877,14 +1771,13 @@ var HOST = setHost({
      setHost 的 key 里（Vue 读的是宿主对象，不是 window），test.sh 的 TINT 步骤动态断言
      __enote.vue.isVue(todos) 且 TodosView 真的挂载了。 */
   strip: strip, emptyState: emptyState, P: P, groupTodos: groupTodos, todoEnterCls: todoEnterCls,
-  todoRowCls: todoRowCls, cbInnerHTML: cbInnerHTML, todoTxHTML: todoTxHTML,
+  todoRowCls: todoRowCls,
   /* 步骤 15：外壳（顶栏 / 底栏+fab / 弹层宿主 / 对话框）的事件入口。模板里写的是
      @click="H.xxx(...)"，走的就是这张表（闸门⑮ 逐个查名字在不在）。 */
   brandGo: brandGo, tabPick: tabPick, fabAct: fabAct,
   searchInput: searchInput, searchClear: searchClear,
   closeSheet: closeSheet, sortSheet: sortSheet,
   dlgOk: function(){ closeDlg(true) }, dlgCancel: function(){ closeDlg(false) },
-  cdChip: cdChip, remindBtns: remindBtns,
   hit: hit, rank: rank,
   toggle: toggle, jump: jump, render: render,
   /* 步骤 7 加：FilesView 的宿主函数（同上，漏一个就是静默回退字符串渲染器）。

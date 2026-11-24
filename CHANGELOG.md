@@ -1264,3 +1264,36 @@
 教训写在这里：**负向测试还原文件要用备份，不能用 `git checkout`**——后者还原到 HEAD，
 会连带丢掉同文件里其他未提交的改动。这个坑本轮踩了两次。
 
+
+### 界面（P13 S3 步骤 16a）：叶子 HTML 字符串 → 真组件
+
+混合期（步骤 5~10）的折中：卡片、chip、待办行这些「叶子片段」是 `app.js` 里的 HTML 字符串函数，
+Vue 模板用 `v-html` 插进去 —— 当时两条渲染路径要产出逐字一致的 DOM，叶子 HTML 只能有一份。
+步骤 11 删掉遗留渲染器之后只剩 Vue 一条路径，字符串函数就纯属负担：模板里看不见那块 DOM
+（闸门⑮ 编译模板时它是个字符串，卡片少个 `.facts` 看不见）、事件写成字符串里的内联 `onclick`
+（绕过闸门①b/⑮，P12 那一类）、每次重绘整段 `innerHTML`。
+
+* 新增 `go/ui/js/components/leaf.js`：**13 个叶子组件**（`Ico` `SrcChip` `StatusChip` `NoteMeta`
+  `NoteHits` `NoteAttach` `NoteFacts` `CdChip` `RemindBtns` `TodoDue` `TodoPriChips` `TodoTx`
+  `TodoRowCompact`）。`NoteCard`、四个横幅、`StripBar`、待办页 `TodoRow` 与分组标题全部改成组件标签；
+  `app.js` 删掉 12 个字符串函数共 109 行，HOST 换成组件要读的算法（`now cdCls cdText toCalendar toAlarm`）。
+* 类名冻结（D15）：产出的 DOM 逐字一致。两条系统性差异写进文件头注释：元素之间的纯空白节点会被
+  Vue 的 `whitespace:'condense'` 删掉（原字符串里那个字面空格要用 `{{ ' ' }}` 显式写），
+  元素与文本之间的空格会保留成一个空格。
+* **闸门⑮ 每个文件只取第一处 `components: {…}` 当注册表**：`leaf.js` 里最早用到子组件的组件
+  定义在 `RemindBtns`/`TodoDue` 之前，那里写全量名单会撞 TDZ（速记属性是求值期读的），
+  所以全量名单写在文件头注释里（闸门扫字符串，注释也算），运行时各组件注册自己用到的那些。
+* 签名断言跟着搬：「关键信息」查 `<note-facts>` + `.facts/.fh/.fq/.fa`；「写入系统日历 / 设为闹钟」
+  查 `name: 'RemindBtns'` + `v-if="t.due && !t.done"` + 两处 `<remind-btns`。
+* **DOM 等价性**（VDIFF 在步骤 11 删了，没有逐字基准）：新增 `.test/probe_dom.sh` +
+  `.test/dom_equiv.js`，把一份固定数据注入真机渲染抓回 DOM，与 `git show HEAD` 里迁移前那批
+  字符串函数对同一份数据的输出逐字比。归一化只允许四类且各有理由：Vue 的 `<!---->` 占位、
+  标签间空白、CSSOM 对 `style` 的序列化、以及「内联 `onclick` 属性消失」这条本次有意改动。
+  结果：笔记卡 2495 字节、卡内紧凑待办行 651、待办页 `.ttx` 454 —— **三块全部逐字一致**。
+* 顺带修探针：`am start` 从 Termux 直接发会被 Android 16 的后台启动限制挡掉（logcat 里
+  `Background activity launch blocked`，`am` 自己还打印 `Starting: Intent`，看着像成功），
+  改成走 root，与 `test.sh` 的载荷通道一致。
+* 数字：视图模板里的 `v-html` 60+ → **51**（notes/todos/components 三个文件清零），`ic()` 调用
+  52 → 6，内联 `onclick` 只剩 `app.js` 字符串弹层里的 21 处；handler 总数 82（内联 19 + Vue 模板 63）。
+* 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15 基线逐条相同）。

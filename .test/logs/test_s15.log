@@ -1,0 +1,298 @@
+
+== install + start
+  apk sha256=dba61c5e4956a54f  head=95bd2ea  branch=main  build=95bd2ea66130-dirty@2026-11-24T16:13:50Z
+  on background display 209
+  api: http://127.0.0.1:36211/
+
+== 跑前重置数据（确定基线）
+  baseline: notes=0 todos=0 clip=0 theme=light base=yes ai=yes att=0 shots=0
+
+== AI 是否可用（没配好 key 就跳过依赖大模型的用例）
+  llm ok=1
+
+== selftest hook (store + web + llm + ocr)
+  store ok, web 200 in 14ms, llm ok in 8693ms, ocr ready=True
+
+== share text -> note with a dated todo
+  title: 待办：购物、取快递及周会 | 3 todos, first due 2026-11-25T20:00
+
+== share image -> local ocr -> note
+  ocr 129 chars in 542ms, llm 6225ms, title: 设计评审与快递待办
+
+== share 现造的随机串图 → 本地 OCR 逐字读出（搜索断言只靠它）
+  图上画的随机串 93LXD4LT；对照组 NJYJFTFA（图上没有，搜索必须 0 命中）
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok (canvas 现造 39224 字节的图，随机串已画进去)
+  ok (OCR 逐字读出随机串，26 字符 / 451ms)
+
+== todo add / toggle / delete
+  ok
+
+== reparse + llm connection test + export
+  llm test ok in 2617ms: 我是连接测试助手，旨在通过简短的回答协助您进行连接测试。
+  export: 4 notes
+
+== settings round-trip (api key 明文返回、保存后不丢)
+  ok
+
+== theme (light default, switch, java sync)
+  ok (light is the default, java stays in sync)
+
+== search + per-page prefs (server side, R3)
+  ok (随机串只能由图片文字满足：src=text 0 命中 / src=image 命中标为 来自图片文字 / 对照组 0 命中)
+  ok (ocr text is searchable, every page keeps its own conditions)
+
+== attachments: share a file, list it, delete it (R4)
+  listed 3 attachments (3 distinct files), 5 on disk, att-test.pdf
+  ok (pdf share, list counts match the disk, search by name, delete)
+
+== ui: 静态闸门（轮询指纹 / 内联 handler 存在性 / 调色板一致性 / hex·px 棘轮）
+  ok   内联 handler 29 处全部能在导出表里解析（导出 68 个）
+  ok   handler 总数 88（内联 29 + Vue 模板 59）≥ 基线 73，Vue 模板部分已解析
+  ok   handler 字符串参数 14 处全部能在导出表里解析
+  ok   导出表 68 个成员的右值全部有声明（表体是 module 求值期）
+  ok   Vue 视图 8 个，渲染路径都引用了 tick（重绘有触发源）
+  ok   顶层声明无重名（13 个 JS 文件，var+var 合法不计）
+  ok   jseval 载荷 21 个：引用全局名 == 闭集（函数 17 个全在导出表）+ 状态 6 个全走 __enote.state + render 11 处全部 await
+  ok   闸门⑯ jseval 调用点 16 个，每个前面都有 touch .devmode
+  ok   裸 hex 0 ≤ 基线 0（tokens.css 内 57 处定义不计；js 内联 0 处已计入）
+  ok   裸 px 0 ≤ 基线 0（含 js 内联 style 0 处）
+  ok   调色板一致：--bg #f5f7fb/#0b0f14 = Theme.java = meta theme-color = app.js 切换值
+  ok   .missedb 保持不存在
+  ok   .missedtop 保持不存在
+  ok   test.sh 依赖的 10 个 class 名全部还在
+  ok   CSS 拆分无新增层叠冲突（基线内 0 条，共 344 个选择器）
+  ok   CSS 里 69 个 var() 全部能解析（含 JS 内联设的 2 个）
+  ok   无幽灵 token（每个 var() 的名字都在 tokens.css 里有定义）
+  ok   笔记正文 / 剪贴板文本可长按复制（未被 user-select:none 覆盖）
+  ok   无新增闲置 token（9 ≤ 基线 11，均为 S5-S7 待接入的刻度）
+  ok   闸门⑮ Vue 模板 27 个编译通过；注册表 4 视图 + 5 弹层的 tick 链完整（扫 30 个模板，组件 tick prop 13 个）；模板 handler 45 个全在导出表；视图里的 H.xxx 123 个全在 setHost；模板用 H 的 13 个组件全在 setup() 返回里暴露了 H；live()/普通函数两个方向用法都对
+  ok   轮询指纹：同一个 state 两次指纹相同 → 期望same
+  ok   轮询指纹：笔记状态变化 → 期望different
+  ok   轮询指纹：待办增删 → 期望different
+  ok   轮询指纹：标题变化 → 期望different
+  ok   轮询指纹：附件增删 → 期望different
+  ok   轮询指纹：新增笔记 → 期望different
+  ok   轮询指纹：未完成数变化 → 期望different
+  ok   轮询指纹：主题变化 → 期望different
+  ok   轮询指纹：未展示字段变化 → 多画一次（新契约，原 sigOf 期望不重绘） → 期望different
+  ok   轮询指纹：uptimeS 变化不重绘（排除表：它每秒都变） → 期望same
+  ok   轮询指纹：tz 变化不重绘（排除表：界面不展示） → 期望same
+  ok   轮询指纹：新截图条数变化要重绘（原 sigOf 漏过这一项，首页横幅就不出现） → 期望different
+  ok   轮询指纹：服务端地址变化要重绘（状态点/未配置提示都依赖它） → 期望different
+  ok   轮询指纹：截图文件夹数变化要重绘（踩过：选完文件夹我的页还显示旧数字） → 期望different
+  ok   轮询指纹：截图监控开关变化要重绘（横幅按开关分状态显示） → 期望different
+  ok   轮询指纹：截图开关改回来指纹也改回来（不是恒变） → 期望same
+  ok   轮询走 refresh(true) 安静模式
+  ok   附件卡没有无条件动画
+  ok   不再有整页切页入场动画
+  ok   “记一笔”在底栏第三格（5 个按钮）
+  ok   导航指示条居中对齐（left:0）
+  ok   页面不再用原生 confirm/alert
+  ok   Java 把 alert/confirm 转发给页面对话框
+  ok   浮动面板有关闭按钮
+  ok   返回键先关面板再退 app
+  ok   侧滑返回走同一逻辑，主页连返两次才退出
+  ok   WebView 关闭横向拉伸回弹
+  ok   我的页没有装饰性入场动画
+  ok   页面左右有留白
+  ok   主题入口只保留设置面板里那一个
+  ok   涟漪不会溢出按钮（不闪屏）
+  ok   待办显示到期倒计时，且按秒级定时就地更新
+  ok   倒计时文案：不足N天/小时/分钟、逾期N…
+  ok   笔记页与待办页都显示倒计时
+  ok   勾选 → 划线动画 → 原位淡出 → 新位置高亮入场
+  ok   动画期间轮询不重绘（不打断划线动画）
+  ok   我的页统计来自 /api/stats，近 7 天为纯 CSS 柱状图
+  ok   Go 侧 /api/stats + /api/import + /api/clear 已注册
+  ok   设置是全屏面板（顶栏固定 + 分组）
+  ok   设置面板分组齐全（外观/AI/采集/OCR/数据/状态）
+  ok   导出 / 导入（选文件→POST /api/import）/ 清空 全通
+  ok   Java 把时区传给 Go，逾期/按天统计不再差 8 小时
+  ok   应用名改为「懒得记」
+  ok   启动图标：用户提供的 PNG 图层（5 套密度 + 自适应 XML）
+  ok   「重要」与时间标签同高（统一盒模型 + flex 居中）
+  ok   返回键先回退网页历史（导出页能退出）
+  ok   关键信息：六问提取 + 落库 + 卡片渲染 + 可搜索
+  ok   待办可一键写入系统日历 / 设为闹钟（intent，无权限）
+  ok   顶栏 logo 铺满按钮（去掉白底外框留白）
+  ok   剪贴板前台采集 + 暂存去重 + 横幅/批量页/一键解析
+  ok   剪贴板焦点重试（通知点进来读得到的修复）+ 顶栏 📋 手动导入
+  ok   剪贴板去重签名用存储项自己的字段（恒真式回归）
+  ok   剪贴板计数按页面条目算 + 单条/批量删除
+  ok   剪贴板主动通知 + 常驻通知显示暂存条数
+  ok   切页无整页浮现动画（完成动画保留）
+  ok   待办竖条统一占位（checkbox 对齐）
+  ok   设置页有常驻后台开关和电池优化引导
+  ok   通知点击带 noteId/todoId 并定位待办
+  ok   错过的提醒横幅 + 清单（没有内容时不占位）
+  ok   错过的提醒用 warn 色（区别于剪贴板横幅）
+  ok   所有按钮文字居中（inline-flex + justify-content）
+  ok   二级页面贴顶（无 grip / 无分隔缝）
+  ok   切页复用面板 + 恢复各自的滚动位置
+  ok   附件页统计行到列表的留白和笔记页一致
+  ok   checklist 圆框 18px（不再过大）
+  ok   expAnim / open / seen 都有声明（点击不再静默失效）
+  ok   启动自检覆盖各页渲染与「展开详情」
+  ok   展开按钮只在正文超过三行时出现
+  ok   正文三行截断用 max-height（line-clamp 对 pre-wrap 无效）
+  ok   首页横幅顺序：错过提醒 → 新截图 → 剪贴板
+  ok   截图暂存页：3 列网格 + 多选 + 合并/各存/原样存/忽略
+  ok   导入进度层有"别黑屏/别退出"提示，且真的保持常亮
+  ok   进度层等到 AI 解析结束才收起
+  ok   监控文件夹可多选（MediaStore 枚举，默认勾截图目录）
+  ok   水位：首次不回捞 / 5 分钟重叠 / sha1 去重 / 忽略表
+  ok   合并模式：多附件一条笔记 + 只调一次 LLM
+  ok   截图接口齐全（list/add/remove/ignore + /shotimg）
+  ok   存储/媒体权限按版本分开声明
+  ok   初次运行主动引导选监控文件夹（只问一次）
+  ok   文件夹页/截图页/剪贴板页的操作按钮固定在底部
+  ok   文件夹页实时显示已选数量、已选项排到最前
+  ok   选完文件夹回到我的页立刻刷新统计
+  ok   只选一张时只显示「创建笔记」一个按钮
+  ok   清理/忽略/裁剪暂存时不删笔记在用的文件
+  ok   API Key 明文显示在设置里（不再打码）
+  ok   settings.json 原子写（.tmp + rename + .bak 兜底）
+  ok   横幅变化会强制重绘（searchNow(force)）
+  ok   错过的提醒面板：每行可完成 + 「这批我知道了」
+  ok   错过的提醒面板：跳转用真存在的函数（setTab / jump）
+  ok   错过的提醒面板：勾 ✓ 复用待办页动画（划线 + 淡出）
+  ok   相册变化实时监听（ContentObserver + 1.2s 去抖）
+  ok   闸门⑰ filesNow：独立序号 + 超时 + 失败自动重试
+  ok   闸门⑰ statsNow：stBusy 带超时 + 失败可重试
+  ok   闸门⑰ 三个页面数据源都是一页一序号 + 超时 + 可重试
+  ok   闸门⑱ 开/关弹层都全量拆 sheet，进度层是例外
+  ok   闸门⑲ 弹层底部条两种布局形态钉住（clip/shots 计数独占行，folders/提醒面板走 flex+wrap）
+  ok   闸门⑳ 条目稳定 id 三处齐全（clipitem- / shotitem- / n+id：模板 :id 与 test.sh 定位两侧都在）
+  ok   闸门㉑ 41 个 .sh 顶层无 /* 伪注释（sh 会当命令 127 退出），剪贴板夹具收尾两处 clipset 空白 + 断空齐全
+  ok   闸门㉒ 13 个模块的 67 处具名 import 全部真被导出（解析期 SyntaxError 类故障）
+
+== P6.5 常驻后台（前台服务 + 标准电池优化）
+  switch on, batteryIgnoring=True, 3 reminders armed
+Failed to write while dumping service notification: Broken pipe
+  ok (前台服务在跑，常驻通知已发布)
+  ok (关掉开关后服务停止)
+
+== P6 剪贴板：无焦点被拒 → 拿到焦点后重试（从通知点进来的场景）
+  ok (被拒后重试成功，暂存 1 条：买咖啡 焦点重试 001529)
+
+== P6.6 删光剪贴板后首页横幅立刻消失（用户反馈：返回主页还提示有暂存）
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  webview ua: Mozilla/5.0 (Linux; Android 16; SM-X510 Build/BP4A.251205.006; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/159.0.8154.18 Safari/537.36
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok 运行时导出表 68 key（与 app.js 逐项相等）+ 状态桥活着
+Warning: Activity not started, its current task has been brought to the front
+  ok D17 测试缝：ready 兑现(0ms) build=95bd2ea66130-dirty dom 齐 probe 全绿
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok (删光前「剪贴板暂存1条复制的内容已留在这里，」→ 删光后「none」)
+
+== P8 补看错过的提醒（后台被冻结时唯一有意义的补救）
+  ok (错过 2 条，列出 2 条，最早一条 2026-11-20T18:00)
+  ok (看过一次就不再重复提醒)
+
+== P8.5 错过的提醒面板：能勾完成、能跳笔记、能「我知道了」（用户反馈三条）
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok (错过 4 条、点整行跳笔记、勾 ✓ 有划线动画后消失、「我知道了」清掉横幅)
+
+== P11 相册监听已注册（截完图切回来就该看到横幅，不用退桌面重进）
+  ok (进程一起来就监听 MediaStore 变化，去抖 1.2s 后扫)
+
+== P11 截图捕获：扫描 → 合并导入 → 各存一条 → 幂等 → 忽略
+wrote /data/data/com.termux/files/home/eNote/.test/shot-t1.png 360x640
+wrote /data/data/com.termux/files/home/eNote/.test/shot-t2.png 360x640
+  ok (扫描到 2 张新截图)
+  ok (暂存区 2 张 / 31270 字节)
+  ok (合并成 1 条笔记，2 个附件，标题 '截图 2 张 · 11-25 00:17')
+  ok (清理暂存后 4 个附件文件都还在盘上)
+  ok (缩略图 /img 能取到字节)
+  ok (各存一条：2 条笔记，每条 1 个附件)
+  ok (重复扫描 0 条，sha1 去重在起作用)
+  ok (删掉 3 条本步骤造的测试笔记)
+
+== P11 文件夹页：底部固定条 + 实时计数 + 已选在前 + 返回后刷新
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok (固定条 sticky、计数 1→0 实时、已选在前、过滤 Screenshots 命中 1 行、真点击 全选/全不选 全部 3 行、Vue 挂载、40 行假夹具下勾选后滚动不跳（delta=57 px）、返回后我的页同步为 1)
+
+== P10.7 开过 A 弹层再开 B 弹层，A 的 Vue 应用必须被拆掉（sheet 生命周期）
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok (clip→settings 只留 settings，关掉之后 mount 表清空)
+
+== P11 只有一张截图时只留一个按钮（用户反馈：两个等价按钮只会让人犹豫）
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok (一张只有「创建笔记」，勾选后文案不变；Vue 挂载、勾选与计数实时生效)
+  ok (剪贴板夹具 3 条)
+
+== 剪贴板页交互在 Vue 路径上真的生效（勾选/全选/计数/单条删除/删除所选）
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok (真点击 3 条：勾选 3→2、计数 '2条已选·共3条'、全选/全不选、按钮文案收敛、kind 两态（text→.cliprev / image→.climthumb）、稳定 id 定位、260px 不裁字、单条删除不顺手勾选、删除所选后就地换空态)
+
+== 剪贴板导入的三条客户端分支（原样存为笔记 / 一键解析 / 解析失败可重试 / 加载失败）
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok (原样存为笔记：真点击 2 条 → 出 2 条 clipboard-text/raw 笔记、弹层关掉卸载、暂存区清空)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Traceback (most recent call last):
+  File "<string>", line 9, in <module>
+    assert d.get("done")=="1", "CPAI 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+           ^^^^^^^^^^^^^^^^^^
+AssertionError: CPAI 载荷没跑完（无 done）：前端抛异常了？日志=['1795537124.806 web console: CPAI isvue=1', '1795537125.986 web console: CPAI n=2']
+--- go log ---
+  2026-11-25 00:18:34.636 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 00:18:35.015 enqueue 1795537115013676m31v kind=text source=clipboard-text len=25 ocrMs=0 status=raw
+  2026-11-25 00:18:35.015 enqueue 1795537115015125kqrg kind=text source=clipboard-text len=25 ocrMs=0 status=raw
+  2026-11-25 00:18:37.363 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 00:18:37.474 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 00:18:37.474 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 00:18:37.505 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 00:18:37.505 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 00:18:43.248 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 00:18:43.285 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 00:18:43.286 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 00:18:43.286 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 00:18:43.286 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 00:18:44.903 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 00:18:44.904 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 00:18:45.006 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 00:18:45.006 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 00:18:45.020 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 00:18:45.020 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 00:18:47.018 enqueue 1795537127017447hcu3 kind=text source=clipboard-text len=25 ocrMs=0 status=queued
+  2026-11-25 00:18:47.018 enqueue 17955371270182696usq kind=text source=clipboard-text len=25 ocrMs=0 status=queued
+  2026-11-25 00:18:51.842 llm: ok 305 chars in 4821ms (finish=stop)
+  2026-11-25 00:18:51.843 note 1795537127017447hcu3 parsed: title="一键解析任务" todos=1 in 4821ms
+  2026-11-25 00:18:55.594 llm: ok 235 chars in 3749ms (finish=stop)
+  2026-11-25 00:18:55.595 note 17955371270182696usq parsed: title="一键解析记录" todos=0 in 3749ms
+--- app log ---
+  1795537125.993 web console: CPAI failOn=/api/clip/parse
+  1795537126.266 web console: SELFCHECK OK
+  1795537126.985 web console: CPAI tFail=1
+  1795537126.986 web console: CPAI toastFail=解析失败: injected failure: /api/clip/parse
+  1795537126.987 web console: CPAI sheetOpen=1
+  1795537126.988 web console: CPAI mountedFail=1
+  1795537126.988 web console: CPAI onAfterFail=2
+  1795537126.999 web console: CPAI clipAfterFail=2
+  1795537127.012 web console: CPAI notesAfterFail=0
+  1795537127.013 web console: CPAI failOff=
+  FOREGROUND: yes
+      mCurrentFocus=Window{cea40be u0 dev.xduo.enote/dev.xduo.enote.MainActivity}
+      mFocusedApp=ActivityRecord{175267447 u0 dev.xduo.enote/.MainActivity t2507}
+  --- crashes ---
+  11-23 14:23:36.966 21595 21595 F DEBUG   : Cmdline: /system/bin/app_process -Djava.class.path=/data/app/~~hR_7Zau5WQ6s1UfEDU2z-wAA/dev.xduo.enote-AFOV7xT3J6XW79QnjFgMsQ==/base.apk /dev/null com.k2fsa.soloist.nativebridge.Main main 127.0.0.1 44299 jseval
+  11-23 14:23:36.966 21595 21595 F DEBUG   : pid: 21584, tid: 21584, name: main  >>> /system/bin/app_process <<<
+  11-23 14:23:36.966 21595 21595 F DEBUG   : uid: 0
+  11-23 14:23:36.966 21595 21595 F DEBUG   : tagged_addr_ctrl: 0000000000000001 (PR_TAGGED_ADDR_ENABLE)
+  11-23 14:23:36.966 21595 21595 F DEBUG   : esr: 0000000092000006 (Data Abort Exception 0x24)
+  11-23 14:23:36.966 21595 21595 F DEBUG   : signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------
+  11-23 14:23:36.966 21595 21595 F DEBUG   : Abort message: 'No pending exception expected: java.lang.ClassNotFoundException: com.k2fsa.soloist.nativebridge.Main
+  11-23 14:23:36.966 21595 21595 F DEBUG   : (Throwable with empty stack trace)'
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x0  0000000000000000  x1  0000000000005450  x2  0000000000000006  x3  0000007fcd99b1c0
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x4  6f646277641f666d  x5  6f646277641f666d  x6  6f646277641f666d  x7  7f7f7f7f7f7f7f7f
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x8  00000000000000f0  x9  d48185b7f0a02322  x10 000000ff00000020  x11 000000000012800c
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x12 0000007619b54020  x13 000000007fffffff  x14 000000000b77303e  x15 000013d2fa13da9b
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x16 000000760fb8a120  x17 000000760fb72380  x18 00000076196b4000  x19 0000000000005450
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x20 0000000000005450  x21 00000000ffffffff  x22 0000000000000002  x23 b400007463d94010
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x24 00000073432d6000  x25 0000000000fffff9  x26 000000005a000000  x27 0000007fcd99b600
+  --- per-display focus ---
+    display 209: Window{112a80d u0 com.sec.android.app.launcher/com.honeyspace.dexservice.SecondaryLauncher}
+    display 6: null
+    display 0: Window{cea40be u0 dev.xduo.enote/dev.xduo.enote.MainActivity}   <-- target
+ERROR: 解析失败分支客户端回归失败

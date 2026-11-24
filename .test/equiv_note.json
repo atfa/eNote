@@ -1,0 +1,14 @@
+{
+  "note": {
+    "id": "eq1", "title": "下午三点开会", "content": "正文正文", "rawText": "正文",
+    "status": "done", "aiModel": "glm-4", "aiMs": 1234, "source": "clipboard-image",
+    "tags": ["工作", "家庭"], "createdAt": "2026-07-29T10:00:00",
+    "imagePath": "/img?id=eq1", "error": "",
+    "facts": [{ "q": "何时", "a": "下午三点" }, { "q": "何事", "a": "开会" }],
+    "todos": [
+      { "id": "t1", "text": "带电脑", "due": "2026-07-29T15:00", "done": false, "priority": "high", "source": "ai" },
+      { "id": "t2", "text": "带投影线", "due": "", "done": true, "priority": "low", "source": "manual" }
+    ],
+    "attachments": [{ "id": "x1" }, { "id": "x2" }]
+  }
+}

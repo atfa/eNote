@@ -2,8 +2,8 @@
 
    模式模板（步骤 6/7/9/10 照抄）：
    1. 结构（循环、条件、卡片骨架）写在 Vue 模板里；
-   2. 叶子片段（图标、chip、待办行）继续用 app.js 里现成的 HTML 字符串函数，通过 v-html 插入
-      —— 混合期两条渲染路径共用同一份叶子函数，产出的 DOM 逐字一致，签名断言只有一份真相；
+   2. 叶子片段（图标、chip、meta、关键信息、卡片里的紧凑待办行）是 components/leaf.js 里的
+      真组件（步骤 16）：结构在模板里看得见、事件走 @click，不再经 v-html 插字符串；
    3. 组件不持有数据，只通过宿主接口 H 读模块状态；
    4. 每个组件收一个 tick prop：render() 每次递增它，父组件把 tick 传下来 → 子组件重渲染。
       今天的语义就是「每次 render() 全量重绘」，tick 是它的一比一翻译（见 vue.js 顶部说明）。
@@ -11,12 +11,19 @@
 
    类名冻结（D15）：模板产出的 class 与迁移前逐字相同，
    tools/ui_test.js 的闸门 + 签名段 + test.sh 的 class 断言是硬验收
-   （步骤 11 已删掉遗留字符串渲染器，「与它逐字相同」的基准没了，类名契约改由这些静态断言守）。 */
+   （步骤 11 已删掉遗留字符串渲染器，「与它逐字相同」的基准没了，类名契约改由这些静态断言守）。
+
+   闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，StripBar 是第一个组件、
+   它只用得到 <ico>，所以全量名单写在下面这行注释里（运行时各组件注册自己用到的那些）。
+   components: { Ico, EmptyState, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact } */
 
 import { H, Vue, live } from './vue.js'
 // 基础组件 <empty-state> 归 Tony（owner 见文件头注释），在这里统一注册。
 import { EmptyState } from './components/empty-state.js'
-export { EmptyState }
+/* 步骤 16：叶子片段（图标 / chip / meta / 关键信息 / 紧凑待办行）从 app.js 的 HTML 字符串
+   函数翻成真组件，v-html 在这里清零。 */
+import { Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact } from './components/leaf.js'
+export { EmptyState, Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact }
 
 /* 读模块状态的 computed 一律用 live() 包（见 vue.js）：漏一个就是「数据变了视图不动」 */
 
@@ -26,12 +33,13 @@ export const StripBar = {
   setup(){
     return { H, i: live(() => H.S.info) }
   },
+  components: { Ico },
   template: `
 <div class="metrics">
-  <div class="m"><b>{{ i.open || 0 }}</b><span v-html="H.ic('check-square','s')+'待办'"></span></div>
-  <div class="m" :class="{hot: i.overdue}"><b>{{ i.overdue || 0 }}</b><span v-html="H.ic('alert','s')+'逾期'"></span></div>
-  <div class="m"><b>{{ i.notes || 0 }}</b><span v-html="H.ic('note','s')+'笔记'"></span></div>
-  <div class="m wide" :class="{ok: i.ocrReady}" v-html="H.ic(i.ocrReady ? 'mic' : 'mic-slash','s')+(i.ocrReady ? '本机 OCR 就绪' : 'OCR 引擎启动中…')"></div>
+  <div class="m"><b>{{ i.open || 0 }}</b><span><ico n="check-square" cls="s"/>待办</span></div>
+  <div class="m" :class="{hot: i.overdue}"><b>{{ i.overdue || 0 }}</b><span><ico n="alert" cls="s"/>逾期</span></div>
+  <div class="m"><b>{{ i.notes || 0 }}</b><span><ico n="note" cls="s"/>笔记</span></div>
+  <div class="m wide" :class="{ok: i.ocrReady}"><ico :n="i.ocrReady ? 'mic' : 'mic-slash'" cls="s"/>{{ i.ocrReady ? '本机 OCR 就绪' : 'OCR 引擎启动中…' }}</div>
 </div>`
 }
 
@@ -48,9 +56,10 @@ export const MissedBanner = {
     })
     return { H, m, sub }
   },
+  components: { Ico },
   template: `
 <div class="missed" v-if="m && m.count" @click="H.missedSheet()">
-  <span class="mi" v-html="H.ic('bell')"></span>
+  <span class="mi"><ico n="bell"/></span>
   <div style="flex:1;min-width:0"><b>错过 {{ m.count }} 条提醒</b><div class="cbsub">{{ sub }}</div></div>
   <span class="cbar">查看 ›</span>
 </div>`
@@ -83,9 +92,10 @@ export const ShotBanner = {
     })
     return { H, text }
   },
+  components: { Ico },
   template: `
 <div class="shotbanner" v-if="text" @click="H.shotGo(text.go)">
-  <span class="si" v-html="H.ic(text.go === 'perm' ? 'alert' : text.go === 'nofolder' ? 'folder' : 'image')"></span>
+  <span class="si"><ico :n="text.go === 'perm' ? 'alert' : text.go === 'nofolder' ? 'folder' : 'image'"/></span>
   <div style="flex:1;min-width:0"><b>{{ text.b }}</b><div class="cbsub">{{ text.s }}</div></div>
   <span class="cbar">{{ text.c }}</span>
 </div>`
@@ -99,47 +109,52 @@ export const ClipBanner = {
     const hint = live(() => !n.value && H.clipHint())
     return { H, n, hint }
   },
+  components: { Ico },
   template: `
-<div class="clipbanner" v-if="n" @click="H.clipSheet()" v-html="H.ic('clipboard')
-  +'<div style=&quot;flex:1&quot;><b>剪贴板暂存 '+n+' 条</b><div class=&quot;cbsub&quot;>复制的内容已留在这里，点开勾选再处理</div></div>'
-  +'<span class=&quot;cbar&quot;>整理 ›</span>'"></div>
-<div class="clipbanner" v-else-if="hint" @click="H.importClip()" v-html="H.ic('clipboard')
-  +'<div style=&quot;flex:1&quot;><b>剪贴板刚有更新</b><div class=&quot;cbsub&quot;>系统不让后台读，点这里收进暂存</div></div>'
-  +'<span class=&quot;cbar&quot;>收进来 ›</span>'"></div>`
+<div class="clipbanner" v-if="n" @click="H.clipSheet()"><ico n="clipboard"/>
+  <div style="flex:1"><b>剪贴板暂存 {{ n }} 条</b><div class="cbsub">复制的内容已留在这里，点开勾选再处理</div></div>
+  <span class="cbar">整理 ›</span></div>
+<div class="clipbanner" v-else-if="hint" @click="H.importClip()"><ico n="clipboard"/>
+  <div style="flex:1"><b>剪贴板刚有更新</b><div class="cbsub">系统不让后台读，点这里收进暂存</div></div>
+  <span class="cbar">收进来 ›</span></div>`
 }
 
 export const NoteCard = {
   name: 'NoteCard',
+  components: { Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact },
   props: ['tick', 'n', 'k'],
   setup(props){
     const exp = live(() => !!H.open[props.n.id])
-    const todos = live(() => {
-      const n = props.n
-      return (n.todos && n.todos.length) ? n.todos.map(t => H.todoRow(t, n, true)).join('') : ''
+    // 外层 .hits / .facts 只在有内容时存在（原来是 v-if="H.whereHTML(n)"），
+    // 判空条件跟着搬进来，渲染函数与组件里的 v-if 用同一个表达式。
+    const hits = live(() => {
+      const w = H.SR.where && H.SR.where[props.n.id]
+      return !!(w && w.length)
     })
-    return { H, exp, todos,
+    const attach = live(() => props.n.attachments && props.n.attachments.length > 1)
+    const todos = live(() => props.n.todos || [])
+    return { H, exp, hits, attach, todos,
              idx: live(() => Math.min(props.k || 0, 8)),
              body: live(() => props.n.content || '(无正文)'),
-             facts: live(() => H.factsInner(props.n)),
              ec: live(() => H.enterCls('n' + props.n.id)) }
   },
   template: `
 <div class="card" :class="ec" :id="'n'+n.id" :style="'--i:'+idx">
   <div class="row between"><p class="t">{{ n.title || '未命名笔记' }}</p></div>
-  <div class="meta" v-html="H.metaHTML(n)"></div>
-  <div class="hits" v-if="H.whereHTML(n)" v-html="H.whereHTML(n)"></div>
-  <div class="hits" v-if="H.attachHTML(n)" v-html="H.attachHTML(n)"></div>
+  <div class="meta"><note-meta :n="n" :tick="tick"/></div>
+  <div class="hits" v-if="hits"><note-hits :n="n" :tick="tick"/></div>
+  <div class="hits" v-if="attach"><note-attach :n="n" :tick="tick"/></div>
   <img class="thumb" v-if="n.imagePath" :src="'/img?id='+n.id">
-  <div class="facts" v-if="facts" v-html="facts"></div>
+  <note-facts :n="n" :tick="tick"/>
   <div class="body" :class="{clamp: !exp}" v-text="body"></div>
   <div class="errbox" v-if="n.error" v-text="n.error"></div>
-  <div style="margin-top:var(--s2)" v-if="todos" v-html="todos"></div>
+  <div style="margin-top:var(--s2)" v-if="todos.length"><todo-row-compact v-for="t in todos" :key="t.id" :t="t" :n="n" :tick="tick"/></div>
   <div class="acts">
-    <button class="btn sm gh exp" @click="H.expand(n.id)" v-html="H.ic(exp?'chevup':'chev')+(exp?'收起':'展开详情')"></button>
-    <button class="btn sm" v-if="n.status==='done'||n.status==='raw'" @click="H.reparse(n.id)" v-html="H.ic('refresh')+'重新解析'"></button>
-    <button class="btn sm" v-if="n.imagePath" @click="H.reocr(n.id)" v-html="H.ic('scan')+'重新识别图片'"></button>
-    <button class="btn sm" @click="H.addTodoSheet(n.id)" v-html="H.ic('plus')+'待办'"></button>
-    <button class="btn sm dg" @click="H.delNote(n.id)" v-html="H.ic('trash')+'删除'"></button>
+    <button class="btn sm gh exp" @click="H.expand(n.id)"><ico :n="exp?'chevup':'chev'"/>{{ exp?'收起':'展开详情' }}</button>
+    <button class="btn sm" v-if="n.status==='done'||n.status==='raw'" @click="H.reparse(n.id)"><ico n="refresh"/>重新解析</button>
+    <button class="btn sm" v-if="n.imagePath" @click="H.reocr(n.id)"><ico n="scan"/>重新识别图片</button>
+    <button class="btn sm" @click="H.addTodoSheet(n.id)"><ico n="plus"/>待办</button>
+    <button class="btn sm dg" @click="H.delNote(n.id)"><ico n="trash"/>删除</button>
   </div>
 </div>`
 }

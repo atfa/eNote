@@ -2037,3 +2037,72 @@ handler 总数 77 → 88（内联 29 + Vue 模板 59，基线 73）；Vue 模板
 `missedSheet`/`sortSheet`/`showLog`/`showDebug`/`addSheet`/`addTodoSheet` 把那个 promise 传出去。
 DOM 是 Vue 在 nextTick 画的，测试里 `missedSheet(); assert(有 .msrow)` 会读到空
 （真机报「面板里没有行」）；`test.sh` 五处调用点跟着改成 `await`。
+
+## 9.23 S3 步骤 16a 已完成（Austin：叶子 HTML 字符串 → 真组件，`v-html` 在核心视图清零）
+
+**做什么**：步骤 5~10 混合期留下的最后一块非 Vue 代码是「叶子 HTML 字符串」——`app.js` 里的
+`srcChip / statusChip / metaHTML / whereHTML / attachHTML / factsInner / factsBlock /
+cbInnerHTML / todoTxHTML / todoRow / remindBtns / noteCard` 十二个函数，Vue 模板用 `v-html`
+把它们插进去。当时必须这样：字符串渲染器与 Vue 两条路径要产出逐字一致的 DOM，叶子 HTML 只能有一份。
+步骤 11 删掉遗留渲染器之后只剩 Vue 一条路径，字符串函数就纯属负担了：
+
+* 模板里看不见真实 DOM —— 闸门⑮ 编译模板时那块结构是**一个字符串**，卡片少个 `.facts`、
+  待办行少个 `.remind` 它都看不见；
+* 事件写成字符串里的内联 `onclick="toCalendar('a','b',event)"`，绕过闸门①b（Vue 模板 handler）
+  与闸门⑮（`H.xxx ⊆ setHost`），正是 P12「点了没反应」那一类；
+* 每次重绘整段 `innerHTML`，`tickCD()` 那种「就地改 textContent」的小优化跟它抢同一个节点。
+
+**新增 `go/ui/js/components/leaf.js`（13 个组件）**：`Ico`（sprite 图标，`<ico n="x" cls="s"/>`
+≡ `ic('x','s')`）、`SrcChip`、`StatusChip`、`NoteMeta`、`NoteHits`、`NoteAttach`、`NoteFacts`、
+`CdChip`、`RemindBtns`、`TodoDue`、`TodoPriChips`、`TodoTx`（待办页文字块）、
+`TodoRowCompact`（笔记卡里的紧凑待办行）。消费方全部改成组件标签：
+`components.js` 的 `NoteCard`（`<note-meta>/<note-hits>/<note-attach>/<note-facts>/
+<todo-row-compact>` + `.acts` 五个按钮的图标）、`StripBar`/`MissedBanner`/`ShotBanner`/
+`ClipBanner`（四个横幅的图标，`v-html` 里的 `&quot;` 转义一起没了）、
+`views/todos.js` 的 `TodoRow`（`<ico>` + `<todo-tx>`）与 `.sec` 分组标题。
+`app.js` 删掉 109 行；HOST 去掉这十二个名字，补上组件要读的算法
+`now cdCls cdText toCalendar toAlarm`（`cdChip` 留着，字符串弹层 `missedSheet` 还在用）。
+
+**三条翻译规则（写进 leaf.js 文件头）**：类名冻结（D15）要求 DOM 逐字一致，Vue 的
+`whitespace:'condense'` 与字符串拼接有两处系统性差异 —— 元素之间的纯空白节点被删（原字符串里
+那个字面空格要用 `{{ ' ' }}` 显式写出来），元素与文本之间的空格会保留成一个空格
+（`ic('clock','s')+' '+fmtTime(...)` 直接写 `/> {{ … }}` 即可）；原来返回空串的条件分支
+（`statusChip` / `cdChip` / `remindBtns`）在 Vue 里是注释节点，`v-html` 时代那里是空串 ——
+注释节点不产生元素，等价。
+
+**闸门⑮ 的一个坑**：它每个文件只取**第一处** `components: {…}` 当整份文件的注册表。
+`leaf.js` 里最早用到子组件的 `CdChip` 定义在 `RemindBtns`/`TodoDue` 之前，那里写全量名单会撞
+TDZ（速记属性是求值期读的）→ 全量名单写在文件头注释里（闸门扫字符串，注释也算），运行时每个
+组件仍各自注册自己模板里用到的那些。`components.js` / `views/todos.js` 同理。
+另一条：注释里不能出现 `components: {…}` 这种字面量（它会被当成注册表并查 `…` 有没有声明），
+也不能出现 `` `srcChip()` `` 这种「整串是一个调用」的反引号串 —— 闸门①d 扫的就是这个形状。
+
+**签名断言跟着搬**（`tools/ui_test.js`）：「关键信息」查 `<note-facts>` + `.facts/.fh/.fq/.fa`，
+「写入系统日历 / 设为闹钟」查 `name: 'RemindBtns'` + `v-if="t.due && !t.done"` +
+两处 `<remind-btns`。契约是「这块 DOM 真的在模板里」，字符串形态与组件形态都认。
+
+**DOM 等价性怎么验的（VDIFF 在步骤 11 删了，没有逐字基准）**：新增两个开发期工具
+`.test/probe_dom.sh` + `.test/dom_equiv.js`。前者把一份固定数据（`.test/equiv_note.json`：
+带 facts、两个待办、两个标签、两个附件的笔记）注入真机 `S`/`SR` 并渲染，抓回三块 DOM
+（笔记卡、卡内紧凑待办行、待办页 `.ttx`）；后者用 `git show HEAD:go/ui/js/app.js` 把**迁移前**
+那批字符串函数抽出来在 node 里跑同一份数据，逐字比。归一化只允许四类，且每类都写了理由：
+Vue 的 `<!---->` 占位注释、标签间空白、CSSOM 对 `style` 的序列化（`--i:0` → `--i: 0;`）、
+以及「内联 `onclick` 属性消失」这条本次有意改动。结果：**三块全部逐字一致**
+（卡 2495 字节 / 紧凑行 651 / `.ttx` 454）。
+顺带修了探针本身：`am start` 从 Termux 直接发会被 Android 16 的后台启动限制挡掉
+（logcat 里 `Background activity launch blocked`，`am` 自己还打印 `Starting: Intent`，看着像成功），
+改成 `asroot_global "am start …"`，与 `test.sh` 的载荷通道一致。
+
+**数字**：视图模板里的 `v-html` 从 60+ 降到 **51**（`notes.js`/`todos.js`/`components.js` 三个文件
+已清零，剩下的在 `stats.js` 10 / `settings.js` 8 / `clip.js` 5 / `files.js` 5 / `app.js` 4 等
+字符串弹层与统计页里）；`ic()` 调用 52 → 6（全在字符串弹层）；内联 `onclick` 21 处（全在
+`app.js` 的字符串弹层：`sortSheet`/`missedSheet`/`addSheet`/`addTodoSheet`/`showLog`/`showDebug`）；
+handler 总数 82（内联 19 + Vue 模板 63，基线 73）；导出表 68 个 key；闸门 **119** 项。
+
+**验收**：`node tools/ui_test.js` **119 项全绿**；`GO_TEST=1 ./build.sh`（含 `go test ./...`）绿；
+`./install.sh` Success；`./test.sh --vd` **163 项 ok、0 FAIL、PASS**（与步骤 15 基线逐条相同）；
+`.test/dom_equiv.js` 三块 DOM 逐字一致。
+
+**下一步（16b/16c）**：`stats.js`/`settings.js`/`files.js`/`clip.js` 的叶子片段（`kvHTML`、
+`liHTML`、`statsNotesCardHTML`、`settingsCollectHTML` 等 15 个函数）→ 组件；然后把六个字符串
+弹层翻成 Vue 弹层，删掉 SheetHost 的 `mode:'html'` 分支和最后 21 处内联 `onclick`。

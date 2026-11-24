@@ -1470,7 +1470,10 @@ if (SPLIT) {
     && /何事/.test(gollm) && /为何/.test(gollm) && /下一步/.test(gollm)
     && /Facts\s+\[\]Fact/.test(gostore) && /func cleanFacts/.test(gollm)
     && /关键信息/.test(gosearch)
-    && /function factsBlock/.test(src) && frag(src, 'factsBlock', 'facts-block') && /class="facts"/.test(src);
+    /* 步骤 16：卡片渲染从 factsBlock() 字符串翻成 <note-facts> 组件（components/leaf.js），
+       契约是「关键信息这块 DOM 真的在模板里」，两种形态都认。 */
+    && frag(src, 'factsBlock', 'note-facts') && /class="facts"/.test(src)
+    && /class="fh"/.test(src) && /class="fq"/.test(src) && /class="fa"/.test(src);
   sig('关键信息：六问提取 + 落库 + 卡片渲染 + 可搜索', facts);
 
   // 到期提醒：系统日历 + 系统闹钟 intent（零权限），有 due 才显示按钮
@@ -1479,9 +1482,11 @@ if (SPLIT) {
     && /com\.android\.alarm\.permission\.SET_ALARM/.test(man)
     && /AlarmClock\.ACTION_SET_ALARM/.test(java) && /EXTRA_SKIP_UI/.test(java)
     && /addToCalendar/.test(bridge) && /setAlarm/.test(bridge)
-    && /function remindBtns/.test(src) && /toCalendar\(/.test(src) && /toAlarm\(/.test(src)
-    && /if\(!t\.due\|\|t\.done\) return ''/.test(src)
-    && (src.match(/remindBtns\(/g)||[]).length >= 3;   // 笔记卡片 + 待办页两处都要有
+    /* 步骤 16：按钮由 <remind-btns> 组件出（components/leaf.js），「有 due 且未完成才显示」
+       这条契约从 `if(!t.due||t.done) return ''` 搬进模板的 v-if。 */
+    && /name: 'RemindBtns'/.test(src) && /toCalendar\(/.test(src) && /toAlarm\(/.test(src)
+    && /v-if="t\.due && !t\.done"/.test(src)
+    && (src.match(/<remind-btns\b/g)||[]).length >= 2;   // 笔记卡片 + 待办页两处都要有
   sig('待办可一键写入系统日历 / 设为闹钟（intent，无权限）', remind);
 
   // logo 铺满按钮：UA button{padding} 会挤出一圈白框

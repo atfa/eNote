@@ -1,0 +1,26 @@
+步骤 16a：叶子 HTML 字符串 → 真组件（components/leaf.js，13 个）
+
+混合期（步骤 5~10）里卡片/chip/待办行是 app.js 的 HTML 字符串函数，Vue 模板用 v-html
+插进去：两条渲染路径要产出逐字一致的 DOM，叶子 HTML 只能有一份。步骤 11 删掉遗留渲染器
+之后只剩 Vue 一条路径，字符串函数就纯属负担 —— 闸门⑮ 编译模板时那块结构是个字符串
+（卡片少个 .facts 看不见）、事件写成字符串里的内联 onclick（绕过闸门①b/⑮，P12 那一类）、
+每次重绘整段 innerHTML。
+
+- 新增 go/ui/js/components/leaf.js：Ico SrcChip StatusChip NoteMeta NoteHits NoteAttach
+  NoteFacts CdChip RemindBtns TodoDue TodoPriChips TodoTx TodoRowCompact
+- NoteCard / StripBar / 四个横幅 / 待办页 TodoRow 与分组标题改成组件标签
+- app.js 删 12 个字符串函数共 109 行；HOST 换成组件要读的算法（now cdCls cdText
+  toCalendar toAlarm）
+- 闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，全量名单写在文件头注释里
+  （最早用到子组件的组件定义在 RemindBtns/TodoDue 之前，那里写全量会撞 TDZ）
+- 签名断言跟着搬：关键信息查 note-facts 组件 + .facts/.fh/.fq/.fa；日历/闹钟查 RemindBtns
+  的 v-if 与两处 remind-btns 标签
+- 新增 .test/probe_dom.sh + .test/dom_equiv.js：注入固定数据渲染真机 DOM，与 git HEAD 里
+  迁移前的字符串函数输出逐字比（VDIFF 在步骤 11 删了）。笔记卡 2495 / 紧凑待办行 651 /
+  待办页 .ttx 454 字节，三块全部逐字一致
+- 探针修好：am start 从 Termux 发会被 Android 16 后台启动限制挡掉（am 自己还打印
+  Starting: Intent），改成走 root，与 test.sh 的载荷通道一致
+
+v-html 60+ 降到 51（notes/todos/components 清零），ic() 调用 52 降到 6，内联 onclick 只剩
+app.js 字符串弹层 21 处。验收：ui_test 119 项全绿、GO_TEST=1 ./build.sh 绿、install Success、
+./test.sh --vd 163 项 ok / 0 FAIL / PASS（与步骤 15 基线逐条相同）。
