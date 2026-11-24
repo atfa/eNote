@@ -720,6 +720,7 @@
   `min-width:max-content` → 真机红在 260px 裁字；去掉 `clipParse` 的 catch → 真机红在
   「注入失败后没出解析失败的 toast」；删掉 `loadClips` catch 里的 `clipLoading = false` →
   真机红在「注入 /api/clip/list 失败后没出加载失败空态」（这条就是上面那个死代码的修复）。
+  四条已逐条实测红，红话逐条抄在 plan.md §9.20。
 * 数字：`test.sh` 2800→**3281** 行、step 32→**33**、真机 `  ok` 156→**161**、静态闸门 116→**117 ok**；
   `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd` 全绿（`$TMPDIR/s14_run5.log`，0 FAIL / 0 ERROR）。
 

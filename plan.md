@@ -1450,7 +1450,8 @@ legacy 缝回来 / `buildPage(tab)` 回来）、结构闸门 10 条（载荷调�
 * 恒绿闸门审计以那 19 条反向实验为证据；`exportJSON` 那笔证明**静态层对 module 求值期是盲的**
   （闸门①e 已补）。
 * `prefPayload` 的 `done:'all'` 分支没有客户端回归（只有 Go 侧测到）。
-* 断言里应显式写出 `src` / `status` / `pri` / `kind`，不要只断言数量。
+* 断言里应显式写出 `src` / `status` / `pri` / `kind`，不要只断言数量。（步骤 12 收了按钮文案那一半，
+  步骤 14 的 §9.20 ② 收完 `kind` / `src` / `status`。）
 * 闸门⑮ 的 tick 扫描本步已扩到 `js/**` 全部模板（含 `components.js`）：扫的模板 20 → **25**。
 * `tools/shots_*.sh` 的 md5 唯一数自检不得空过：已核实 `[ "$n" -ge 4 ] || die`，glob 不匹配时
   `n=0` 会 die，不是空过。
@@ -1733,7 +1734,7 @@ enote 在 **display 0**、VD 190 上是 launcher —— `am start --display` 落
 jseval 不认 display，所以载荷照样跑完、用例照样绿；红的时候这条现场是唯一能一眼分清
 「jseval 真挂了」和「display 没了」的证据。
 
-**记进步骤 14 的账**
+**记进步骤 14 的账**（步骤 14 已收，见 §9.20）
 
 * SIT 里还有 `q()[0]` 这类索引选择器，DOM 顺序一变就测到别的元素；换成稳定 id。
 * 断言要显式写出 `src`/`status`/`pri`/`kind`，不要只断言数量（§9.17 审计条目，步骤 12 收了一半）。
@@ -1845,10 +1846,17 @@ clip.js / shots.js 的按钮行换成 `class="btnrow"`（内联 `flex:1` 保留�
 
 * `a` 把 `clip.js` 的 `:id="'clipitem-'+x.id"` 改成固定串 → 闸门⑳ 红（
   「列表条目的稳定 id 定位断了」）。
-* `b` 把 `.pfoot .btnrow .btn` 的 `min-width:max-content` 删掉 → 真机红在 260px 裁字。
-* `c` 把 `clipParse` 的 catch 去掉 → 真机红在「注入失败后没出「解析失败」的 toast」。
-* `d` 把 `loadClips` catch 里的 `clipLoading = false` 删掉 → 真机红在「注入 /api/clip/list
-  失败后没出「加载失败」空态」（即：这条修复被回退后，回归真的会红）。
+四条都实测过，红话逐条抄在这里（`$TMPDIR/s14neg/run-{b,c,d}.log`，实验脚本每次跑完会把干净
+apk 装回去，所以四条互不污染）：
+
+* `b` 删掉 `.pfoot .btnrow .btn` 的 `min-width:max-content` →
+  `AssertionError: 260px 面板下底部按钮文字被裁（scrollWidth > clientWidth，实际 1,1,1）`。
+  三个按钮的 `scrollWidth > clientWidth` 全为 1，正是用户截图里「原样存为笔记」两侧被切。
+* `c` 去掉 `clipParse` 的 catch（回到步骤 14 之前：fetch 抛错没人接）→
+  `AssertionError: 注入失败后没出「解析失败」的 toast（tFail=-1）：fetch 抛错时 clipParse 没有反馈`。
+* `d` 删掉 `loadClips` catch 里的 `clipLoading = false` →
+  `AssertionError: 注入 /api/clip/list 失败后没出「加载失败」空态（tErr=-1）：clipError 那一支断了`
+  —— 这条就是上面那个死代码修复被回退后的样子，证明回归真的能守住它。
 
 **验收**：`node tools/ui_test.js` **117 ok / 0 FAIL**（新增闸门⑳）、`(cd go && go test ./...)` ok、
 `bash -n test.sh` ok、`GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd` 全绿
