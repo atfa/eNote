@@ -1086,12 +1086,71 @@ if (SPLIT) {
             + ' 的模板用了 H.xxx，但 setup() 没返回 H（点击时抛 undefined → 按钮点了没反应）');
         }
       }
+      // 步骤 13 的账：把 `live(() => …)` 换成普通函数 `() => …`，所有静态闸门全绿，而模板
+      // 按属性读它时渲染出的是函数源码（Vue 只对 computed ref 解包），用户侧就是
+      // 「点了没反应」/ 页面上出现一串 `() => …`。两个方向都钉住：
+      //   ① setup() 返回里是普通函数的名字，模板里必须以调用形式用（K(…）；裸读 = 渲染源码。
+      //   ② setup() 返回里是 live()/computed 的名字，模板里不许当函数调（K(…）—— computed 已解包，
+      //      调它抛「K is not a function」，同样是指了没反应。
+      // 组件扫描要同时认 `export const X = {…};`（components.js / 弹层）和 `export default {…}`
+      // （四个 tab 视图，文件 以 `\n}` 结尾、无分号）：上一版只认前者，对四个视图**一个也没扫到**
+      // —— 反向实验（notes.js 的 srErr 换成普通函数）实测闸门全绿，就是这条假绿。
+      // 括号配对用计数，不用非贪婪正则（会在第一个嵌套 `}` 处断）。
+      function compsOf(src) {
+        const out = [];
+        for (const m of src.matchAll(/export (?:const (\w+)\s*=\s*|default\s*)\{/g)) {
+          const open = src.indexOf('{', m.index);
+          let d = 0, end = -1;
+          for (let i = open; i < src.length; i++) {
+            if (src[i] === '{') d++;
+            else if (src[i] === '}' && --d === 0) { end = i; break }
+          }
+          if (end > 0) out.push([m[1] || '(default)', src.slice(open + 1, end)]);
+        }
+        return out;
+      }
+      const liveBad = [];
+      let liveChecked = 0;
+      for (const f of viewFiles) {
+        for (const [cname, cbody] of compsOf(fs.readFileSync(f, 'utf8'))) {
+          const tpl = /template:\s*`([\s\S]*)`/.exec(cbody);
+          const ri = cbody.search(/\breturn\s*\{/);
+          if (!tpl || ri < 0) continue;
+          const open = cbody.indexOf('{', ri);
+          let d = 0, end = -1;
+          for (let i = open; i < cbody.length; i++) {
+            if (cbody[i] === '{') d++;
+            else if (cbody[i] === '}' && --d === 0) { end = i; break }
+          }
+          if (end < 0) { liveBad.push(path.relative(root, f) + '：' + cname
+            + ' 的 setup() return 大括号不配对（闸门⑮ 在假绿）'); continue }
+          liveChecked++;
+          const plain = [], comp = [];
+          for (const e of stripComments(cbody.slice(open + 1, end)).matchAll(/(^|[,\s{])([A-Za-z_$][\w$]*)\s*:\s*([^\n]*)/g)) {
+            const val = e[3];
+            if (/^live\s*\(/.test(val)) comp.push(e[2]);
+            else if (/^(\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/.test(val) || /^function\b/.test(val)) plain.push(e[2]);
+          }
+          for (const k of plain) {
+            for (const occ of tpl[1].matchAll(new RegExp('\\b' + k + '\\b(\\s*\\()?', 'g'))) {
+              if (!occ[1]) { liveBad.push(path.relative(root, f) + '：' + cname + '.' + k
+                + ' 是普通函数，模板里按属性读它（渲染出函数源码 → 页面上出现 "() => …"，要的是 live()）'); break }
+            }
+          }
+          for (const k of comp) {
+            if (new RegExp('\\b' + k + '\\s*\\(').test(tpl[1])) liveBad.push(path.relative(root, f) + '：'
+              + cname + '.' + k + ' 是 live()/computed，模板里当函数调用了（computed 已解包，调它抛 not a function）');
+          }
+        }
+      }
+      if (!liveChecked) liveBad.push('闸门⑮ 一个组件的 setup() 也没扫到（视图写法改名了？闸门在假绿）');
       if (bareComputed.length)
         bad('闸门⑮ 组件里的 computed 没包 live()（数据变了视图不动）', bareComputed.join(' | '));
       else if (missHost.size) bad('闸门⑮ 模板里的 H.xxx 不在 setHost（Vue 渲染抛错→静默回退字符串）', [...missHost].join(' '));
       else if (miss.size) bad('闸门⑮ 模板里的 handler 不在导出表（点了没反应）', [...miss].join(' '));
       else if (tickErrs.length) bad('闸门⑮ Vue tick 依赖断了', tickErrs.join(' | '));
       else if (noH.length) bad('闸门⑮ 模板用 H.xxx 的组件没在 setup() 返回 H', noH.join(' | '));
+      else if (liveBad.length) bad('闸门⑮ live()/普通函数用反了（数据变了视图不动）', liveBad.join(' | '));
       else {
         const names = new Set();
         for (const [, t] of tpls)
@@ -1100,7 +1159,7 @@ if (SPLIT) {
           + sheets.length + ' 弹层的 tick 链完整（扫 ' + tickTpls + ' 个模板，组件 tick prop '
           + [...tickProp.values()].filter(Boolean).length + ' 个）；模板 handler ' + names.size + ' 个全在导出表；'
           + '视图里的 H.xxx ' + usedHost.size + ' 个全在 setHost；模板用 H 的 ' + hExposed
-          + ' 个组件全在 setup() 返回里暴露了 H');
+          + ' 个组件全在 setup() 返回里暴露了 H；live()/普通函数两个方向用法都对');
       }
     }
   }

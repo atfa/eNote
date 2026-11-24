@@ -58,8 +58,8 @@ a{color:var(--acc)}
   transition:transform var(--d1) var(--ease)}
 .acard:active{transform:scale(.97)}
 .acard.gone{opacity:.62}
-.athumb{width:100%;height:96px;object-fit:contain;border-radius:var(--r1);background:var(--card2)}
-.aglyph{height:96px;display:flex;align-items:center;justify-content:center;font-size:var(--fs-2xl);
+.athumb{width:100%;height:var(--tile-h);object-fit:contain;border-radius:var(--r1);background:var(--card2)}
+.aglyph{height:var(--tile-h);display:flex;align-items:center;justify-content:center;font-size:var(--fs-2xl);
   border-radius:var(--r1);background:var(--card2)}
 .aname{font-size:var(--fs-sm);font-weight:600;word-break:break-all;line-height:1.35}
 .ameta{font-size:var(--fs-xs);color:var(--dim2)}
