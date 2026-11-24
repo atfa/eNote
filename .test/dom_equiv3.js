@@ -19,10 +19,15 @@ if (!m) { console.log('FAIL 探针输出里找不到 PD3'); process.exit(1) }
 const live = JSON.parse(m[1])
 fs.writeFileSync('.test/live_sheets.json', JSON.stringify(live, null, 1), 'utf8')
 
-const OLD = cp.execSync('git show HEAD:go/ui/js/app.js', { encoding: 'utf8' })
+/* 旧侧基线钉在 cf69909（步骤 16b）—— 那批字符串函数（sortSheet / missedSheet / cdChip /
+   group / emptyState / addSheet / addTodoSheet / showLog / showDebug）还都在的最后一版。
+   16c 把它们删了，16d 又删了 folderRender / emptyState，所以不能写 HEAD：HEAD 一路在动，
+   隔一周跑这个工具就会「找不到函数」（16d 就撞上了）。BASE 环境变量可覆盖。 */
+const BASE = process.env.BASE || 'cf69909'
+const OLD = cp.execSync('git show ' + BASE + ':go/ui/js/app.js', { encoding: 'utf8' })
 function grab(sig) {
   const i = OLD.indexOf(sig)
-  if (i < 0) throw new Error('HEAD app.js 里找不到 ' + sig)
+  if (i < 0) throw new Error(BASE + ' 的 app.js 里找不到 ' + sig)
   let k = OLD.indexOf('{', i), d = 0
   for (; k < OLD.length; k++) {
     if (OLD[k] === '{') d++
@@ -71,6 +76,19 @@ function norm(s) {
 // 卡片形态：迁移前 sheet() 把 .grip + .pclose 拼在内容前面，现在它们在外壳里
 const CARD_HEAD = /^<div class="grip"><\/div><button class="pclose"[^>]*>✕<\/button>/
 
+/* 16d 的三处静态块：fab 图标与进度层提示条都是「字符串 = ic(图标) + 固定文案」，
+   旧侧直接跑 HEAD 的 ic() 拼出来即可（没有状态依赖）。 */
+const icOld = new Function(grab('function ic(') + '\nreturn ic')()
+const FICO = (n) => '<span class="fico">' + icOld(n, 'l') + '</span>'
+const OWARN_OLD = icOld('alert') + '请保持屏幕常亮：不要锁屏、不要让手机黑屏，'
+  + '也不要退出 App 或切到别的应用，否则解析会中断。'
+const OWARN_NEW = (live.owarn || '').replace(/<\!--.*?-->/g, '')
+const OVLCARD_OLD = '<div class="ovlcard"><div class="orw"></div><b>正在处理 3 张截图</b>'
+  + '<div class="osub" id="shotOvlSub">合并成一条笔记 · 已用 5s</div><div class="owarn">'
+  + OWARN_OLD + '</div><div style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s2)">'
+  + '完成后会自动回到列表，不用一直盯着</div></div>'
+
+
 const cases = [
   ['排序页 · 笔记', 'sort_notes', 'notes', 'prefs_notes', null, null, 'sortSheet', []],
   ['排序页 · 待办', 'sort_todos', 'todos', 'prefs_todos', null, null, 'sortSheet', []],
@@ -83,10 +101,25 @@ const cases = [
   ['错过的提醒 · 空态', 'missed_empty', 'notes', 'prefs_notes', null,
     { count: 0, items: [] }, 'missedSheet', []]
 ]
+// 16d：fab 图标（笔记页 / 附件页）与进度层（.owarn 与整张卡）
+cases.push(['fab 图标 · 笔记页', 'fab_notes', null, null, null, null, null, null])
+cases.push(['fab 图标 · 附件页', 'fab_files', null, null, null, null, null, null])
+cases.push(['进度层 .owarn', 'owarn', null, null, null, null, null, null])
+cases.push(['进度层整张卡', 'ovlcard', null, null, null, null, null, null])
+const STATIC16D = {
+  fab_notes: FICO('plus'), fab_files: FICO('clip'),
+  owarn: '<div class="owarn">' + OWARN_OLD + '</div>', ovlcard: OVLCARD_OLD
+}
 
 ;(async () => {
   let bad = 0
   for (const [label, key, tabName, prefsKey, payloadKey, missed, fn, args] of cases) {
+    if (STATIC16D[key]) {
+      const a = norm(STATIC16D[key]), b = norm(key === 'owarn' ? OWARN_NEW : live[key])
+      if (a === b) { console.log('ok   ' + label); continue }
+      bad++; console.log('FAIL ' + label)
+      console.log('  旧: …' + a.slice(0, 200)); console.log('  新: …' + String(b).slice(0, 200)); continue
+    }
     const prefs = {}
     prefs[tabName] = live[prefsKey] || {}
     const payload = payloadKey ? live[payloadKey] : {}

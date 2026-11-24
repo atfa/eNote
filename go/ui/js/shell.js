@@ -24,6 +24,7 @@
    它是「当前在哪个页签」这个状态的纯函数，写在 CSS 里比写在 JS 里少一处会漏同步的地方。 */
 
 import { H, Vue } from './vue.js'
+import { Ico } from './components/leaf.js'
 
 const { reactive, createApp } = Vue
 
@@ -38,7 +39,9 @@ export const shell = reactive({
   q: '',
   has: false,
   placeholder: '搜索笔记与待办',
-  fab: { ico: '', label: '记一笔', hidden: false },
+  /* fab：icon 是图标名（'plus' / 'clip'），SVG 由 <ico> 组件画（步骤 16d 之前这里存的是
+     ic('plus','l') 那串字符串，靠 v-html 直插）。初值 = 笔记页的「记一笔」。 */
+  fab: { icon: 'plus', label: '记一笔', hidden: false },
   /* 页签指示条：moveInd() 量完活动页签的几何写进来（DOM 测量只能读真实布局） */
   ind: { w: 0, x: 0 },
   sheet: {
@@ -84,12 +87,13 @@ export const TopBar = {
    元素顺序与迁移前逐字相同（notes、todos、fab、files、mine）：fab 夹在中间是布局的一部分。 */
 export const TabBar = {
   name: 'TabBar',
+  components: { Ico },
   setup(){ return { H, s: shell } },
   template: `
 <span class="ind" id="ind" :style="{width: s.ind.w+'px', transform: 'translateX(' + s.ind.x + 'px)'}"></span>
 <button class="tab" :class="{on: s.tab==='notes'}" data-tab="notes" @click="H.tabPick('notes')"><span class="ti"><svg class="ic"><use href="#i-note"/></svg></span><em>笔记</em></button>
 <button class="tab" :class="{on: s.tab==='todos'}" data-tab="todos" @click="H.tabPick('todos')"><span class="ti"><svg class="ic"><use href="#i-check-square"/></svg></span><em>待办</em></button>
-<button class="fab" id="fab" :class="{hide: s.fab.hidden}" @click="H.fabAct()"><span class="fico" v-html="s.fab.ico"></span><span class="flabel">{{ s.fab.label }}</span></button>
+<button class="fab" id="fab" :class="{hide: s.fab.hidden}" @click="H.fabAct()"><span class="fico"><ico :n="s.fab.icon" cls="l"/></span><span class="flabel">{{ s.fab.label }}</span></button>
 <button class="tab" :class="{on: s.tab==='files'}" data-tab="files" @click="H.tabPick('files')"><span class="ti"><svg class="ic"><use href="#i-clip"/></svg></span><em>附件</em></button>
 <button class="tab" :class="{on: s.tab==='mine'}" data-tab="mine" @click="H.tabPick('mine')"><span class="ti"><svg class="ic"><use href="#i-user"/></svg></span><em>我的</em></button>
 `

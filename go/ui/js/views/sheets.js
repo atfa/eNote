@@ -29,8 +29,10 @@ import { Ico, CdChip } from '../components/leaf.js'
 
 const { computed } = Vue
 
-/* 排序与筛选：三到四组分段按钮，组由当前 tab 决定。按钮文案是「图标 + 文字」的 HTML，
-   所以走 v-html（迁移前是字符串拼接，o[1] 原样插入）。 */
+/* 排序与筛选：三到四组分段按钮，组由当前 tab 决定。按钮是「图标 + 文字」，图标走 <ico>、
+   文字走 {{ }}（步骤 16c 时这两样是一整串 HTML 走 v-html，16d 翻成真模板）。
+   没有图标的筛选项渲染出一个 v-if 的注释节点（<!---->），它不是元素：textContent、
+   布局与点击都一致，DOM 等价性比对里按注释节点归一化掉。 */
 export const SortSheetView = {
   name: 'SortSheetView',
   components: { Ico },
@@ -40,23 +42,25 @@ export const SortSheetView = {
       tick: computed(() => V.tick),
       groups: live(function(){
         var p = H.P(), tab = H.tab;
+        // 选项是 [值, 图标名, 文案]：图标是 <ico>，文案是 {{ }}（步骤 16d 之前是
+        // ic('clock')+'按到期' 一整串 HTML 走 v-html）。筛选组没有图标 → 空串。
         var sorts = tab === 'todos'
-          ? [['due', H.ic('clock') + '按到期'], ['pri', H.ic('bolt') + '重要优先'], ['new', H.ic('sort') + '最新']]
+          ? [['due', 'clock', '按到期'], ['pri', 'bolt', '重要优先'], ['new', 'sort', '最新']]
           : tab === 'files'
-            ? [['new', H.ic('sort') + '最新'], ['size', H.ic('db') + '大小'], ['name', H.ic('file') + '名称'], ['kind', H.ic('folder') + '类型']]
-            : [['new', H.ic('sort') + '最新在前'], ['old', H.ic('sort') + '最早在前'], ['title', H.ic('file-text') + '标题']];
+            ? [['new', 'sort', '最新'], ['size', 'db', '大小'], ['name', 'file', '名称'], ['kind', 'folder', '类型']]
+            : [['new', 'sort', '最新在前'], ['old', 'sort', '最早在前'], ['title', 'file-text', '标题']];
         var gs = [{ key: 'sort', label: '排序', opts: sorts, cur: p.sort }];
         if(tab === 'notes'){
-          gs.push({ key: 'src', label: '来源', opts: [['all','全部'],['text','文字'],['image','图片']], cur: p.src });
-          gs.push({ key: 'status', label: '状态', opts: [['all','全部'],['done','已解析'],['raw','仅原文'],['error','失败']], cur: p.status });
-          gs.push({ key: 'file', label: '附件', opts: [['all','全部'],['yes','有附件'],['no','无附件']], cur: p.file });
+          gs.push({ key: 'src', label: '来源', opts: [['all','','全部'],['text','','文字'],['image','','图片']], cur: p.src });
+          gs.push({ key: 'status', label: '状态', opts: [['all','','全部'],['done','','已解析'],['raw','','仅原文'],['error','','失败']], cur: p.status });
+          gs.push({ key: 'file', label: '附件', opts: [['all','','全部'],['yes','','有附件'],['no','','无附件']], cur: p.file });
         }else if(tab === 'todos'){
-          gs.push({ key: 'done', label: '状态', opts: [['open','未完成'],['done','已完成'],['all','全部']], cur: p.done });
-          gs.push({ key: 'pri', label: '优先级', opts: [['all','全部'],['high','重要'],['normal','普通'],['low','低']], cur: p.pri });
+          gs.push({ key: 'done', label: '状态', opts: [['open','','未完成'],['done','','已完成'],['all','','全部']], cur: p.done });
+          gs.push({ key: 'pri', label: '优先级', opts: [['all','','全部'],['high','','重要'],['normal','','普通'],['low','','低']], cur: p.pri });
         }else if(tab === 'files'){
           // the server knows more kinds (slides/audio/video/archive); the common ones keep the row readable
-          gs.push({ key: 'kind', label: '类型', opts: [['all','全部'],['image','图片'],['pdf','PDF'],['doc','文档'],
-            ['sheet','表格'],['text','文本'],['file','其他']], cur: p.kind });
+          gs.push({ key: 'kind', label: '类型', opts: [['all','','全部'],['image','','图片'],['pdf','','PDF'],['doc','','文档'],
+            ['sheet','','表格'],['text','','文本'],['file','','其他']], cur: p.kind });
         }
         return gs;
       })
@@ -67,7 +71,7 @@ export const SortSheetView = {
 <div style="height:6px"></div>
 <template v-for="g in groups" :key="g.key">
 <label>{{ g.label }}</label>
-<div class="seg"><button v-for="o in g.opts" :key="o[0]" :class="o[0]===g.cur?'on':''" @click="H.setPref(g.key,o[0])" v-html="o[1]"></button></div>
+<div class="seg"><button v-for="o in g.opts" :key="o[0]" :class="o[0]===g.cur?'on':''" @click="H.setPref(g.key,o[0])"><ico v-if="o[1]" :n="o[1]"/>{{ o[2] }}</button></div>
 </template>
 <div class="acts"><button class="btn" @click="H.resetPrefs()">重置</button><button class="btn pri" @click="H.closeSheet()">完成</button></div>
 `

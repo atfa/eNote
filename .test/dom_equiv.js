@@ -13,7 +13,8 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 
-const src = execSync('git show HEAD:go/ui/js/app.js', { encoding: 'utf8' });
+const BASE = process.env.BASE || '98915cc'   // 那批字符串函数被删掉之前的最后一版
+const src = execSync('git show ' + BASE + ':go/ui/js/app.js', { encoding: 'utf8' });
 function fn(name){
   // 单行函数（function esc(s){return …}）先单行匹配：多行正则的 ^} 会一路吞到下一个函数结尾
   const one = src.match(new RegExp('^function ' + name + '\\(.*\\}\\s*$', 'm'));

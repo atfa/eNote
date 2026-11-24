@@ -6,7 +6,8 @@
 'use strict'
 const fs = require('fs'), cp = require('child_process')
 
-const OLD = cp.execSync('git show HEAD:go/ui/js/app.js', { encoding: 'utf8' })
+const BASE = process.env.BASE || 'bd91977'   // 那批字符串函数被删掉之前的最后一版
+const OLD = cp.execSync('git show ' + BASE + ':go/ui/js/app.js', { encoding: 'utf8' })
 function grab(src, sig) {
   const i = src.indexOf(sig)
   if (i < 0) throw new Error('HEAD app.js 里找不到 ' + sig)

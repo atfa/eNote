@@ -1,32 +1,50 @@
-界面（S3 步骤 16c）：最后六个字符串弹层翻成真组件，内联 onclick 21 → 1
+界面 P13 S3 步骤 16d：最后一批字符串 → 真模板，v-html 与内联 onclick 双双归零
 
-新建 go/ui/js/views/sheets.js（6 个组件）：排序与筛选、错过的提醒、记一笔、
-添加待办、运行日志、AI 调用记录。它们是 app.js 里最后一批 HTML 字符串，也是
-最后 21 处内联 onclick 的所在地 —— 字符串里的 handler 绕过闸门①b 与闸门⑮，
-正是 P12「点了没反应」那一类。
+死代码：
+- 删 folderRender / folderCountLabel / emptyState（16c 删掉 folderRows / folderCountHTML
+  之后已无人调用，真机 probe 一调就抛 ReferenceError）。emptyState 里那句
+  onclick="sheetMsg(...)" 是全项目最后一处内联 handler：内联 onclick 21 → 0。
+- 删 shotOverlay / shotOvlSub 的字符串回退分支（VUE_SHEETS.progress 恒为真，那段跑不到）
+  与死变量 SHOTOVL_TEXT。app.js 1864 → 1796 行。
 
-- 弹层开合收敛成一条路径：删 pageSheet()/sheet()，新增 sheetVue(name, full)，
-  pageSheetVue() 返回 nextTick 的 Promise（D13）；SheetHost 删掉 mode:'html'
-  分支与 v-html="s.sheet.html"，shell.sheet 少掉 mode/html 两个字段。
-- 卡片形态内容多包在 #sheetBody 里（唯一结构差别），CSS 那条 .sheet .panel>h2
-  同步补成 .sheet .panel>h2, .sheet #sheetBody>h2，否则标题钻到 ✕ 底下。
-- 行为守住的三处：showLog/showDebug 仍是取完数据才弹；错过的提醒的 ✓ 仍复用
-  toggle() 的划线淡出动画；setPref/resetPrefs 的副作用链一字未动。
-- 删死代码 pageSheet / sheet / group / cdChip；app.js 1917 → 1864 行。
-- 闸门跟着搬：⑲ 的 .pfoot 名单 app.js → views/sheets.js；四条签名断言换锚点
-  （pclose 读 shell.js、cdChip 计数读 leaf.js 的 <cd-chip>、pageSheet 改钉
-  sheetVue、错过的提醒跳转改钉 @click.prevent="H.jump(t.nid)"）。
-- 等价性：.test/probe_sheets.sh 抓真机九个弹层场景的 #sheetBody 与同一份输入，
-  .test/dom_equiv3.js 用 git show HEAD 抽出迁移前的字符串函数在沙箱里跑同一份
-  输入逐字比 → 9/9 全部一致（归一化只加一条：esc 的 &quot; 与 Vue textContent
-  的 " 序列化差异，两边 textContent 相同）。
+v-html 6 → 0（模板里不再有任何字符串 HTML）：
+- fab 图标：FABS 改存图标名，TabBar 模板画 <span class="fico"><ico :n=... cls="l"/></span>
+- <empty-state> 内部片段成真模板（<ico> + {{ title }} + v-if 的 .esub）；查过全部 7 个调用方
+  传的都是纯文本，{{ }}（textContent）与 v-html 等价。注释写明：以后要塞 HTML 就加插槽。
+- KvRow 的 v 分支 v-html → {{ }}（调用方是统计卡与采集卡，全是数字与中文）
+- 进度层 .owarn：warn 字符串（ic('alert')+固定文案）→ 模板写死 <ico n="alert"/> + 文案
+- 排序筛选按钮（最后一个）：选项从 [值, HTML] 变 [值, 图标名, 文案]，
+  模板 <ico v-if="o[1]" :n="o[1]"/>{{ o[2] }}；无图标项多出一个 v-if 注释节点 <!---->，
+  它不是元素，textContent、布局、点击都一致
 
-数字：内联 onclick 21 → 1（剩下截图导入的「选文件夹」浮层，不是弹层）；
-handler 总数 81（内联 1 + Vue 模板 80，基线 73）；v-html 属性 7 → 6；
-VUE_SHEETS 11 条。
+真机抓到一个真 bug（这一步的价值所在）：
+- 进度层组件用 <ico> 只加了文件头注释里的注册表，没加组件自己的 components: { Ico }
+  → Vue 运行时只 console.warn(Failed to resolve component)，页面上是个裸 <ico n="alert">
+  元素，图标位置空着。闸门⑮ 的注册表是「每文件一份」，Vue 认的是组件自己的 components
+  选项，两者可以不一致。
+- 新增闸门㉔：29 个组件模板里的自定义标签（带连字符 ∪ 不在原生标签表里的单词标签，本项目
+  只有 <ico>）必须出现在该组件自己的 components 里。反向实验：删掉 ShotProgress 的
+  components: { Ico } → 立刻红并点名。
+- 新增闸门㉓：59 个组件模板里 v-html 归零（只扫模板字面量，注释里提 v-html 不算）。
+  反向实验：KvRow 改回 v-html="v" → 立刻红并点名 leaf.js。
 
-验收：ui_test.js 119 项全绿；GO_TEST=1 ./build.sh 绿；./install.sh Success；
-./test.sh --vd 163 项 ok / 0 FAIL / PASS（与步骤 15/16a/16b 基线逐条相同）；
-.test/dom_equiv3.js 9 个场景 DOM 逐字一致。
+等价性（29 例逐字一致）：
+- probe_sheets.sh 加四个夹具点（fab 在笔记页/附件页的 .fico、进度层 .owarn 与整张 .ovlcard，
+  进度层用 Vue.createApp(VUE_SHEETS.progress) 现场挂到 #shotOvlRoot 并写 host.SHOTPROG），
+  dom_equiv3.js 扩到 13 例全一致。
+- 16d 动了 KvRow 与 EmptyState，16b/16a 两套重跑：dom_equiv2.js 13 块、dom_equiv.js 3 块全一致。
+- 三个工具的旧侧基线不再写 HEAD（HEAD 一路在动，这一步第一次跑就撞上「HEAD 里找不到 cdChip」），
+  钉死到「那批字符串函数被删掉之前的最后一版」：16d→cf69909、16b→bd91977、16a→98915cc，
+  BASE 环境变量可覆盖。
 
-文档：plan.md §9.25、CHANGELOG「界面（P13 S3 步骤 16c）」。
+数字：内联 onclick 0；模板 v-html 0；handler 80（全在 Vue 模板，基线 73）；导出表 68 个 key；
+闸门 121 项（+2）；app.js 1796 行。
+
+验收：ui_test 121 项全绿、GO_TEST=1 ./build.sh 绿、./install.sh Success、
+./test.sh --vd 165 项 ok / 0 FAIL / PASS。
+
+文档：plan.md §9.26、CHANGELOG 步骤 16d 一节。
+
+P13 的「手工 WebView 代码」到此清零：go/ui/js/ 里没有字符串拼 HTML 的渲染器；index.html 剩下
+图标 sprite（<use> 的引用源，必须静态）、五个挂载容器、probe 兜底面板（刻意裸 JS：Vue 起不来
+时它要能画出来告诉你是怎么回事）。

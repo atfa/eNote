@@ -39,6 +39,21 @@ JS='(async function(){
   out.missedState = __enote.state.MISSED;
   __enote.state.MISSED = {count:0, items:[]};
   await dump("missed_empty", function(){ return missedSheet() });
+  // ---- 16d 新增：fab 图标（v-html → <ico>）与进度层 .owarn（v-html → 模板 + <ico>）----
+  out.fab_notes = (document.querySelector("#fab .fico")||{outerHTML:"(none)"}).outerHTML;
+  var SP = __enote.vue.host.SHOTPROG;
+  SP.on = true; SP.total = 3; SP.what = "合并成一条笔记"; SP.secs = 5;
+  var ovapp = Vue.createApp(__enote.vue.VUE_SHEETS.progress);
+  ovapp.mount(document.getElementById("shotOvlRoot"));
+  await new Promise(function(r){ setTimeout(r, 400) });
+  out.owarn = (document.querySelector("#shotOvl .owarn")||{outerHTML:"(none)"}).outerHTML;
+  out.ovlcard = (document.querySelector("#shotOvl .ovlcard")||{outerHTML:"(none)"}).outerHTML;
+  ovapp.unmount(); SP.on = false;
+  __enote.vue.host.tabPick("files");
+  await new Promise(function(r){ setTimeout(r, 600) });
+  out.fab_files = (document.querySelector("#fab .fico")||{outerHTML:"(none)"}).outerHTML;
+  __enote.vue.host.tabPick("notes");
+  await new Promise(function(r){ setTimeout(r, 400) });
   out.now = Date.now();
   console.log("PD3 " + JSON.stringify(out));
 })()'

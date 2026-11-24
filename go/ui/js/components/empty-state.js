@@ -1,3 +1,5 @@
+import { Ico } from './leaf.js'
+
 /* <empty-state>：空列表的占位块。owner: Tony（基础组件）；注册在 js/components.js（Austin）。
  *
  * 模式（步骤 5 定，6/7/9/10 照抄）：**先包后换**。
@@ -9,21 +11,19 @@
  */
 export const EmptyState = {
   name: 'EmptyState',
+  components: { Ico },
   props: {
     icon: { type: String, required: true },
     title: { type: String, default: '' },
     sub: { type: String, default: '' },
   },
-  /* 字符串版是 '<div class="empty"><div class="eo">…</div>' + t + (sub ? '<div class="esub">'
-     + sub + '</div>' : '') + '</div>'：标题 t **原样插入**，调用方传的是已拼好的 HTML
-     （有的带 <b>）。所以整段走 v-html：用 {{ }} 会多一层转义，用 <span v-html> 会多一个元素，
-     两种都会让 DOM 与今天不一致。 */
-  template: '<div class="empty" v-html="html"></div>',
-  computed: {
-    html() {
-      return '<div class="eo"><svg class="ic"><use href="#i-' + this.icon + '"/></svg></div>'
-        + this.title
-        + (this.sub ? '<div class="esub">' + this.sub + '</div>' : '');
-    },
-  },
+  /* 步骤 16d：内部片段换成模板语法，v-html 没了。字符串版是
+     '<div class="empty"><div class="eo">' + ic(icon) + '</div></div>' + t
+     + (sub ? '<div class="esub">' + sub + '</div>' : '') + '</div>'，
+     标题 t 是**原样插入**的 HTML —— 逐个查过全部 7 个调用方（notes / todos / files /
+     clip / shots / folders / sheets），传进来的全是纯文本字面量，没有一处带标签，
+     所以 {{ }}（textContent）与 v-html 产出的 DOM 相同。以后谁要往 title 里塞 HTML，
+     加插槽，别把 v-html 请回来。
+     文本节点位置也一致：</div>{{ title }}<div 之间没有空白，Vue 的模板空白折叠不会多出空格。 */
+  template: `<div class="empty"><div class="eo"><ico :n="icon"/></div>{{ title }}<div class="esub" v-if="sub">{{ sub }}</div></div>`
 };

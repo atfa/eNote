@@ -287,10 +287,8 @@ function askBattery(){
 var clipSel = {};
 var clipList = [];
 var clipLoading = false, clipError = '';
-function emptyState(icon, t, sub){
-  return '<div class="empty"><div class="eo"><svg class="ic"><use href="#i-'+icon+'"/></svg></div>'
-    + t + (sub ? '<div class="esub">'+sub+'</div>' : '') + '</div>';
-}
+/* emptyState() 也一起删：空态块现在是 components/empty-state.js 的 <empty-state> 组件，
+   app.js 里最后一个调用方就是上面那个 folderRender。 */
 /* 错过的提醒（后台被冻结时到点的那些）：只在有内容时出现，点开看清单 */
 var MISSED = null;   // 服务端只在启动时算一次，之后 refresh 覆盖 S 时要把它贴回去
 async function loadMissed(){
@@ -471,75 +469,36 @@ function runImportShots(mode, raw, picks){
   keepShotsLight(true);
   Android.importShots(JSON.stringify({mode:mode, raw:!!raw, shots:shots}));
 }
-var SHOTOVL_TEXT = '';
-/** 进度层：不可点掉，配一句醒目的"别黑屏/别退出"（用户明确要求） */
+/* 进度层：不可点掉，配一句醒目的"别黑屏/别退出"（用户明确要求）。
+   组件是 views/shots.js 的 ShotProgress（纯渲染器），状态写进 SHOTPROG（reactive：
+   shotOvlSub 是 Java 回调写的全局函数，状态放组件里 Java 写不到）。容器是 body 级的
+   #shotOvlRoot（index.html）：closeSheet() 会换掉 .panel 的内容，而进度层要在弹层关掉
+   之后继续活着（shotsImported → AI 解析全部完成才收）。
+   步骤 16d 删掉了这里的字符串回退分支：VUE_SHEETS.progress 恒为 true，那段代码跑不到，
+   留着只会让人以为两条路径都要维护。计时器一直在这里（它是行为，不是视图）。 */
 function shotOverlay(on, total, what){
-  if(VUE_SHEETS.progress){
-    /* Vue 路径：状态写进 SHOTPROG，组件（views/shots.js 的 ShotProgress）是纯渲染器。
-       计时器仍在这里（shotOvlSub 是 Java 回调写的全局函数，状态在组件里 Java 写不到）。
-       容器是 body 级的 #shotOvlRoot（index.html）：closeSheet() 会换掉 .panel 的 innerHTML，
-       而进度层要在弹层关掉之后继续活着（shotsImported → AI 解析全部完成才收）。 */
-    if(!on){
-      if(shotTimer){ clearInterval(shotTimer); shotTimer = 0 }
-      SHOTPROG.on = false; SHOTPROG.what = ''; SHOTPROG.secs = 0;
-      unmountSheet('progress');
-      return;
-    }
-    SHOTPROG.on = true; SHOTPROG.total = total; SHOTPROG.what = esc(what || ''); SHOTPROG.secs = 0;
-    shotStartAt = Date.now();
-    var root = document.getElementById('shotOvlRoot');
-    if(root) mountSheet('progress', root, ShotProgress);
-    if(shotTimer) clearInterval(shotTimer);
-    shotTimer = setInterval(function(){
-      SHOTPROG.secs = Math.round((Date.now() - shotStartAt) / 1000);
-      sheetPaint();
-    }, 1000);
-    return;
-  }
-  var el = $('#shotOvl');
   if(!on){
     if(shotTimer){ clearInterval(shotTimer); shotTimer = 0 }
-    SHOTOVL_TEXT = '';
-    if(el && el.parentNode) el.parentNode.removeChild(el);
+    SHOTPROG.on = false; SHOTPROG.what = ''; SHOTPROG.secs = 0;
+    unmountSheet('progress');
     return;
   }
-  SHOTOVL_TEXT = esc(what || '');
-  if(!el){
-    el = document.createElement('div');
-    el.id = 'shotOvl';
-    el.className = 'ovl';
-    document.body.appendChild(el);
-  }
+  SHOTPROG.on = true; SHOTPROG.total = total; SHOTPROG.what = esc(what || ''); SHOTPROG.secs = 0;
   shotStartAt = Date.now();
-  el.innerHTML = '<div class="ovlcard"><div class="orw"></div>'
-    + '<b>正在处理 ' + total + ' 张截图</b>'
-    + '<div class="osub" id="shotOvlSub">' + SHOTOVL_TEXT + ' · 已用 0s</div>'
-    + '<div class="owarn">'+ic('alert')+'请保持屏幕常亮：不要锁屏、不要让手机黑屏，'
-    + '也不要退出 App 或切到别的应用，否则解析会中断。</div>'
-    + '<div style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s2)">'
-    + '完成后会自动回到列表，不用一直盯着</div></div>';
+  var root = document.getElementById('shotOvlRoot');
+  if(root) mountSheet('progress', root, ShotProgress);
   if(shotTimer) clearInterval(shotTimer);
   shotTimer = setInterval(function(){
-    var sub = $('#shotOvlSub');
-    if(!sub) return;
-    var s = Math.round((Date.now() - shotStartAt) / 1000);
-    sub.textContent = SHOTOVL_TEXT + ' · 已用 ' + s + 's';
+    SHOTPROG.secs = Math.round((Date.now() - shotStartAt) / 1000);
+    sheetPaint();
   }, 1000);
 }
 /** 更新进度层副标题（OCR 完 → 进入 AI 解析，或 3/7 这种进度） */
 function shotOvlSub(txt){
-  if(VUE_SHEETS.progress && SHOTPROG.on){
-    SHOTPROG.what = esc(txt);
-    SHOTPROG.secs = Math.round((Date.now() - shotStartAt) / 1000);
-    sheetPaint();
-    return;
-  }
-  SHOTOVL_TEXT = esc(txt);
-  var sub = $('#shotOvlSub');
-  if(sub){
-    var s = Math.round((Date.now() - shotStartAt) / 1000);
-    sub.textContent = SHOTOVL_TEXT + ' · 已用 ' + s + 's';
-  }
+  if(!SHOTPROG.on) return;
+  SHOTPROG.what = esc(txt);
+  SHOTPROG.secs = Math.round((Date.now() - shotStartAt) / 1000);
+  sheetPaint();
 }
 /** Java 导完（OCR + 入队）的回调：清暂存 → 进度层继续盯着 AI 解析 → 全部结束才收 */
 window.shotsImported = function(res){
@@ -631,40 +590,11 @@ function loadFolders(){
   });
   return sheetPaint();
 }
-function folderRender(){
-  var g = $('#folderList');
-  if(!g) return;
-  if(!folderAll.length){
-    g.innerHTML = emptyState('folder', '读不到文件夹', '需要先允许读取照片（我的 → 截图捕获 → 去授权）');
-    folderCountLabel();
-    return;
-  }
-  // 已选的排最前（组内仍按张数多的优先），这样一边勾一边看，选中的不会跑丢
-  var rows = folderRows();
-  var h = '';
-  rows.forEach(function(f){
-    var on = !!folderSel[f.path];
-    h += '<div class="frow'+(on?' on':'')+(f.missing?' gone':'')+'" data-path="'+esc(f.path)+'" '
-      + 'onclick="folderPick(\''+esc(f.path)+'\')">'
-      + '<div class="fcb">'+ic('check')+'</div>'
-      + '<div style="flex:1;min-width:0"><div class="fname">'+esc(folderLabel(f.path))+'</div>'
-      + '<div class="fpath">'+esc(f.path)+'</div></div>'
-      + '<div class="fmeta">'+(f.missing ? '已不存在' : (f.count||0)+' 张')+'</div></div>';
-  });
-  // 重排会让列表高度变化：先记住滚动位置，画完再放回去，别让手指下面的内容跳走
-  var panel = $('#sheet .panel'), top = panel ? panel.scrollTop : 0;
-  g.innerHTML = h;
-  if(panel) panel.scrollTop = top;
-  folderFilter(($('#folderQ') || {}).value || '');
-  folderCountLabel();
-}
+/* folderRender() 与 folderCountLabel() 随步骤 16d 删除：它们是选文件夹页的字符串渲染器，
+   步骤 8 起页面归 views/folders.js（FOLDER 的 Vue 组件），这两个函数只剩「调得到就抛」的
+   空壳（folderRows / folderCountHTML 已经不存在），是全项目最后一处内联 onclick 的所在地。
+   全项目内联 onclick 归零。 */
 /** 已选数量实时显示在底部固定条上（勾一个变一次） */
-function folderCountLabel(){
-  var el = $('#folderCount');
-  if(el) el.innerHTML = folderCountHTML();
-  var b = $('#sheet .pfoot .btn.pri');
-  if(b) b.textContent = folderSaveText();
-}
 function folderLabel(path){
   var seg = String(path||'').replace(/\/$/,'').split('/');
   var last = seg[seg.length-1] || path;
@@ -1513,7 +1443,7 @@ function setTab(reset){
   document.body.dataset.tab = tab;
   shell.tab = tab;
   var f = FABS[tab] || FABS.notes;
-  shell.fab = { ico: f.ico, label: f.label, hidden: false };
+  shell.fab = { icon: f.icon, label: f.label, hidden: false };
   shell.placeholder = tab==='todos' ? '搜索待办' : tab==='files' ? '搜索附件' : '搜索笔记与待办';
   q = P().q || '';
   shell.q = q;
@@ -1542,11 +1472,13 @@ function moveInd(){
   if(!el) return;
   shell.ind = { w: Math.round(el.offsetWidth*0.46), x: el.offsetLeft + el.offsetWidth*0.27 };
 }
+/* 步骤 16d：ico 存的是 ic('plus','l') 那串 SVG 字符串（shell.fab 的 v-html 直插），
+   现在只存图标名，SVG 由 shell.js 的 <ico> 组件渲染 —— v-html 全项目归零。 */
 var FABS = {
-  notes:{ico:ic('plus','l'), label:'记一笔', fn:function(){ addSheet() }},
-  todos:{ico:ic('plus','l'), label:'记待办', fn:function(){ addSheet() }},
-  files:{ico:ic('clip','l'), label:'加附件', fn:function(){ pickFile() }},
-  mine:{ico:ic('plus','l'), label:'记一笔', fn:function(){ addSheet() }}
+  notes:{icon:'plus', label:'记一笔', fn:function(){ addSheet() }},
+  todos:{icon:'plus', label:'记待办', fn:function(){ addSheet() }},
+  files:{icon:'clip', label:'加附件', fn:function(){ pickFile() }},
+  mine:{icon:'plus', label:'记一笔', fn:function(){ addSheet() }}
 };
 /* 涟漪（R10）：只给“真按钮”——它们自带 position:relative + overflow:hidden。
    列表行 .li 不参与：它不是定位容器，水波会跑到 viewport 上，铺满全屏 = 闪屏 */

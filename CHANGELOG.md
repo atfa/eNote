@@ -1373,3 +1373,33 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
   `VUE_SHEETS` 11 条；闸门 **119** 项。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
+
+### 界面（P13 S3 步骤 16d）：最后一批字符串 → 真模板，`v-html` 与内联 `onclick` 双双归零
+
+* 删死代码簇 `folderRender` / `folderCountLabel` / `emptyState`（16c 删掉 `folderRows` /
+  `folderCountHTML` 后它们已无人调用，真机 probe 一调就抛 ReferenceError）。
+  `emptyState` 里那句 `onclick="sheetMsg(...)"` 是全项目**最后一处内联 handler**：内联 `onclick`
+  **21 → 0**（步骤 15 是 21 处，全在弹层字符串里）。
+* 删 `shotOverlay` / `shotOvlSub` 的字符串回退分支（`VUE_SHEETS.progress` 恒为真，那段跑不到）
+  与死变量 `SHOTOVL_TEXT`；计时器留在 app.js（它是行为不是视图）。app.js **1864 → 1796 行**。
+* 剩下 6 处 `v-html` 全部翻成模板 + `<ico>`：fab 图标（`FABS` 改存图标名）、`<empty-state>` 内部片段、
+  KvRow 的 `v` 分支、进度层 `.owarn`、排序筛选按钮的图标（选项从 `[值, HTML]` 变 `[值, 图标名, 文案]`）。
+  逐个查过调用方传的都是纯文本（EmptyState 的 7 个调用方、KvRow 的统计/采集卡），
+  `{{ }}`（textContent）与 v-html 产出的节点相同；筛选项没有图标时多出一个 v-if 注释节点 `<!---->`，
+  它不是元素，textContent、布局、点击都一致。模板里的 `v-html=` 属性 **6 → 0**。
+* **真机抓到一个真 bug**：进度层组件用 `<ico>` 只加了文件头注释里的注册表，没加组件自己的
+  `components: { Ico }` → Vue 运行时只 `console.warn(Failed to resolve component)`，页面上是个
+  裸 `<ico n="alert">` 元素，图标位置空着。闸门⑮ 的注册表是「每文件一份」，Vue 认的是组件自己的
+  `components` 选项，两者可以不一致。新增闸门㉔（29 个组件的自定义标签全在自己 components 里）
+  与闸门㉓（59 个模板 v-html 归零），两条都做过反向实验。
+* DOM 等价性：`probe_sheets.sh` 加四个夹具点（fab 在两个 tab 的 `.fico`、进度层 `.owarn` 与整张
+  `.ovlcard`），`dom_equiv3.js` 扩到 **13 例**全一致；因为 16d 动了 KvRow 与 EmptyState，
+  16b/16a 两套重跑：`dom_equiv2.js` **13 块**、`dom_equiv.js` **3 块**全一致 → 共 29 例逐字一致。
+  三个工具的旧侧基线不再写 `HEAD`（HEAD 一路在动，这一步第一次跑就撞上「HEAD 里找不到 cdChip」），
+  钉死到「那批字符串函数被删掉之前的最后一版」：16d→`cf69909`、16b→`bd91977`、16a→`98915cc`。
+* 数字：内联 `onclick` **0**；模板 `v-html` **0**；handler 80（全在 Vue 模板，基线 73）；
+  导出表 68 个 key；闸门 **121** 项（+2）。
+* 验收：`ui_test.js` **121 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **165 项 ok / 0 FAIL / PASS**。
+* P13 的「手工 WebView 代码」到此清零：`go/ui/js/` 里没有字符串拼 HTML 的渲染器；`index.html` 剩下
+  图标 sprite（`<use>` 的引用源，必须静态）、五个挂载容器、probe 兜底面板（刻意裸 JS：Vue 起不来时它要能画）。

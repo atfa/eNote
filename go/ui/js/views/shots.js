@@ -118,13 +118,15 @@ export const ShotsView = {
    弹层关掉之后继续活着（shotsImported → AI 解析全部完成才收）。 */
 export const ShotProgress = {
   name: 'ShotProgress',
+  // 每个组件自己声明 components：闸门⑮ 的注册表是「每个文件一份」（写在文件头注释里），
+  // Vue 运行时认的却是组件自己的 components 选项。步骤 16d 给进度层加 <ico> 时就是撞在
+  // 这个缝上：静态全绿，真机上渲染出一个 <ico> 裸元素（Vue 只 warn 不报错）。闸门㉔ 钉住它。
+  components: { Ico },
   props: ['tick'],
   setup(){
     return {
       H,
-      P: live(() => H.SHOTPROG),
-      warn: H.ic('alert') + '请保持屏幕常亮：不要锁屏、不要让手机黑屏，'
-        + '也不要退出 App 或切到别的应用，否则解析会中断。'
+      P: live(() => H.SHOTPROG)
     }
   },
   template: `
@@ -133,7 +135,7 @@ export const ShotProgress = {
     <div class="orw"></div>
     <b>{{ '正在处理 ' + P.total + ' 张截图' }}</b>
     <div class="osub" id="shotOvlSub">{{ P.what + ' · 已用 ' + P.secs + 's' }}</div>
-    <div class="owarn" v-html="warn"></div>
+    <div class="owarn"><ico n="alert"/>请保持屏幕常亮：不要锁屏、不要让手机黑屏，也不要退出 App 或切到别的应用，否则解析会中断。</div>
     <div style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s2)">完成后会自动回到列表，不用一直盯着</div>
   </div>
 </div>`

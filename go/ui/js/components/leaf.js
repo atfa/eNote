@@ -196,12 +196,14 @@ export const TodoRowCompact = {
 /* 设置页与我的页满屏都是这一行：左标签 + 右值。三种形态（对应迁移前的三种拼法）：
    - vstyle：值本身带样式的（采集卡那行绿字）——样式落在值 span 自己身上，不能多套一层；
    - 默认插槽：值是富文本（<b style="color:var(--bad)">、OCR 就绪胶囊）；
-   - v：值是 HTML 字符串（数字、esc 后的文本），v-html 直插，与遗留字符串拼出的节点一致。
+   - v：值是纯文本（数字、esc 后的文本），步骤 16d 起走 {{ }}（原来是 v-html 直插）。
+     全部调用方（blocks.js 的统计/运行信息卡、settings.js 的采集卡）传的都是数字与中文
+     字面量，没有标签，textContent 与 innerHTML 产出的节点相同。
    多包一层 <span> 就是 DOM 差异（VDIFF 比结构），所以三个分支各自直接当那个值 span。 */
 export const KvRow = {
   name: 'KvRow',
   props: ['k', 'v', 'vstyle'],
-  template: `<div class="kv"><span>{{ k }}</span><span v-if="vstyle" :style="vstyle">{{ v }}</span><span v-else-if="hasSlot"><slot/></span><span v-else v-html="v"></span></div>`,
+  template: `<div class="kv"><span>{{ k }}</span><span v-if="vstyle" :style="vstyle">{{ v }}</span><span v-else-if="hasSlot"><slot/></span><span v-else>{{ v }}</span></div>`,
   setup(props, ctx){
     return { hasSlot: !!ctx.slots.default }
   }

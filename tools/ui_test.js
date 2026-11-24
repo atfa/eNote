@@ -1986,6 +1986,68 @@ if (SPLIT) {
   else ok('闸门㉒ ' + mods.size + ' 个模块的 ' + impCount + ' 处具名 import 全部真被导出（解析期 SyntaxError 类故障）');
 }
 
+/* ---------- 闸门㉓：组件模板里 v-html 归零（S3 步骤 16d）----------
+   v-html 插字符串 HTML 是混合期的折中：那段结构在模板编译、tick 依赖、闸门①b/⑮ 的
+   视野之外（字符串里的 onclick 连闸门① 都扇不到，P12「点了没反应」就是这么来的）。
+   步骤 16a~16d 把它们逐块翻成真组件，这里钉住「不再回来」。
+   只扫模板字面量（template: `…` / template: '…'），注释里提 v-html 不算。
+   反向实验：把 leaf.js 的 KvRow 改回 v-html="v" → 本闸门立刻红并点名 leaf.js。 */
+{
+  const hits = [];
+  let tplCount = 0;
+  for (const [rel, src] of walkJs(uiDir)) {
+    for (const m of src.matchAll(/template:\s*(`[\s\S]*?`|'[^']*')/g)) {
+      tplCount++;
+      if (/v-html[=:]/.test(m[1])) hits.push(rel);
+    }
+  }
+  if (hits.length) bad('闸门㉓ 模板里还有 v-html（字符串 HTML 绕过闸门⑮ 的模板编译与 tick 检查）',
+    [...new Set(hits)].join(', '));
+  else ok('闸门㉓ ' + tplCount + ' 个组件模板里 v-html 归零（字符串 HTML 全部翻成真模板）');
+}
+
+/* ---------- 闸门㉔：组件模板里的自定义标签必须在它自己的 components 里声明 ----------
+   闸门⑮ 的注册表是「每个文件一份」（文件头注释里那行 components: { ... }），Vue 运行时
+   认的却是组件自己的 components 选项。两者可以不一致，而后果是运行时的：模板里写了
+   <ico> 而组件没声明 → Vue 只 console.warn(Failed to resolve component) 并渲染出一个
+   <ico> 裸元素，图标位置空着，静态闸门与 test.sh 的文本断言都看不见（16d 真机抓到）。
+   自定义标签 = 带连字符的标签 ∪ 不在原生标签表里的单词标签（本项目只有 <ico>）。 */
+{
+  const NATIVE = new Set(('a abbr address area article aside audio b bdi bdo blockquote body br button canvas caption '
+    + 'cite code col colgroup data datalist dd del details dfn dialog div dl dt em embed fieldset figcaption figure '
+    + 'footer form h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li link main '
+    + 'map mark menu meta meter nav noscript object ol optgroup option output p param picture pre progress q rp rt ruby '
+    + 's samp script section select small source span strong style sub summary sup table tbody td template textarea tfoot '
+    + 'th thead time title tr track u ul var video wbr svg use path circle rect line g defs text tspan polyline polygon '
+    + 'ellipse stop linearGradient').split(/\s+/));
+  const miss24 = [];
+  let compCount = 0;
+  for (const [rel, src] of walkJs(uiDir)) {
+    for (const m of src.matchAll(/export const (\w+) = \{([\s\S]*?)\n\};/g)) {
+      const [, name, body] = m;
+      const declared = new Set();
+      const cm = body.match(/components:\s*\{([^}]*)\}/);
+      if (cm) for (const part of cm[1].split(',')) {
+        const t = part.trim(); if (!t) continue;
+        const kv = t.split(':');
+        const nm = (kv.length === 1 ? kv[0] : kv[1]).trim();
+        declared.add(nm);
+        declared.add(nm.replace(/(?<!^)(?=[A-Z])/g, '-').toLowerCase());
+      }
+      const used = new Set();
+      for (const t of body.matchAll(/template:\s*`([\s\S]*?)`/g))
+        for (const tag of t[1].matchAll(/<([a-z][a-z0-9]*(?:-[a-z0-9]+)*)/g))
+          if (tag[1].includes('-') || !NATIVE.has(tag[1])) used.add(tag[1]);
+      compCount++;
+      for (const tag of used)
+        if (!declared.has(tag)) miss24.push(rel + ' 的 ' + name + ' 模板用了 <' + tag + '> 但自己没声明');
+    }
+  }
+  if (miss24.length) bad('闸门㉔ 组件的 components 选项缺声明（Vue 只 warn，渲染出裸元素）',
+    miss24.join(' | '));
+  else ok('闸门㉔ ' + compCount + ' 个组件的自定义标签全在自己 components 里（运行时可解析）');
+}
+
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);
 for (const s of fails) console.log('FAIL ' + s);

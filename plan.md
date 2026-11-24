@@ -2224,3 +2224,61 @@ shots.js 进度层的服务端 warn 串、sheets.js 排序按钮、app.js 一处
 **下一步（16d，可选）**：剩下最后一处内联 handler 是 app.js 的截图导入「选文件夹」浮层
 （`#folderOvl`，命令式 innerHTML），以及 `shotOverlay` 进度层里剩下的字符串（`.owarn` 是
 服务端 HTML）。P13 的「手工 WebView 代码」到这里只剩这两小块 + `index.html` 的静态骨架。
+
+## 9.26 S3 步骤 16d 已完成（Austin：最后一批字符串 → 真模板，`v-html` 与内联 `onclick` 双双归零）
+
+**做了什么**（六块，全是「把字符串 HTML 翻成模板」，没有新行为、没有新 class）：
+
+1. **删死代码簇**：`folderRender` / `folderCountLabel` / `emptyState`（步骤 16c 删掉
+   `folderRows` / `folderCountHTML` 之后它们已无人调用，真机 probe 一调就抛 ReferenceError）。
+   `emptyState` 里那句 `onclick="sheetMsg(...)"` 是全项目**最后一处内联 handler** —— 它跟着一起没了。
+2. **删字符串回退分支**：`shotOverlay` / `shotOvlSub` 里 `if(VUE_SHEETS.progress){...}` 之后的
+   那两段 innerHTML 代码永远跑不到（注册表恒为真），连带死变量 `SHOTOVL_TEXT` 一起删。
+   计时器留在 app.js（它是行为不是视图）。app.js **1864 → 1796 行**。
+3. **fab 图标**：`FABS` 以前存 `ic('plus','l')` 那串 SVG 字符串（TabBar 用 v-html 直插），
+   现在只存图标名，shell.js 的 TabBar 模板画 `<span class="fico"><ico :n="s.fab.icon" cls="l"/></span>`。
+4. **`<empty-state>`**：内部片段成真模板（`<ico :n="icon"/>` + `{{ title }}` + `v-if` 的 `.esub`）。
+   字符串版里标题是**原样插入**的 HTML，逐个查过全部 7 个调用方（notes / todos / files / clip /
+   shots / folders / sheets）传的都是纯文本字面量，所以 `{{ }}`（textContent）与 v-html 等价。
+   注释里写明：以后谁要往 title 里塞 HTML，加插槽，别把 v-html 请回来。
+5. **KvRow 的 `v` 分支**：`v-html="v"` → `{{ v }}`。调用方只有 blocks.js 的统计/运行信息卡与
+   settings.js 的采集卡，传的是数字与中文字面量。
+6. **进度层 `.owarn`**：`warn` 字符串（`ic('alert') + 固定文案`）→ 模板里写死 `<ico n="alert"/>` + 文案。
+   顺带删掉 `ShotProgress` 的 `warn` computed。
+7. **排序筛选按钮**（最后一个 v-html）：选项从 `[值, HTML]` 改成 `[值, 图标名, 文案]`，
+   模板 `<ico v-if="o[1]" :n="o[1]"/>{{ o[2] }}`。没有图标的筛选项多出一个 v-if 的注释节点
+   `<!---->` —— 它不是元素，textContent、布局、点击都一致。
+
+模板里的 `v-html=` 属性 **6 → 0**。
+
+**真机抓到一个真 bug（这一节是这一步的重点）**：给进度层加 `<ico>` 时只加了文件头注释里的
+注册表，没加组件自己的 `components: { Ico }` → Vue 运行时只 `console.warn(Failed to resolve
+component: ico)`，然后渲染出一个**裸 `<ico n="alert">` 元素**：图标位置空着，页面不报错。
+根因是闸门⑮ 的注册表是「每个文件一份」（文件头注释那行 `components: { ... }`），
+而 Vue 认的是**组件自己的** `components` 选项，两者可以不一致。新增闸门㉔ 钉住这个缝：
+扫 29 个组件，模板里用到的自定义标签（带连字符的 ∪ 不在原生标签表里的单词标签，本项目只有
+`<ico>`）必须出现在该组件自己的 `components` 里。反向验证：把 `components: { Ico }` 从
+ShotProgress 删掉 → 闸门㉔ 立刻红并点名 `views/shots.js 的 ShotProgress 模板用了 <ico> 但自己没声明`。
+
+**新增闸门㉓**：扫 59 个组件模板，`v-html` 必须为 0（只扫模板字面量，注释里提 v-html 不算）。
+反向实验：把 leaf.js 的 KvRow 改回 `v-html="v"` → 立刻红并点名 leaf.js。
+
+**等价性怎么证的**：`.test/probe_sheets.sh` 加了四个夹具点（fab 在笔记页/附件页的 `.fico`、
+进度层的 `.owarn` 与整张 `.ovlcard`，进度层用 `Vue.createApp(VUE_SHEETS.progress)` 现场挂到
+`#shotOvlRoot` 并直接写 `host.SHOTPROG`），`.test/dom_equiv3.js` 扩到 **13 例**（9 个弹层 +
+fab 两个 tab + 进度层两块）全部逐字一致。因为 16d 动了 KvRow 与 EmptyState，步骤 16b/16a 的
+两套也重跑：`.test/dom_equiv2.js` **13 块**、`.test/dom_equiv.js` **3 块**全部一致。
+三个工具的旧侧基线不再写 `HEAD`（HEAD 一路在动，这一步第一次跑就撞上「HEAD 里找不到 cdChip」），
+改成钉死在「那批字符串函数被删掉之前的最后一版」：16d→`cf69909`、16b→`bd91977`、16a→`98915cc`，
+`BASE` 环境变量可覆盖。
+
+**数字**：内联 `onclick` **0**（步骤 15 之前是 21）；模板里的 `v-html=` **0**；handler 总数 80
+（全部在 Vue 模板里，基线 73）；导出表 68 个 key；闸门 **121** 项（+2）；app.js 1796 行。
+
+**验收**：`node tools/ui_test.js` **121 项全绿**；`GO_TEST=1 ./build.sh`（含 `go test ./...`）绿；
+`./install.sh` Success；`./test.sh --vd` **165 项 ok、0 FAIL、PASS**（步骤 15/16a/16b/16c 是 163，
+多出的 2 项是 fab 图标与进度层的新断言）；DOM 等价性 13 + 13 + 3 = **29 例逐字一致**。
+
+**P13 的「手工 WebView 代码」到此清零**：`go/ui/js/` 里没有字符串拼 HTML 的渲染器，
+`index.html` 剩下的是图标 sprite（`<use>` 的引用源，必须是静态标记）、五个挂载容器、
+以及 probe 兜底面板（刻意用裸 JS 写：Vue 起不来时它要能画出来告诉你是怎么回事）。
