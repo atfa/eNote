@@ -1897,3 +1897,53 @@ apk 装回去，所以四条互不污染）：
 > 真机 `  ok` 这条计数会**随 AI 解析分支 ±1**：`test.sh:2140` 的 `ai_step_unhappy` 只在「笔记
 > 停在 `status:raw`、需要补一次解析」时多打一条 ok（21:41 那次是 161，23:08 这次是 162）。
 > 对数字时先确认走的是哪一支，不要把它当成回归。
+
+## 9.21 Vue 迁移现状盘点（回答用户 2026-11-24 的提问，Tony 逐条核过）
+
+用户问：「现在这个系统是不是已经由 Vue 替代了原来的纯手工撰写 WebView？」一句话答案：
+**页面级的手工字符串渲染器（`*HTML()` / `render*`）已经整批删掉，那部分确实被 Vue 替代了；
+没被替代的是外壳骨架与叶子 HTML 片段；WebView 宿主（Go 服务 + JS 桥 + 原生转发）与 Vue 无关，
+一直是自研。** 下面每条都给了可自查的位置，数字是 `main = f6657f3` 上实测的。
+
+**已被 Vue 接管**
+
+* 注册表 `go/ui/js/app.js:1181` / `:1186`：`VUE_VIEWS = {notes, todos, files, mine}` +
+  `VUE_SHEETS = {shots, folders, progress, clip, settings}` —— **4 个 tab + 4 个弹层 +
+  1 个 body 级进度层**（`progress` 按 `app.js:1182-1185` 自己的注释「不是弹层而是 body 级的
+  进度层」，共用 `mountSheet` 那张表），共用同一张注册表。
+* `app.js:1203` 起 `render()` 只有 Vue 一条路径：注册表里没有的 tab 直接 `console.error`。
+* 删除发生在 S3 步骤 11（§9.17）：`app.js` 2499→1986 行（−513）、47 个 HTML 字符串渲染函数
+  分两批删、`__enote.legacy` 双路径基准缝删除、VDIFF 整段与 `tools/ui_sig_test.js`（645 行 /
+  84 项签名）删除。
+* Vue 是 vendored 全局构建 `go/ui/vendor/vue.global.prod.js`（v3.5.46，零构建步骤）；
+  `index.html:232` 的 vendor 必须排在 `:233` 的 `type=module` 之前，`go/web_test.go:181-182`
+  钉顺序、`:318-331` 钉 vendor sha256 与 `VENDOR.md` 一致。
+* 闸门⑮ 实跑：Vue 视图 8 个、22 个模板过 vendored Vue 的 `compile()`（扫 25 个模板）、
+  模板 handler 36 个全在导出表、视图里的 `H.xxx` 114 个全在 `setHost`。
+
+**没被 Vue 接管（三条硬证据）**
+
+1. 外壳骨架是静态 HTML：`index.html:100-125` 的 topbar、搜索框、tabbar、fab、`#sheet`/`#panel`、
+   自绘对话框、toast 全是静态标记；整个 `index.html` 里 Vue 指令只出现 1 次，还是 127 行注释里
+   的文字，不是真指令。
+2. Vue app 的挂载范围只有 tab 的 pane 与弹层 body（`go/ui/js/vue.js:25-29` 的 `mountView`、
+   `:43-48` 的 `mountSheet`），外壳不在任何 Vue app 的根里。
+3. 外壳由命令式 JS 驱动：`toast()` 用 `innerHTML` + `classList`（`app.js:120-122`）、开弹层
+   `$('#sheet').classList.add('on')`（`:1436` / `:1453`）、主题切
+   `document.documentElement.classList`（`:102-107`）。
+
+**叶子片段仍是手工 HTML 字符串**（这是混合模式，规则写在 `go/ui/js/components.js` 顶部注释，
+不是漏迁）：经 `v-html` 插入的分布是 `js/components.js` 19 处、`js/views/stats.js` 10 处、
+`js/views/settings.js` 8 处（`app.js` 自己那 6 处 `v-html` 全是注释：815 / 970 / 1127 / 1311 /
+1378，正是这套混合的现场说明）；这些片段带内联 `onclick` 走 window 全局函数而不是 Vue 的
+`@click`（`app.js` 里 33 处，如 `onclick="folderPick('...')"`），`app.js` 里还留着 20 个
+`function *HTML(` 叶子构造器。闸门报的「handler 总数 77（内联 31 + Vue 模板 46）」就是这个
+混合状态。所以「`app.js` 2065 行的主体是数据/状态/API/事件」这句必须连着下半句读：**里面
+仍住着那 20 个叶子片段字符串构造器与 33 处内联 `onclick`**，说它「不是渲染」是错的。
+
+**用户可自查的两条判据**
+
+```sh
+grep -c 'v-html' go/ui/js/*.js go/ui/js/views/*.js   # 叶子片段还挂在模板上的位置
+grep -c 'onclick=' go/ui/js/app.js                  # 内联 handler（走 window 全局，不是 @click）
+```
