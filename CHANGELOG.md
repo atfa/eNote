@@ -1,7 +1,7 @@
 # 更新日志
 
 版本按开发阶段（Pn）记录，全部在手机上完成。界面改动都经过后台屏截图核对 +
-`tools/ui_test.js`（116 项 UI 结构契约，S3 步骤 11 起吸收了原 `ui_sig_test.js` 的 84 项签名）
+`tools/ui_test.js`（119 项 UI 结构契约，S3 步骤 11 起吸收了原 `ui_sig_test.js` 的 84 项签名）
 + `go test ./...`。
 
 ## 0.1（当前）
@@ -740,6 +740,60 @@
   `sh ./test.sh --skip-build --vd` → `$TMPDIR/s14_head_green.log`，0 FAIL / 0 ERROR）。
   真机 `  ok` 这条计数会随 AI 解析分支 ±1（`test.sh:2140` 的 `ai_step_unhappy` 只在需要补一次
   解析时多打一条 ok：21:41 那次是 161，23:08 这次是 162），对数字时先确认走的是哪一支。
+
+### 界面（P13 S3 步骤 15）：外壳转 Vue —— topbar / tabbar+fab / 弹层宿主 / 对话框 / toast
+
+§9.21 盘点里「没被 Vue 接管」的三条硬证据，这一步干掉前两条：外壳骨架不再是静态 HTML，
+也不再由命令式 JS 驱动。新增 `go/ui/js/shell.js`（156 行）：一张 `shell` reactive 状态表
+（tab / dot / 搜索框 / fab / 指示条 / 弹层 / 对话框 / toast）+ 五个组件（`TopBar` `TabBar`
+`SheetHost` `DialogHost` `ToastHost`）+ `mountShell()`。`index.html` 237→224 行，静态外壳标记
+换成挂载点；`app.js` 2065→2122 行，`toast()` `paintStatus()` `dialog()` `closeDlg()` `sheet()`
+`pageSheet()` `pageSheetVue()` `closeSheet()` `setTab()` `moveInd()` 从命令式 DOM 写改成写状态。
+
+* **外壳状态是 `reactive()`，不是视图层那套 `V.tick` 拉模型**：视图读 tick 是因为
+  `S` / `MISSED` 这些是会被整体赋值的普通 `var`；外壳状态本来就是响应式对象，
+  `shell.sheet.on = true` 一行 DOM 自己跟上。这是数据层响应式在本项目第一次落地。
+* **挂载点分两类，理由写进注释**：在流内的（`.topbar` 是 `position:sticky`、`.tabbar` 是
+  `position:fixed`）**挂在原元素上**，Vue 只渲染内容 —— 包一层 div 会让 sticky 的包含块变成
+  那层 div（高度就是它自己），顶栏会跟着内容一起滚走，肉眼可见但静态闸门看不见。
+  浮层（`.sheet` / `.dlg` / `#toast`）挂在 body 级 `*Root` 容器里：Vue 的模板根元素是挂载点的
+  **子节点**，`:class="{on:…}"` 绑不到挂载点自身，所以显隐类必须落在模板里的元素上。
+* **顶栏显隐（我的页不显示顶栏）从 JS 写 style 换成 `body[data-tab]` + CSS**：它是「当前在哪个
+  页签」的纯函数，写进 `css/views/shell.css` 就少一处 JS 会漏同步的地方。选择器比
+  `components.css` 的 `.topbar` 更具体，层叠必赢，与闸门⑦ 不冲突。
+* **顺手修掉一个泄漏**：`sheet()`（字符串弹层）以前直接换 `.panel` 的 `innerHTML`，上一个 Vue
+  弹层的根节点就此游离 —— 与步骤 13 在 `pageSheetVue` 修掉的是同一个泄漏，只是这条路径没人查。
+  现在四个开弹层入口 + `closeSheet()` 都走 `unmountAllSheets(['progress'])`（闸门⑱ 的名单只有一份）。
+* **产出的 DOM 逐字保持**（id、class、元素顺序、内联 style），三处契约跟着搬了扫描源：
+  `tools/ui_test.js` 的「『记一笔』在底栏第三格」从扫 `index.html` 的 `<nav class="tabbar">`
+  改成扫 `shell.js` 的 `TabBar` 模板；`__enote.dom` 五个元素从「模块求值期取一次」改成 getter
+  （外壳节点是挂载之后才出现的，取一次存下来拿到的全是 `null`）；`app.js` 新增 HOST 键
+  `brandGo tabPick fabAct searchInput searchClear closeSheet sortSheet dlgOk dlgCancel`。
+* **新闸门㉒：import 的名字必须真被目标模块 export**。这一步踩的坑值一道闸门：`app.js` 写
+  `import { nextTick } from './vue.js'`，而 `vue.js` 内部一直是直接调 `Vue.nextTick()`、从没导出
+  这个名字 —— module **解析期** SyntaxError，整份 `app.js` 一行都不执行、页面整块空白，而
+  `node --check` 与所有旧闸门全绿（只看单文件语法与字符串契约）。真机上是启动自检 probe 报
+  「模块解析/加载失败：does not provide an export named 'nextTick'」才看得见，而 probe 之后还要
+  跑到 P6.6 才报红。㉒ 扫 `go/ui/js/**` 全部模块的 67 处具名 import，逐个查目标文件真导出了
+  那个名字（三种 export 写法都认）+ 相对路径文件存在。反向实验实测红（删掉 `export` 立刻点名
+  `nextTick`），还原用备份文件而不是 `git checkout`。
+* **字符串弹层的开启动作现在返回 promise**：`sheet()` / `pageSheet()` 返回 `nextTick(...)`，
+  `missedSheet` `sortSheet` `showLog` `showDebug` `addSheet` `addTodoSheet` 把它传出去。
+  DOM 是 Vue 在 nextTick 画的，`missedSheet(); assert(面板里有行)` 会读到空（真机报
+  「面板里没有行」）；`test.sh` 五处调用点跟着改成 `await`。
+* **`#panel` 的 `data-kind` CSS 钩子搬进状态**：面板归 Vue 之后随弹层开合被创建/销毁，
+  `settingsSheet()` 里 `$('#panel').dataset.kind='settings'` 写在了一个即将废弃的节点上，
+  设置页样式全丢（真机：「`#panel` dataset.kind 不是 settings」）。现在是
+  `shell.sheet.kind` + `pageSheetVue(name, title, kind)` + 模板上 `:data-kind="s.sheet.kind || null"`。
+  **教训：凡是调用方直接写 Vue 拥有的节点，都要改成写状态，`dataset` 也算。**
+* 数字：`app.js` 2065→2127 行、新增 `shell.js` 158 行、`index.html` 237→224 行；静态闸门
+  116→**119** 项全绿；handler 总数 77→88（内联 29 + Vue 模板 59，基线 73）；Vue 模板 22→27 个
+  （扫描 25→30）；视图里的 `H.xxx` 114→123 个全在 `setHost`。
+* **验收**：`GO_TEST=1 ./build.sh`（含 `go test ./...`）绿、`./install.sh` Success、
+  `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（基线 162，多的那条是闸门㉒）。
+  中途 CPAI（剪贴板一键解析）红过一次，查下来是设备侧 WebView JS 线程挂死
+  （6 分钟没有一条 2s 轮询打到 Go 服务、进程 CPU 0%、Java 主线程在 looper 空转），
+  冷启动重跑即绿，与本次改动无关。
 
 ### 文档（P13）：Vue 迁移现状盘点（回答用户提问，Tony 逐条核过）
 

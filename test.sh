@@ -1021,7 +1021,7 @@ N0C=$(readtlog | wc -l)
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
   var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||250); i++; } return -1 };
-  var d=await api("/api/missed"); __enote.state.MISSED=d; __enote.state.S.missed=d; __enote.state.tab="notes"; await render(); missedSheet();
+  var d=await api("/api/missed"); __enote.state.MISSED=d; __enote.state.S.missed=d; __enote.state.tab="notes"; await render(); await missedSheet();
   L("count="+d.count);
   L("rows="+document.querySelectorAll(".msrow").length);
   L("cb="+document.querySelectorAll(".msrow .cb").length);
@@ -1038,7 +1038,7 @@ N0C=$(readtlog | wc -l)
   var tJump=await poll(function(){ return Object.keys(__enote.state.open).length>n0 && !q("#sheet").classList.contains("on") },30,200);
   L("tJump="+tJump); L("jumped="+(Object.keys(__enote.state.open).length>n0?1:0)+" nid="+nid);
   L("sheet="+(q("#sheet")?q("#sheet").classList.contains("on"):false));
-  missedSheet();
+  await missedSheet();
   // 勾 ✓：先出划线动画，动画跑完这条才从清单里消失（用户反馈：点了看不出结果）
   var first=document.querySelector(".msrow .cb");
   var n1=document.querySelectorAll(".msrow").length;
@@ -1051,7 +1051,7 @@ N0C=$(readtlog | wc -l)
   L("tGone="+tGone);
   L("n1="+n1);L("rows2="+document.querySelectorAll(".msrow").length);L("tid="+tid);
   if(tid) await api("/api/todo",{action:"toggle",noteId:nid,todoId:tid});   // 还原，不动用户数据
-  missedSheet();
+  await missedSheet();
   missedDismiss();
   // 目标状态：横幅与顶部条都从 DOM 里消失。
   var tDismiss=await poll(function(){ return document.querySelectorAll(".missedb,.missedtop").length===0 },30,200);
@@ -2874,14 +2874,14 @@ NIT=$(readtlog | wc -l)
         return [].slice.call(l.nextElementSibling.querySelectorAll("button"))
           .filter(function(b){ return b.textContent===txt })[0]||null };
       __enote.state.tab="todos"; await render();
-      sortSheet();
+      await sortSheet();
       var bAll=segBtn("状态","全部");
       L("segAll="+(bAll?"1":"0"));
       if(bAll){
         bAll.click();   // setPref("done","all") → closeSheet + searchNow + savePrefs
         var tAll=await poll(function(){ return has("Vue 交互夹具甲")&&has("Vue 交互夹具丙") },40,250);
         L("tAll="+tAll); L("allOpen="+has("Vue 交互夹具甲")); L("allDone="+has("Vue 交互夹具丙"));
-        sortSheet();
+        await sortSheet();
         var bDone=segBtn("状态","已完成");
         L("segDone="+(bDone?"1":"0"));
         if(bDone){

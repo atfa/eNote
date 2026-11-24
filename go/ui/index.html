@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="/css/views/stats.css">
   <link rel="stylesheet" href="/css/views/settings.css">
 </head>
-<body>
+<body data-tab="notes">
 <!-- 图标库（P7）：24dp 线性图标，用 <svg class="ic"><use href="#i-xxx"/></svg> 引用 -->
 <svg class="defs" aria-hidden="true"><defs>
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M15.8 15.8 20.5 20.5"/></symbol>
@@ -96,37 +96,25 @@
 <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3.4" y="4.4" width="17.2" height="4.4" rx="1.4"/><path d="M5 8.8v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9M10 12.6h4"/></symbol>
 <symbol id="i-warn-tri" viewBox="0 0 24 24"><path d="M10.3 3.9 2.6 17.4A2 2 0 0 0 4.3 20.4h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9.4v4.2M12 17h.01"/></symbol>
 </defs></svg>
-<!-- 顶栏：笔记 / 待办 / 附件 共用（R3、R6）；我的页用自己的 hero 头部 -->
-<header class="topbar" id="topbar">
-  <button class="iconbtn" id="brandBtn" aria-label="我的"><img class="brand" src="/icon.png" alt=""><span class="dot" id="dot"></span></button>
-  <div class="search" id="searchBox">
-    <span class="sico"><svg class="ic"><use href="#i-search"/></svg></span>
-    <input id="q" type="search" placeholder="搜索笔记与待办" autocomplete="off">
-    <button class="sclr" id="qClear" aria-label="清除"><svg class="ic s"><use href="#i-x"/></svg></button>
-  </div>
-  <button class="iconbtn" id="clipBtn" aria-label="从剪贴板导入"><svg class="ic l"><use href="#i-clipboard"/></svg></button>
-  <button class="iconbtn" id="sortBtn" aria-label="排序与筛选"><svg class="ic l"><use href="#i-sort"/></svg></button>
-</header>
+<!-- 步骤 15：外壳（顶栏 / 底栏+fab / 弹层 / 对话框 / toast）改成 Vue 渲染（js/shell.js）。
+     顶栏与底栏是那两个外壳组件的**挂载点**，只留空元素。它们不能包一层 div：
+     .topbar 是 position:sticky（包一层会让它的包含块变成那层 div，高度就是它自己，
+     顶栏会跟着内容一起滚走），.tabbar 是 position:fixed，同理。
+     三个浮层各有一个 body 级容器（*Root）：Vue 的模板根元素是挂载点的**子节点**，
+     :class="{on:…}" 必须落在真正带定位与 z-index 的那个元素上（.sheet/.dlg/#toast），
+     所以容器本身不带 class。相对顺序保持迁移前那样（弹层 → 对话框 → 进度层 → toast），
+     层叠由 CSS 的 z-index 决定。
+     顶栏的显隐（我的页不显示顶栏）走 body[data-tab] + CSS，见 css/views/shell.css。 -->
+<header class="topbar" id="topbar"></header>
 <main id="view"></main>
-<nav class="tabbar" id="tabbar">
-  <span class="ind" id="ind"></span>
-  <button class="tab on" data-tab="notes"><span class="ti"><svg class="ic"><use href="#i-note"/></svg></span><em>笔记</em></button>
-  <button class="tab" data-tab="todos"><span class="ti"><svg class="ic"><use href="#i-check-square"/></svg></span><em>待办</em></button>
-  <button class="fab" id="fab"><span class="fico"><svg class="ic l"><use href="#i-plus"/></svg></span><span class="flabel">记一笔</span></button>
-  <button class="tab" data-tab="files"><span class="ti"><svg class="ic"><use href="#i-clip"/></svg></span><em>附件</em></button>
-  <button class="tab" data-tab="mine"><span class="ti"><svg class="ic"><use href="#i-user"/></svg></span><em>我的</em></button>
-</nav>
-<div class="sheet" id="sheet"><div class="panel" id="panel"></div></div>
-<!-- 自绘对话框：原生 confirm/alert 会显示“网址为 http://127.0.0.1 的网页显示：” -->
-<div class="dlg" id="dlg"><div class="dbox">
-  <h3 id="dlgT"></h3><div class="dbody" id="dlgB"></div>
-  <div class="dacts"><button class="btn" id="dlgNo">取消</button><button class="btn pri" id="dlgYes">确定</button></div>
-</div></div>
-<div id="toast"></div>
+<nav class="tabbar" id="tabbar"></nav>
+<div id="sheetRoot"></div>
+<div id="dlgRoot"></div>
 <!-- 步骤 8：截图导入进度层的挂载容器（body 级）。容器自身不带样式：遮罩 (.ovl) 在组件根
      元素上且带 v-if，unmount 后容器里什么都不留，不会剩一层透明遮罩吃掉点击。
      放 body 级是因为 closeSheet() 会换掉 .panel 的内容，而进度层要活过弹层。 -->
 <div id="shotOvlRoot"></div>
+<div id="toastRoot"></div>
   <!-- S1a：脚本从 go/ui.html 的 <script>（原 683-2524 行）搬出。
        S3 起是 ES module：顶层声明不再是全局，内联 handler 靠 app.js 末尾的
        window.__enoteActions + Object.assign(window, …) 解析（D12 原子防线，闸门① 守）。 -->

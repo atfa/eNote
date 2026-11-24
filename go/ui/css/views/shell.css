@@ -3,3 +3,10 @@
    搬动时保持层叠顺序：tokens → base → components → views/* 的加载顺序（见 index.html）。 */
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+
+/* 顶栏显隐（步骤 15）：我的页用自己的 hero 头部，不显示顶栏。
+   以前是 setTab() 里 $('#topbar').style.display = mine?'none':'flex'，现在它是
+   「当前在哪个页签」这个状态的纯函数，写在 CSS 里就少一处 JS 会漏同步的地方。
+   选择器比 components.css 的 .topbar 更具体（属性选择器 + 类），层叠上必赢，
+   与闸门⑦（同一选择器+属性只能有一个家）不冲突。 */
+body[data-tab="mine"] .topbar{display:none}

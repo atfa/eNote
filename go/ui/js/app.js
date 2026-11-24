@@ -7,7 +7,10 @@
 var S = {notes:[], settings:{}, info:{}};
 /* S3（D14）：Vue 装配层与视图注册表。混合期（步骤 5-10）里已迁移的 tab 走 Vue，
    其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
-import { V, Vue, setHost, mountView, mountSheet, unmountSheet, unmountAllSheets, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
+import { V, Vue, nextTick, setHost, mountView, mountSheet, unmountSheet, unmountAllSheets, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
+/* 外壳（步骤 15）：顶栏 / 底栏+fab / 弹层宿主 / 对话框 / toast 的组件与它们读的 reactive 状态表。
+   shell.js 只依赖 vue.js，不反向读 app.js 的状态（事件走下面的 setHost），所以没有循环导入。 */
+import { shell, mountShell } from './shell.js'
 import { NotesView } from './views/notes.js'
 import TodosView from './views/todos.js'
 import FilesView from './views/files.js'
@@ -117,9 +120,16 @@ async function setTheme(mode){
 function $(s){return document.querySelector(s)}
 function esc(s){return (s||'').replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-function toast(m){var t=$('#toast');t.innerHTML=ic('info')+'<span>'+esc(String(m))+'</span>';
-  t.classList.add('on');
-  clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on')},2200)}
+/* toast（步骤 15）：以前是 innerHTML + classList.add('on') + 把定时器挂在 DOM 节点上
+   （t._t）。现在只改 shell.toast 两个字段，显隐与文案由 ToastHost 渲染 —— 定时器是行为，
+   留在模块里，不再寄生在 DOM 上。 */
+var toastT = 0;
+function toast(m){
+  shell.toast.msg = String(m);
+  shell.toast.on = true;
+  clearTimeout(toastT);
+  toastT = setTimeout(function(){ shell.toast.on = false }, 2200);
+}
 /* 测试缝（步骤 14）：`__enote.test.failApi = '/api/clip/parse'` 让含该子串的请求在 fetch 前
    直接抛。需要它是因为「加载失败 / 解析失败」这两支在真机上要 Go 侧真报错才进得去，
    而测试侧没有让 Go 报错的通道（步骤 11 记的账，当时写的是「要补得先做注入假 fetch」）。
@@ -332,7 +342,7 @@ function missedSheet(){
   h += '<div class="pfoot"><div class="count">点整行看笔记上下文<br>勾 ✓ 直接完成</div>'
     + '<button class="btn" onclick="missedGoTodos()">去待办页</button>'
     + '<button class="btn pri" onclick="missedDismiss()">'+ic('check')+'这批我知道了</button></div>';
-  pageSheet('错过的提醒', h);
+  return pageSheet('错过的提醒', h);
 }
 function missedDone(ev, nid, tid, el){
   ev.stopPropagation();
@@ -1260,9 +1270,8 @@ function strip(){
     + '</div>';
 }
 function paintStatus(){
-  var i = S.info, d = $('#dot');
-  if(!d) return;
-  d.className = 'dot' + ((i.server && i.ocrReady) ? '' : ' bad');
+  var i = S.info;
+  shell.dot = (i.server && i.ocrReady) ? '' : 'bad';
 }
 /* ---------- 附件页（R4）----------
    数据来自 /api/attachments（服务端过滤/排序，含磁盘文件数校验）。 */
@@ -1406,14 +1415,12 @@ function liHTML(icn, t, sub, fn){
 }
 function settingsSheet(){
   /* 步骤 11：只剩 Vue 一条路径（SettingsSheetView）。dataset.kind 是 CSS 钩子
-     （css/views/settings.css 靠它定位设置页），pageSheetVue 里写。 */
-  $('#panel').dataset.kind = 'settings';
-  pageSheetVue('settings', '设置');
+     （css/views/settings.css 靠它定位设置页）；步骤 15 面板归 Vue 所有，钩子走状态。 */
+  pageSheetVue('settings', '设置', 'settings');
 }
 /* 只重绘设置页本身，并把滚动位置放回去（开关、权限回来后刷新用）*/
 function settingsRefresh(){
-  var p = $('#panel');
-  if(!p || p.dataset.kind !== 'settings' || !$('#sheet').classList.contains('on')) return;
+  if(shell.sheet.kind !== 'settings' || !shell.sheet.on) return;
   var top = p.scrollTop;
   /* 不重建 DOM：computed 全依赖 tick，sheetPaint() bump 一次就整页重算。
      重建会把输入框里正在打的字清掉（设置页是全站唯一有六个输入框的页面）。 */
@@ -1426,33 +1433,54 @@ window.onAppResume = function(){
   settingsRefresh();
   if (S && S.notes) render();
 };
-/* 全屏面板：设置页用，顶栏固定，内容可滚 */
+/* 全屏面板（字符串内容）：还没迁的弹层走这条（missedSheet）。顶栏固定，内容可滚。
+   步骤 15：DOM 不再手写，只写 shell.sheet 这张表；面板结构由 SheetHost 渲染，
+   返回按钮从内联 onclick 变成模板里的 @click="H.closeSheet()"。 */
 function pageSheet(title, html){
   sheetGen++;
-  var p = $('#panel');
-  p.className = 'panel page';
-  p.innerHTML = '<div class="phead"><button class="iconbtn" onclick="closeSheet()" aria-label="返回">'+ic('chev')+'</button>'
-    + '<div style="flex:1">'+esc(title)+'</div></div><div class="pbody">'+html+'</div>';
-  $('#sheet').classList.add('on');
-  p.scrollTop = 0;
+  unmountAllSheets(['progress']);
+  shell.sheet.page = true;
+  shell.sheet.mode = 'html';
+  shell.sheet.kind = '';
+  shell.sheet.full = false;
+  shell.sheet.title = title;
+  shell.sheet.html = html;
+  shell.sheet.on = true;
+  shell.sheet.closing = false;
+  /* 步骤 15：DOM 是 Vue 在 nextTick 画的，同步 innerHTML 那套「开完弹层立刻断言」会读到空。
+     返回这一拍，测试里 `await missedSheet()` / `await sortSheet()` 就能断到真 DOM
+     （pageSheetVue 早就返回 promise 了，字符串这两条补齐）。滚动复位也排在这一拍之后。 */
+  return nextTick(function(){ var p = $('#panel'); if(p) p.scrollTop = 0 });
 }
-/* 步骤 8：Vue 弹层的壳。头部 DOM 与 pageSheet 逐字相同（.phead + 返回按钮），区别是内容区
+/* 步骤 8：Vue 弹层的壳。头部与 pageSheet 逐字相同（.phead + 返回按钮），区别是内容区
    是个空容器交给 Vue 挂，而不是 innerHTML 拼好的字符串。id="sheetBody" 同是夹具锚点
-   （vdiff_sheet 比的就是它的 innerHTML）。 */
-function pageSheetVue(name, title){
+   （vdiff_sheet 比的就是它的 innerHTML）。
+   步骤 15：结构交给 SheetHost，这里只写状态 + 挂载。挂载要等 DOM 出现（nextTick），
+   并用 sheetGen 守住「这一轮还有效」：nextTick 期间可能又开了一个新弹层。 */
+function pageSheetVue(name, title, kind){
   sheetGen++;
+  var gen = sheetGen;
   /* 步骤 13：先把所有旧 sheet 拆干。以前只拆同名（mountSheet 里那句 unmountSheet(name)），
      于是「开过剪贴板页再开设置页」会把剪贴板那个 app 连同 effect 一起泄漏在面板里：
      innerHTML 已经把它的根节点换成游离节点，它自己不知道，渲染永远到不了它。
      进度层不在 .panel 里（body 级的 #shotOvlRoot），要活过弹层，所以列为例外。 */
   unmountAllSheets(['progress']);
-  var p = $('#panel');
-  p.className = 'panel page';
-  p.innerHTML = '<div class="phead"><button class="iconbtn" onclick="closeSheet()" aria-label="返回">'+ic('chev')+'</button>'
-    + '<div style="flex:1">'+esc(title)+'</div></div><div class="pbody" id="sheetBody"></div>';
-  $('#sheet').classList.add('on');
-  p.scrollTop = 0;
-  mountSheet(name, $('#sheetBody'), VUE_SHEETS[name]);
+  shell.sheet.page = true;
+  shell.sheet.mode = 'vue';
+  shell.sheet.kind = kind || '';
+  shell.sheet.full = false;
+  shell.sheet.title = title;
+  shell.sheet.html = '';
+  shell.sheet.on = true;
+  shell.sheet.closing = false;
+  nextTick(function(){
+    if(gen !== sheetGen) return;
+    var el = $('#sheetBody');
+    if(!el) return;
+    mountSheet(name, el, VUE_SHEETS[name]);
+    var p = $('#panel');
+    if(p) p.scrollTop = 0;
+  });
 }
 /* 导出 JSON：遗留写法是把赋值直接写进 handler（我的页那一行是单引号套双引号属性的
    字符串，设置页是内联属性），抽成函数后两条路径共用一份，handler 字符串里也只剩
@@ -1494,7 +1522,7 @@ function sortSheet(){
   }
   h += '<div class="acts"><button class="btn" onclick="resetPrefs()">重置</button>'
      + '<button class="btn pri" onclick="closeSheet()">完成</button></div>';
-  sheet(h);
+  return sheet(h);
 }
 function group(label, key, opts, cur){
   return '<label>'+label+'</label><div class="seg">'
@@ -1506,7 +1534,7 @@ function setPref(k, v){ P()[k] = v; closeSheet(); searchNow(); savePrefs(); }
 function resetPrefs(){
   prefs[tab] = tab==='todos' ? {sort:'due',done:'open',pri:'all'}
              : tab==='files' ? {sort:'new',kind:'all'} : {sort:'new',src:'all',status:'all',file:'all'};
-  q = ''; var el = $('#q'); if(el){ el.value=''; $('#searchBox').classList.remove('has'); }
+  q = ''; shell.q = ''; shell.has = false;
   closeSheet(); searchNow(); savePrefs();
 }
 /* ---------- 轮询：只在数据真的变了才重绘（避免秒级闪烁 ----------
@@ -1545,7 +1573,7 @@ async function refresh(quiet){
            prefs[k] = Object.assign(prefs[k]||{}, fp[k]);
          });
          q = P().q || '';
-         var el = $('#q'); el.value = q; $('#searchBox').classList.toggle('has', !!q);
+         shell.q = q; shell.has = !!q;
          dirty = true;
        }
        if(themeOf() !== curTheme){ curTheme = themeOf(); applyTheme(); dirty = true; }
@@ -1553,7 +1581,7 @@ async function refresh(quiet){
        if(!dirty) return;
        SIG = stateSig(d); drawn = true;
        searchNow(dirty); }
-  catch(e){ var d = $('#dot'); if(d) d.className='dot bad'; if(!drawn) render(); }
+  catch(e){ shell.dot = 'bad'; if(!drawn) render(); }
 }
 function expand(id){ open[id]=!open[id]; expAnim[id]=1; render(); setTimeout(function(){ delete expAnim[id] }, 400) }
 async function toggle(nid,tid,el){
@@ -1619,7 +1647,7 @@ async function testLLM(){
 }
 async function showLog(){
   var r = await api('/api/log?n=150');
-  sheet('<h2>运行日志</h2><div class="meta"><span class="chip">OCR '+(r.ocrReady?'ready':'…')
+  return sheet('<h2>运行日志</h2><div class="meta"><span class="chip">OCR '+(r.ocrReady?'ready':'…')
     +'</span><span class="chip">'+esc(r.server||'')+'</span></div><pre>'+esc(r.log)+'</pre>');
 }
 async function showDebug(){
@@ -1632,59 +1660,68 @@ async function showDebug(){
      +'<div class="body" style="font-size:var(--fs-sm)">输入：'+esc(clip(c.user,200))+'</div>'
      +'<pre>'+esc(c.err?('错误：'+c.err):c.raw)+'</pre></div>';
   });
-  sheet(h);
+  return sheet(h);
 }
 function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
+/* 卡片形态的弹层（底部弹出）：排序筛选、记一笔、添加待办、运行日志、调试日志这些还没迁
+   的弹层走这条，内容还是字符串。步骤 15：结构由 SheetHost 渲染，这里只写内容字符串与开关。
+   先全量拆旧 sheet：以前直接换 .panel 的 innerHTML，上一个 Vue 弹层的根节点就此游离
+   （与 pageSheetVue 修掉的是同一个泄漏，闸门⑱ 的名单只有一份）。 */
 function sheet(html, full){
   sheetGen++;
-  $('#panel').className = 'panel' + (full?' full':'');
-  $('#panel').innerHTML = '<div class="grip"></div>'
+  unmountAllSheets(['progress']);
+  shell.sheet.page = false;
+  shell.sheet.mode = 'html';
+  shell.sheet.kind = '';
+  shell.sheet.full = !!full;
+  shell.sheet.title = '';
+  shell.sheet.html = '<div class="grip"></div>'
     + '<button class="pclose" onclick="closeSheet()" aria-label="关闭">✕</button>' + html;
-  $('#sheet').classList.add('on');
+  shell.sheet.on = true;
+  shell.sheet.closing = false;
+  /* 同上：字符串卡片形态也返回 nextTick，开完弹层立刻断言的测试要能断到 DOM。 */
+  return nextTick();
 }
 function closeSheet(){
-  var s = $('#sheet');
-  if(!s.classList.contains('on')) return;
-  s.classList.add('closing');
+  if(!shell.sheet.on) return;
+  shell.sheet.closing = true;
   var gen = sheetGen;
   setTimeout(function(){
     /* 期间又开过一个弹层（快速连点：关掉立刻重开）→ 这个回调是迟到的，什么都不动。
-       不能写成「先 remove('on') 再判断 contains('on')」：那个判断永远为真，而 remove
-       已经把新开的弹层收掉了。progress 不在这里收：shotsImported 会先 closeSheet 再等
+       不能写成「先关 on 再判断 on」：那个判断永远为真，而关掉已经把新开的弹层收掉了。
+       progress 不在这里收：shotsImported 会先 closeSheet 再等
        AI 解析完，进度层必须活过弹层。 */
     if(gen !== sheetGen) return;
-    s.classList.remove('on'); s.classList.remove('closing');
+    shell.sheet.on = false;
+    shell.sheet.closing = false;
     /* 步骤 13：以前这里手写四个名字（shots/folders/clip/settings），新增 sheet 忘了加
        就是静默泄漏。名单现在只有一份：sheetApps 这张表。progress 是例外（见上）。 */
     unmountAllSheets(['progress']);
   }, 110);
 }
-$('#sheet').addEventListener('click', function(e){ if(e.target.id==='sheet') closeSheet(); });
 
 /* ---------- 自绘对话框（代替原生 confirm/alert）----------
    WebView 的默认弹框会顶着一行“网址为 http://127.0.0.1 的网页显示：”，
    对用户毫无意义。Java 的 onJsAlert/onJsConfirm 也一律转发到这里。 */
 var dlgCb = null, dlgCancel = null;
+/* 步骤 15：六个字段写进 shell.dlg，显隐、按钮文案、危险色、取消按钮的显隐全由 DialogHost
+   渲染（正文是 esc 过的纯文本，模板里的 {{ }} 天然转义，与原来的 innerHTML+esc 等价）。 */
 function dialog(o){
-  $('#dlgT').textContent = o.title || '';
-  $('#dlgB').innerHTML = esc(o.body || '');
-  var y = $('#dlgYes'), n = $('#dlgNo');
-  y.textContent = o.ok || '确定';
-  y.className = 'btn ' + (o.danger ? 'dg' : 'pri');
-  n.textContent = o.cancel || '取消';
-  n.style.display = o.noCancel ? 'none' : '';
+  shell.dlg.title = o.title || '';
+  shell.dlg.body = o.body || '';
+  shell.dlg.ok = o.ok || '确定';
+  shell.dlg.cancel = o.cancel || '取消';
+  shell.dlg.danger = !!o.danger;
+  shell.dlg.noCancel = !!o.noCancel;
   dlgCb = o.onOk || null; dlgCancel = o.onCancel || null;
-  $('#dlg').classList.add('on');
+  shell.dlg.on = true;
 }
 function closeDlg(ok){
-  $('#dlg').classList.remove('on');
+  shell.dlg.on = false;
   var cb = dlgCb, cc = dlgCancel;
   dlgCb = null; dlgCancel = null;
   if(ok){ if(cb) cb() } else if(cc) cc();
 }
-$('#dlgYes').onclick = function(){ closeDlg(true) };
-$('#dlgNo').onclick = function(){ closeDlg(false) };
-$('#dlg').addEventListener('click', function(e){ if(e.target.id==='dlg') closeDlg(false) });
 function askDel(what, onOk){ dialog({title:'删除', body:what, ok:'删除', danger:true, onOk:onOk}) }
 /* Java 的 onJsAlert/onJsConfirm 转发到这里（id 非空 = confirm，需要回传结果） */
 window.uiDialog = function(title, msg, id){
@@ -1695,13 +1732,13 @@ window.uiDialog = function(title, msg, id){
 
 /* 手机返回键：先关对话框/面板，再回笔记页，最后才退 app */
 window.uiBack = function(){
-  if($('#dlg').classList.contains('on')){ closeDlg(false); return 1; }
-  if($('#sheet').classList.contains('on')){ closeSheet(); return 1; }
+  if(shell.dlg.on){ closeDlg(false); return 1; }
+  if(shell.sheet.on){ closeSheet(); return 1; }
   if(tab !== 'notes'){ tab = 'notes'; setTab(true); return 1; }
   return 0;
 };
 function addSheet(){
-  sheet('<h2>记一笔</h2>'
+  return sheet('<h2>记一笔</h2>'
    +'<label>文字</label><textarea id="addText" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea>'
    +'<div class="acts"><button class="btn pri" onclick="addNote()">保存并解析</button>'
    +'<button class="btn" onclick="pickImage()">'+ic('camera')+'选图片（本机 OCR）</button></div>');
@@ -1719,7 +1756,7 @@ function pickImage(){
   setTimeout(refresh,1500); setTimeout(refresh,5000); setTimeout(refresh,12000);
 }
 function addTodoSheet(nid){
-  sheet('<h2>添加待办</h2><label>事项</label><input id="tText" placeholder="要做什么">'
+  return sheet('<h2>添加待办</h2><label>事项</label><input id="tText" placeholder="要做什么">'
    +'<div class="grid2"><div><label>日期</label><input type="date" id="tDate"></div>'
    +'<div><label>时间</label><input type="time" id="tTime"></div></div>'
    +'<label>优先级</label><select id="tPri"><option value="normal">普通</option>'
@@ -1736,19 +1773,17 @@ async function addTodo(nid){
 function setTab(reset){
   tab = tab || 'notes';
   if(lastTab !== tab) tabScroll[lastTab] = window.scrollY;   // 记住离开时看到哪儿
-  document.querySelectorAll('.tabbar .tab').forEach(function(b){
-    b.classList.toggle('on', b.dataset.tab===tab)});
-  moveInd();
-  var mine = tab==='mine';
-  $('#topbar').style.display = mine ? 'none' : 'flex';
-  var f = FABS[tab] || FABS.notes, fab = $('#fab');
-  fab.classList.remove('hide');
-  fab.querySelector('.fico').innerHTML = f.ico;
-  fab.querySelector('.flabel').textContent = f.label;
-  fab.onclick = f.fn;
-  $('#q').placeholder = tab==='todos' ? '搜索待办' : tab==='files' ? '搜索附件' : '搜索笔记与待办';
+  /* 步骤 15：页签高亮、fab 图标/文案、搜索框占位符、顶栏显隐（我的页无顶栏）以前是
+     五处命令式 DOM 写，漏一处就是「切了页签按钮没变」。现在只写 shell 这张表，
+     顶栏显隐走 body[data-tab] + CSS（它是「当前在哪个页签」的纯函数）。 */
+  document.body.dataset.tab = tab;
+  shell.tab = tab;
+  var f = FABS[tab] || FABS.notes;
+  shell.fab = { ico: f.ico, label: f.label, hidden: false };
+  shell.placeholder = tab==='todos' ? '搜索待办' : tab==='files' ? '搜索附件' : '搜索笔记与待办';
   q = P().q || '';
-  var qi = $('#q'); qi.value = q; $('#searchBox').classList.toggle('has', !!q);
+  shell.q = q;
+  shell.has = !!q;
   var fresh = !paneBuilt[tab] || paneDirty[tab];
   if(fresh){
     clearSeen();   // 重建这一页：卡片算“新出现”，入场动画重跑一次
@@ -1762,12 +1797,16 @@ function setTab(reset){
   if(reset) tabScroll[tab] = 0;
   requestAnimationFrame(function(){ window.scrollTo(0, y) });
   if(tab==='mine' && !ST) statsNow();
+  /* 指示条要量活动页签的真实几何，而 .tab.on 这个类是 Vue 在 nextTick 才落到 DOM 上的，
+     所以测量也必须排在 nextTick 之后（同步量会量到上一个页签的位置）。 */
+  nextTick(moveInd);
 }
+/* 页签指示条：宽度/位移是从真实布局量出来的（DOM 测量只能读 DOM），量完写进 shell.ind，
+   由 TabBar 渲染成内联 style。 */
 function moveInd(){
-  var el = document.querySelector('.tabbar .tab.on'), ind = $('#ind');
-  if(!el || !ind) return;
-  ind.style.width = Math.round(el.offsetWidth*0.46)+'px';
-  ind.style.transform = 'translateX('+(el.offsetLeft + el.offsetWidth*0.27)+'px)';
+  var el = document.querySelector('.tabbar .tab.on');
+  if(!el) return;
+  shell.ind = { w: Math.round(el.offsetWidth*0.46), x: el.offsetLeft + el.offsetWidth*0.27 };
 }
 var FABS = {
   notes:{ico:ic('plus','l'), label:'记一笔', fn:function(){ addSheet() }},
@@ -1789,23 +1828,33 @@ document.addEventListener('pointerdown', function(e){
   el.appendChild(s);
   setTimeout(function(){ if(s.parentNode) s.parentNode.removeChild(s) }, 320);
 });
-document.querySelectorAll('.tabbar .tab').forEach(function(b){
-  b.onclick = function(){ if(tab===b.dataset.tab){ window.scrollTo({top:0,behavior:'smooth'}); return; }
-    tab = b.dataset.tab; setTab(); }});
-$('#brandBtn').onclick = function(){ tab='mine'; setTab(true); };
-$('#sortBtn').onclick = sortSheet;
-$('#clipBtn').onclick = importClip;
+/* ---------- 外壳的事件（步骤 15）----------
+   以前是 querySelector + .onclick / addEventListener 挂在静态标记上；现在顶栏与底栏由
+   Vue 渲染，事件写在模板里（@click="H.xxx(...)"），这里只留被调的函数本体。
+   这些名字必须同时出现在下面的 setHost 宿主对象里（闸门⑮ 查模板里的 H.xxx ⊆ setHost）。
+   剪贴板按钮与排序按钮直接复用 importClip / sortSheet，模板里调的就是它们本名。 */
+function tabPick(t){
+  if(tab === t){ window.scrollTo({top:0, behavior:'smooth'}); return; }
+  tab = t; setTab();
+}
+function brandGo(){ tab = 'mine'; setTab(true) }
+function fabAct(){ (FABS[tab] || FABS.notes).fn() }
 var searchT = 0;
-$('#q').addEventListener('input', function(){
-  q = this.value.trim();
+/* 搜索框：shell.q 是输入框里的原文（v-model 双向绑的就是它），真发给服务端的是 trim
+   过的 q。服务端搜索：等用户停手再发，避免每敲一个字就重建一次列表。 */
+function searchInput(v){
+  q = v.trim();
   P().q = q;
-  $('#searchBox').classList.toggle('has', !!q);
-  // 服务端搜索：等用户停手再发，避免每敲一个字就重建一次列表
+  shell.has = !!q;
   clearTimeout(searchT);
   searchT = setTimeout(function(){ searchNow(); savePrefs(); }, 260);
-});
-$('#qClear').onclick = function(){ q=''; this.blur(); var el=$('#q'); el.value='';
-  $('#searchBox').classList.remove('has'); P().q=''; clearTimeout(searchT); searchNow(); savePrefs(); };
+}
+function searchClear(){
+  q = ''; shell.q = ''; shell.has = false;
+  var el = $('#q'); if(el) el.blur();
+  P().q = '';
+  clearTimeout(searchT); searchNow(); savePrefs();
+}
 window.addEventListener('resize', moveInd);
 // 安静轮询：数据没变就只刷状态点，不重建 DOM
 /* ---------- S3（D14）：Vue 宿主接口 ----------
@@ -1829,6 +1878,12 @@ var HOST = setHost({
      __enote.vue.isVue(todos) 且 TodosView 真的挂载了。 */
   strip: strip, emptyState: emptyState, P: P, groupTodos: groupTodos, todoEnterCls: todoEnterCls,
   todoRowCls: todoRowCls, cbInnerHTML: cbInnerHTML, todoTxHTML: todoTxHTML,
+  /* 步骤 15：外壳（顶栏 / 底栏+fab / 弹层宿主 / 对话框）的事件入口。模板里写的是
+     @click="H.xxx(...)"，走的就是这张表（闸门⑮ 逐个查名字在不在）。 */
+  brandGo: brandGo, tabPick: tabPick, fabAct: fabAct,
+  searchInput: searchInput, searchClear: searchClear,
+  closeSheet: closeSheet, sortSheet: sortSheet,
+  dlgOk: function(){ closeDlg(true) }, dlgCancel: function(){ closeDlg(false) },
   cdChip: cdChip, remindBtns: remindBtns,
   hit: hit, rank: rank,
   toggle: toggle, jump: jump, render: render,
@@ -2032,17 +2087,25 @@ window.__enote.state = {
    集体假绿，比白屏难查一个量级。
    build.json 由 build.sh 生成（sha 带 -dirty 后缀），/build.json 走 no-store：设备是共享的，
    两个 worktree 轮流装，测试得能证明「页面里跑的就是刚装的这版」。 */
+/* 步骤 15：外壳挂载（顶栏/底栏/弹层宿主/对话框/toast 五个应用）。
+   必须在首次 render()/refresh() 之前：toast()、dialog()、sheet() 与 __enote.dom 都假定
+   #toast / #dlg / #sheet / #panel 这些节点已经存在。 */
+mountShell();
+moveInd();
+
 var __ready = new Promise(function(r){ readyResolve = r; if(firstPainted) r() });
 Object.assign(window.__enote, {
   ready: __ready,
   build: null,
   api: api,
+  /* 步骤 15：外壳转 Vue 之后这些节点是挂载之后才出现的，取一次存下来的话拿到的全是
+     null —— 改成 getter，载荷每次读都现取。 */
   dom: {
-    main: document.getElementById('view'),
-    sheet: document.getElementById('sheet'),
-    panel: document.getElementById('panel'),
-    toast: document.getElementById('toast'),
-    dlg: document.getElementById('dlg')
+    get main(){ return document.getElementById('view') },
+    get sheet(){ return document.getElementById('sheet') },
+    get panel(){ return document.getElementById('panel') },
+    get toast(){ return document.getElementById('toast') },
+    get dlg(){ return document.getElementById('dlg') }
   },
   probe: window.__enoteProbe || null,
   markReady: markReady,

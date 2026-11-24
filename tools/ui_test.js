@@ -1303,9 +1303,11 @@ if (SPLIT) {
   const java = read('src/dev/xduo/enote/MainActivity.java');
   const keepalive = read('src/dev/xduo/enote/KeepAlive.java');
 
-  // “记一笔”在导航栏第三格，形成 5 个按钮
-  const bar = src.match(/<nav class="tabbar"[\s\S]*?<\/nav>/);
-  const inBar = bar && /class="tab"[^>]*todos[\s\S]*?<button class="fab" id="fab"[\s\S]*?data-tab="files"/.test(bar[0]);
+  // “记一笔”在导航栏第三格，形成 5 个按钮。
+  // 步骤 15：底栏不再是 index.html 里的静态标记，是 js/shell.js 的 TabBar 模板 —— 契约不变
+  // （fab 夹在 todos 与 files 之间），只是真相换了个地方，扫描源跟着搬。
+  const bar = read('go/ui/js/shell.js').match(/export const TabBar[\s\S]*?template: `([\s\S]*?)`\n/);
+  const inBar = bar && /class="tab"[^>]*todos[\s\S]*?<button class="fab" id="fab"[\s\S]*?data-tab="files"/.test(bar[1]);
   sig('“记一笔”在底栏第三格（5 个按钮）', inBar);
 
   // 指示条必须 left:0，否则它和按钮差一个 padding，看起来左对齐
@@ -1930,6 +1932,51 @@ if (SPLIT) {
     drift.push('剪贴板夹具步的收尾没断空（找不到「本步收尾后剪贴板暂存区不是 0」）：泄漏会躲过本轮，红在下一轮的硬基线');
   if (drift.length) bad('test.sh 顶层注释风格 / 剪贴板跨轮收尾断了', drift.join('；'));
   else ok('闸门㉑ ' + shFiles.length + ' 个 .sh 顶层无 /* 伪注释（sh 会当命令 127 退出），剪贴板夹具收尾两处 clipset 空白 + 断空齐全');
+}
+
+/* ---------- 闸门㉒：ES module 的 import 名字必须真被 export（步骤 15 踩过）----------
+   app.js 里写了 `import { nextTick } from './vue.js'`，而 vue.js 只在内部调用
+   Vue.nextTick()、没导出它 —— 这是 module **解析期**的 SyntaxError：整份 app.js 一行都不
+   执行，页面整块空白，而 node --check 与所有旧闸门全绿（它们只看单文件语法与字符串契约）。
+   真机上是启动自检的 probe 报「模块解析/加载失败」才看得见，代价是一次 build + install +
+   跑测（跑测还要跑到 P6.6 才红）。反向实验：删掉 vue.js 的 `export const nextTick`
+   → 本闸门立刻红并点名 nextTick。 */
+{
+  const mods = new Map(walkJs(uiDir));
+  const bad22 = [];
+  const exportsOf = (src) => {
+    const names = new Set();
+    for (const m of src.matchAll(/^export\s+(?:async\s+)?(?:const|let|var|function\*?|class)\s+([A-Za-z_$][\w$]*)/gm)) names.add(m[1]);
+    for (const m of src.matchAll(/^export\s*\{([^}]*)\}/gm))
+      for (const part of m[1].split(',')) {
+        const t = part.trim(); if (!t) continue;
+        const as = t.split(/\s+as\s+/); names.add((as[1] || as[0]).trim());
+      }
+    if (/^export\s+default\b/m.test(src)) names.add('default');
+    return names;
+  };
+  const expCache = new Map();
+  let impCount = 0;
+  for (const [p, src] of mods) {
+    for (const m of src.matchAll(/import\s+\{([^}]*)\}\s+from\s+['"]([^'"]+)['"]/g)) {
+      const spec = m[2];
+      if (!spec.startsWith('.')) continue;
+      const target = path.normalize(path.join(path.dirname(p), spec)).replace(/\\/g, '/');
+      const tsrc = mods.get(target);
+      if (tsrc === undefined) { bad22.push(p + ' import 的 ' + spec + ' 文件不存在'); continue; }
+      if (!expCache.has(target)) expCache.set(target, exportsOf(tsrc));
+      const exp = expCache.get(target);
+      for (const part of m[1].split(',')) {
+        const t = part.trim(); if (!t) continue;
+        impCount++;
+        const name = t.split(/\s+as\s+/)[0].trim();
+        if (!exp.has(name)) bad22.push(p + ' import 的 ' + name + ' 不是 ' + spec
+          + ' 的导出（module 解析期 SyntaxError → 整份脚本不执行、页面空白）');
+      }
+    }
+  }
+  if (bad22.length) bad('闸门㉒ import/export 对不上', bad22.join(' | '));
+  else ok('闸门㉒ ' + mods.size + ' 个模块的 ' + impCount + ' 处具名 import 全部真被导出（解析期 SyntaxError 类故障）');
 }
 
 // ---------- 输出 ----------

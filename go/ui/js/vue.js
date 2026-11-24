@@ -10,6 +10,12 @@
 
 export const Vue = window.Vue;
 
+/* 步骤 15：外壳（js/shell.js）与 app.js 的弹层挂载都要排到 DOM 落地之后那一拍，
+   nextTick 得能从外面 import 到。踩过：只在 vue.js 内部写 Vue.nextTick()，app.js
+   import 它是 module 解析期 SyntaxError（「does not provide an export named
+   'nextTick'」），整份 app.js 不执行 —— 静态闸门全绿，真机整页空白。 */
+export const nextTick = Vue.nextTick;
+
 /* 每次 render() 递增一次。组件的 computed 读它 → 整棵子树重算。 */
 export const V = Vue.reactive({ tick: 0 });
 
