@@ -86,6 +86,8 @@ export const ClipSheetView = {
   <empty-state v-else-if="!items.length" icon="inbox" title="暂存区是空的"/>
   <clip-item v-for="(x,k) in items" :key="x.id" :x="x" :tick="tick"/>
 </div>
+<!-- 内联 display:block 是有意的（闸门⑲ 钉住）：这两个弹层的计数独占一行、按钮整行排在下面。
+     .pfoot 默认是 flex + flex-wrap（步骤 13 为文件夹页窄屏加的），走 flex 会让计数和三个按钮挤一行。 -->
 <div class="pfoot" style="display:block">
   <div class="count" id="clipFoot" style="margin-bottom:var(--s2)" v-html="countHtml"></div>
   <div style="display:flex;gap:var(--s2)">

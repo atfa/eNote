@@ -665,6 +665,14 @@
 `(cd go && go test ./...)` ok、`bash -n test.sh` ok；真机 `./test.sh --skip-build --vd` 全绿，
 `  ok` 行 149 → 155（新增 FPRE / SLEAK / 窄屏计数）。
 
+* **`--toast-bottom:96px`**（Tony 设备实测后定）：`#toast` 的 96px 看着与 body 原来的 96px 同源，
+  实测是两个量 —— toast 底边距视口底 89.6px、tabbar 顶边 69.4px、body padding-bottom 104px。
+  toast 要「让开 tabbar」，`--clear-bottom` 是「内容让开 nav+fab」，并进后者会把浮层抬 8px。
+* **闸门⑲ 弹层底部条的两种布局形态**：步骤 13 给 `.pfoot` 加的 `flex-wrap` 对 clip / shots
+  完全没生效 —— 它们写的是内联 `style="display:block"`（计数独占一行，走 flex 会让计数和三个
+  按钮挤一行）。这不是 bug，但删掉那行内联样式的人看不见差别、测试也不红，所以钉住四个
+  `.pfoot` 的形态，两个模板各补一行注释。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome

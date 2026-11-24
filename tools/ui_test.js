@@ -1842,6 +1842,30 @@ if (SPLIT) {
   else ok('闸门⑱ 开/关弹层都全量拆 sheet，进度层是例外');
 }
 
+/* ---------- 闸门⑲：弹层底部条的两种布局形态（步骤 13，Tony 审查提出）----------
+   .pfoot 是 flex + flex-wrap（计数整条不许断，挤不下让按钮掉到第二行），而 clip / shots
+   两个弹层的底部条带内联 style="display:block"：它们的计数是独立 block div，天然独占一行，
+   走 flex 会变成「计数和三个按钮挤一行」。删掉那行内联样式的人看不见这个差别（全宽下
+   两种布局都放得下，窄屏才咬人），测试也不会红 —— 所以钉住：该带的必须带，不该带的不许带。 */
+{
+  const forms = [['go/ui/js/views/clip.js', true], ['go/ui/js/views/shots.js', true],
+                 ['go/ui/js/views/folders.js', false], ['go/ui/js/app.js', false]];
+  const drift = [];
+  for (const [f, block] of forms) {
+    const src = read(f);
+    const hits = [...src.matchAll(/<div class="pfoot"([^>]*?)(?:>|\n)/g)];
+    if (!hits.length) { drift.push(f + ' 找不到 class="pfoot"（闸门⑲ 在假绿）'); continue }
+    for (const h of hits) {
+      const isBlock = /display:\s*block/.test(h[1]);
+      if (isBlock !== block)
+        drift.push(f + ' 的 .pfoot 内联样式是 ' + (isBlock ? 'display:block' : 'flex（默认）')
+          + '，期望 ' + (block ? 'display:block（计数独占一行）' : 'flex + flex-wrap（计数整条不许断）'));
+    }
+  }
+  if (drift.length) bad('弹层底部条布局形态漂移', drift.join('；'));
+  else ok('闸门⑲ 弹层底部条两种布局形态钉住（clip/shots 计数独占行，folders/提醒面板走 flex+wrap）');
+}
+
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);
 for (const s of fails) console.log('FAIL ' + s);

@@ -186,7 +186,7 @@ h2{font-size:var(--fs-lg);margin:0 0 var(--s1)}
 .kv span:first-child{color:var(--dim)}
 .kv span:last-child{text-align:right;word-break:break-all;color:var(--acc)}
 pre{background:var(--pre-bg);border:var(--hair) solid var(--line);border-radius:var(--r1);padding:var(--s2);font-size:var(--fs-xs);overflow:auto;max-height:260px;color:var(--pre-fg);white-space:pre-wrap;word-break:break-word}
-#toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(6px);
+#toast{position:fixed;left:50%;bottom:calc(var(--toast-bottom) + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(6px);
   display:flex;align-items:center;gap:var(--s2);
   background:var(--toast-bg);color:var(--toast-fg);padding:var(--s2) var(--s4);border-radius:var(--r-pill);font-size:var(--fs-md);font-weight:500;
   box-shadow:0 8px 28px rgba(12,22,40,.26);opacity:0;

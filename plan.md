@@ -1692,8 +1692,27 @@ Vue 把结构搬进 js 之后，新样式越来越多写在 `style="…"` / `:st
 附件页是 grid、item 默认 stretch，两个数一旦分叉就是图文卡高度不齐。它跟 `--clear-bottom`
 （内容让开 nav+fab 的底部留白）是两个概念，焊在一起会变成「改 fab 留白连带改附件卡高度」。
 
+**⑦ `--toast-bottom:96px`（Tony 设备实测后定）**
+
+`#toast` 的 `bottom:calc(96px + env(safe-area-inset-bottom))` 看着和 body 原来的 96px 同源，
+实测是两个量：toast 底边距视口底 89.6px、tabbar 顶边 69.4px、body padding-bottom 104px。
+toast 的约束是「让开 tabbar + 余量」，`--clear-bottom` 是「内容让开 nav+fab」；并进后者会把
+toast 抬 8px、与最后一行内容的重叠从 ~23px 变 ~31px，还把浮层高度焊到内容 padding 上。
+
+**⑧ 闸门⑲：弹层底部条的两种布局形态（Tony 审查提出）**
+
+步骤 13 给 `.pfoot` 加的 `flex-wrap` 对 clip / shots 两个弹层**完全没生效** —— 它们的模板写的是
+`<div class="pfoot" style="display:block">`，内联样式覆盖了 `.pfoot{display:flex}`。这不是 bug：
+那两个弹层的计数是独立 block div，天然独占一行，走 flex 反而会让计数和三个按钮挤一行。
+问题是「谁删掉这行内联样式」看不见差别（全宽下两种布局都放得下，窄屏才咬人），测试也不会红。
+闸门⑲ 钉住四个 `.pfoot`：clip / shots 必须带 `display:block`，folders / 提醒面板必须不带；
+反向实验（删掉 clip.js 那行内联样式）实测红。两个模板里各补一行注释说明为什么。
+
 **记进步骤 14 的账**
 
 * SIT 里还有 `q()[0]` 这类索引选择器，DOM 顺序一变就测到别的元素；换成稳定 id。
 * 断言要显式写出 `src`/`status`/`pri`/`kind`，不要只断言数量（§9.17 审计条目，步骤 12 收了一半）。
 * `clipParse` 的真 LLM 路径与 `clipError` 分支没有客户端回归（现在只在 Go 侧测）。
+* 260px 面板下 clip 弹层三个按钮文字被裁（「原样存为笔记」两侧切掉）：clip.js 给按钮写了内联
+  `flex:1`/`flex:1.2`，`.btn` 左右 padding 16px 且没有 `min-width:0`。全宽实测三按钮一行放得下
+  （footW=369、btnOverflow=0），只在 <320 CSS px 才咬人（Tony 审查记的 nit，非回归）。
