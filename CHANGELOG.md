@@ -572,6 +572,9 @@
   `am start`、切 tab、写数据，只要期间 app 自己触发了一次 refresh，测试 await 的那次结果就被
   整次丢掉，`FA.loaded` 永远停在 false；绿的那次只是没撞上。三块都改成轮询（最多 12 次、每次
   250ms，每次重新发起，轮询到目标状态才继续；超时才 fail，`tries=` 打进日志与断言消息）。
+  轮询闸门本身用 `.test/s11_flake_neg.sh` 证明不是恒绿：把 `app.js` 的 `filesNow()` 里
+  `loaded:true` 改成 `loaded:false`（数据拉到了但 `FA.loaded` 永远是 false，正是竞态的表现），
+  真机套件红在 `FA.loaded 仍是 false：filesNow() 轮询 12 次没拉到数据`（EXIT=1）。
   同一族剩下的「单发 await + 固定 sleep」用例（文件夹弹层 / 截图弹层 / 设置页 / TINT / NINT）
   已逐条列进 `plan.md` §9.17 的审计，步骤 12 一次性收；产品侧同一类（`filesNow()` 的
   `searchSeq`、`statsNow()` 的 `stBusy` 一次被抢占/卡住 → 这一页此后不再刷新，用户侧症状是

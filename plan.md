@@ -1491,6 +1491,12 @@ await sleep(250); i++; }`）；下面是本步 HEAD 剩下的同类，按危险�
    轮询那条（`cards()<n0`）是好的，固定 sleep 那两条同类。
 6. **SIT（test.sh:1726）**：列表到位用了轮询（好），但点击后是固定 300ms；`q()[0]` 这类索引
    选择器另记（见上面的审计清单）。
+**轮询闸门不是恒绿（`.test/s11_flake_neg.sh`）**：把 `app.js` 的 `filesNow()` 里
+`loaded:true` 改成 `loaded:false`（服务端拉到了数据但 `FA.loaded` 永远是 false，正是竞态的表现），
+真机套件必须红，而且红在「filesNow() 轮询 12 次没拉到数据」这条消息上 —— 实测
+`AssertionError: FA.loaded 仍是 false：filesNow() 轮询 12 次没拉到数据`，EXIT=1。脚本开头一次性
+备份 `app.js` 到 `$TMPDIR/s11fix`、`trap EXIT` 恢复，不用 `git checkout`。
+
 产品侧同一类（**记进步骤 13**）：`filesNow()` 的 `searchSeq` 与 `statsNow()` 的 `stBusy` 都是
 「一次在飞请求被抢占/卡住 → 这一页此后不再刷新」，用户侧症状是附件页/我的页停在骨架屏，
 只能切走再切回来。测试侧轮询只是把症状盖住，产品侧要单独修（抢占后允许重试 / `stBusy` 加超时）。
