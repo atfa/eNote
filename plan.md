@@ -1500,3 +1500,84 @@ await sleep(250); i++; }`）；下面是本步 HEAD 剩下的同类，按危险�
 产品侧同一类（**记进步骤 13**）：`filesNow()` 的 `searchSeq` 与 `statsNow()` 的 `stBusy` 都是
 「一次在飞请求被抢占/卡住 → 这一页此后不再刷新」，用户侧症状是附件页/我的页停在骨架屏，
 只能切走再切回来。测试侧轮询只是把症状盖住，产品侧要单独修（抢占后允许重试 / `stBusy` 加超时）。
+
+### 9.18 S3 步骤 12 已完成（Austin：OCR 搜索断言收紧 + 「单发 await + 固定 sleep 再断言」整族换轮询）
+
+**为什么先收紧搜索断言**：搜索用例的关键词是 `取快递`，OCR 坏掉也照样绿 —— 分享图片时 LLM 会把
+图上的字回抄进标题/正文/待办（实测 title `取快递取件码 U7VQH4QM`、todo `取快递（取件码：…）`），
+「命中」根本不证明本地 OCR 路径工作过。断言必须**只能由图片文字满足**。
+
+**新步骤「share 现造的随机串图 → 本地 OCR 逐字读出」（test.sh:415）**
+* 图不来自仓库，是 app 自己在 WebView 里用 canvas 现画的：1200×320 白底，`bold 100px sans-serif`
+  一行「取快递 + 8 位随机串」，再加一行 48px 说明文字。随机串字符集
+  `ACDEFGHJKLMNRTUVWXY34679` —— 去掉 OCR 易混的 0/O、1/I/l、2/Z、5/S、8/B，**也去掉 Q**：
+  真机第二遍跑到 `RS=HEQKYTE4`，本地 OCR 读出 `HEOKYTE4`（84px 下 Q 的尾巴丢了，Q 与 O 不可分），
+  同一轮把字号从 84px 提到 100px、画布从 900×300 加宽到 1200×320。逐字比对才有意义。
+* PNG 的 base64 走 testlog 分片回传（logcat 单行上限约 4KB，1200 字符一片，实测 34276 字符 /
+  29 片），python 侧拼片 + 校验 `len=` 与 PNG magic，落盘 `.test/ocr-rand.png`（已加 .gitignore），
+  拷进 inbox 后走 ShareActivity 分享 —— 与用户真实路径一致。
+* 断言 `source=='share-image' && ocrMs>0 && 随机串 in ocrText`：逐字读出才算过。
+  实测 canvas 32086 字节的图、OCR 26 字符 / 394ms。
+* 载荷用 `ENOTE_RS` 环境变量注入随机串（shell 单引号里的 `$VAR` 不展开），载荷行以
+  `' > "$TMPDIR/jsocr.json"` 结尾，闸门② 才扫得到它。
+
+**搜索断言收紧成三条 + 一条反向对照（全在服务端字段归属上）**
+* `q=<随机串>&src=text` → **0 命中**
+* `q=<随机串>&src=image` → **恰好 1 条**，且 `where` 标签必须是 `来自图片文字`
+  （`go/search.go:60-68` 的字段标签，`来自图片文字` = `n.OCRText`）
+* `q=<对照组随机串>`（同一张图上没有的串）→ **0 命中**：反向对照，证明搜索不是「搜什么都命中」
+* 为什么不断言「关键词不在正文」：实测做不到（LLM 回抄）。可证的是**字段归属**：同一个词
+  `src=text` 查不到、`src=image` 查到并标为 `来自图片文字`。
+  §9.17 审计「断言里应显式写出 src / status / pri / kind，不要只断言数量」这条一并收掉。
+
+**「单发 await + 固定 sleep 再断言」整族换轮询（§9.17 审计 1–6 全部收掉）**
+* 55 处替换（`.test/s12_poll_a.py` 23 处 / `.test/s12_poll_b.py` 31 处 / `.test/s12_poll_c.py` 1 处），
+  覆盖文件夹弹层、剪贴板弹层、截图弹层、截图夹具载荷、设置页 SET、Notes NINT、Todos TINT、
+  附件页 FINT、错过的提醒面板。统一助手
+  `poll(f,n,ms)`（**必须 `await f()`**：NINT 传的是 async 谓词，不 await 时 Promise 恒真，轮询第一次就返回）；
+  每处打出 `tXxx=` 的尝试次数，红的时候能一眼分清「目标状态没到」和「到得慢」。
+* **目标状态必须和它下面那条断言同源**，两次真机假红都是这条：
+  1. 错过的提醒面板轮询 `open` 状态 —— 状态先变、Vue 的 patch 在下一拍，于是
+     `sheet=true` 红在「跳笔记之后面板没关掉」；改成轮询「open 增加 **且** `#sheet` 的 on 类摘掉」。
+  2. 设置页轮询「toast 非空」—— 上一条用例切主题的 toast 要挂 ~2s 才自己收，轮询立刻满足，
+     断言读到旧文案红在「点保存没得到「已保存」（toast='主题：亮色'）」；改成轮询「文案里出现
+     已保存」。附件页预览 toast 同理（轮询 on 类 + 文案含「预览即将上线」）。
+* 转换器都是原子的（锚点全部命中才写文件，每处 `count==1`）。踩到的锚点坑：末行是**半行**的锚点
+  （`L("toast="` 这种后面还有代码）不能带结尾换行 —— 第一版带了，把 NINT 的一行注释劈成两行，
+  靠闸门② 编译载荷才抓到；两个转换器都加了 `align()` 自动剥掉。
+* 固定 sleep 剩下的都是**轮询循环体内**的 `await sleep(...)` 与探针链的 `setTimeout(probe,…)`，
+  不是「睡一觉再断言」。
+
+**闸门② 的载荷提取补盲**：正则以前只认 `)}))'` 紧跟的写法，canvas 载荷是 `.replace(...)` 形式，
+扫不到就等于不编译（16 个载荷只守 15 个）。现在两种都扫：**jseval 载荷 15 → 16、闸门⑯ 的
+jseval 调用点 13 → 14**。
+
+**两条反向实验**
+* `.test/s12_neg.sh`：把画进图的随机串换成固定串（断言仍用本次随机串）→ 套件必须红在
+  「OCR 没能在现造的图里读出 …」。实测 EXIT=1，红在该行；脚本用 `$TMPDIR/s12neg/test.sh.bak`
+  备份/还原，不用 `git checkout`。
+* `.test/s12_poll_neg.sh`：把产品侧 `toggleAI` 的「翻转 useAI」半句去掉（DOM 的 on 类照旧变，
+  只有状态桥不动）→ `tFlip` 轮询必须超时（`tFlip=-1`）、`aiFlip` 必须为 0，套件必须红在
+  「点启用 AI 开关后 class 与 settings.useAI 没一起翻」。app.js 是 go:embed 进二进制的，
+  脚本前后各 build + install 一次，跑完把干净 apk 装回设备。
+
+**本步 HEAD 的验证**
+* `node tools/ui_test.js` **111 ok / 0 FAIL**（jseval 载荷 16、闸门⑯ 的 jseval 调用点 14、
+  裸 hex 8 ≤ 8、裸 px 57 ≤ 57）、`(cd go && go test ./...)` ok、`bash -n test.sh` ok。
+* 真机 `./test.sh --skip-build --vd` **连续三次全绿**（`$TMPDIR/t12e.log`、`t12f.log`、`t12g.log`，
+  都是 EXIT=0，`  ok` 146 → **149**：新步骤 1 行 + 随机串搜索断言 1 行 + 对照组 1 行。
+  前两次是「轮询目标状态」修完之后，第三次是 `notes[0]` 竞态修完之后）。
+* 轮询尝试次数都在个位数（`tRows=1 tPaint=0 tAll=1 tNone=1 tFake=1 tBack=1 tJump=1 tAnim=0
+  tGone=4 tDismiss=0 tList=1`）—— 轮询比原来的固定 sleep 更快，不是靠多等换稳定。
+* 反向实验：`.test/s12_neg.sh` 把画进图的随机串换成固定串 → 套件红在
+  「OCR 没能在现造的图里读出 CRW9XRGX」（EXIT=1，test.sh 自动还原）。
+* 外层等 `done=1` 的循环上限从 20–60 放宽到 90–120（成功即 break，正常路径一秒都不多等）：
+  载荷内部换轮询后最坏耗时变长，实测把 `toggleAI` 的翻转去掉，`tFlip`/`tFlipBack` 各超时 10s，
+  套件红在「SET 载荷没跑完」这种没有信息量的行上；放宽之后红在该红的断言。
+* `.test/s12_poll_neg.sh` 的产物：`tFlip=-1`、`aiFlip=0`，套件红在
+  「点启用 AI 开关后 class 与 settings.useAI 没一起翻」（EXIT=1，实验脚本退出码 0）。
+  app.js 是 go:embed 进二进制的，脚本前后各 build + install 一次，跑完把干净 apk 装回设备。
+* **本步自己引入的竞态**（负向实验连撞两次）：新步骤刚 share 的图 OCR 先回、LLM 还在解析，
+  解析回来整份重写 todos，`todo add / toggle / delete` 用例取的是 `notes[0]`，
+  于是红在「the toggled todo is not what we wrote」。改成取 `status=="done"` 的那条笔记。
+  教训：**新增一条会产生笔记的步骤，等于把后面所有 `notes[0]` 的语义换掉了**。

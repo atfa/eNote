@@ -412,8 +412,91 @@ print("  ocr %d chars in %sms" % (len(n["ocrText"]), n["ocrMs"]))
 ' || fail "local ocr produced nothing useful"
 fi
 
+step "share 现造的随机串图 → 本地 OCR 逐字读出（搜索断言只靠它）"
+# 为什么现造：搜索断言以前只用「取快递」，它同时出现在分享的文本笔记里，「命中来自图片文字」
+# 在 OCR 读得稀烂时也可能绿（文本命中把 total 撑起来，标签断言挑的是任意一条命中）。
+# 现在图里写一条**本次运行独有**的随机串：只有 OCR 真把图里的字读出来，断言才可能满足。
+# 字符集避开 OCR 易混字形（0/O、1/I/l、2/Z、5/S、8/B），**还要避开 Q**：真机第二遍跑到
+# RS=HEQKYTE4，本地 OCR 读出 HEOKYTE4 —— 84px 下 Q 的尾巴丢了，Q 与 O 不可分。
+# 图用 WebView 的 canvas 现画：Termux 没有 PIL，纯 python 字体表得自己维护；canvas 用系统真字体，
+# 实测本地 OCR 331ms 逐字读出。PNG 的 base64 走 testlog 回传，1200 字符一片（logcat 单行上限约 4KB）。
+RS=$(tr -dc 'ACDEFGHJKLMNRTUVWXY34679' < /dev/urandom | head -c 8)
+DECOY=$(tr -dc 'ACDEFGHJKLMNRTUVWXY34679' < /dev/urandom | head -c 8)
+say "  图上画的随机串 $RS；对照组 $DECOY（图上没有，搜索必须 0 命中）"
+BEFORE_RS=$(api_state | "$PY" -c 'import json,sys; print(max(n["id"] for n in json.load(sys.stdin)["notes"]))')
+# jseval 钩子只在 .devmode 存在时干活（上一块末尾删了），不 touch 就是载荷根本没跑。
+asroot_global "touch '$DATA/enote/.devmode'; chown '$UID_APP:$UID_APP' '$DATA/enote/.devmode'"
+NOR=$(readtlog | wc -l)
+ENOTE_RS="$RS" "$PY" -c 'import json,os,sys; print(json.dumps({"js": sys.argv[1].replace("@RS@", os.environ["ENOTE_RS"])}))' '(async function(){
+  var L=function(m){console.log("OCRB64 "+m)};
+  try{
+    var c=document.createElement("canvas"); c.width=1200; c.height=320;
+    var g=c.getContext("2d");
+    g.fillStyle="#ffffff"; g.fillRect(0,0,1200,320);
+    g.fillStyle="#000000"; g.textBaseline="top";
+    // 字号给足：84px 时本地 OCR 把 Q 读成 O（Q 的尾巴丢了）。100px + 1200 宽的画布
+    // 让「取快递 + 8 位随机串」一行画得下且不糊，逐字比对才稳定。
+    g.font="bold 100px sans-serif"; g.fillText("取快递 @RS@", 40, 40);
+    g.font="48px sans-serif"; g.fillText("图片文字搜索断言用唯一随机串", 40, 210);
+    var b=(c.toDataURL("image/png").split(",")[1]||"");
+    L("len="+b.length);
+    for(var i=0;i<b.length;i+=1200){ L("d "+i+" "+b.slice(i,i+1200)) }
+    L("done=1");
+  }catch(e){ L("ERR="+(e&&e.message)); L("done=1") }
+})()' > "$TMPDIR/jsocr.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsocr.json'"
+NORTRIES=0
+while [ "$NORTRIES" -lt 40 ]; do
+  readtlog | tail -n +$((NOR + 1)) | grep -q 'OCRB64 done=1' && break
+  sleep 0.5; NORTRIES=$((NORTRIES + 1))
+done
+readtlog | tail -n +$((NOR + 1)) | grep 'OCRB64 ' > "$TMPDIR/ocrb64.log"
+"$PY" -c '
+import base64, re, sys
+lines = [l.rstrip("\n") for l in open(sys.argv[1], encoding="utf-8", errors="replace")]
+err = [l for l in lines if "OCRB64 ERR=" in l]
+assert not err, "canvas 载荷抛异常：%s" % err[0]
+parts = {}
+for l in lines:
+    m = re.search(r"OCRB64 d (\d+) (.*)$", l)
+    if m: parts[int(m.group(1))] = m.group(2).strip()
+assert parts, "testlog 里没有 OCRB64 分片（载荷没跑？devmode 没开？）tries=%s" % sys.argv[3]
+blob = "".join(parts[k] for k in sorted(parts))
+m = re.search(r"OCRB64 len=(\d+)", "\n".join(lines))
+assert m and int(m.group(1)) == len(blob), "分片拼出来 %d 字符，载荷说 %s：logcat 截断了" % (
+    len(blob), m.group(1) if m else "?")
+png = base64.b64decode(blob)
+assert png[:8] == b"\x89PNG\r\n\x1a\n", "解出来不是 PNG"
+open(sys.argv[2], "wb").write(png)
+print("  ok (canvas 现造 %s 字节的图，随机串已画进去)" % len(png))
+' "$TMPDIR/ocrb64.log" "$HERE/.test/ocr-rand.png" "$NORTRIES" || fail "现造 OCR 图失败"
+asroot_global "cp '$HERE/.test/ocr-rand.png' '$EXT/ocr-rand.png' && chown '$UID_APP:$UID_APP' '$EXT/ocr-rand.png' && chmod 644 '$EXT/ocr-rand.png'" \
+  || fail "cannot stage ocr-rand.png in $EXT"
+am_start "$APP_PACKAGE/.ShareActivity" "-a android.intent.action.SEND -t 'image/*' --eu android.intent.extra.STREAM file://$EXT/ocr-rand.png"
+# 轮询目标状态精确：这条笔记的 ocrText 里真的出现 RS（不是「OCR 跑过」就行）。
+if ! wait_note "n['source']=='share-image' and n.get('ocrMs',0)>0 and '$RS' in (n.get('ocrText') or '') and n['id']>'$BEFORE_RS'" 150; then
+  api_state | "$PY" -c '
+import json,sys
+ns = [n for n in json.load(sys.stdin)["notes"] if n["source"] == "share-image"]
+ns.sort(key=lambda n: n["id"])
+last = ns[-1] if ns else {}
+print("  最近一条图片笔记：status=%s ocrMs=%s ocrText=%r" % (
+    last.get("status"), last.get("ocrMs"), (last.get("ocrText") or "")[:120]))
+'
+  fail "OCR 没能在现造的图里读出 $RS（图上画的就是它：读不出就是本地 OCR 路径坏了）"
+fi
+printf '%s' "$LAST" | "$PY" -c '
+import json,sys
+n = json.load(sys.stdin)
+print("  ok (OCR 逐字读出随机串，%d 字符 / %sms)" % (len(n["ocrText"]), n["ocrMs"]))
+'
+asroot_global "rm -f '$EXT/ocr-rand.png'" >/dev/null 2>&1 || true
+
 step "todo add / toggle / delete"
-NOTE=$(api_state | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["notes"][0]["id"])')
+# 取「解析已完成」的那条，不是字面第一条：上一条用例刚 share 进一张图，OCR 先回、LLM 还在解析，
+# 解析回来会整份重写 todos —— 我们刚 add 的待办会被抹掉，红在「the toggled todo is not what we wrote」
+# （步骤 12 加了新的图片笔记之后才出现的竞态，实测两次负向实验各撞一次）。
+NOTE=$(api_state | "$PY" -c 'import json,sys; ns=[n for n in json.load(sys.stdin)["notes"] if n.get("status")=="done"]; print(ns[0]["id"])')
 TID=$(api_post todo "{\"action\":\"add\",\"noteId\":\"$NOTE\",\"text\":\"测试待办\",\"due\":\"2026-12-01T09:00\",\"priority\":\"high\"}" \
       | "$PY" -c 'import json,sys; d=json.load(sys.stdin); print(d["id"] if d["ok"] else "")')
 [ -n "$TID" ] || fail "todo add failed"
@@ -494,9 +577,9 @@ import json,sys
 d = json.load(sys.stdin)
 assert d["ok"] and d["notes"] and d["scanned"] >= len(d["notes"]), d
 ' || fail "plain search returns nothing"
-# q 用「取快递」：它同时出现在分享的文本里和 OCR 出来的图片文字里，
-# 所以断言"命中来自图片文字"才有意义（图片 fixture 见 .test/ocr-test.png，
-# 由 tools/crop_png.py 从 docs/shots 裁出来，换图就要同步这里的关键词）。
+# 「取快递」是共享关键词（分享的文本笔记里也有它）：这条只证明「文本命中 + 图片命中都能出标签」，
+# 不证明命中只能来自图片文字（图片 fixture 见 .test/ocr-test.png，由 tools/crop_png.py 从
+# docs/shots 裁出来，换图就要同步这里的关键词）。
 api_get "search?tab=notes&q=%E5%8F%96%E5%BF%AB%E9%80%92" | "$PY" -c '
 import json,sys
 d = json.load(sys.stdin)
@@ -504,6 +587,35 @@ assert d["ok"] and d["total"] >= 1, "q=取快递 matched nothing"
 assert any("来自图片文字" in v for v in (d.get("where") or {}).values()), \
   "no hit came from ocr text: %r" % d.get("where")
 ' || fail "search must match ocr text and label it 来自图片文字"
+# 收紧后的 OCR 搜索断言：q=$RS **只能由图片文字满足**。三条一起才算数：
+#   1) src=text 必须 0 命中 —— 文本笔记（标题/正文/待办/标签）里没有它；
+#   2) src=image 命中恰好 1 条，且这条命中的标签含「来自图片文字」（服务端按字段打标签）；
+#   3) 对照组 q=$DECOY（同字符集、同长度、图上没画的随机串）必须 0 命中 —— 这条是套件里的
+#      反向对照：它绿了才说明「命中 ≥1」不是恒绿（搜索实现坏了、什么都算命中时它必红）。
+api_get "search?tab=notes&q=$RS&src=text" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d["ok"] and d["total"] == 0, \
+  "q=%s 在 src=text 里有 %s 条命中：它不该出现在任何文本笔记里，这条断言就不是「只能由图片文字满足」" % (
+    sys.argv[1], d.get("total"))
+' "$RS" || fail "q=随机串 在 src=text 必须 0 命中"
+api_get "search?tab=notes&q=$RS&src=image" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d["ok"] and d["total"] == 1, \
+  "q=%s 在 src=image 命中 %s 条（应为 1 条：那条随机串图）" % (sys.argv[1], d.get("total"))
+labels = [v for vs in (d.get("where") or {}).values() for v in vs]
+assert "来自图片文字" in labels, \
+  "命中 %s 条但标签是 %r：没有一条来自 ocrText，随机串是从别的字段命中的" % (d.get("total"), labels)
+' "$RS" || fail "q=随机串 必须命中那条随机串图并标为 来自图片文字"
+api_get "search?tab=notes&q=$DECOY" | "$PY" -c '
+import json,sys
+d = json.load(sys.stdin)
+assert d["ok"] and d["total"] == 0, \
+  "对照组 q=%s（图上没有的随机串）命中 %s 条：搜索什么都算命中的话，上面那条断言就是恒绿" % (
+    sys.argv[1], d.get("total"))
+print("  ok (随机串只能由图片文字满足：src=text 0 命中 / src=image 命中标为 来自图片文字 / 对照组 0 命中)")
+' "$DECOY" || fail "对照组随机串必须 0 命中（反向对照）"
 api_get "search?tab=notes&src=image&status=done" | "$PY" -c '
 import json,sys
 d = json.load(sys.stdin)
@@ -610,7 +722,7 @@ fi
 step "P6.5 常驻后台（前台服务 + 标准电池优化）"
 am_start "$ACTIVITY" "--es hook keepalive --es arg on"
 n=0
-while [ "$n" -lt 20 ]; do
+while [ "$n" -lt 90 ]; do
   newtlog | grep -q 'hook keepalive: ' && break
   sleep 1; n=$((n + 1))
 done
@@ -632,7 +744,7 @@ say "  ok (前台服务在跑，常驻通知已发布)"
 
 am_start "$ACTIVITY" "--es hook keepalive --es arg off"
 n=0
-while [ "$n" -lt 20 ]; do
+while [ "$n" -lt 90 ]; do
   newtlog | grep -q '"keepAlive":false' && break
   sleep 1; n=$((n + 1))
 done
@@ -650,7 +762,7 @@ sleep 2
 CLIPTEXT="买咖啡 焦点重试 $(date +%H%M%S)"
 am_start "$ACTIVITY" "--es hook clipset --es arg '$CLIPTEXT'"
 n=0
-while [ "$n" -lt 20 ]; do
+while [ "$n" -lt 90 ]; do
   api_get clip/list | grep -q '焦点重试' && break
   sleep 1; n=$((n + 1))
 done
@@ -686,7 +798,7 @@ N0UA=$(readtlog | wc -l)
   'console.log("JSEVAL ua="+navigator.userAgent); console.log("JSEVAL uadone=1")' > "$TMPDIR/jsua.json"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsua.json'"
 n=0
-while [ "$n" -lt 20 ]; do
+while [ "$n" -lt 90 ]; do
   readtlog | tail -n +$((N0UA + 1)) | grep -q 'JSEVAL uadone=1' && break
   sleep 1; n=$((n + 1))
 done
@@ -715,7 +827,7 @@ EXPECT_KEYS=$(node -e 'const s=require("fs").readFileSync("go/ui/js/app.js","utf
   '(function(){var A=(typeof __enote==="object"&&__enote.actions)?Object.keys(__enote.actions):[];var ST=(typeof __enote==="object"&&__enote.state)?__enote.state:{};console.log("JSEVAL bridge enote="+(typeof __enote)+" n="+A.length+" delNote="+(typeof window.delNote)+" winopen="+(typeof window.open)+" openmap="+(typeof ST.open)+" state="+(typeof (__enote&&__enote.state))+" tabtype="+(typeof (__enote&&__enote.state?__enote.state.tab:"NA")));console.log("JSEVAL bridgekeys "+A.sort().join(",")+" bdone=1")})()' > "$TMPDIR/jsbridge.json"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsbridge.json'"
 n=0
-while [ "$n" -lt 20 ]; do
+while [ "$n" -lt 90 ]; do
   readtlog | tail -n +$((N0B + 1)) | grep -q 'JSEVAL bdone=1' && break
   sleep 1; n=$((n + 1))
 done
@@ -783,7 +895,7 @@ N0S=$(readtlog | wc -l)
 })()' > "$TMPDIR/jsseam.json"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsseam.json'"
 n=0
-while [ "$n" -lt 30 ]; do
+while [ "$n" -lt 90 ]; do
   readtlog | tail -n +$((N0S + 1)) | grep -q 'JSEVAL seam done=1' && break
   sleep 1; n=$((n + 1))
 done
@@ -831,7 +943,7 @@ N0C=$(readtlog | wc -l)
 })()' > "$TMPDIR/jsclip.json"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsclip.json'"
 n=0
-while [ "$n" -lt 20 ]; do
+while [ "$n" -lt 90 ]; do
   readtlog | tail -n +$((N0C + 1)) | grep -q 'JSEVAL done=1' && break
   sleep 1; n=$((n + 1))
 done
@@ -893,6 +1005,7 @@ N0C=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||250); i++; } return -1 };
   var d=await api("/api/missed"); __enote.state.MISSED=d; __enote.state.S.missed=d; __enote.state.tab="notes"; await render(); missedSheet();
   L("count="+d.count);
   L("rows="+document.querySelectorAll(".msrow").length);
@@ -904,28 +1017,35 @@ N0C=$(readtlog | wc -l)
   var n0=Object.keys(__enote.state.open).length;
   var row=document.querySelectorAll(".msrow")[1];
   if(row) row.click();
-  await sleep(500);
-  L("jumped="+(Object.keys(__enote.state.open).length>n0?1:0)+" nid="+nid);
+  // 固定 500ms 换成轮询，目标状态必须和下面的断言同源：笔记详情打开了 **且** 面板的 on 类
+  // 真的从 DOM 上摘掉。只轮询 open 状态会抢跑 —— 状态先变、Vue 的 patch 在下一拍，
+  // 于是 sheet=true 假红（实测第一次跑就红在「跳笔记之后面板没关掉」）。
+  var tJump=await poll(function(){ return Object.keys(__enote.state.open).length>n0 && !q("#sheet").classList.contains("on") },30,200);
+  L("tJump="+tJump); L("jumped="+(Object.keys(__enote.state.open).length>n0?1:0)+" nid="+nid);
   L("sheet="+(q("#sheet")?q("#sheet").classList.contains("on"):false));
   missedSheet();
   // 勾 ✓：先出划线动画，动画跑完这条才从清单里消失（用户反馈：点了看不出结果）
   var first=document.querySelector(".msrow .cb");
   var n1=document.querySelectorAll(".msrow").length;
   if(first) first.click();
-  await sleep(120);
-  L("anim="+((q(".msrow")||{}).className||"none"));
-  await sleep(1600);
+  // 目标状态：划线动画的类真的加上了（用户反馈「点了看不出结果」，动画就是反馈本身）。
+  var tAnim=await poll(function(){ return (((q(".msrow")||{}).className)||"").indexOf("justdone")>=0 },20,100);
+  L("tAnim="+tAnim); L("anim="+((q(".msrow")||{}).className||"none"));
+  // 目标状态：动画跑完、这条从清单里消失（行数掉下来）。固定 1600ms 在机器忙时不够。
+  var tGone=await poll(function(){ return document.querySelectorAll(".msrow").length<n1 },40,250);
+  L("tGone="+tGone);
   L("n1="+n1);L("rows2="+document.querySelectorAll(".msrow").length);L("tid="+tid);
   if(tid) await api("/api/todo",{action:"toggle",noteId:nid,todoId:tid});   // 还原，不动用户数据
   missedSheet();
   missedDismiss();
-  await sleep(300);
-  L("afterDismiss="+document.querySelectorAll(".missedb,.missedtop").length);
+  // 目标状态：横幅与顶部条都从 DOM 里消失。
+  var tDismiss=await poll(function(){ return document.querySelectorAll(".missedb,.missedtop").length===0 },30,200);
+  L("tDismiss="+tDismiss); L("afterDismiss="+document.querySelectorAll(".missedb,.missedtop").length);
   L("done=1");
 })()' > "$TMPDIR/jsmiss.json"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsmiss.json'"
 n=0
-while [ "$n" -lt 30 ]; do
+while [ "$n" -lt 90 ]; do
   readtlog | tail -n +$((N0C + 1)) | grep -q 'JSEVAL done=1' && break
   sleep 1; n=$((n + 1))
 done
@@ -1177,10 +1297,15 @@ N0T=$(readtlog | wc -l)
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
   var rows=function(){return [].slice.call(document.querySelectorAll("#folderList .frow"))};
   var vis=function(){return rows().filter(function(r){return getComputedStyle(r).display!=="none"})};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  // 固定 400ms 换成轮询：Vue 弹层的 DOM 在 nextTick 之后才落地（遗留路径是同步 innerHTML），
+  // 机器忙时 400ms 不够（count0 读到空容器，q("#folderCount") 直接 null → 载荷抛异常），
+  // 空闲时又白等。目标状态精确：#folderList 真画出行来、计数节点已在 DOM 里。
+  // tries 打出来：红了能分清「没画出来」和「画得慢」。
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
   __enote.state.tab="mine"; await render(); folderSheet();
-  // 步骤 8：Vue 弹层的 DOM 在 nextTick 之后才落地（遗留路径是同步 innerHTML）。
-  // 不等这一拍，count0 读到的是空容器，q("#folderCount") 直接 null → 载荷抛异常。
-  await new Promise(function(r){ setTimeout(r,400) });
+  var tRows=await poll(function(){ return rows().length>0 && !!q("#folderCount") },40,200);
+  L("tRows="+tRows);
   // 正向断言「真的走了 Vue 路径」：只看 DOM 分不出谁画的（Vue 的产出按设计就和字符串
   // 渲染器逐字一致），只靠 DOM 的话，VUE_SHEETS 注册了但分发没接上也是绿的。
   L("isvue="+(__enote.vue.isVueSheet("folders")?1:0));
@@ -1201,7 +1326,10 @@ N0T=$(readtlog | wc -l)
   var setS=maxS>40?Math.round(maxS/2):0;
   L("scrollable="+(maxS>40?1:0));
   panel.scrollTop=setS;
-  setTimeout(async function(){
+  // 固定 260ms 换成轮询，目标状态：固定条已在 DOM 里且行画全（下面 sticky/footVisible 量的就是它）。
+  var tPaint=await poll(function(){ return !!q("#sheet .pfoot") && rows().length>0 },30,200);
+  L("tPaint="+tPaint);
+  await (async function(){
     var f=q("#sheet .pfoot"),b=f.getBoundingClientRect();
     L("sticky="+getComputedStyle(f).position);
     L("footVisible="+((b.bottom<=window.innerHeight+2&&b.top>=0&&b.height>20)?1:0));
@@ -1225,11 +1353,15 @@ N0T=$(readtlog | wc -l)
     // 点一下才抛 undefined —— 只有真点击能抓到（步骤 8 实测：截图页 全选 就这么死的）。
     var ab=q("#sheet #folderSelAll");
     L("allBtn="+(ab?ab.textContent:"?"));
-    if(ab){ ab.click(); await new Promise(function(r){ setTimeout(r,300) });
-      L("allSel="+document.querySelectorAll("#folderList .frow.on").length); }
+    if(ab){ ab.click();
+      // 目标状态：每一行都带 on（全选真的落到每一行，不是只改了计数文案）。
+      var tAll=await poll(function(){ var n=rows().length; return n>0 && document.querySelectorAll("#folderList .frow.on").length===n },30,200);
+      L("tAll="+tAll); L("allSel="+document.querySelectorAll("#folderList .frow.on").length); }
     var nb=q("#sheet #folderSelNone");
-    if(nb){ nb.click(); await new Promise(function(r){ setTimeout(r,300) });
-      L("noneSel="+document.querySelectorAll("#folderList .frow.on").length); }
+    if(nb){ nb.click();
+      // 目标状态：一行都不带 on。
+      var tNone=await poll(function(){ return document.querySelectorAll("#folderList .frow.on").length===0 },30,200);
+      L("tNone="+tNone); L("noneSel="+document.querySelectorAll("#folderList .frow.on").length); }
     // 恢复成测试开头那个目录选中，folderSave 写回后「我的」页计数才能对上
     await folderPick(first);
     // 滚动位置保持要真测到：真机上往往只 3~5 个文件夹，页面根本滚不动（上面的 scrollable=0）。
@@ -1241,7 +1373,9 @@ N0T=$(readtlog | wc -l)
     for(var i=0;i<40;i++) fake.push({path:"/sdcard/Fake/Dir"+i, count:i, shot:false, missing:false});
     __enote.state.folderAll=fake; __enote.state.folderSel={};
     __enote.vue.folderPaint();
-    await new Promise(function(r){ setTimeout(r,250) });
+    // 目标状态：40 条假目录真的画进 DOM（否则滚动位置保持这条是空跑）。
+    var tFake=await poll(function(){ return rows().length===40 },30,200);
+    L("tFake="+tFake);
     var p2=q("#sheet .panel"), max2=p2.scrollHeight-p2.clientHeight;
     L("fakescroll="+(max2>40?1:0));
     if(max2>40){
@@ -1259,7 +1393,9 @@ N0T=$(readtlog | wc -l)
     }
     __enote.state.folderAll=keepAll; __enote.state.folderSel=keepSel;
     __enote.vue.folderPaint();
-    await new Promise(function(r){ setTimeout(r,200) });
+    // 目标状态：真目录列表回来了（行数等于注入前的条数），否则 folderSave 写回的是假数据。
+    var tBack=await poll(function(){ return rows().length===keepAll.length },30,200);
+    L("tBack="+tBack);
     folderSave();
     var tries=0,probe=function(){
       var p=document.querySelector(".pane[data-tab=mine]");
@@ -1268,11 +1404,11 @@ N0T=$(readtlog | wc -l)
       tries++; setTimeout(probe,400);
     };
     setTimeout(probe,400);
-  },260);
+  })();
 })()' > "$TMPDIR/js.json"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/js.json'"
 n=0
-while [ "$n" -lt 20 ]; do
+while [ "$n" -lt 90 ]; do
   readtlog | tail -n +$((N0T + 1)) | grep -q 'JSEVAL done=1' && break
   sleep 1; n=$((n + 1))
 done
@@ -1336,8 +1472,15 @@ NT=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   // D13：同上，render 返回 Promise，要 await 才能断言刚渲染的 DOM。
   var L=function(m){console.log("JSEVAL "+m)},q=function(s){return document.querySelector(s)};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
   __enote.state.tab="notes"; await render(); shotSheet();
-  setTimeout(async function(){
+  // 固定 1200ms 换成轮询（§9.17 审计第 2 条）：目标状态是「截图列表真的从服务端回来了、
+  // 并且弹层里画出了条目」。夹具是刚 share 进去的，最容易慢；固定睡一觉时
+  // __enote.state.shotList[0] 还是 undefined，载荷直接抛异常，红得没有信息量。
+  var tList=await poll(function(){ return (__enote.state.shotList||[]).length>0 && document.querySelectorAll(".shotitem").length>0 },40,250);
+  L("tList="+tList);
+  await (async function(){
     __enote.state.shotSel={};
     // 步骤 8：正向断言截图页真的由 Vue 挂载（同文件夹页：只看 DOM 分不出谁画的）
     L("isvue="+(__enote.vue.isVueSheet("shots")?1:0));
@@ -1351,11 +1494,11 @@ NT=$(readtlog | wc -l)
     L("n2_on="+document.querySelectorAll(".shotitem.on").length);
     L("n2_foot="+(q("#shotFoot")?q("#shotFoot").textContent.replace(/\s+/g," "):"?"));
     L("done=1");
-  }, 1200);
+  })();
 })()' > "$TMPDIR/js.json"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/js.json'"
 n=0
-while [ "$n" -lt 20 ]; do
+while [ "$n" -lt 90 ]; do
   readtlog | tail -n +$((NT + 1)) | grep -q 'JSEVAL done=1' && break
   sleep 1; n=$((n + 1))
 done
@@ -1407,7 +1550,7 @@ for t in "夹具甲 $CLIPFIX" "夹具乙 $CLIPFIX" "夹具丙 $CLIPFIX"; do
   IFI=$((IFI + 1))
 done
 n=0
-while [ "$n" -lt 25 ]; do
+while [ "$n" -lt 90 ]; do
   CN=$(api_get clip/list | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin).get("clips") or []))')
   [ "$CN" -ge 3 ] && break
   sleep 1; n=$((n + 1))
@@ -1440,6 +1583,7 @@ js = r'''(async function(){
   var on=function(){ var n=0; q().forEach(function(x){ if(x.classList.contains("on")) n++ }); return n };
   var foot=function(){ var e=document.querySelector("#clipFoot"); return e?e.textContent.replace(/\s+/g,""):"" };
   var pri=function(){ var e=qa("#sheet .pfoot .btn.pri")[0]; return e?e.textContent.replace(/\s+/g,""):"" };
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
   var top=function(){ return [document.querySelector("#sheet #clipSelAll"),
       document.querySelector("#sheet #clipSelNone")] };
   // 注册表没注册 clip / 弹层没挂 Vue → 这一遍没东西可点，python 侧判红（不许静默 skip）
@@ -1453,21 +1597,30 @@ js = r'''(async function(){
     if(!q().length){ L("skip=no-items"); L("done=1"); return }
     // 冻结语义：clipSel 首次见到某 id 默认**选中**（keep[id] = clipSel[id] !== undefined
     // ? clipSel[id] : true），所以刚开页是全选，不是全不选。
-    L("on0="+on()); L("foot0="+foot()); L("pri0="+pri());
+    var on0=on();
+    L("on0="+on0); L("foot0="+foot()); L("pri0="+pri());
     q()[0].click();                       // 真点击一条：勾选 + 计数 + 按钮文案三处同步动
-    await sleep(300);
-    L("on1="+on()); L("foot1="+foot()); L("pri1="+pri());
+    // 目标状态：勾选数真的离开初始值（@click 落到 clipPick 且重绘了）。
+    var tPick=await poll(function(){ return on()!==on0 },30,200);
+    L("tPick="+tPick); L("on1="+on());
+ L("foot1="+foot()); L("pri1="+pri());
     top()[1].click();                     // 全不选
-    await sleep(300);
-    L("on2="+on()); L("foot2="+foot()); L("pri2="+pri());
+    // 目标状态：勾选数归零。
+    var tNone=await poll(function(){ return on()===0 },30,200);
+    L("tNone="+tNone); L("on2="+on());
+ L("foot2="+foot()); L("pri2="+pri());
     top()[0].click();                     // 全选
-    await sleep(300);
-    L("on3="+on()); L("foot3="+foot()); L("pri3="+pri());
+    // 目标状态：勾选数等于行数（不是只改了按钮文案）。
+    var tAll=await poll(function(){ var n=q().length; return n>0 && on()===n },30,200);
+    L("tAll="+tAll); L("on3="+on());
+ L("foot3="+foot()); L("pri3="+pri());
     // 单条删除：先全选（勾选数 = 行数），再点第一条的 .clipdel。stopPropagation 失效时
     // 这一次点击会先被 clipPick 收到，症状是「删一条掉两条」（行数 -1、勾选 -2），
     // 所以行数与勾选数都要断言。
     top()[0].click();
-    await sleep(250);
+    // 目标状态：全选到位（行数 > 0 且全部勾选），否则「删一条掉两条」那条断言是空跑。
+    var tAll2=await poll(function(){ var n=q().length; return n>0 && on()===n },30,200);
+    L("tAll2="+tAll2);
     var n0=q().length, onb=on();
     var did=q()[0].querySelector(".clipdel");
     var did0=E.state.clipList[0]&&E.state.clipList[0].id;
@@ -1480,11 +1633,14 @@ js = r'''(async function(){
     // 删除所选：全选 → 点「删除所选」→ 删完后弹层不关，就地换成空态（遗留行为：
     // clipRemove 只重拉列表，loadClips 的空态分支把 #clipList 换成 emptyState）
     top()[0].click();
-    await sleep(250);
+    var tAll3=await poll(function(){ var n=q().length; return n>0 && on()===n },30,200);
+    L("tAll3="+tAll3);
     L("onBeforeDelAll="+on());
     document.querySelector("#sheet #clipDelSel").click();
     for(var t3=0;t3<30 && q().length;t3++) await sleep(200);
-    await sleep(300);
+    // 目标状态：弹层就地换成空态节点（遗留行为：clipRemove 只重拉列表，空态由 loadClips 画）。
+    var tEmpty=await poll(function(){ return !!document.querySelector("#sheet .empty") },20,200);
+    L("tEmpty="+tEmpty);
     L("afterDelAll="+q().length);
     L("emptyAfterDel="+(document.querySelector("#sheet .empty")?1:0));
     L("footAfterDel="+foot());
@@ -1497,7 +1653,7 @@ print(json.dumps({"js": js}))
 PYCIT
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/js_clip_int.json'"
-for i in $(seq 1 40); do
+for i in $(seq 1 120); do
   readtlog | tail -n +$((NCIT + 1)) | grep -q 'CIT done=1' && break
   sleep 0.5
 done
@@ -1565,6 +1721,7 @@ NSET=$(readtlog | wc -l)
 import json
 js = r'''(async function(){
   var L=function(m){console.log("SET "+m)};
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||250); i++; } return -1 };
   var E=window.__enote||{};
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
   var S=function(){return document.querySelector("#sheet .pbody")};
@@ -1599,8 +1756,10 @@ js = r'''(async function(){
     var row=null;
     Array.prototype.forEach.call(document.querySelectorAll("#view .li"), function(x){ if(/设置/.test(x.textContent)) row=x });
     L("row="+(row?1:0));
-    click(row); await sleep(700);
-    L("opened="+(q("#sUrl")?1:0));
+    click(row);
+    // 固定 700ms 换成轮询，目标状态：设置弹层真的挂出来（#sUrl 是设置页独有的输入框）。
+    var tOpen=await poll(function(){ return !!q("#sUrl") },20,200);
+    L("tOpen="+tOpen); L("opened="+(q("#sUrl")?1:0));
     L("mounted="+(E.vue.sheets.settings?1:0));
     L("kind="+(((document.getElementById("panel")||{}).dataset||{}).kind||""));
     L("inputs="+qa("#sUrl,#sKey,#sModel,#sTimeout,#sMax,#sTemp").length);
@@ -1612,46 +1771,64 @@ js = r'''(async function(){
     var seg=q(".seg"); var btns=seg?Array.prototype.slice.call(seg.children):[];
     L("seg="+btns.length);
     if(btns.length===3){
-      click(btns[1]); await sleep(800);
-      L("themeDark="+document.documentElement.getAttribute("data-theme"));
+      click(btns[1]);
+      // 目标状态：根节点真的切到 dark（CSS 变量跟着换，不是只改了按钮样式）。
+      var tDark=await poll(function(){ return document.documentElement.getAttribute("data-theme")==="dark" },30,200);
+      L("tDark="+tDark); L("themeDark="+document.documentElement.getAttribute("data-theme"));
       var nb=Array.prototype.slice.call((q(".seg")||{children:[]}).children), onIdx=-1;
       for(var i=0;i<nb.length;i++) if(on(nb[i],"on")) onIdx=i;
       L("onIdx="+onIdx);
-      click(nb[0]); await sleep(800);
-      L("themeBack="+document.documentElement.getAttribute("data-theme"));
+      click(nb[0]);
+      var tThemeBack=await poll(function(){ return document.documentElement.getAttribute("data-theme")!=="dark" },30,200);
+      L("tThemeBack="+tThemeBack); L("themeBack="+document.documentElement.getAttribute("data-theme"));
     }
     /* AI 开关：toggleAI 翻 useAI + el.classList.toggle + saveSettings（POST /api/settings）
        再 render()。页面上第一个 .sw 是常驻后台（点它会弹确认框），第二个是启用 AI。 */
     var swAll=document.querySelectorAll("#sheet .sw");
     L("sw="+swAll.length);
     var a0=swAll[1]&&on(swAll[1],"on")?1:0;
-    click(swAll[1]); await sleep(900);
+    click(swAll[1]);
+    // 目标状态：设置里的 useAI 真的翻转（toggleAI 会 POST /api/settings 再重绘，
+    // 固定 900ms 在机器忙时不够，空闲时白等；轮询到状态翻转才继续）。
+    var tFlip=await poll(function(){ return E.state.S.settings.useAI!==(a0===1) },12,250);
+    L("tFlip="+tFlip);
     swAll=document.querySelectorAll("#sheet .sw");
     var a1=swAll[1]&&on(swAll[1],"on")?1:0;
     var st1=E.state.S.settings.useAI?1:0;
     L("aiFlip="+((a1!==a0&&st1===a1)?1:0));
-    click(swAll[1]); await sleep(900);
+    click(swAll[1]);
+    var tFlipBack=await poll(function(){ return E.state.S.settings.useAI===(a0===1) },12,250);
+    L("tFlipBack="+tFlipBack);
     swAll=document.querySelectorAll("#sheet .sw");
     var a2=swAll[1]&&on(swAll[1],"on")?1:0;
     L("aiBack="+(a2===a0&&E.state.S.settings.useAI===(a0===1)?1:0));
     var saveBtn=byText("#sheet .btn","保存");
     L("saveBtn="+(saveBtn?1:0));
-    click(saveBtn); await sleep(900);
-    L("toast="+document.getElementById("toast").textContent.trim());
+    click(saveBtn);
+    // 目标状态：toast 真的弹出并带文案（saveSettings 走 POST，回来才 toast）。
+    // 目标状态与下面的断言同源：toast 文案里出现「已保存」。只轮询「toast 非空」会被上一条
+    // 用例留下的 toast（切主题那句「主题：亮色」要挂 ~2s 才自己收）立刻满足，
+    // 于是断言读到旧文案假红 —— 实测就是红在「点保存没得到「已保存」」。
+    var tToast=await poll(function(){ return (document.getElementById("toast").textContent||"").indexOf("已保存")>=0 },20,250);
+    L("tToast="+tToast); L("toast="+document.getElementById("toast").textContent.trim());
     /* 清空全部：只测到确认框，点取消（真机数据不能删）。 */
     var clearBtn=byText("#sheet .btn","清空全部");
     L("clearBtn="+(clearBtn?1:0));
-    click(clearBtn); await sleep(400);
-    L("dlgOn="+(on(document.getElementById("dlg"),"on")?1:0));
+    click(clearBtn);
+    var tDlg=await poll(function(){ return on(document.getElementById("dlg"),"on") },30,200);
+    L("tDlg="+tDlg); L("dlgOn="+(on(document.getElementById("dlg"),"on")?1:0));
     L("dlgYes="+document.getElementById("dlgYes").textContent.trim());
-    click(document.getElementById("dlgNo")); await sleep(400);
-    L("dlgClosed="+(on(document.getElementById("dlg"),"on")?0:1));
+    click(document.getElementById("dlgNo"));
+    var tDlgClosed=await poll(function(){ return !on(document.getElementById("dlg"),"on") },30,200);
+    L("tDlgClosed="+tDlgClosed); L("dlgClosed="+(on(document.getElementById("dlg"),"on")?0:1));
     /* 关闭：弹层头部是 .iconbtn 图标按钮（aria-label=返回），没有「关闭」文字按钮
        —— 第一版按 byText("关闭") 找，找不到就是点了个空，closed 永远 0。 */
     var closeBtn=document.querySelector("#sheet .phead .iconbtn");
     L("closeBtn="+(closeBtn?1:0));
-    click(closeBtn); await sleep(500);
-    L("closed="+(on(document.getElementById("sheet"),"on")?0:1));
+    click(closeBtn);
+    // 目标状态：弹层真的关掉（#sheet 不再带 on）。
+    var tClosed=await poll(function(){ return !on(document.getElementById("sheet"),"on") },30,200);
+    L("tClosed="+tClosed); L("closed="+(on(document.getElementById("sheet"),"on")?0:1));
     L("notesKept="+((E.state.S.info.notes||0)===notes0?1:0));
     L("themeRestored="+((E.state.S.settings.theme||"light")===theme0?1:0));
   }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
@@ -1662,7 +1839,7 @@ PYSET
 UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsset.json'"
-for i in $(seq 1 40); do
+for i in $(seq 1 120); do
   readtlog | tail -n +$((NSET + 1)) | grep -q 'SET done=1' && break
   sleep 0.5
 done
@@ -1722,6 +1899,8 @@ js = r'''(async function(){
     var q=function(){ return document.querySelectorAll("#sheet .shotitem") };
     var on=function(){ var n=0; q().forEach(function(x){ if(x.classList.contains("on")) n++ }); return n };
     var foot=function(){ var e=document.querySelector("#sheet #shotFoot"); return e?e.textContent.replace(/\s+/g,""):"" };
+    var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+    var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
     shotSheet();
     await new Promise(function(res){ var t=0;(function probe(){
       if(q().length||t>20){res();return} t++; setTimeout(probe,200); })(); });
@@ -1731,16 +1910,22 @@ js = r'''(async function(){
     if(!q().length){ L("skip=no-items"); L("done=1"); return }
     L("on0="+on()); L("foot0="+foot());
     q()[0].click();                       // 真点击：证明 @click 真的绑上了
-    await new Promise(function(r){setTimeout(r,300)});
-    L("on1="+on()); L("foot1="+foot());
+    // 目标状态：至少一行带 on（点击真的落到 shotPick 并重绘）。
+    var tPick=await poll(function(){ return on()>=1 },30,200);
+    L("tPick="+tPick); L("on1="+on());
+ L("foot1="+foot());
     document.querySelector("#sheet #shotSelAll").click();               // 全选
-    await new Promise(function(r){setTimeout(r,300)});
-    L("on2="+on()); L("foot2="+foot());
+    var tAll=await poll(function(){ var n=q().length; return n>0 && on()===n },30,200);
+    L("tAll="+tAll); L("on2="+on());
+ L("foot2="+foot());
     document.querySelector("#sheet #shotSelNone").click();              // 全不选
-    await new Promise(function(r){setTimeout(r,300)});
-    L("on3="+on()); L("foot3="+foot());
+    var tNone=await poll(function(){ return on()===0 },30,200);
+    L("tNone="+tNone); L("on3="+on());
+ L("foot3="+foot());
     q()[0].click();                       // 只选 1 张：三个导入按钮塌成
-    await new Promise(function(r){setTimeout(r,300)});
+    // 目标状态：勾选数恰好 1（按钮收敛这条断言的前提）。
+    var tOne=await poll(function(){ return on()===1 },30,200);
+    L("tOne="+tOne);
     var vis=function(id){ var e=document.querySelector("#sheet #"+id); return (e&&e.style.display!=="none")?1:0 };
     L("btnGo="+vis("shotGo")); L("btnSplit="+vis("shotSplit")); L("btnRaw="+vis("shotRaw"));
     L("goLabel="+((document.querySelector("#sheet #shotGo")||{}).textContent||""));
@@ -1748,19 +1933,27 @@ js = r'''(async function(){
     // ShotProgress 是纯渲染器，挂在 body 级的 #shotOvlRoot 上 —— 进度要在截图弹层
     // 关掉之后继续活着（shotsImported 才收），而 closeSheet() 会换掉 .panel 的 innerHTML。
     shotOverlay(true, 2, "OCR 完成，AI 正在解析");
-    await new Promise(function(r){setTimeout(r,250)});
+    // 目标状态：body 级的进度层真的挂出来了（它要在弹层关掉之后继续活着）。
+    var tOvl=await poll(function(){ return !!document.querySelector("#shotOvlRoot .ovl") },30,200);
+    L("tOvl="+tOvl);
     L("ovlMounted="+(E.vue.sheets.progress?1:0));
     L("ovlBody="+(document.querySelector("#shotOvlRoot .ovl")?1:0));
     L("ovlInSheet="+(document.querySelector("#sheet #shotOvl")?1:0));
     L("ovlSub="+((document.querySelector("#shotOvlSub")||{}).textContent||""));
     closeSheet();                       // 进度层必须活过弹层关闭
-    await new Promise(function(r){setTimeout(r,250)});
+    // 目标状态：关闭弹层之后进度层还在（这一条是「等它没被顺手拆掉」，轮询到出现即可）。
+    var tAlive=await poll(function(){ return !!document.querySelector("#shotOvlRoot .ovl") },20,200);
+    L("tAlive="+tAlive);
     L("ovlAfterClose="+(document.querySelector("#shotOvlRoot .ovl")?1:0));
     shotOvlSub("AI 正在解析：1 / 2 条完成");
-    await new Promise(function(r){setTimeout(r,250)});
+    // 目标状态：副标题文案真的换成新的那句（不是只改了模块状态）。
+    var tSub=await poll(function(){ return ((document.querySelector("#shotOvlSub")||{}).textContent||"").indexOf("1 / 2")>=0 },30,200);
+    L("tSub="+tSub);
     L("ovlSub2="+((document.querySelector("#shotOvlSub")||{}).textContent||""));
     shotOverlay(false);
-    await new Promise(function(r){setTimeout(r,250)});
+    // 目标状态：进度层从 DOM 里消失（卸载干净，不留空壳）。
+    var tGone=await poll(function(){ return !document.querySelector("#shotOvl") },30,200);
+    L("tGone="+tGone);
     L("ovlLeft="+(document.querySelector("#shotOvl")?1:0));
     L("ovlUnmounted="+(E.vue.sheets.progress?1:0));
   }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
@@ -1784,7 +1977,7 @@ api_post shots/add "{\"shots\":[{\"path\":\"$VDS_EXT/vds-a.png\",\"name\":\"vds-
   | grep -q '"added":2' || fail "造暂存截图夹具失败（交互用例没卡片可点）"
 NIT=$(readtlog | wc -l)
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/js_shots_int.json'"
-for i in $(seq 1 40); do
+for i in $(seq 1 120); do
   readtlog | tail -n +$((NIT + 1)) | grep -q 'SIT done=1' && break
   sleep 0.5
 done
@@ -1843,6 +2036,7 @@ step "Notes 交互在 Vue 路径上真的生效（tick 链断则点了没反应�
 NIN=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("NINT "+m)};
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||250); i++; } return -1 };
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
   var q=function(s){return document.querySelector(s)};
   var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
@@ -1855,12 +2049,18 @@ NIN=$(readtlog | wc -l)
   var before=qa(P+" .body.clamp").length;
   var eb=q(P+" .exp");
   L("expBtn="+(eb?eb.textContent.trim():"none"));
-  if(eb){ eb.click(); await sleep(400); }
+  if(eb){ eb.click();
+    // 固定 400ms 换成轮询，目标状态：展开后带 .clamp 的行数真的变少（open 是模块状态，
+    // computed 不依赖 tick 就永远缓存 —— 本用例的主题）。
+    var tExp=await poll(function(){ return qa(P+" .body.clamp").length<before },30,200);
+    L("tExp="+tExp); }
   L("clampBefore="+before);
   L("clampAfter="+qa(P+" .body.clamp").length);
   var eb2=q(P+" .exp");
   L("expAfter="+(eb2?eb2.textContent.trim():"none"));
-  if(eb2){ eb2.click(); await sleep(400); }
+  if(eb2){ eb2.click();
+    var tCol=await poll(function(){ return qa(P+" .body.clamp").length===before },30,200);
+    L("tCol="+tCol); }
   // 2) 空态：笔记清空后必须出 .empty（Vue 的 v-if 分支）。
   //    不能只改 S.notes=[]：notesFiltered() 第一优先级是服务端搜索结果 SR.notes，
   //    它非空时画的是 SR 那几条，S 改什么都看不出；而且 app 每 ~2s 轮询 /api/state
@@ -1868,14 +2068,19 @@ NIN=$(readtlog | wc -l)
   var A=__enote.actions;
   var ids=__enote.state.S.notes.map(function(n){return n.id});
   for(var i=0;i<ids.length;i++){ await A.api("/api/delete", {id: ids[i]}) }
-  await A.refresh(true); await sleep(500);
+  await A.refresh(true);
+  // 目标状态：列表空了并且 .empty 分支真的画出来（Vue 的 v-if 分支）。
+  var tEmpty=await poll(function(){ return !!q(P+" .empty") },40,250);
+  L("tEmpty="+tEmpty);
   // 一个 token 一行：断言止的 NINT (\w+)=(.*) 是贪婪匹配，两个 token 写一行会被
   // 当成一个值（empty 收到 "true emptyCards=0"），下一条则根本不存在。
   L("empty="+String(!!q(P+" .empty")));
   L("emptyCards="+cards());
   for(var i=0;i<ids.length;i++){ await A.api("/api/add", {text:"标题 "+i}) }
-  await A.refresh(true); await sleep(1200); await A.refresh(true); await sleep(800);
-  L("restored="+cards());
+  // 目标状态：卡片数回到删除前的条数。以前是 refresh + 睡 1200 + refresh + 睡 800，
+  // 机器忙时不够（restored 少几条，红的是测试的等待而不是产品），空闲时白等两秒。
+  var tRestore=await poll(async function(){ await A.refresh(true); return cards()>=ids.length },40,250);
+  L("tRestore="+tRestore); L("restored="+cards());
   // 3) 三横幅同时出现且顺序对
   __enote.state.MISSED={count:2,items:[{id:"t1",nid:"n1",title:"x",at:Date.now()-60000}]};
   __enote.state.S.info.clip=3;
@@ -1889,7 +2094,10 @@ NIN=$(readtlog | wc -l)
   var n0=cards(), id=(__enote.state.S.notes[0]||{}).id;
   // 走 __enote.actions 而不是裸全局 delNote：闸门② 的闭集只给 10 个函数，
   // 多一个裸全局就要改一次闸门，而桥就在边上，没理由扩它。
-  if(id){ __enote.actions.delNote(id); await sleep(300);
+  if(id){ __enote.actions.delNote(id);
+    // 目标状态：确认框真的弹出来（delNote 走 dialog，按钮在 DOM 里才点得到）。
+    var tDlg=await poll(function(){ return !!q("#dlgYes") },30,200);
+    L("tDlg="+tDlg);
     var yes=q("#dlgYes"); L("dlg="+(yes?yes.textContent.trim():"none"));
     if(yes) yes.click();
     for(var i=0;i<40;i++){ await sleep(150); if(cards()<n0) break; }
@@ -1901,7 +2109,7 @@ NIN=$(readtlog | wc -l)
 # 不 touch 就是「载荷根本没跑」，症状是「前端抛异常了？已收到=[]」。
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsnint.json'"
-for i in $(seq 1 60); do
+for i in $(seq 1 120); do
   readtlog | tail -n +$((NIN + 1)) | grep -q 'NINT ndone=1' && break
   sleep 0.5
 done
@@ -1946,6 +2154,7 @@ step "Todos 交互在 Vue 路径上真的生效（勾选 → done 翻转 → 再
 NIT=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("TINT "+m)};
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||250); i++; } return -1 };
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
   var q=function(s){return document.querySelector(s)};
   var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
@@ -2004,7 +2213,10 @@ NIT=$(readtlog | wc -l)
     var t0=f1, tid=f1?f1.t.id:"";
     L("tid="+(tid?"ok":"none"));
     L("done0="+(t0?!!t0.t.done:"-"));
-    __enote.state.tab="todos"; await render(); await sleep(300);
+    __enote.state.tab="todos"; await render();
+    // 固定 300ms 换成轮询，目标状态：todos 页真的画出行来（下面量的 .cb 几何要在行落地后量）。
+    var tMount=await poll(function(){ return rows()>0 },30,200);
+    L("tMount="+tMount);
     L("mounted2="+(__enote.vue?!!__enote.vue.apps.todos:"no-vue"));
     L("rows0pre="+rows());
     // 2b) .cb 几何：圆圈（.cb::before）左边缘不能跑到父 padding-box 左边（=被裁）。
@@ -2033,9 +2245,16 @@ NIT=$(readtlog | wc -l)
     L("row="+(row?"found":"none"));
     if(row){
       var r0=rows();
-      row.querySelector(".cb").click(); await sleep(1700);
-      var s1=await api("/api/state"), t1=findTodo(s1,tid);
-      var row2=rowOf(t1?t1.t.text:"");
+      row.querySelector(".cb").click();
+      // 固定 1700ms 换成轮询，目标状态精确到服务端：这条待办的 done 真的翻转了。
+      // 上限给到 60 次 ×250ms（15s）：勾选后要过 API + 重绘，机器忙时 1.7s 不够。
+      var s1=null,t1=null,tDone=0;
+      while(tDone<60){ s1=await api("/api/state"); t1=findTodo(s1,tid); if(t1&&t1.t.done) break;
+        await sleep(250); tDone++; }
+      var row2=rowOf(t1?t1.t.text:""), tGone=0;
+      while(tGone<60){ row2=rowOf(t1?t1.t.text:""); if(!row2) break;
+        await sleep(250); tGone++; }
+      L("tDone="+tDone); L("tGone="+tGone);
       L("done1="+(t1&&t1.t.done));
       L("rows0="+r0);
       L("rows1="+rows());
@@ -2044,20 +2263,28 @@ NIT=$(readtlog | wc -l)
       var ghost=document.createElement("div"); ghost.className="todo";
       // window. 前缀：闸门② 的闭集只放行 10 个桥函数，toggle 是导出表里的 DOM handler，
       // 裸写会让闸门② 红（导出表是 Object.assign(window, …)，window.toggle 就是它本身）
-      window.toggle(nid, tid, ghost); await sleep(1700);
-      var s2=await api("/api/state"), t2=findTodo(s2,tid);
-      L("done2="+(t2&&t2.t.done));
+      window.toggle(nid, tid, ghost);
+      // 同上：轮询到服务端的 done 回到 false。
+      var s2=null,t2=null,tUndone=0;
+      while(tUndone<60){ s2=await api("/api/state"); t2=findTodo(s2,tid); if(t2&&!t2.t.done) break;
+        await sleep(250); tUndone++; }
+      L("tUndone="+tUndone); L("done2="+(t2&&t2.t.done));
     }
     // 4) 搜索态：Vue 渲染的行数必须等于 SR.todoIds 里未完成的条数
     var keys=fx.map(function(f){ return f.nid+"|"+f.tid });
     if(keys.length>=2){
       var sub={}; sub[keys[0]]=1; sub[keys[1]]=1;
       __enote.state.SR={notes:[],todoIds:sub,where:{},total:2,scanned:2};
-      await render(); await sleep(250);
-      L("srRows="+rows());
+      await render();
+      // 目标状态：渲染出的行数等于 SR.todoIds 里未完成的条数（搜索态走的是 SR，不是 S）。
+      var tSr=await poll(function(){ return rows()===2 },30,200);
+      L("tSr="+tSr); L("srRows="+rows());
       L("srWant=2");
       __enote.state.SR={notes:null,todoIds:null,where:{},total:0,scanned:0};
-      await render(); await sleep(250);
+      await render();
+      // 目标状态：搜索态清掉后行数离开搜索态那个 2（回到全量列表）。
+      var tSrBack=await poll(function(){ return rows()!==2 },30,200);
+      L("tSrBack="+tSrBack);
     }
     L("srSkip="+(keys.length<2?"1":"0"));
   }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
@@ -2072,7 +2299,7 @@ NIT=$(readtlog | wc -l)
 UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jstint.json'"
-for i in $(seq 1 60); do
+for i in $(seq 1 120); do
   readtlog | tail -n +$((NIT + 1)) | grep -q 'TINT done=1' && break
   sleep 0.5
 done
@@ -2136,7 +2363,7 @@ items = json.load(sys.stdin).get("items") or []
 print(items[0]["noteId"] if items else "")')
 am_start "$APP_PACKAGE/.ShareActivity" "-a android.intent.action.SEND -t application/pdf --eu android.intent.extra.STREAM file://$EXT/$FIXNAME"
 FIXAID=""
-for i in $(seq 1 40); do
+for i in $(seq 1 120); do
   FIXAID=$(api_get "attachments?q=vue-files-fixture" | "$PY" -c 'import json,sys
 items = json.load(sys.stdin).get("items") or []
 print(items[0]["id"] if items else "")' 2>/dev/null)
@@ -2176,7 +2403,7 @@ asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enot
 })()' > "$TMPDIR/jsfload.json"
 NFL=$(readtlog | wc -l)
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsfload.json'"
-for i in $(seq 1 40); do
+for i in $(seq 1 120); do
   readtlog | tail -n +$((NFL + 1)) | grep -q 'FLOAD done=1' && break
   sleep 0.5
 done
@@ -2197,6 +2424,7 @@ print("  ok (FA 已加载 %s 条，下面的交互用例有真卡片可点)" % d
 NFT=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("FINT "+m)};
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||250); i++; } return -1 };
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
   var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
   var P=".pane[data-tab=files]";
@@ -2221,7 +2449,9 @@ NFT=$(readtlog | wc -l)
       await sleep(250);
     }
     L("tries="+ftries);
-    await sleep(500);
+    // 目标状态：卡片真的画进 DOM（FA 有数据不等于画出来了，Vue 的 nextTick 在下一拍）。
+    var tCards=await poll(function(){ return qa(P+" .acard").length>0 },30,200);
+    L("tCards="+tCards);
     L("mounted2="+(__enote.vue?!!__enote.vue.apps.files:"no-vue"));
     // 2) 渲染保真度：FA 里有几条就画几张卡，strip 的计数是实时 FA（不是装配时那份快照）
     var FA=__enote.vue.host.FA;
@@ -2234,8 +2464,13 @@ NFT=$(readtlog | wc -l)
     var card=cardOf();
     L("card="+(card?"found":"none"));
     if(!card){ L("done=1"); return }
-    card.click(); await sleep(400);
+    card.click();
+    // 目标状态：预览 toast 弹出（openAttach 的 @click 真的绑上了）。
     var tst=document.getElementById("toast");
+    // 目标状态与断言同源：toast 弹出且文案是预览那句（只轮询 on 类会被上一条用例的
+    // toast 立刻满足，那条 toast 要挂 ~2s 才自己收）。
+    var tToast=await poll(function(){ return tst.classList.contains("on") && (tst.textContent||"").indexOf("预览即将上线")>=0 },30,200);
+    L("tToast="+tToast);
     L("toastOn="+tst.classList.contains("on"));
     L("toast="+tst.textContent.replace(/\s+/g," ").trim());
     // 4) 点「删除」→ askDel 确认框 → 确认 → 服务端真删了 → 行从 DOM 消失
@@ -2243,15 +2478,19 @@ NFT=$(readtlog | wc -l)
     L("delBtn="+(del?"found":"none"));
     if(!del){ L("done=1"); return }
     var cardsBefore=qa(P+" .acard").length;
-    del.click(); await sleep(300);
-    L("dlg="+document.getElementById("dlg").classList.contains("on"));
+    del.click();
+    // 目标状态：删除确认框弹出（askDel 走 dialog）。
+    var tDlg=await poll(function(){ return document.getElementById("dlg").classList.contains("on") },30,200);
+    L("tDlg="+tDlg); L("dlg="+document.getElementById("dlg").classList.contains("on"));
     document.getElementById("dlgYes").click();
     var left=-1;
     for(var i=0;i<40;i++){ await sleep(300);
       var r=await api("/api/attachments?q=vue-files-fixture"); left=(r.items||[]).length;
       if(!left) break }
     L("apiLeft="+left);
-    await sleep(800);   // delAttach 里 filesNow() 会重绘，给 DOM 一拍
+    // 目标状态：卡片数真的掉下来（delAttach 里 filesNow() 会重绘，固定 800ms 只是「给一拍」）。
+    var tDom=await poll(function(){ return qa(P+" .acard").length<cardsBefore },40,250);
+    L("tDom="+tDom);
     L("gone="+(cardOf()?"still":"gone"));
     L("cards2="+qa(P+" .acard").length);
     L("cardsBefore="+cardsBefore);
@@ -2262,7 +2501,7 @@ NFT=$(readtlog | wc -l)
 # 「载荷根本没跑，日志里一条 FINT 也没有」。
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsfint.json'"
-for i in $(seq 1 60); do
+for i in $(seq 1 120); do
   readtlog | tail -n +$((NFT + 1)) | grep -q 'FINT done=1' && break
   sleep 0.5
 done
@@ -2329,7 +2568,7 @@ asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enot
 })()' > "$TMPDIR/jsempty.json"
 NFE=$(readtlog | wc -l)
 asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsempty.json'"
-for i in $(seq 1 40); do
+for i in $(seq 1 120); do
   readtlog | tail -n +$((NFE + 1)) | grep -q 'FEMPTY done=1' && break
   sleep 0.5
 done

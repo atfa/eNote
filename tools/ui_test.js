@@ -517,7 +517,7 @@ function payloadLocals(src) {
 // 两种写法都要扫：老的是 python -c '…sys.argv[1]…' '<js>' > "$TMPDIR/x.json"，
 // 新的是 heredoc 里 js = r'''…'''（截图页 / 笔记页交互用例）。只扫前一种时 heredoc
 // 载荷里的全局名完全不在闸门视野里 —— 闭集加了新名字却报「没人引用」就是这种漏网。
-const jsevalPayloads = [...testSh.matchAll(/sys\.argv\[1\]\}\)\)'[ \t]*(?:\\\n)?[ \t]*'([\s\S]*?)' > "\$TMPDIR\/[a-z]+\.json"/g)]
+const jsevalPayloads = [...testSh.matchAll(/sys\.argv\[1\][^\n]{0,80}?\}\)\)'[ \t]*(?:\\\n)?[ \t]*'([\s\S]*?)' > "\$TMPDIR\/[a-z]+\.json"/g)]
   .map(m => m[1])
   .concat([...testSh.matchAll(/js = r'''([\s\S]*?)'''/g)].map(m => m[1]));
 const CLOSED = new Set(CLOSED_FN);
