@@ -57,7 +57,7 @@ export const FilesView = {
     const FA = live(() => H.FA);
     const items = live(() => H.FA.items);
     return {
-      tick, FA, items,
+      tick, FA, items, H,
       stripHtml: live(() => H.fileStripInner()),
       // 空态文案分两种：搜索中 vs 真的一个附件都没有（和遗留 renderFiles 一致）
       emptyTitle: live(() => H.q ? '没有匹配的附件' : '还没有附件')
@@ -67,6 +67,9 @@ export const FilesView = {
 <div class="strip" v-html="stripHtml"></div>
 <div class="card" v-if="!FA.loaded">
   <div class="skel img"></div><div class="skel l"></div><div class="skel s"></div>
+  <div class="errbox" v-if="FA.error">{{ FA.error }}，正在重试 ·
+    <button class="btn sm gh" @click="H.filesNow()">立即重试</button>
+  </div>
 </div>
 <empty-state v-else-if="!items.length" icon="clip"
              :title="emptyTitle" sub="分享图片 / PDF，或点右下角「添加附件」"/>

@@ -2421,6 +2421,51 @@ assert d.get("loaded") == "true", \
 assert int(d.get("fa", "0")) >= 1, "FA 里只有 %s 条附件，夹具没进去" % d.get("fa")
 print("  ok (FA 已加载 %s 条，下面的交互用例有真卡片可点)" % d["fa"])
 '
+# 并发抢占回归（步骤 13 的产品侧修复）：步骤 11 真机「跑一次红一次绿」的根因是
+# filesNow() 借用服务端搜索共用的 searchSeq 做抢占判定 —— 笔记页搜索一在飞，
+# 附件页这次请求的结果就被整次丢掉。测试侧轮询只是把症状盖住，这一步把根因钉住：
+# 目标状态与下面的断言同源（kind=pdf 一定 0 条，夹具是 png），被抢占时 FA 停在
+# 上一份（loaded=true、fa=1），断言必红。前置：FLOAD 已把夹具装进 FA。
+NFP=$(readtlog | wc -l)
+"$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
+  var L=function(m){console.log("FPRE "+m)};
+  try{
+    var H=__enote.vue.host;
+    __enote.state.tab="files";
+    H.P().kind="pdf";                 // 夹具是 png，pdf 一定 0 条
+    var p1=H.filesNow();              // 附件页请求在飞
+    __enote.state.tab="notes";
+    var p2=H.searchNow();             // 笔记页搜索抢占（步骤 11 的竞态源）
+    __enote.state.tab="files";
+    await Promise.all([p1,p2]);
+    L("loaded="+H.FA.loaded);
+    L("fa="+H.FA.items.length);
+    L("err="+H.FA.error);
+    H.P().kind="all";
+  }catch(e){ L("ERR="+(e&&e.message)) }
+  L("done=1");
+})()' > "$TMPDIR/jsfpre.json"
+asroot_global "sh '$TMPDIR/jseval.sh' '$TMPDIR/jsfpre.json'"
+for i in $(seq 1 120); do
+  readtlog | tail -n +$((NFP + 1)) | grep -q 'FPRE done=1' && break
+  sleep 0.5
+done
+readtlog | tail -n +$((NFP + 1)) | grep 'FPRE' | "$PY" -c '
+import sys, re
+lines = [l.strip() for l in sys.stdin if "FPRE" in l]
+d = {}
+for l in lines:
+    m = re.search(r"FPRE (\w+)=(.*)", l)
+    if m: d[m.group(1)] = m.group(2).strip()
+assert d.get("done") == "1", "FPRE 载荷没跑完：日志=%s" % lines[:2]
+assert d.get("ERR") is None, "FPRE 抛异常：%s" % d.get("ERR")
+assert d.get("err", "") == "", "附件页请求报错了：%s" % d.get("err")
+assert d.get("loaded") == "true", \
+  "笔记页搜索在飞时附件页的单次请求被整次丢掉了（FA.loaded 停在 %s）：filesNow 又去借用 searchSeq 了" % d.get("loaded")
+assert d.get("fa") == "0", \
+  "FA 里是上一份结果（fa=%s，期望 kind=pdf 的 0 条）：这次 filesNow 的结果被抢占了" % d.get("fa")
+print("  ok (并发抢占下附件页单次请求仍落地：FA.loaded=true, fa=0)")
+'
 NFT=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){
   var L=function(m){console.log("FINT "+m)};

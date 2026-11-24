@@ -1097,7 +1097,9 @@ if (SPLIT) {
   // strip-bar 的闭合标签要容许（`<strip-bar :tick="tick"></strip-bar>`），旧正则用 \s*
   // 卡在那里，转 Vue 当天就假红过一次。
   const TOP_FORMS = [
-    /<strip-bar[\s\S]{0,80}?<missed-banner[\s\S]{0,400}?<shot-banner[\s\S]{0,400}?<clip-banner/,
+    // 步骤 13 在 strip-bar 与 missed-banner 之间插了「服务端搜索失败」的 errbox（可重试），
+    // 第一个窗口从 80 放到 320：顺序仍是硬要求，只是不再要求两者紧邻。
+    /<strip-bar[\s\S]{0,320}?<missed-banner[\s\S]{0,400}?<shot-banner[\s\S]{0,400}?<clip-banner/,
   ];
   const notesTopOrder = (s) => TOP_FORMS.some((re) => re.test(s));
   // 横幅被引用的次数：字符串调用 clipBanner() 和组件标签 <clip-banner> 都计数
@@ -1672,6 +1674,50 @@ if (SPLIT) {
   sig('相册变化实时监听（ContentObserver + 1.2s 去抖）', shotWatch);
 
 })();
+
+// ---------- 闸门⑰ 一页一序号 + 请求超时（步骤 13：骨架屏不许永久） ----------
+// 步骤 11 真机撞到的竞态：filesNow() 用服务端搜索共用的 searchSeq 做抢占判定，
+// 笔记页搜索一在飞，附件页这次请求的结果就被整次丢掉 → FA.loaded 永远 false，
+// 附件页停在骨架屏只能切走再切回来。statsNow() 的 stBusy 同类：一次永不返回的
+// 请求把我的页永久钉在骨架屏。测试侧轮询只是把症状盖住，产品侧的不变量由这里守：
+//   ① 每一页的数据源用自己的序号，不许借用 searchSeq；
+//   ② 每一页的数据源走 apiTimeout（fetch 无超时会永久挂起）；
+//   ③ 失败要留下可观测的 error 状态，骨架屏上给「立即重试」（闸门⑮ 保证 H.xxx 在宿主表里）。
+{
+  const appSrc = read('go/ui/js/app.js');
+  const filesSrc = read('go/ui/js/views/files.js');
+  const statsSrc = read('go/ui/js/views/stats.js');
+  const body = (head) => {
+    const i = appSrc.indexOf(head);
+    if (i < 0) return null;
+    const j = appSrc.indexOf('\n}', i);
+    return appSrc.slice(i, j < 0 ? appSrc.length : j);
+  };
+  const filesBody = body('async function filesNow(){');
+  const statsBody = body('async function statsNow(){');
+  const searchBody = body('async function searchNow(force){');
+  if (!filesBody) bad('闸门⑰ 找不到 filesNow()', '函数签名改了，闸门自己在假绿');
+  else {
+    if (!/\+\+filesSeq/.test(filesBody)) bad('闸门⑰ filesNow 没用自己的 filesSeq', '借用 searchSeq 会被笔记页搜索整次抢占 → 附件页永久骨架屏');
+    if (/searchSeq/.test(filesBody)) bad('闸门⑰ filesNow 里又出现 searchSeq', '同上：一页一序号');
+    if (!/apiTimeout\(/.test(filesBody)) bad('闸门⑰ filesNow 没走 apiTimeout', 'fetch 卡死 = 这一页永久骨架屏');
+    if (!/error:errText\(e\)/.test(filesBody)) bad('闸门⑰ filesNow 失败没记 FA.error', '没有可观测的失败状态，骨架屏上给不出重试');
+    if (!/setTimeout\(filesNow/.test(filesBody)) bad('闸门⑰ filesNow 失败没自动重试', '用户不该靠切走再切回来恢复');
+    else ok('闸门⑰ filesNow：独立序号 + 超时 + 失败自动重试');
+  }
+  if (!statsBody) bad('闸门⑰ 找不到 statsNow()', '函数签名改了，闸门自己在假绿');
+  else {
+    if (!/apiTimeout\(/.test(statsBody)) bad('闸门⑰ statsNow 没走 apiTimeout', 'fetch 卡死 = 我的页永久骨架屏');
+    if (!/stSince/.test(statsBody)) bad('闸门⑰ stBusy 没有超时兜底', '一次永不返回的请求把我的页永久钉在骨架屏');
+    if (!/stErr = errText\(e\)/.test(statsBody)) bad('闸门⑰ statsNow 失败没记 stErr', '同上：要给出可点的重试');
+    else ok('闸门⑰ statsNow：stBusy 带超时 + 失败可重试');
+  }
+  if (searchBody && !/apiTimeout\(/.test(searchBody)) bad('闸门⑰ searchNow 没走 apiTimeout', '首页列表同样会永久停在骨架屏');
+  if (!/FA\.error/.test(filesSrc) || !/H\.filesNow\(\)/.test(filesSrc)) bad('闸门⑰ 附件页骨架屏没有重试入口', 'FA.error 要在模板里可见可点');
+  if (!/srErr/.test(read('go/ui/js/views/notes.js')) || !/H\.searchNow\(/.test(read('go/ui/js/views/notes.js'))) bad('闸门⑰ 首页搜索失败没有重试入口', 'srErr 要在模板里可见可点');
+  if (!/stErr/.test(statsSrc) || !/H\.statsNow\(\)/.test(statsSrc)) bad('闸门⑰ 我的页骨架屏没有重试入口', 'stErr 要在模板里可见可点');
+  if (filesBody && statsBody && searchBody) ok('闸门⑰ 三个页面数据源都是一页一序号 + 超时 + 可重试');
+}
 
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);

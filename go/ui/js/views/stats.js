@@ -109,6 +109,7 @@ export const StatsView = {
       tick,
       i: live(() => H.S.info),
       st: live(() => H.ST),
+      stErr: live(() => H.stErr),
       sf: live(() => H.SHOTFLAGS || {}),
       // 纯展示块：整块复用叶子函数（见文件头「哪些块走 v-html」）
       heroInner: live(() => H.statsHeroInner(H.S.info, H.ST)),
@@ -141,7 +142,11 @@ export const StatsView = {
   },
   template: `
 <div class="hero" v-html="heroInner"></div>
-<template v-if="!st"><div class="card"><div class="skel l"></div><div class="skel s"></div></div></template>
+<template v-if="!st">
+  <div class="card"><div class="skel l"></div><div class="skel s"></div></div>
+  <div class="card" v-if="stErr"><div class="errbox">{{ stErr }} ·
+    <button class="btn sm gh" @click="H.statsNow()">立即重试</button></div></div>
+</template>
 <template v-else>
 <div class="statgrid">
   <stats-stat v-for="t in tiles" :key="t.label" :tick="tick" :i="t.i" :v="t.v" :label="t.label" :icon="t.icon" :hot="t.hot"/>

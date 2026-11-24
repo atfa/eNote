@@ -28,10 +28,14 @@ export const NotesView = {
       ? { icon: 'search', t: '没有符合条件的笔记', sub: '换个关键词，或点右上角重置筛选' }
       : { icon: 'inbox', t: '还没有笔记',
           sub: '在任何 app 里点「分享 → 懒得记」，文字和图片会自动变成笔记与待办' });
-    return { H, tick, list, empty };
+    /* 步骤 13：服务端搜索失败（超时/断网）时退回本地过滤，顶部给一条可重试的错条；
+       不静默把「拉不到」画成「没有」。 */
+    return { H, tick, list, empty, srErr: live(() => H.srErr) };
   },
   template: `
 <strip-bar :tick="tick"></strip-bar>
+<div class="errbox" v-if="srErr">{{ srErr }}，已退回本地过滤 ·
+  <button class="btn sm gh" @click="H.searchNow(true)">重试</button></div>
 <missed-banner :tick="tick"></missed-banner>
 <shot-banner :tick="tick"></shot-banner>
 <clip-banner :tick="tick"></clip-banner>

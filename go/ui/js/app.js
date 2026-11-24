@@ -68,12 +68,17 @@ function savePrefs(){
   saveT = setTimeout(function(){ api('/api/prefs', prefPayload()).catch(function(){}) }, 350);
 }
 var SRK = ''; // 上次搜索结果的指纹，内容一样就不重建 DOM
+/* 步骤 13：首页搜索也走 apiTimeout —— fetch 没有超时会永久挂起（WebView 进后台
+   再回来，在飞的 fetch 永不 resolve），症状是首页永久停在上一份数据上。失败退回
+   本地过滤（原有行为）并记 srErr，首页顶部给一条可重试的错误条。 */
+var srErr = '';
 async function searchNow(force){
   if(tab==='files'){ filesNow(); return; }
   var my = ++searchSeq;
   try{
-    var d = await api('/api/search?'+prefQS());
+    var d = await apiTimeout('/api/search?'+prefQS());
     if(my !== searchSeq) return;
+    srErr = '';
     var k = JSON.stringify(d);
     SR = {notes:d.notes||[], todoIds:d.todoIds||null, where:d.where||{}, total:d.total||0, scanned:d.scanned||0};
     // 顶部横幅（剪贴板暂存 / 新截图 / 错过的提醒）不在搜索结果里：搜索结果没变、
@@ -81,7 +86,7 @@ async function searchNow(force){
     // 回到首页都看不到横幅 —— 这两处的 bug 都是这里短路掉的。
     if(k === SRK && !force){ paintStatus(); return }
     SRK = k;
-  }catch(e){ SR = {notes:null, todoIds:null, where:{}, total:0, scanned:0}; SRK = '' }
+  }catch(e){ SR = {notes:null, todoIds:null, where:{}, total:0, scanned:0}; SRK = ''; srErr = errText(e) }
   render();
 }
 
@@ -121,6 +126,20 @@ async function api(path, body){
   var r = await fetch(path, o);
   if(!r.ok) throw new Error('HTTP '+r.status);
   return r.json();
+}
+/* 步骤 13：给「一页的数据源」用的带超时 api。fetch 没有超时时会永久挂起（真机撞过：
+   WebView 进后台再回来，在飞的 fetch 永不 resolve），症状是这一页永久停在骨架屏。
+   超时只放弃等待，不取消请求（fetch 的 result 被丢弃即可），所以调用方的序号判定照旧有效。 */
+var REQ_TIMEOUT_MS = 12000;
+function apiTimeout(path, body, ms){
+  return new Promise(function(res, rej){
+    var to = setTimeout(function(){ rej(new Error('timeout')) }, ms || REQ_TIMEOUT_MS);
+    api(path, body).then(function(v){ clearTimeout(to); res(v) },
+                         function(e){ clearTimeout(to); rej(e) });
+  });
+}
+function errText(e){
+  return (e && e.message === 'timeout') ? '加载超时' : '加载失败';
 }
 function now(){var d=new Date(),p=n=>String(n).padStart(2,'0');
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes())}
@@ -1226,7 +1245,15 @@ function paintStatus(){
 }
 /* ---------- 附件页（R4）----------
    数据来自 /api/attachments（服务端过滤/排序，含磁盘文件数校验）。 */
-var FA = {items:[], total:0, bytes:0, files:0, missing:0, scanned:0, diskFiles:0, loaded:false};
+var FA = {items:[], total:0, bytes:0, files:0, missing:0, scanned:0, diskFiles:0, loaded:false, error:''};
+/* 步骤 13：附件页的抢占判定以前用**服务端搜索共用的** searchSeq，笔记页搜索一在飞，
+   附件页这次请求的结果就被整次丢掉（`if(my !== searchSeq) return`），FA.loaded 永远停在
+   false → 用户侧症状是附件页停在骨架屏，只能切走再切回来。真机套件也撞过（步骤 11 的
+   「跑一次红一次绿」，当时只在测试侧轮询盖住）。现在：
+   ① 用附件页自己的 filesSeq，只有更新的 filesNow 能抢占它；
+   ② 请求有超时（apiTimeout），卡死的 fetch 不会把这一页永久钉在骨架屏；
+   ③ 失败记 FA.error 并自动退避重试（最多 2 次），骨架屏上同时给「重试」按钮。 */
+var filesSeq = 0, filesRetry = 0;
 var KIND = {image:'image',pdf:'file-pdf',doc:'file',sheet:'file-sheet',slides:'file-slides',text:'file-text',audio:'music',video:'film',archive:'archive',file:'clipfile'};
 function fmtSize(b){
   b = b||0;
@@ -1236,19 +1263,28 @@ function fmtSize(b){
   return b+' B';
 }
 async function filesNow(){
-  var my = ++searchSeq, p = P();
+  var my = ++filesSeq, p = P();
   var s = 'q='+encodeURIComponent(q)+'&sort='+encodeURIComponent(p.sort||'new');
   if(p.dir) s += '&dir='+encodeURIComponent(p.dir);
   if(p.kind && p.kind!=='all') s += '&mime='+encodeURIComponent(p.kind);
   try{
-    var d = await api('/api/attachments?'+s);
-    if(my !== searchSeq) return;
+    var d = await apiTimeout('/api/attachments?'+s);
+    if(my !== filesSeq) return;
     var k = JSON.stringify(d);
     FA = {items:d.items||[], total:d.total||0, bytes:d.bytes||0, files:d.files||0,
-          missing:d.missing||0, scanned:d.scanned||0, diskFiles:d.diskFiles||0, loaded:true};
+          missing:d.missing||0, scanned:d.scanned||0, diskFiles:d.diskFiles||0,
+          loaded:true, error:''};
+    filesRetry = 0;
     if(k === SRK){ paintStatus(); return }
     SRK = k;
-  }catch(e){ FA.loaded = false; SRK = '' }
+  }catch(e){
+    if(my !== filesSeq) return;
+    FA = {items:FA.items, total:FA.total, bytes:FA.bytes, files:FA.files,
+          missing:FA.missing, scanned:FA.scanned, diskFiles:FA.diskFiles,
+          loaded:false, error:errText(e)};
+    SRK = '';
+    if(filesRetry < 2){ filesRetry++; setTimeout(filesNow, 1500*filesRetry) }
+  }
   render();
 }
 /* 步骤 7 拆出的叶子：Vue 的 FilesView 直接画 <div class="strip" v-html=...>，
@@ -1291,11 +1327,15 @@ function pickFile(){
 }
 /* ---------- 我的页（R5）：本地数据摘要 + 近 7 天活动 ----------
    数字全部来自 /api/stats（服务端从同一份 store 现算，不会和列表页对不上）。 */
-var ST = null, stBusy = false;
+/* 步骤 13：stBusy 以前没有超时 —— 一次永不返回的 /api/stats 把我的页永久钉在骨架屏
+   （`if(stBusy) return` 之后再也没有第二次机会）。现在请求带超时，stBusy 带时间戳，
+   超过 REQ_TIMEOUT_MS + 宽限期就允许新的请求进入；失败记 stErr，骨架屏上给「重试」按钮。 */
+var ST = null, stBusy = false, stSince = 0, stErr = '';
 async function statsNow(){
-  if(stBusy) return;
-  stBusy = true;
-  try{ ST = await api('/api/stats') }catch(e){ ST = null }
+  if(stBusy && (Date.now() - stSince) < REQ_TIMEOUT_MS + 2000) return;
+  stBusy = true; stSince = Date.now();
+  try{ ST = await apiTimeout('/api/stats'); stErr = '' }
+  catch(e){ ST = null; stErr = errText(e) }
   stBusy = false;
   if(tab==='mine') render();
 }
@@ -1798,6 +1838,11 @@ var HOST = setHost({
      闸门⑮ 静态扇模板里的 H.xxx 钉住它）。
      ST / remindPending 会被整体赋值（statsNow / refresh），必须走 getter；SHOTFLAGS 步骤 8 已有。 */
   get ST(){ return ST }, get remindPending(){ return remindPending },
+  get stErr(){ return stErr }, statsNow: statsNow,
+  get srErr(){ return srErr },
+  /* 步骤 13 加：真机竞态回归用例要能在附件页请求在飞时开一次笔记页搜索（抢占
+     searchSeq），没有它只能靠 refresh() 间接抢，抢不中就是空跑。 */
+  searchNow: searchNow,
   statCls: statCls, kvHTML: kvHTML, liHTML: liHTML,
   statsHeroInner: statsHeroInner, statsNotesCardHTML: statsNotesCardHTML,
   statsRunRowsHTML: statsRunRowsHTML,
