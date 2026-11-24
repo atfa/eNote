@@ -1708,11 +1708,19 @@ toast 抬 8px、与最后一行内容的重叠从 ~23px 变 ~31px，还把浮层
 闸门⑲ 钉住四个 `.pfoot`：clip / shots 必须带 `display:block`，folders / 提醒面板必须不带；
 反向实验（删掉 clip.js 那行内联样式）实测红。两个模板里各补一行注释说明为什么。
 
-**记进步骤 14 的账**
+**⑨ 导出表补 `sortSheet`，闸门② 把闭集与导出表求交（Tony 定位）**
 
-* SIT 里还有 `q()[0]` 这类索引选择器，DOM 顺序一变就测到别的元素；换成稳定 id。
-* 断言要显式写出 `src`/`status`/`pri`/`kind`，不要只断言数量（§9.17 审计条目，步骤 12 收了一半）。
-* `clipParse` 的真 LLM 路径与 `clipError` 分支没有客户端回归（现在只在 Go 侧测）。
+第 ⑤ 条的用例在真机上红：设备日志 `TINT ERR=sortSheet is not defined @ <anonymous>:158:7`。
+`sortSheet` 是模块私有函数，靠 `$('#sortBtn').onclick = sortSheet` 挂到 DOM 上，从来不在
+`window.__enoteActions` 里 —— 闸门① 只扇内联 `onclick="…"` 与 handler 字符串参数，这种
+「DOM 赋值挂上去的函数」它管不到。闸门② 也抓不到：它只做两向检查（载荷引用 ⊆ 闭集、闭集 ⊆
+引用），**从不把 `CLOSED_FN` 与闸门① 解析出的导出表求交**，「闭集里写了个导出表没有的名字」
+正好落在盲区 —— 静态全绿，真机才红。现在补 `CLOSED_FN ⊆ 导出表`，红时列出缺的名字；反向实验
+（导出表删掉 `sortSheet`）实测静态红。
+
+同一轮还红在夹具计数：`L("made=…")` 写死 2，而第 ⑤ 条又加了一条夹具丙，`cleaned` 数的是
+`fx.length=3` → 「造 2 删 3」。计数改成 `fx.length`，另加 `madeOK` 断言，断言不再依赖硬编码数字。
+
 **跑全量验收时的设施约束（Tony 定位，步骤 13 踩过两次）**
 
 `test.sh --vd` 开头抓一次 VD display id，`am_start` 会在 Permission Denial / does not exist
@@ -1724,6 +1732,9 @@ toast 抬 8px、与最后一行内容的重叠从 ~23px 变 ~31px，还把浮层
 
 **记进步骤 14 的账**
 
+* SIT 里还有 `q()[0]` 这类索引选择器，DOM 顺序一变就测到别的元素；换成稳定 id。
+* 断言要显式写出 `src`/`status`/`pri`/`kind`，不要只断言数量（§9.17 审计条目，步骤 12 收了一半）。
+* `clipParse` 的真 LLM 路径与 `clipError` 分支没有客户端回归（现在只在 Go 侧测）。
 * 260px 面板下 clip 弹层三个按钮文字被裁（「原样存为笔记」两侧切掉）：clip.js 给按钮写了内联
   `flex:1`/`flex:1.2`，`.btn` 左右 padding 16px 且没有 `min-width:0`。全宽实测三按钮一行放得下
   （footW=369、btnOverflow=0），只在 <320 CSS px 才咬人（Tony 审查记的 nit，非回归）。
