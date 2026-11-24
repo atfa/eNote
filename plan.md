@@ -633,6 +633,7 @@ Tony 另有 `css/{tokens,base,components}.css`、`css/views/{shell,shots,clip,st
 | S3 转 ES module 时，`window` 导出表要同步进 `ui_test.js` 闸门② | Austin + Tony | S3 |
 | 闸门② 的闭集是 15 个全局（10 函数 + 5 状态），不是纯函数名；状态桥 `__enote.state` 要可写（`tab="notes"`） | Austin | S3 |
 | 重置基线后 OCR 搜索断言的固定装置（`one-shot.png` 的忽略表）已随 shot.json 一起清，P11 不再依赖上轮状态 | Austin | S8 步骤 1 已做 |
+| **套件最后一次剪贴板写入必须为空**：任何往剪贴板写夹具的步骤，收尾必须 `clipset ' '` + `clip/clear` 并断 `clip/list` 真的是 0。否则 app 启动扫一次剪贴板 + 前台轮询 `clipAdd` 会把残留夹具重新暂存，红的是下一轮开头的硬基线（test.sh:280 clip=1），本轮全绿 | Austin | **已做（S3 步骤 14）**：见 §9.20 ⑥（Tony 实测撞出），闸门㉑ 静态钉住两处收尾 + 断空 |
 
 ### 9.5 S8 步骤 1 已完成（Austin，D18：跑前重置数据 + 回写测试配置）
 
@@ -1840,6 +1841,28 @@ clip.js / shots.js 的按钮行换成 `class="btnrow"`（内联 `flex:1` 保留�
 齐备时），基线打印带 `ai=yes`，基线断言不满足时单独给一条「重置后 useAI 仍是关闭…」的红话；
 `ai_step_unhappy` 补第三支：`--no-reset` 跑测时 AI 开关是关的，loud skip 而不是判红。
 
+**⑥ 跨轮泄漏：套件最后一次剪贴板写入必须是空（Tony 实测撞出来的）**
+
+本步是全套最后一个往系统剪贴板写夹具文本的地方（`clipset "加载失败夹具 $CLIPFIX2"`），
+base 的 clip 段以 `clipset ' '` 收尾（test.sh:1880），新 step 排在它后面，把那个收尾顶掉了。
+因果链：剪贴板留着非空文本 → app 启动扫一次剪贴板、前台还有轮询会 `clipAdd` →
+`/api/clip/clear` 确实把 `Clips` 置 nil 并 save（`go/clip.go:229`），但几秒内那条文本又被
+重新暂存 → 下一轮的硬基线（test.sh:280「重置后基线不对 … clip=1」）必红。实测残留：
+`{"text":"加载失败夹具 1795530583","app":"hook","createdAt":"2026-11-24T22:37:14"}`。
+
+这类泄漏的坑人在**它不在本轮红**：写夹具的那一轮全绿，红的是下一轮开头一条与本步完全无关的
+基线断言，看上去像设施抖动。修法（test.sh 新 step 末尾）：`clipset ' '` → `sleep 2`（等前台轮询
+吃掉它，Go 侧 TrimSpace 后为空 → clipAdd 直接拒）→ `clip/clear` → `sleep 2` → **再读一次
+`clip/list` 断它真的是 0**，不等就红在「本步收尾后剪贴板暂存区不是 0」—— 把跨轮泄漏变成
+本轮末尾的红。规则记进 §9.4：**任何往剪贴板写夹具的步骤，收尾必须自己清空并断空**。
+
+修这个的第一版写法自己中了自己的招：那段注释写成了 C 风格块注释。test.sh 是 `sh` 跑的，
+行首的斜杠星是命令（glob）不是注释，test.sh:14 的 `set -eu` 下直接 **127 退出**，而
+`bash -n` 完全看不出来（语法合法）—— 真跑到那行才炸，而且炸在套件最后几分钟，后面的收尾
+与自证一条都不执行。新增闸门㉑：禁止 test.sh 行首出现斜杠星（JS 载荷里的都是缩进的），
+同时钉住两处 `clipset ' '` 收尾与「本步收尾后剪贴板暂存区不是 0」那条断言 —— 这类坑靠
+`bash -n` 守不住，只能静态扫。
+
 **反向实验**
 
 `.test/s14_neg.sh`（四条，逐条实测红）：
@@ -1858,7 +1881,19 @@ apk 装回去，所以四条互不污染）：
   `AssertionError: 注入 /api/clip/list 失败后没出「加载失败」空态（tErr=-1）：clipError 那一支断了`
   —— 这条就是上面那个死代码修复被回退后的样子，证明回归真的能守住它。
 
-**验收**：`node tools/ui_test.js` **117 ok / 0 FAIL**（新增闸门⑳）、`(cd go && go test ./...)` ok、
-`bash -n test.sh` ok、`GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd` 全绿
-（`$TMPDIR/s14_run5.log`：0 FAIL / 0 ERROR，真机 `  ok` 156→**161**，step 32→**33**，
-`test.sh` 2800→**3281** 行）。四条反向实验逐条实测红（见上）。
+两条静态反向实验（闸门㉑，秒级，不用真机）：
+
+* `e` 把收尾那段注释改成行首斜杠星 → `FAIL test.sh 顶层注释风格 / 剪贴板跳轮收尾断了：
+  test.sh:2221 行首是 /* —— sh 里这是命令不是注释，set -eu 下 127 退出（bash -n 看不出来）`。
+* `f` 把断空那行改成 `|| true` → `FAIL …：剪贴板夹具步的收尾没断空（找不到「本步收尾后
+  剪贴板暂存区不是 0」）：泄漏会躲过本轮，红在下一轮的硬基线`。
+
+**验收**：`node tools/ui_test.js` **118 ok / 0 FAIL**（新增闸门⑳㉑，㉑ 扫仓库全部 41 个 `.sh`）、
+`(cd go && go test ./...)` ok、`bash -n test.sh` ok、`GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd` 全绿
+（交付 HEAD 上重跑：`sh ./test.sh --skip-build --vd` → `$TMPDIR/s14_head_green.log`：
+0 FAIL / 0 ERROR，真机 `  ok` 156→**162**，step 32→**33**，`test.sh` 2800→**3294** 行）。
+六条反向实验逐条实测红（见上）。
+
+> 真机 `  ok` 这条计数会**随 AI 解析分支 ±1**：`test.sh:2140` 的 `ai_step_unhappy` 只在「笔记
+> 停在 `status:raw`、需要补一次解析」时多打一条 ok（21:41 那次是 161，23:08 这次是 162）。
+> 对数字时先确认走的是哪一支，不要把它当成回归。

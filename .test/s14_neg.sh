@@ -12,9 +12,14 @@
 #   d) 加载失败三态（真机）：把 loadClips 的 catch 里的 clipLoading = false 删掉。
 #      模板的三态判定是 v-if="loading" 优先，于是加载失败永远停在「加载中…」，
 #      「加载失败」那一支是死代码 → 真机必须红在「注入 /api/clip/list 失败后没出加载失败空态」。
+#   e) 顶层伪注释（静态，秒级）：把新 step 收尾那段注释改成行首斜杠星的 C 风格。
+#      test.sh 是 sh 跑的，行首斜杠星是命令不是注释，set -eu 下 127 退出，而 bash -n 看不出来
+#      → 闸门㉑ 必须红。
+#   f) 断空被删（静态，秒级）：把「本步收尾后剪贴板暂存区不是 0」那条 fail 改成 || true
+#      → 闸门㉑ 必须红（跨轮泄漏会躲过本轮，红在下一轮的硬基线，见 plan.md §9.20 ⑥）。
 #
 # app.js / css 都是 go:embed 进二进制的，所以 b/c 前后各要 build + install 一次。
-# 用法：sh .test/s14_neg.sh [a|b|c|all]
+# 用法：sh .test/s14_neg.sh [a|b|c|d|e|f|all]
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 WHICH=${1:-all}
@@ -23,11 +28,13 @@ mkdir -p "$BK"
 cp "$HERE/go/ui/js/app.js" "$BK/app.js.bak"
 cp "$HERE/go/ui/js/views/clip.js" "$BK/clip.js.bak"
 cp "$HERE/go/ui/css/components.css" "$BK/components.css.bak"
+cp "$HERE/test.sh" "$BK/test.sh.bak"
 
 restore() {
   cp "$BK/app.js.bak" "$HERE/go/ui/js/app.js"
   cp "$BK/clip.js.bak" "$HERE/go/ui/js/views/clip.js"
   cp "$BK/components.css.bak" "$HERE/go/ui/css/components.css"
+  cp "$BK/test.sh.bak" "$HERE/test.sh"
   echo "[neg] 产品文件已还原"
 }
 trap restore EXIT INT TERM
@@ -59,6 +66,22 @@ run_and_check() {
   echo "[neg] 红了，但不是红在该红的那一行（看 $LOG）："
   grep -n 'FAIL\|ERROR' "$LOG" | head -5
   return 2
+}
+
+# 静态实验：改 test.sh → 跑闸门 → 还原 → 判定红话
+# 注意：e/f 会就地改 test.sh，而 sh 是边跑边读文件的，以 e/f 不要在全量跑测进行中跑（a 只改
+# clip.js，安全）。
+# static_and_check <期望红话子串> <实验名>
+static_and_check() {
+  LOG="$BK/static-$2.log"
+  node tools/ui_test.js > "$LOG" 2>&1
+  rc=$?
+  restore
+  if [ "$rc" = 0 ]; then echo "[neg $2] 没抓到：test.sh 被改坏了闸门还全绿"; return 1; fi
+  grep -q "$1" "$LOG" || { echo "[neg $2] 红了但不是红在闸门㉑（看 $LOG）"; grep -n 'FAIL' "$LOG" | head -3; return 2; }
+  echo "[neg $2] 红得对：闸门㉑ 报 test.sh 顶层注释 / 剪贴板收尾断了"
+  grep -n "$1" "$LOG" | head -2
+  return 0
 }
 
 cd "$HERE" || exit 2
@@ -124,6 +147,33 @@ io.open(p, "w", encoding="utf-8").write(s.replace(old, new))
 print("[neg d] loadClips 的 catch 不落下 clipLoading（加载失败永远停在「加载中…」）")
 PY
   run_and_check "没出「加载失败」空态" d || exit $?
+fi
+
+if [ "$WHICH" = e ] || [ "$WHICH" = all ]; then
+  python3 - "$HERE/test.sh" <<'PY'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8").read()
+old = "# 套件最后一次剪贴板写入必须是空"
+new = "/* 套件最后一次剪贴板写入必须是空"
+assert s.count(old) == 1, "锚点没找到：剪贴板收尾的注释改过了，反向实验要同步改"
+io.open(p, "w", encoding="utf-8").write(s.replace(old, new))
+print("[neg e] 收尾注释改成行首斜杠星（sh 里这是命令，set -eu 下 127 退出）")
+PY
+  static_and_check "行首是 /*" e || exit $?
+fi
+if [ "$WHICH" = f ] || [ "$WHICH" = all ]; then
+  python3 - "$HERE/test.sh" <<'PY'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8").read()
+old = '[ "${LEAK:-?}" = 0 ] || fail "本步收尾后剪贴板暂存区不是 0'
+new = '[ "${LEAK:-?}" = 0 ] || true "本步收尾后剪贴板暂存区不是0'
+assert s.count(old) == 1, "锚点没找到：断空那行改过了，反向实验要同步改"
+io.open(p, "w", encoding="utf-8").write(s.replace(old, new))
+print("[neg f] 收尾断空被删（跨轮泄漏躲过本轮，红在下一轮的硬基线）")
+PY
+  static_and_check "剪贴板夹具步的收尾没断空" f || exit $?
 fi
 
 echo "[neg] 完成"

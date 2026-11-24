@@ -2218,7 +2218,20 @@ assert int(d.get("items2",0))>0, "重开弹层后条目数还是 0"
 assert d.get("clipError2") in ("", "None"), "列表回来了但 clipError 没清（实际 %r）" % d.get("clipError2")
 print("  ok (clipError：注入 /api/clip/list 失败 → #clipList 出「加载失败」空态并记下原因；清掉注入再开列表回来)")
 ' "$TMPDIR/cperr.log" || fail "clipError 分支客户端回归失败"
+# 套件最后一次剪贴板写入必须是空（跨轮泄漏的因果记在 plan.md §9.20 ⑥ / §9.4）：本步是全套
+# 最后一个往剪贴板写夹具文本的地方。留着不管的话 app 启动扫一次剪贴板 + 前台轮询 clipAdd
+# 会把它加回暂存区，下一轮的硬基线（test.sh:280「重置后基线不对 … clip=1」）必红 —— 单用
+# /api/clip/clear 没用，剪贴板里那段文本还在，几秒内就被轮询重新暂存（实测残留
+# {"text":"加载失败夹具 …","app":"hook"}）。顺序照拄 1881：先 clipset ' '（Go 侧 TrimSpace 后
+# 为空 → clipAdd 直接拒），等前台轮询吃掉它，再 clip/clear，最后断它真的是 0。
+# 注意：这里不能用 /* */ 注释 —— test.sh:14 是 set -eu，sh 里 `/*` 是命令不是注释，语法检查
+# （bash -n）看不出来，跑到这里直接 127 退出，后面的收尾和自证一条都不执行。
+am_start "$ACTIVITY" "--es hook clipset --es arg ' '" >/dev/null 2>&1 || true
+sleep 2
 api_post clip/clear '' >/dev/null 2>&1 || true
+sleep 2
+LEAK=$(api_get clip/list | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin).get("clips") or []))' 2>/dev/null) || LEAK=?
+[ "${LEAK:-?}" = 0 ] || fail "本步收尾后剪贴板暂存区不是 0（clip=${LEAK}）：套件最后一次剪贴板写入必须为空，否则下一轮的硬基线（test.sh:280）必红"
 
 
 step "设置页（弹层）交互在 Vue 路径上真的生效（开页/主题/开关/保存/确认框）"

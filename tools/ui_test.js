@@ -1898,6 +1898,40 @@ if (SPLIT) {
   else ok('闸门⑳ 条目稳定 id 三处齐全（clipitem- / shotitem- / n+id：模板 :id 与 test.sh 定位两侧都在）');
 }
 
+/* ---------- 闸门㉑：test.sh 顶层注释风格 + 剪贴板夹具的跨轮收尾（步骤 14，Tony 实测撞出）----------
+   两件事一起钉：
+   1) test.sh 是 sh 跑的，斜杠星开头的 C 风格注释在 sh 里是命令（glob），test.sh:14 的
+      set -eu 下直接 127 退出。bash -n 看不出来（语法合法），真跑到那行才炸，而且炸在套件
+      最后几分钟 —— 反向实验：把收尾那段注释改成 C 风格，全量跑红在 127。JS 载荷里的
+      C 风格注释都是缩进的，所以这里只禁止行首。扫的是仓库里全部 .sh（build.sh / install.sh /
+      lib/*.sh / .test/*.sh 同一个坑）。
+   2) 套件最后一次剪贴板写入必须是空：写夹具的步骤收尾要 clipset ' ' + clip/clear + 断空，
+      否则 app 启动扫剪贴板 / 前台轮询 clipAdd 会把残留夹具重新暂存，红的是下一轮开头的
+      硬基线（test.sh:280 clip=1）。见 plan.md §9.20 ⑥ / §9.4。 */
+{
+  const drift = [];
+  // 扫仓库里所有 .sh（同一类坑在 build.sh / install.sh / lib/*.sh / .test/*.sh 一样会炸）。
+  const shFiles = [];
+  (function walkSh(d, rel) {
+    for (const f of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (f.isDirectory()) { if (!['.git', 'node_modules', 'vendor', 'build', '.gradle'].includes(f.name)) walkSh(path.join(d, f.name), rel + f.name + '/'); }
+      else if (/\.sh$/.test(f.name)) shFiles.push([rel + f.name, fs.readFileSync(path.join(d, f.name), 'utf8')]);
+    }
+  })(root, '');
+  for (const [rel, src] of shFiles) {
+    src.split('\n').forEach((l, i) => {
+      if (/^\/\*/.test(l)) drift.push(rel + ':' + (i + 1) + ' 行首是 /* —— sh 里这是命令不是注释，set -eu 下 127 退出（bash -n 看不出来）');
+    });
+  }
+  const clipClears = (testSh.match(/--es hook clipset --es arg ' '/g) || []).length;
+  if (clipClears < 2)
+    drift.push('test.sh 里 clipset 空白收尾只剩 ' + clipClears + ' 处：每个往剪贴板写夹具的步骤都要自己收尾清空');
+  if (!/本步收尾后剪贴板暂存区不是 0/.test(testSh))
+    drift.push('剪贴板夹具步的收尾没断空（找不到「本步收尾后剪贴板暂存区不是 0」）：泄漏会躲过本轮，红在下一轮的硬基线');
+  if (drift.length) bad('test.sh 顶层注释风格 / 剪贴板跨轮收尾断了', drift.join('；'));
+  else ok('闸门㉑ ' + shFiles.length + ' 个 .sh 顶层无 /* 伪注释（sh 会当命令 127 退出），剪贴板夹具收尾两处 clipset 空白 + 断空齐全');
+}
+
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);
 for (const s of fails) console.log('FAIL ' + s);
