@@ -2166,3 +2166,61 @@ HTML 片段交给 `app.js` 的 `*HTML` 字符串函数、模板里一个 `v-html
 **下一步（16c）**：六个字符串弹层（`sortSheet` `missedSheet` `addSheet` `addTodoSheet`
 `showLog` `showDebug`）翻成 Vue 弹层，删掉 `SheetHost` 的 `mode:'html'` 分支与最后 21 处内联
 `onclick`，闸门① 的内联基线随之从 13 降到 0。
+
+## 9.25 S3 步骤 16c 已完成（六个「字符串弹层」→ 真组件：排序筛选 / 错过的提醒 / 记一笔 / 添加待办 / 运行日志 / AI 调用记录）
+
+**做了什么**：新建 `go/ui/js/views/sheets.js`（162 行，6 个组件），把 app.js 里最后一批
+HTML 字符串弹层翻成真组件，并把弹层开合收敛成一条路径。
+
+* `SortSheetView`（页面形态）：`group()` 的「label + .seg 按钮组」变成 `groups` computed，
+  按钮文案是「图标 + 文字」的 HTML，所以按钮体走 `v-html="o[1]"`（迁移前是字符串原样插入）。
+  `setPref` / `resetPrefs` / `closeSheet` 的副作用一个字没动 —— test.sh 的排序页用例是真点
+  那些按钮（`#sheet label` 精确匹配文案 → `nextElementSibling` 找 `.seg` → 按 textContent 找按钮）。
+* `MissedSheetView`（页面形态）：行结构复用待办页的 `.todo/.cb/.ttx`（类名冻结 D15），
+  倒计时条用 `<cd-chip :tick="tick" :t="t"/>`，空态用 `<empty-state>`（它没有 tick prop，
+  禁止收 `:tick`，收了会透传成 DOM 属性）。✓ 的划线动画仍是 `toggle()` 直接往行元素加类，
+  Vue 在动画那 900ms 里不重绘（`animLock` 挡着轮询），所以与迁移前一致。
+* `AddSheetView` / `AddTodoSheetView` / `LogSheetView` / `DebugSheetView`（卡片形态）：
+  后两个的数据由 `showLog()` / `showDebug()` 取好经 HOST 的 `logData` / `debugData` getter
+  递进去 —— 组件里自己 fetch 会变成「先弹出一个空的再填」，那是行为改动，不是重构。
+  `AddTodoSheetView` 的 `nid` 走 `H.sheetArg`（`mountSheet` 只挂不传 props）。
+* `shell.js`：`SheetHost` 删掉 `mode:'html'` 分支与 `v-html="s.sheet.html"`，页面形态固定
+  `<div class="pbody" id="sheetBody">`，卡片形态固定 `.grip + .pclose + #sheetBody`；
+  `shell.sheet` 少掉 `mode` / `html` 两个字段。app.js 侧 `pageSheet()` 与 `sheet()` 删掉，
+  新增 `sheetVue(name, full)`，`pageSheetVue()` 改为返回 nextTick 的 Promise（D13：
+  调用方 `await sortSheet()` 完才断言得到新 DOM）。
+* 删掉的死代码：`pageSheet` `sheet` `group` `cdChip`（`clip` 留着，经 `H.clipText` 给
+  AI 调用记录做 200 字截断）。app.js 1917 → 1864 行。
+* CSS 一处：`.sheet .panel>h2` 补成 `.sheet .panel>h2, .sheet #sheetBody>h2` —— 卡片弹层的
+  内容现在多包在 `#sheetBody` 里（这是与迁移前唯一的结构差别），不补标题会钻到 ✕ 底下。
+
+**闸门跟着改**（都是「被迁移搬走了」而不是「契约失效」）：
+闸门⑲ 的 `.pfoot` 表单名单里 `go/ui/js/app.js` → `go/ui/js/views/sheets.js`；
+四条签名断言换锚点：`pclose`（改读 shell.js 的模板）、`cdChip(` 计数（改读 leaf.js 的
+`<cd-chip>` 两处）、`function pageSheet(title, html)`（改钉 `function sheetVue(name, full)`）、
+错过的提醒的跳转（`onclick="jump(\''+t.nid` → `@click.prevent="H.jump(t.nid)"`）。
+闸门⑮ 自动覆盖新文件：57 个模板编译、11 个弹层注册表、`H.xxx` 124 个全在 setHost、
+模板用 H 的 20 个组件全在 setup() 返回里暴露 H。
+
+**等价性怎么证的**：`.test/probe_sheets.sh` 在真机上依次打开九个场景（排序页三个 tab、
+记一笔、添加待办、运行日志、AI 调用记录、错过的提醒 + 空态），dump `#sheetBody.innerHTML`、
+`.panel` 的 class/data-kind，以及旧函数需要的同一份输入（`P()` 的每 tab prefs、`MISSED`、
+`logData`、`debugData`）；`.test/dom_equiv3.js` 从 `git show HEAD:go/ui/js/app.js` 抠出被删掉
+的字符串函数在沙箱里跑（`sheet`/`pageSheet` 换成捕获函数，`api` 换成 dump 的那份真数据），
+归一化后逐字比。结果：**9/9 全部一致**。归一化只加了一条：`esc()` 把 `"` 转成 `&quot;`
+再塞进 innerHTML，Vue 的 `{{ }}` 写 textContent、序列化回来 `"` 保持原样 —— 两边
+textContent 相同，只是转义写法不同。
+
+**数字**：内联 `onclick` 从 21 处降到 **1** 处（app.js:649 的截图导入「选文件夹」浮层，
+不是弹层，16d 处理）；handler 总数 81（内联 1 + Vue 模板 80，基线 73）；模板里的
+`v-html=` 属性 7 → **6**（shell.js fab 图标、empty-state 的标题、KvRow 的 `v` 兜底、
+shots.js 进度层的服务端 warn 串、sheets.js 排序按钮、app.js 一处是注释）；
+`VUE_SHEETS` 11 条；闸门 **119** 项。
+
+**验收**：`node tools/ui_test.js` **119 项全绿**；`GO_TEST=1 ./build.sh`（含 `go test ./...`）绿；
+`./install.sh` Success；`./test.sh --vd` **163 项 ok、0 FAIL、PASS**（与步骤 15/16a/16b 基线逐条相同）；
+`.test/dom_equiv3.js` 9 个弹层场景 DOM 逐字一致。
+
+**下一步（16d，可选）**：剩下最后一处内联 handler 是 app.js 的截图导入「选文件夹」浮层
+（`#folderOvl`，命令式 innerHTML），以及 `shotOverlay` 进度层里剩下的字符串（`.owarn` 是
+服务端 HTML）。P13 的「手工 WebView 代码」到这里只剩这两小块 + `index.html` 的静态骨架。

@@ -238,7 +238,9 @@
 .pclose{position:absolute;right:10px;top:10px;z-index:2;width:32px;height:32px;border-radius:50%;border:var(--hair) solid var(--line);background:var(--card2);color:var(--dim);font-size:var(--fs-base);line-height:1;
   display:flex;align-items:center;justify-content:center}
 .pclose:active{transform:scale(.9)}
-.sheet .panel>h2{padding-right:calc(var(--s6) + var(--s3))}
+/* 步骤 16c：卡片弹层的内容现在挂在 #sheetBody 里（以前直接是 .panel 的子节点），
+   这条「给右上角 ✕ 让位」的子选择器要同时认两条，否则排序页 / 记一笔的标题会钻到按钮底下。 */
+.sheet .panel>h2, .sheet #sheetBody>h2{padding-right:calc(var(--s6) + var(--s3))}
 
 /* --- 自绘对话框：原生 confirm() 会带上“网址为 http://127.0.0.1 的网页显示：” --- */
 .dlg{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:none;

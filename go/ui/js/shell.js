@@ -43,9 +43,10 @@ export const shell = reactive({
   ind: { w: 0, x: 0 },
   sheet: {
     on: false, closing: false,
-    /* mode: '' = 还没开过；'vue' = 内容交给弹层视图挂载；'html' = 字符串内容
-       kind: #panel 的 data-kind（CSS 钩子，见 SheetHost 注释），空 = 不写这个属性 */
-    mode: '', page: false, full: false, title: '', html: '', kind: ''
+    /* page: true = 全屏页形态（.phead + .pbody），false = 底部卡片形态（.grip + .pclose）
+       kind: #panel 的 data-kind（CSS 钩子，见 SheetHost 注释），空 = 不写这个属性
+       步骤 16c：内容只剩 Vue 挂载一条路，mode:'html' 与 html 字段随六个字符串弹层一起删掉。 */
+    page: false, full: false, title: '', kind: ''
   },
   toast: { on: false, msg: '' },
   dlg: { on: false, title: '', body: '', ok: '确定', cancel: '取消', danger: false, noCancel: false }
@@ -97,8 +98,10 @@ export const TabBar = {
 /* 弹层宿主：遮罩 + 面板。面板有两种形态，与迁移前一致：
    - page 形态（全屏页）：.panel.page = .phead（返回按钮 + 标题）+ .pbody
    - 卡片形态（底部弹出）：.panel = .grip + .pclose + 内容
-   内容又有两个来源：mode='vue' 交给弹层视图挂载（#sheetBody 是它的容器，也是夹具锚点），
-   mode='html' 是字符串内容（排序筛选、记一笔、添加待办、运行日志这些还没迁的弹层）。
+   内容都交给弹层视图挂载（#sheetBody 是它的容器，也是夹具锚点）：步骤 16c 之后
+   字符串内容那条路（mode='html'）已经没有了，六个字符串弹层全成了 VUE_SHEETS 里的组件。
+   卡片形态的内容比迁移前多出 #sheetBody 这一层包装，CSS 里唯一受影响的子选择器
+   `.sheet .panel>h2` 已补上 `#sheetBody>h2`（见 css/components.css）。
    两个 .panel 分支各带 id="panel"：v-if/v-else 同时只渲染一个，id 不会重复。 */
 export const SheetHost = {
   name: 'SheetHost',
@@ -110,10 +113,9 @@ export const SheetHost = {
        创建/销毁，钩子必须进状态，否则设置页样式全丢（真机验收抓到）。空串时不写这个属性。 -->
   <div class="panel page" id="panel" :data-kind="s.sheet.kind || null" v-if="s.sheet.page">
     <div class="phead"><button class="iconbtn" aria-label="返回" @click="H.closeSheet()"><svg class="ic"><use href="#i-chev"/></svg></button><div style="flex:1">{{ s.sheet.title }}</div></div>
-    <div class="pbody" id="sheetBody" v-if="s.sheet.mode==='vue'"></div>
-    <div class="pbody" v-else v-html="s.sheet.html"></div>
+    <div class="pbody" id="sheetBody"></div>
   </div>
-  <div class="panel" id="panel" v-else :class="{full: s.sheet.full}" :data-kind="s.sheet.kind || null" v-html="s.sheet.html"></div>
+  <div class="panel" id="panel" v-else :class="{full: s.sheet.full}" :data-kind="s.sheet.kind || null"><div class="grip"></div><button class="pclose" @click="H.closeSheet()" aria-label="关闭">✕</button><div id="sheetBody"></div></div>
 </div>
 `
 }

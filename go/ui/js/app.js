@@ -22,6 +22,10 @@ import ClipSheetView from './views/clip.js'
 /* 步骤 10：我的页（统计）+ 设置页 */
 import StatsView from './views/stats.js'
 import SettingsSheetView from './views/settings.js'
+/* 步骤 16c：最后六个「字符串弹层」—— 排序筛选 / 错过的提醒 / 记一笔 / 添加待办 /
+   运行日志 / AI 调用记录。它们以前是 app.js 里拼 HTML 字符串 + 内联 onclick。 */
+import { SortSheetView, MissedSheetView, AddSheetView, AddTodoSheetView,
+         LogSheetView, DebugSheetView } from './views/sheets.js'
 var tab = 'notes', open = {}, busy = {};
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
@@ -189,10 +193,9 @@ function cdCls(due){
   var ms = dueMs(due) - Date.now();
   return 'cd' + (ms <= 0 ? ' over' : (ms <= 3600e3 ? ' soon' : ''));
 }
-function cdChip(t){
-  if(!t.due || t.done) return '';
-  return '<span class="'+cdCls(t.due)+'" data-due="'+esc(t.due)+'">'+ic('clock')+cdText(t.due)+'</span>';
-}
+/* cdChip() 随「错过的提醒」弹层一起没了（步骤 16c）：那份行结构现在是
+   views/sheets.js 的 MissedSheetView，倒计时条是 <cd-chip>（components/leaf.js）。
+   它算的是类名 + 文案，两个算法（cdCls / cdText）留在上面，待办页与笔记页共用。 */
 function tickCD(){
   var list = document.querySelectorAll('.cd[data-due]');
   for(var i=0;i<list.length;i++){
@@ -306,27 +309,7 @@ async function loadMissed(){
 function missedSheet(){
   var m = MISSED || S.missed;
   if(!m) return;
-  var items = m.items || [];
-  var h = '';
-  if(!items.length){
-    h = emptyState('check-circle', '这批处理完了', '到点的待办会照常提醒');
-  } else {
-    // 行结构直接复用待办页的 .todo/.cb/.ttx，划线淡出动画和样式就都是那一套
-    h = '<div class="list card">';
-    items.forEach(function(t){
-      h += '<div class="todo msrow" onclick="closeSheet();jump(\''+t.nid+'\')">'
-        + '<div class="cb" onclick="missedDone(event,\''+t.nid+'\',\''+t.id+'\',this)">'+ic('check')+'</div>'
-        + '<div class="tx"><span class="ttx">'+esc(t.text)
-        + '<small><span class="due over">'+ic('calendar')+fmtTime(t.due)+'</span>'+cdChip(t)
-        + '<a href="#" onclick="jump(\''+t.nid+'\');return false">'+esc(t.ntitle||'查看笔记')+'</a></small>'
-        + '</span></div></div>';
-    });
-    h += '</div>';
-  }
-  h += '<div class="pfoot"><div class="count">点整行看笔记上下文<br>勾 ✓ 直接完成</div>'
-    + '<button class="btn" onclick="missedGoTodos()">去待办页</button>'
-    + '<button class="btn pri" onclick="missedDismiss()">'+ic('check')+'这批我知道了</button></div>';
-  return pageSheet('错过的提醒', h);
+  return pageSheetVue('missed', '错过的提醒');
 }
 function missedDone(ev, nid, tid, el){
   ev.stopPropagation();
@@ -1032,7 +1015,8 @@ var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView, mine: St
    （导入开始挂、导入结束销），共用 mountSheet 那张表。
    闸门⑮ 会查完整性：views/ 里 export const *View 必须出现在 VUE_VIEWS ∪ VUE_SHEETS。 */
 var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, progress: ShotProgress, clip: ClipSheetView,
-  settings: SettingsSheetView };
+  settings: SettingsSheetView, sort: SortSheetView, missed: MissedSheetView, add: AddSheetView,
+  addtodo: AddTodoSheetView, log: LogSheetView, debug: DebugSheetView };
 /* 弹层开启序号（步骤 8）。closeSheet 的收起动画是 110ms，期间重开同一个弹层时迟到的
    回调会把刚 mountSheet 出来的新实例卸掉：DOM 还在 .panel 里但 app 已死，弹层空白且
    点了没反应。三个开启入口 bump，回调发现序号变了就直接放弃。 */
@@ -1228,30 +1212,14 @@ window.onAppResume = function(){
   settingsRefresh();
   if (S && S.notes) render();
 };
-/* 全屏面板（字符串内容）：还没迁的弹层走这条（missedSheet）。顶栏固定，内容可滚。
-   步骤 15：DOM 不再手写，只写 shell.sheet 这张表；面板结构由 SheetHost 渲染，
-   返回按钮从内联 onclick 变成模板里的 @click="H.closeSheet()"。 */
-function pageSheet(title, html){
-  sheetGen++;
-  unmountAllSheets(['progress']);
-  shell.sheet.page = true;
-  shell.sheet.mode = 'html';
-  shell.sheet.kind = '';
-  shell.sheet.full = false;
-  shell.sheet.title = title;
-  shell.sheet.html = html;
-  shell.sheet.on = true;
-  shell.sheet.closing = false;
-  /* 步骤 15：DOM 是 Vue 在 nextTick 画的，同步 innerHTML 那套「开完弹层立刻断言」会读到空。
-     返回这一拍，测试里 `await missedSheet()` / `await sortSheet()` 就能断到真 DOM
-     （pageSheetVue 早就返回 promise 了，字符串这两条补齐）。滚动复位也排在这一拍之后。 */
-  return nextTick(function(){ var p = $('#panel'); if(p) p.scrollTop = 0 });
-}
-/* 步骤 8：Vue 弹层的壳。头部与 pageSheet 逐字相同（.phead + 返回按钮），区别是内容区
-   是个空容器交给 Vue 挂，而不是 innerHTML 拼好的字符串。id="sheetBody" 同是夹具锚点
-   （vdiff_sheet 比的就是它的 innerHTML）。
-   步骤 15：结构交给 SheetHost，这里只写状态 + 挂载。挂载要等 DOM 出现（nextTick），
-   并用 sheetGen 守住「这一轮还有效」：nextTick 期间可能又开了一个新弹层。 */
+/* 弹层开合（步骤 15 之后只有一条路径）：状态写进 shell.sheet，SheetHost 渲染外壳，
+   内容交给 VUE_SHEETS 里的组件挂载。两种形态：
+   - pageSheetVue(name, title, kind)：全屏页（.phead + .pbody#sheetBody）
+   - sheetVue(name, full)：底部卡片（.grip + .pclose + #sheetBody）
+   两者都返回 nextTick 的 Promise（D13：调用方 await 完才能断到新 DOM），并在挂载后把
+   面板滚回顶部。步骤 16c：字符串内容那条路（pageSheet / sheet + mode:'html'）删掉了，
+   六个字符串弹层全成了组件，内联 onclick 也一起没了（app.js 里从 21 处降到 0）。 */
+var sheetGen = 0;
 function pageSheetVue(name, title, kind){
   sheetGen++;
   var gen = sheetGen;
@@ -1261,14 +1229,34 @@ function pageSheetVue(name, title, kind){
      进度层不在 .panel 里（body 级的 #shotOvlRoot），要活过弹层，所以列为例外。 */
   unmountAllSheets(['progress']);
   shell.sheet.page = true;
-  shell.sheet.mode = 'vue';
   shell.sheet.kind = kind || '';
   shell.sheet.full = false;
   shell.sheet.title = title;
-  shell.sheet.html = '';
   shell.sheet.on = true;
   shell.sheet.closing = false;
-  nextTick(function(){
+  return nextTick(function(){
+    if(gen !== sheetGen) return;
+    var el = $('#sheetBody');
+    if(!el) return;
+    mountSheet(name, el, VUE_SHEETS[name]);
+    var p = $('#panel');
+    if(p) p.scrollTop = 0;
+  });
+}
+/* 卡片形态（底部弹出）：外壳（.grip + .pclose）由 SheetHost 渲染，内容挂在 #sheetBody。
+   迁移前是 `p.innerHTML = '<div class="grip"></div><button class="pclose" …>' + html`，
+   现在 html 那一层包在 #sheetBody 里（唯一的结构差别，CSS 已跟上）。 */
+function sheetVue(name, full){
+  sheetGen++;
+  var gen = sheetGen;
+  unmountAllSheets(['progress']);
+  shell.sheet.page = false;
+  shell.sheet.kind = '';
+  shell.sheet.full = !!full;
+  shell.sheet.title = '';
+  shell.sheet.on = true;
+  shell.sheet.closing = false;
+  return nextTick(function(){
     if(gen !== sheetGen) return;
     var el = $('#sheetBody');
     if(!el) return;
@@ -1295,35 +1283,12 @@ function clearAllNotes(){
     }, function(e){ toast('清空失败: '+e) });
   });
 }
-/* ---------- 排序 / 筛选浮层（R3，P3 接服务端）---------- */
+/* ---------- 排序 / 筛选浮层（R3，P3 接服务端）----------
+   步骤 16c：组由当前 tab 决定这件事进了 views/sheets.js 的 SortSheetView（那里逐字
+   比对过迁移前的字符串），本文件只留「开哪个弹层」。setPref / resetPrefs 的副作用
+   （写 prefs → 关弹层 → searchNow → savePrefs）没动：test.sh 的排序页用例直接点那些按钮。 */
 function sortSheet(){
-  var p = P(), h = '<h2>排序与筛选</h2><div style="height:6px"></div>';
-  var sorts = tab==='todos'
-    ? [['due',ic('clock')+'按到期'],['pri',ic('bolt')+'重要优先'],['new',ic('sort')+'最新']]
-    : tab==='files' ? [['new',ic('sort')+'最新'],['size',ic('db')+'大小'],['name',ic('file')+'名称'],['kind',ic('folder')+'类型']]
-      : [['new',ic('sort')+'最新在前'],['old',ic('sort')+'最早在前'],['title',ic('file-text')+'标题']];
-  h += group('排序', 'sort', sorts, p.sort);
-  if(tab==='notes'){
-    h += group('来源', 'src', [['all','全部'],['text','文字'],['image','图片']], p.src);
-    h += group('状态', 'status', [['all','全部'],['done','已解析'],['raw','仅原文'],['error','失败']], p.status);
-    h += group('附件', 'file', [['all','全部'],['yes','有附件'],['no','无附件']], p.file);
-  }else if(tab==='todos'){
-    h += group('状态', 'done', [['open','未完成'],['done','已完成'],['all','全部']], p.done);
-    h += group('优先级', 'pri', [['all','全部'],['high','重要'],['normal','普通'],['low','低']], p.pri);
-  }else if(tab==='files'){
-    // the server knows more kinds (slides/audio/video/archive); the common ones keep the row readable
-    h += group('类型', 'kind', [['all','全部'],['image','图片'],['pdf','PDF'],['doc','文档'],
-      ['sheet','表格'],['text','文本'],['file','其他']], p.kind);
-  }
-  h += '<div class="acts"><button class="btn" onclick="resetPrefs()">重置</button>'
-     + '<button class="btn pri" onclick="closeSheet()">完成</button></div>';
-  return sheet(h);
-}
-function group(label, key, opts, cur){
-  return '<label>'+label+'</label><div class="seg">'
-    + opts.map(function(o){
-        return '<button class="'+(o[0]===cur?'on':'')+'" onclick="setPref(\''+key+'\',\''+o[0]+'\')">'+o[1]+'</button>'
-      }).join('') + '</div>';
+  return pageSheetVue('sort', '排序与筛选');
 }
 function setPref(k, v){ P()[k] = v; closeSheet(); searchNow(); savePrefs(); }
 function resetPrefs(){
@@ -1440,43 +1405,21 @@ async function testLLM(){
     +(r.ok?'✅ 成功（'+r.ms+'ms，HTTP '+r.httpCode+'）<br>'+esc(r.reply)
            :'❌ 失败（'+(r.ms||0)+'ms）<br>'+esc(r.error||''))+'</div>';
 }
+/* 运行日志 / AI 调用记录：步骤 16c 之前是「取完数据才弹」（await api 然内拼字符串），
+   组件里自己 fetch 会变成「先弹出一个空的再填」，那是行为改动不是重构，所以数据依旧
+   在这里取好，经 HOST 的 logData / debugData 递给组件（弹层每次打开都是新实例）。 */
+var LOGDATA = null, DEBUGDATA = null;
 async function showLog(){
   var r = await api('/api/log?n=150');
-  return sheet('<h2>运行日志</h2><div class="meta"><span class="chip">OCR '+(r.ocrReady?'ready':'…')
-    +'</span><span class="chip">'+esc(r.server||'')+'</span></div><pre>'+esc(r.log)+'</pre>');
+  LOGDATA = r;
+  return sheetVue('log');
 }
 async function showDebug(){
   var r = await api('/api/llmlog');
-  var h='<h2>AI 调用记录</h2>';
-  if(!r.calls.length) h+='<div class="empty">还没有调用记录</div>';
-  r.calls.slice(0,10).forEach(function(c){
-    h+='<div class="card"><div class="meta"><span class="chip">'+esc(c.model)+'</span>'
-     +'<span class="chip">'+c.ms+'ms</span><span class="chip">HTTP '+c.httpCode+'</span></div>'
-     +'<div class="body" style="font-size:var(--fs-sm)">输入：'+esc(clip(c.user,200))+'</div>'
-     +'<pre>'+esc(c.err?('错误：'+c.err):c.raw)+'</pre></div>';
-  });
-  return sheet(h);
+  DEBUGDATA = r;
+  return sheetVue('debug');
 }
 function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
-/* 卡片形态的弹层（底部弹出）：排序筛选、记一笔、添加待办、运行日志、调试日志这些还没迁
-   的弹层走这条，内容还是字符串。步骤 15：结构由 SheetHost 渲染，这里只写内容字符串与开关。
-   先全量拆旧 sheet：以前直接换 .panel 的 innerHTML，上一个 Vue 弹层的根节点就此游离
-   （与 pageSheetVue 修掉的是同一个泄漏，闸门⑱ 的名单只有一份）。 */
-function sheet(html, full){
-  sheetGen++;
-  unmountAllSheets(['progress']);
-  shell.sheet.page = false;
-  shell.sheet.mode = 'html';
-  shell.sheet.kind = '';
-  shell.sheet.full = !!full;
-  shell.sheet.title = '';
-  shell.sheet.html = '<div class="grip"></div>'
-    + '<button class="pclose" onclick="closeSheet()" aria-label="关闭">✕</button>' + html;
-  shell.sheet.on = true;
-  shell.sheet.closing = false;
-  /* 同上：字符串卡片形态也返回 nextTick，开完弹层立刻断言的测试要能断到 DOM。 */
-  return nextTick();
-}
 function closeSheet(){
   if(!shell.sheet.on) return;
   shell.sheet.closing = true;
@@ -1533,10 +1476,7 @@ window.uiBack = function(){
   return 0;
 };
 function addSheet(){
-  return sheet('<h2>记一笔</h2>'
-   +'<label>文字</label><textarea id="addText" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea>'
-   +'<div class="acts"><button class="btn pri" onclick="addNote()">保存并解析</button>'
-   +'<button class="btn" onclick="pickImage()">'+ic('camera')+'选图片（本机 OCR）</button></div>');
+  return sheetVue('add');
 }
 async function addNote(){
   var t = $('#addText').value.trim(); if(!t){toast('写点内容吧');return;}
@@ -1550,13 +1490,12 @@ function pickImage(){
   Android.pickImage(); closeSheet(); toast('已提交，正在识别图片…');
   setTimeout(refresh,1500); setTimeout(refresh,5000); setTimeout(refresh,12000);
 }
+/* 给哪条笔记加待办：弹层组件不接 props（mountSheet 只挂不传），所以存进模块变量，
+   组件挂载时读一次（见 views/sheets.js 的 AddTodoSheetView）。 */
+var SHEETARG = '';
 function addTodoSheet(nid){
-  return sheet('<h2>添加待办</h2><label>事项</label><input id="tText" placeholder="要做什么">'
-   +'<div class="grid2"><div><label>日期</label><input type="date" id="tDate"></div>'
-   +'<div><label>时间</label><input type="time" id="tTime"></div></div>'
-   +'<label>优先级</label><select id="tPri"><option value="normal">普通</option>'
-   +'<option value="high">重要</option><option value="low">低</option></select>'
-   +'<div class="acts"><button class="btn pri" onclick="addTodo(\''+nid+'\')">添加</button></div>');
+  SHEETARG = nid;
+  return sheetVue('addtodo');
 }
 async function addTodo(nid){
   var t=$('#tText').value.trim(); if(!t){toast('写点内容吧');return;}
@@ -1674,7 +1613,7 @@ var HOST = setHost({
      字符串渲染器」，肉眼看不出来 —— 闸门⑮（ui_test.js）静态扫模板里的 H.xxx 必须都在
      setHost 的 key 里（Vue 读的是宿主对象，不是 window），test.sh 的 TINT 步骤动态断言
      __enote.vue.isVue(todos) 且 TodosView 真的挂载了。 */
-  strip: strip, emptyState: emptyState, P: P, groupTodos: groupTodos, todoEnterCls: todoEnterCls,
+  strip: strip, P: P, groupTodos: groupTodos, todoEnterCls: todoEnterCls,
   todoRowCls: todoRowCls,
   /* 步骤 15：外壳（顶栏 / 底栏+fab / 弹层宿主 / 对话框）的事件入口。模板里写的是
      @click="H.xxx(...)"，走的就是这张表（闸门⑮ 逐个查名字在不在）。 */
@@ -1721,6 +1660,14 @@ var HOST = setHost({
      searchSeq），没有它只能靠 refresh() 间接抢，抢不中就是空跑。 */
   searchNow: searchNow,
   statCls: statCls,
+  /* 步骤 16c 加：最后六个字符串弹层翻成真组件后的宿主接口（同上，漏一个就是静默回退）。
+     logData / debugData / sheetArg 是「开弹层时现取的数据」，会被整体赋值，必须走 getter
+     （同 FA / q 的教训）；clipText 是 AI 调用记录里的 200 字截断。 */
+  setPref: setPref, resetPrefs: resetPrefs,
+  missedDone: missedDone, missedGoTodos: missedGoTodos, missedDismiss: missedDismiss,
+  addNote: addNote, pickImage: pickImage, addTodo: addTodo, clipText: clip,
+  get logData(){ return LOGDATA }, get debugData(){ return DEBUGDATA },
+  get sheetArg(){ return SHEETARG },
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
   askNotify: askNotify, askExact: askExact, askBattery: askBattery,

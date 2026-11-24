@@ -1336,3 +1336,40 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
   那是 16c。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a 基线逐条相同）。
+
+### 界面（P13 S3 步骤 16c）：最后六个字符串弹层 → 真组件，内联 `onclick` 21 → 1
+
+* 新建 `go/ui/js/views/sheets.js`（162 行 / 6 个组件）：`SortSheetView`（排序与筛选）、
+  `MissedSheetView`（错过的提醒）、`AddSheetView`（记一笔）、`AddTodoSheetView`（添加待办）、
+  `LogSheetView`（运行日志）、`DebugSheetView`（AI 调用记录）。它们是 app.js 里最后一批
+  HTML 字符串，也是最后 21 处内联 `onclick` 的所在地 —— 字符串里的 handler 绕过闸门①b
+  与闸门⑮，正是 P12「点了没反应」那一类。
+* 弹层开合收敛成一条路径：`pageSheet()` / `sheet()` 删掉，新增 `sheetVue(name, full)`，
+  `pageSheetVue()` 改为返回 nextTick 的 Promise（D13）；`shell.js` 的 `SheetHost` 删掉
+  `mode:'html'` 分支与 `v-html="s.sheet.html"`，`shell.sheet` 少掉 `mode` / `html` 两个字段。
+  卡片形态的内容比迁移前多包在 `#sheetBody` 里（唯一结构差别），CSS 那条
+  `.sheet .panel>h2` 同步补成 `.sheet .panel>h2, .sheet #sheetBody>h2`，否则标题钻到 ✕ 底下。
+* 三条「迁移时容易悄悄改掉行为」的地方写进注释并守住了：
+  `showLog`/`showDebug` 仍是**取完数据才弹**（组件里自己 fetch 会先弹出一个空的再填）；
+  `MissedSheetView` 的 ✓ 仍复用 `toggle()` 的划线淡出动画（Vue 在动画那 900ms 里不重绘）；
+  `setPref`/`resetPrefs` 的副作用链（写 prefs → 关弹层 → `searchNow` → `savePrefs`）一字未动，
+  test.sh 的排序页用例是真点那些按钮。
+* 删掉的死代码：`pageSheet` `sheet` `group` `cdChip`（`clip` 留着，经 `H.clipText` 给 AI 调用记录
+  截断）。app.js 1917 → 1864 行。
+* 闸门跟着搬（是「被迁移搬走」不是「契约失效」）：闸门⑲ 的 `.pfoot` 名单 `app.js` →
+  `views/sheets.js`；四条签名断言换锚点（`pclose` 读 shell.js 模板、`cdChip(` 计数读 leaf.js 的
+  `<cd-chip>`、`function pageSheet(title, html)` 改钉 `function sheetVue(name, full)`、
+  错过的提醒跳转改钉 `@click.prevent="H.jump(t.nid)"`）。
+* **DOM 等价性（16c 版）**：`.test/probe_sheets.sh` 在真机依次打开九个场景（排序页三个 tab、
+  记一笔、添加待办、运行日志、AI 调用记录、错过的提醒 + 空态），dump `#sheetBody.innerHTML`
+  与 `.panel` 形态，外加旧函数需要的同一份输入（每 tab 的 `P()`、`MISSED`、`logData`、
+  `debugData`）；`.test/dom_equiv3.js` 从 `git show HEAD` 抠出被删的字符串函数在沙箱里跑同一份
+  输入逐字比。归一化只加一条并有理由：`esc()` 把 `"` 转成 `&quot;` 塞进 innerHTML，Vue 的
+  `{{ }}` 写 textContent、序列化回来 `"` 保持原样，两边 textContent 相同。
+  结果：**9/9 全部逐字一致**。探针的坑：载荷里的单引号会打断 `am start --es arg` 的 shell 引号
+  （JS 只用双引号）；`addSheet` 不在导出表里（只被 fab 闭包调），要经 `__enote.vue.host.fabAct()`。
+* 数字：内联 `onclick` **21 → 1**（剩下 app.js:649 截图导入的「选文件夹」浮层，不是弹层）；
+  handler 总数 81（内联 1 + Vue 模板 80，基线 73）；模板里的 `v-html=` 属性 **7 → 6**；
+  `VUE_SHEETS` 11 条；闸门 **119** 项。
+* 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。

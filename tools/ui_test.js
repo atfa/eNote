@@ -1321,8 +1321,8 @@ if (SPLIT) {
   const jsDlg = /public boolean onJsConfirm\(/.test(java) && /public boolean onJsAlert\(/.test(java);
   sig('Java 把 alert/confirm 转发给页面对话框', jsDlg);
 
-  // 面板要有关闭按钮
-  const pclose = /class="pclose" onclick="closeSheet\(\)"/.test(src);
+  // 面板要有关闭按钮（步骤 15 之后外壳在 shell.js 的 SheetHost 模板里）
+  const pclose = /class="pclose" @click="H\.closeSheet\(\)"/.test(read('go/ui/js/shell.js'));
   sig('浮动面板有关闭按钮', pclose);
 
   // 返回键 / 侧滑返回：先关面板、回笔记页，主页上连返两次才退 app
@@ -1365,8 +1365,9 @@ if (SPLIT) {
   sig('待办显示到期倒计时，且按秒级定时就地更新', cd);
   const cdWords = /不足/.test(src) && /逾期/.test(src) && /天'/.test(src) && /小时'/.test(src) && /分钟'/.test(src);
   sig('倒计时文案：不足N天/小时/分钟、逾期N…', cdWords);
-  // 笔记页与待办页都要挂上
-  const cdBoth = (src.match(/cdChip\(/g) || []).length >= 2;
+  // 笔记页与待办页都要挂上（步骤 16a：cdChip() 字符串函数成了 leaf.js 的 <cd-chip>，
+  // 笔记页的 TodoDue 与待办页的 TodoRow 各用一次）
+  const cdBoth = (read('go/ui/js/components/leaf.js').match(/<cd-chip/g) || []).length >= 2;
   sig('笔记页与待办页都显示倒计时', cdBoth);
 
   // ---------- 勾选完成的动画反馈 ----------
@@ -1395,7 +1396,8 @@ if (SPLIT) {
   sig('Go 侧 /api/stats + /api/import + /api/clear 已注册', goRoutes);
   // 步骤 10：settingsSheet() 变成分发器（注册表里有 settings 就走 pageSheetVue），所以
   // 签名不再钉「函数体第一句就是 pageSheet」，只钉「这个函数里真的调了 pageSheet('设置'」。
-  const panel = /function pageSheet\(title, html\)/.test(src) && /\.panel\.page\{/.test(src)
+  // 步骤 16c：字符串卡片形态的 pageSheet/sheet 双路径收敛成 sheetVue 一条，钉它存在。
+  const panel = /function sheetVue\(name, full\)/.test(src) && /\.panel\.page\{/.test(src)
     && /settingsSheet\(\)\{[\s\S]{0,400}?pageSheetVue\('settings', '设置'/.test(src);
   sig('设置是全屏面板（顶栏固定 + 分组）', panel);
   const secs = ['外观', 'AI 模型', '采集', '本地 OCR', '数据', '运行状态']
@@ -1763,7 +1765,7 @@ if (SPLIT) {
 
   // 面板里的跳转必须用真存在的函数：goTab/goNote 不存在，点了没反应（用户反馈）
   const missedJump = /function missedGoTodos\(\)\{\s*closeSheet\(\); tab = 'todos'; setTab\(true\)/.test(src)
-    && /onclick="jump\(\\''\+t\.nid/.test(src) && !/function goTab\(/.test(src) && !/function goNote\(/.test(src);
+    && /@click\.prevent="H\.jump\(t\.nid\)"/.test(src) && !/function goTab\(/.test(src) && !/function goNote\(/.test(src);
   sig('错过的提醒面板：跳转用真存在的函数（setTab / jump）', missedJump);
 
   // 勾 ✓ 要复用待办页那套划线 + 淡出动画，不能静默改状态（用户反馈：看不出点到没有）
@@ -1865,7 +1867,7 @@ if (SPLIT) {
    两种布局都放得下，窄屏才咬人），测试也不会红 —— 所以钉住：该带的必须带，不该带的不许带。 */
 {
   const forms = [['go/ui/js/views/clip.js', true], ['go/ui/js/views/shots.js', true],
-                 ['go/ui/js/views/folders.js', false], ['go/ui/js/app.js', false]];
+                 ['go/ui/js/views/folders.js', false], ['go/ui/js/views/sheets.js', false]];
   const drift = [];
   for (const [f, block] of forms) {
     const src = read(f);
