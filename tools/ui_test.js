@@ -1875,6 +1875,29 @@ if (SPLIT) {
   else ok('闸门⑲ 弹层底部条两种布局形态钉住（clip/shots 计数独占行，folders/提醒面板走 flex+wrap）');
 }
 
+/* ---------- 闸门⑳：列表条目的稳定 id 定位（步骤 14 的账）----------
+   SIT / CIT 以前用 q()[0] 点第一条：DOM 顺序一变（排序、加表头、新增字段）就静默点到
+   别的条目，断言全绿而测的不是目标。现在条目模板带 :id="'clipitem-'+x.id"，测试用
+   getElementById 定位。这里钉两侧：模板里那句 :id 还在，且 test.sh 真的在用它 ——
+   只删一侧时另一侧的 getElementById 永远找不到元素，而 payload 里「找不到」是写成
+   token 输出的，没人保证两侧同时存在。找不到模式时报「闸门在假绿」，不许静默空跑。 */
+{
+  const pins = [
+    ['go/ui/js/views/clip.js', /:id="'clipitem-'\+x\.id"/, /clipitem-/, 'ClipItem 条目'],
+    ['go/ui/js/views/shots.js', /:id="'shotitem-'\+x\.id"/, /shotitem-/, 'ShotItem 卡片'],
+    ['go/ui/js/components.js', /:id="'n'\+n\.id"/, /getElementById\("n"\+/, 'NoteCard 卡片'],
+  ];
+  const drift = [];
+  for (const [f, tpl, use, name] of pins) {
+    if (!tpl.test(read(f)))
+      drift.push(f + ' 里找不到 ' + name + ' 的稳定 id（模板的 :id 被删了，测试侧的 getElementById 会静默找不到元素）');
+    if (!use.test(testSh))
+      drift.push('test.sh 里不再引用 ' + name + ' 的稳定 id（选择器改回位置索引了？）');
+  }
+  if (drift.length) bad('列表条目的稳定 id 定位断了', drift.join('；'));
+  else ok('闸门⑳ 条目稳定 id 三处齐全（clipitem- / shotitem- / n+id：模板 :id 与 test.sh 定位两侧都在）');
+}
+
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);
 for (const s of fails) console.log('FAIL ' + s);

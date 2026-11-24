@@ -120,7 +120,14 @@ function esc(s){return (s||'').replace(/[&<>"]/g,function(c){
 function toast(m){var t=$('#toast');t.innerHTML=ic('info')+'<span>'+esc(String(m))+'</span>';
   t.classList.add('on');
   clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on')},2200)}
+/* 测试缝（步骤 14）：`__enote.test.failApi = '/api/clip/parse'` 让含该子串的请求在 fetch 前
+   直接抛。需要它是因为「加载失败 / 解析失败」这两支在真机上要 Go 侧真报错才进得去，
+   而测试侧没有让 Go 报错的通道（步骤 11 记的账，当时写的是「要补得先做注入假 fetch」）。
+   默认空串 = 生产路径零影响；只认显式赋值，见文件末尾 __enote.test。 */
+var API_FAIL = '';
 async function api(path, body){
+  if(API_FAIL && String(path).indexOf(API_FAIL) >= 0)
+    throw new Error('injected failure: ' + path);
   var o = body ? {method:'POST',headers:{'Content-Type':'application/json'},
                   body:JSON.stringify(body)} : {};
   var r = await fetch(path, o);
@@ -836,7 +843,11 @@ async function loadClips(){
     clipLoading = false; clipError = '';
     return sheetPaint();   // 数据写完 bump tick 就够
   }catch(e){
-    clipError = String(e);
+    /* clipLoading 必须一起落下：模板的三态判定是 `v-if="loading"` 优先于
+       `v-else-if="err"`，只写 clipError 的话加载失败永远停在「加载中…」，
+       「加载失败」那一支是死代码（步骤 14 的 clipError 客户端回归抓到的真 bug）。
+       截图页的 loadShots 一直是两个一起写的（app.js 的 shotLoading = false; shotError = 'fail'）。 */
+    clipLoading = false; clipError = String(e);
     // #clipList 的子节点是 Vue 管的，直接写 innerHTML 会与它的虚拟 DOM 抢；
     // bump tick 让模板的三态判定重算就够了。
     return sheetPaint();
@@ -876,10 +887,20 @@ async function clipRemove(ids){
 async function clipParse(ai){
   var ids = clipSelected();
   if(!ids.length){ toast('先勾选要处理的条目'); return; }
-  var r = await api('/api/clip/parse', {ids:ids, raw:!ai});
-  var ok = r && r.ok;
-  toast(ai ? (ok ? '已入队解析 '+r.parsed+' 条' : '解析失败: '+(r&&r.error||''))
-            : (ok ? '已存 '+r.parsed+' 条笔记' : '保存失败: '+(r&&r.error||'')));
+  /* 步骤 14：两个失败形态都要有反馈。以前只处理 `r.ok === false`（Go 侧软失败），
+     fetch 抛错（断网 / 超时 / 500）时这个 async 函数直接 reject，用户侧是「点了一下
+     什么也没发生」—— 剪贴板页的 @click 不会报出来。 */
+  var r = null, err = '';
+  try{ r = await api('/api/clip/parse', {ids:ids, raw:!ai}) }
+  catch(e){ err = (e && e.message) ? e.message : String(e) }
+  var ok = !err && r && r.ok;
+  if(!ok){
+    // 失败不关弹层、不清勾选（同步骤 13 的「骨架屏可重试」）：以前失败也走
+    // closeSheet + clipSel={}，用户要重开页、重勾一遍才能重试。
+    toast((ai ? '解析失败: ' : '保存失败: ') + (err || (r && r.error) || '未知错误'));
+    return;
+  }
+  toast(ai ? '已入队解析 '+r.parsed+' 条' : '已存 '+r.parsed+' 条笔记');
   clipSel = {};
   if(window.Android && Android.clipSync) Android.clipSync();
   closeSheet();
@@ -2029,7 +2050,10 @@ Object.assign(window.__enote, {
      一起删了 —— 字符串渲染器整批删除之后，「与它逐字一致」这个命题没有对象了。
      clearSeen 留着：切 tab 强制重绘与「外部改数据后立刻刷新」那几个用例都靠它，
      它不是迁移期的临时物。 */
-  clearSeen: clearSeen
+  clearSeen: clearSeen,
+  /* 步骤 14：失败注入缝（见上面 API_FAIL 的注释）。setter 而不是直接赋值函数：
+     载荷里 `__enote.test.failApi = '/api/clip/list'` 就能让下一次请求抛，赋空串关掉。 */
+  test: { get failApi(){ return API_FAIL }, set failApi(v){ API_FAIL = v || '' } }
 });
 /* buildReady（步骤 4，Tony 提的竞态）：ready 在首屏就兑现，build 由这个独立 fetch 填，
    载荷 await ready 后立刻读 E.build 是没顺序保证的（实测不犯：seam 载荷是在桥载荷轮询完

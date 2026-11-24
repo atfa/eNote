@@ -246,6 +246,11 @@ import json, sys
 s = json.load(sys.stdin).get("settings") or {}
 out = {k: s[k] for k in ("baseUrl", "model", "timeoutS", "maxTokens", "temperature", "useAI") if k in s}
 out["theme"] = "light"
+# useAI 归一为 true（端点配齐时）：它是 app 私有 prefs 里唯一会被「用户手动关掉了」
+# 或「上一轮跑中断在设置页用例中途」（那条用例点一下开关再点回来）翻掉的开关，
+# 而整套 AI 断言都要求它开着 —— 关着时每条笔记都停 raw 且 error 写「AI 解析已关闭」，
+# 症状是 AI 用例全红（真机踩过），不是「跳过」。归一之后红才等于真回归。
+if out.get("baseUrl") and out.get("model"): out["useAI"] = True
 print(json.dumps(out))' 2>/dev/null) || CFG0=""
   api_post clear "" >/dev/null 2>&1 || true
   api_post clip/clear "" >/dev/null 2>&1 || true
@@ -260,15 +265,19 @@ notes = d.get("notes") or []
 todos = sum(len(n.get("todos") or []) for n in notes)
 info = d.get("info") or {}
 s = d.get("settings") or {}
-print("notes=%d todos=%d clip=%d theme=%s base=%s" % (
+print("notes=%d todos=%d clip=%d theme=%s base=%s ai=%s" % (
     len(notes), todos, info.get("clip", -1), s.get("theme", "?"),
-    "yes" if s.get("baseUrl") else "no"))' 2>/dev/null) || BASELINE=""
+    "yes" if s.get("baseUrl") else "no", "yes" if s.get("useAI") else "no"))' 2>/dev/null) || BASELINE=""
   ATT=$(api_get attachments | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("total", -1))' 2>/dev/null) || ATT=-1
   SHOTS=$(api_get shots/list | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin).get("shots") or []))' 2>/dev/null) || SHOTS=-1
   say "  baseline: $BASELINE att=$ATT shots=$SHOTS"
+  # ai=yes 是硬基线：useAI 没归一成功（端点没配齐 / POST 被拒）时 AI 那一族断言
+  # 全部必红，红得看不出根因 —— 在这里判红并说清原因。
   case "$BASELINE" in
-    "notes=0 todos=0 clip=0 theme=light base=yes") ;;
-    *) fail "重置后基线不对（应为 notes=0 todos=0 clip=0 theme=light base=yes）：$BASELINE" ;;
+    "notes=0 todos=0 clip=0 theme=light base=yes ai=yes") ;;
+    "notes=0 todos=0 clip=0 theme=light base=yes ai=no")
+      fail "重置后 useAI 仍是关闭：AI 解析被关着，所有依赖大模型的用例会全红（不是回归）" ;;
+    *) fail "重置后基线不对（应为 notes=0 todos=0 clip=0 theme=light base=yes ai=yes）：$BASELINE" ;;
   esac
   [ "$ATT" = 0 ] || fail "重置后附件数不是 0：$ATT"
   [ "$SHOTS" = 0 ] || fail "重置后截图暂存不是 0：$SHOTS"
@@ -304,6 +313,12 @@ ai_step_unhappy() {
   fi
   if [ "$(upstream_down "$1")" = "1" ]; then
     say "  skip（上游大模型超时/断连，笔记按原文保留）"
+    return 0
+  fi
+  # 跑前重置已把 useAI 归一为 true（基线 ai=yes 是硬断言），所以走到这里还「解析已关闭」
+  # 只可能是 --no-reset 跑的：那是环境问题，判红会把设施问题当成产品回归。
+  if [ "$(api_state | "$PY" -c 'import json,sys; print("1" if not (json.load(sys.stdin).get("settings") or {}).get("useAI") else "0")' 2>/dev/null)" = "1" ]; then
+    say "  skip（AI 解析开关是关的：--no-reset 跑法下它可能被关闭，不是解析逻辑的问题）"
     return 0
   fi
   return 1
@@ -1657,6 +1672,12 @@ js = r'''(async function(){
   var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
   var top=function(){ return [document.querySelector("#sheet #clipSelAll"),
       document.querySelector("#sheet #clipSelNone")] };
+  /* 稳定 id 定位（步骤 14 的账）：以前是 q()[0].click()，DOM 顺序一变（排序、加表头、
+     新增字段）就静默点到别的条目，断言全绿而测的不是目标。id 由服务端 x.id 派生，
+     与 DOM 顺序无关；静态闸门⑳ 钉住模板里那句 :id。 */
+  var list=function(){ return E.state.clipList||[] };
+  var item=function(i){ var x=list()[i]||{}; return x.id?document.getElementById("clipitem-"+x.id):null };
+  var txt=function(root,sel){ var e=root&&root.querySelector(sel); return e?e.textContent:"" };
   // 注册表没注册 clip / 弹层没挂 Vue → 这一遍没东西可点，python 侧判红（不许静默 skip）
   if(!E.vue||!E.vue.isVueSheet||!E.vue.isVueSheet("clip")){ L("skip=no-vue-clip"); L("done=1"); return }
   try{
@@ -1670,7 +1691,30 @@ js = r'''(async function(){
     // ? clipSel[id] : true），所以刚开页是全选，不是全不选。
     var on0=on();
     L("on0="+on0); L("foot0="+foot()); L("pri0="+pri());
-    q()[0].click();                       // 真点击一条：勾选 + 计数 + 按钮文案三处同步动
+    /* 显式字段断言（§9.17 审计「不要只断言数量」，步骤 14 收 kind 这一半）：
+       kind 决定画的是文本预览（.cliprev）还是缩略图（.climthumb），meta 里必须带来源 app。
+       以前只数 .clipitem 的条数：三条夹具全画成缩略图也照样绿。 */
+    var it0=item(0);
+    L("item0="+(it0?"found":"no"));
+    L("id0="+((list()[0]||{}).id||""));
+    L("kind0="+((list()[0]||{}).kind||""));
+    L("text0="+((list()[0]||{}).text||""));
+    L("rev0="+txt(it0,".cliprev"));
+    L("thumb0="+(it0&&it0.querySelector(".climthumb")?1:0));
+    L("meta0="+txt(it0,".climeta"));
+    /* 260px 面板下底部按钮不许裁字（步骤 14 收 Tony 审查记的 nit）：clip.js 给三个按钮写了
+       内联 flex:1 / flex:1.2，而 .btn 是 white-space:nowrap + overflow:hidden 且没
+       min-width:0 → 挤不下时直接裁掉「原样存为笔记」两侧。量法：把弹层压到 260px，
+       每个按钮的 scrollWidth 必须不超过 clientWidth（裁字时 scrollWidth 更大）。 */
+    var panel=document.querySelector("#sheet .panel");
+    var pw0=panel.style.width; panel.style.width="260px";
+    var fbtns=qa("#sheet .pfoot .btn");
+    L("fbtnN="+fbtns.length);
+    L("fbtnClip="+fbtns.map(function(b){ return b.scrollWidth<=Math.ceil(b.clientWidth)+1?"0":"1" }).join(","));
+    L("fbtnWrap="+(fbtns.length?getComputedStyle(fbtns[0].parentNode).flexWrap:""));
+    L("fbtnText="+fbtns.map(function(b){ return (b.textContent||"").replace(/\s+/g,"") }).join("|"));
+    panel.style.width=pw0;
+    item(0).click();                      // 真点击一条：勾选 + 计数 + 按钮文案三处同步动
     // 目标状态：勾选数真的离开初始值（@click 落到 clipPick 且重绘了）。
     var tPick=await poll(function(){ return on()!==on0 },30,200);
     L("tPick="+tPick); L("on1="+on());
@@ -1685,6 +1729,28 @@ js = r'''(async function(){
     var tAll=await poll(function(){ var n=q().length; return n>0 && on()===n },30,200);
     L("tAll="+tAll); L("on3="+on());
  L("foot3="+foot()); L("pri3="+pri());
+    /* kind=image 那一支（.climthumb）真机夹具进不去：clipset 钩子只写文本剪贴板，
+       图片条目要真复制一张图才进得去。ClipItem 是纯渲染器，换掉 clipList 再重绘就是
+       它的输入路径（clipPaint 是步骤 7 就有的测试缝）。 */
+    var IMG={id:"s14img",kind:"image",path:"/data/data/dev.xduo.enote/files/enote/shots/s.png",
+             name:"s.png",mime:"image/png",app:"截图夹具",createdAt:new Date().toISOString()};
+    var keepList=E.state.clipList;
+    E.state.clipList=[IMG];
+    E.vue.clipPaint();
+    // 目标状态：图片条目画的是缩略图（.climthumb）而不是文本预览（.cliprev）。
+    var tImg=await poll(function(){ var e=document.getElementById("clipitem-s14img");
+      return !!(e&&e.querySelector(".climthumb")) },30,200);
+    L("tImg="+tImg);
+    var iimg=document.getElementById("clipitem-s14img");
+    L("imgKind="+((E.state.clipList[0]||{}).kind||""));
+    L("imgThumb="+txt(iimg,".climthumb"));
+    L("imgRev="+txt(iimg,".cliprev"));
+    L("imgMeta="+txt(iimg,".climeta"));
+    E.state.clipList=keepList;
+    E.vue.clipPaint();
+    // 目标状态：夹具列表换回来了（后面删除那几段的前提是三条真夹具）。
+    var tBack=await poll(function(){ return q().length===keepList.length },30,200);
+    L("tBack="+tBack);
     // 单条删除：先全选（勾选数 = 行数），再点第一条的 .clipdel。stopPropagation 失效时
     // 这一次点击会先被 clipPick 收到，症状是「删一条掉两条」（行数 -1、勾选 -2），
     // 所以行数与勾选数都要断言。
@@ -1693,8 +1759,8 @@ js = r'''(async function(){
     var tAll2=await poll(function(){ var n=q().length; return n>0 && on()===n },30,200);
     L("tAll2="+tAll2);
     var n0=q().length, onb=on();
-    var did=q()[0].querySelector(".clipdel");
-    var did0=E.state.clipList[0]&&E.state.clipList[0].id;
+    var did=item(0).querySelector(".clipdel");
+    var did0=list()[0]&&list()[0].id;
     did.click();
     for(var t2=0;t2<25 && q().length>=n0;t2++) await sleep(200);
     L("beforeDel="+n0); L("onBeforeDel="+onb);
@@ -1730,6 +1796,7 @@ for i in $(seq 1 120); do
 done
 readtlog | tail -n +$((NCIT + 1)) | grep 'CIT' | "$PY" -c '
 import sys, re
+CLIPFIX = sys.argv[1]
 lines = [l.strip() for l in sys.stdin if "CIT" in l]
 d = {}
 for l in lines:
@@ -1748,6 +1815,28 @@ assert int(d.get("on0", 0)) == n, "开页应默认全选中（on0=%s n=%s）：c
 assert d.get("foot0") == "%s条已选·共%s条" % (n, n), "开页计数条不对（实际 %r）" % d.get("foot0")
 assert d.get("pri0") == ("一键解析%s条" % n if n > 1 else "一键解析"), \
   "开页主按钮文案不对（实际 %r，n=%s）" % (d.get("pri0"), n)
+# 显式字段断言（步骤 14 收 §9.17 审计的 kind 那一半）：kind 决定画的是文本预览
+# （.cliprev）还是缩略图（.climthumb），meta 里必须带来源 app。只数 .clipitem 条数时
+# 三条夹具全画成缩略图也照样绿。
+assert d.get("item0") == "found", \
+  "稳定 id clipitem-<id> 找不到那一条（id0=%s）：模板的 :id 断了，本用例在点空气" % d.get("id0")
+assert d.get("kind0") == "text", "夹具条目的 kind 不是 text（实际 %r）" % d.get("kind0")
+assert CLIPFIX in (d.get("text0") or ""), \
+  "clipList[0] 不是本轮夹具（text0=%r）：夹具被别的剪贴板内容盖掉了" % d.get("text0")
+assert d.get("rev0") == (d.get("text0") or "")[:160], \
+  "文本条目的 .cliprev 与 state 里的 text 对不上（DOM=%r state=%r）" % (d.get("rev0"), d.get("text0"))
+assert d.get("thumb0") == "0", "kind=text 的条目画出了缩略图（应画 .cliprev）"
+assert "hook" in (d.get("meta0") or ""), \
+  "meta 里没有来源 app（实际 %r）：climeta 里 x.app 那一行断了" % d.get("meta0")
+# 260px 面板下底部三个按钮不许裁字（步骤 14 收 Tony 审查记的 nit）。
+# fbtnN 同夹具条数一样是防空跑：选择器失联时它是 0，不是「全没裁」。
+assert d.get("fbtnN") == "3", "底部按钮数不对（%s，应是删除所选/原样存为笔记/一键解析）" % d.get("fbtnN")
+assert "原样存为笔记" in (d.get("fbtnText") or ""), \
+  "底部按钮文案不对（实际 %r）：量的不是那三个按钮" % d.get("fbtnText")
+assert "1" not in (d.get("fbtnClip") or "1,1,1").split(","), \
+  "260px 面板下底部按钮文字被裁（scrollWidth > clientWidth，实际 %s）：按钮不许缩到比自己的文字还窄" % d.get("fbtnClip")
+assert d.get("fbtnWrap") == "wrap", \
+  "底部按钮行没允许换行（flex-wrap=%r）：挤不下时只能裁字" % d.get("fbtnWrap")
 assert int(d.get("on1", -1)) == n - 1, "点一条应取消那一条（on1=%s n=%s）：tick 链断了" % (d.get("on1"), n)
 assert d.get("foot1") == "%s条已选·共%s条" % (n - 1, n), "点一条后计数没动（实际 %r）" % d.get("foot1")
 assert d.get("pri1") == ("一键解析%s条" % (n - 1) if n - 1 > 1 else "一键解析"), \
@@ -1758,6 +1847,17 @@ assert d.get("pri2") == "一键解析", "只选 0 条时主按钮不该带数字
 assert d.get("on3") == str(n), "全选后应全部勾中（on3=%s n=%s）" % (d.get("on3"), n)
 assert d.get("foot3") == "%s条已选·共%s条" % (n, n), "全选后计数不对（实际 %r）" % d.get("foot3")
 assert d.get("pri3") == "一键解析%s条" % n, "全选后主按钮应带条数（实际 %r）" % d.get("pri3")
+# kind=image 那一支（真机夹具进不去，靠换 clipList 走组件的输入路径）：
+# 图片条目必须画缩略图、不画文本预览，meta 里带来源 app。
+assert int(d.get("tImg", -1)) >= 0, "kind=image 的条目没画出 .climthumb（tImg=%s）：ClipItem 的图片分支断了" % d.get("tImg")
+assert d.get("imgKind") == "image", "注入的图片条目 kind 不是 image（实际 %r）" % d.get("imgKind")
+# 剪贴板里的图片没有真缩略图，画的是 ic('image') + clipThumbText（「 图片 · 名字」）：
+# 断的是 name 真的映射进去了，不是画了个空图标。
+assert "图片" in (d.get("imgThumb") or "") and "s.png" in (d.get("imgThumb") or ""), \
+  "图片条目的缩略图文案不对（实际 %r）：clipThumbText 里 name 那一半断了" % d.get("imgThumb")
+assert d.get("imgRev") in ("", "None"), "图片条目多画了一个文本预览（实际 %r）" % d.get("imgRev")
+assert "截图夹具" in (d.get("imgMeta") or ""), "图片条目的 meta 里没有来源 app（实际 %r）" % d.get("imgMeta")
+assert int(d.get("tBack", -1)) >= 0, "注入的图片条目没换回夹具列表（tBack=%s）：后面的删除断言在空跑" % d.get("tBack")
 assert int(d.get("beforeDel", n)) == n, "单条删除前行数不对（%s，夹具是 %s 条）" % (d.get("beforeDel"), n)
 assert int(d.get("onBeforeDel", 0)) == n, "单条删除前全选没生效（onBeforeDel=%s n=%s）" % (d.get("onBeforeDel"), n)
 assert int(d.get("afterDel", n)) == n - 1, "点 .clipdel 后条目数没少 1（%s → %s）" % (n, d.get("afterDel"))
@@ -1771,15 +1871,355 @@ assert d.get("emptyAfterDel") == "1", "删完后弹层里没出现空态（空�
 assert d.get("footAfterDel") == "0条已选", "删完后计数条不对（实际 %r）" % d.get("footAfterDel")
 assert d.get("sheetMounted") == "1", "弹层被意外卸载（遗留行为是就地换空态，不关页）"
 print("  ok (真点击 %s 条：勾选 %s→%s、计数 %r、全选/全不选、按钮文案收敛、"
+      "kind 两态（text→.cliprev / image→.climthumb）、稳定 id 定位、260px 不裁字、"
       "单条删除不顺手勾选、删除所选后就地换空态)" % (
     n, d.get("on0"), d.get("on1"), d.get("foot1")))
-'
+' "$CLIPFIX"
 asroot_global "rm -f '$DATA/enote/.devmode'"
 # 删光之后的空态：先把系统剪贴板清成空白（Go 侧 TrimSpace 后为空 → clipAdd 直接拒），
 # 否则前台轮询会立刻把剪贴板上那条旧文本重新暂存，空态那一遍比的是 1 条列表。
 am_start "$ACTIVITY" "--es hook clipset --es arg ' '" >/dev/null 2>&1 || true
 sleep 2
 api_post clip/clear '' >/dev/null 2>&1 || true
+
+step "剪贴板导入的三条客户端分支（原样存为笔记 / 一键解析 / 解析失败可重试 / 加载失败）"
+# §9.19 记进步骤 14 的账：「clipParse 的真 LLM 路径与 clipError 分支没有客户端回归
+# （现在只在 Go 侧测）」。步骤 11 删掉遗留字符串渲染器之后，这两支连「与遗留渲染器共用
+# 一份字符串」那层间接保证都没了。进不去的原因一直是「fetch 在 WebView 里，测试侧没有
+# 让 Go 报错的通道」—— 这一步给 app.js 的 api() 加了失败注入缝（__enote.test.failApi，
+# 默认空串 = 生产路径零影响），三支一次补齐：
+#   1) 原样存为笔记（#clipRaw，raw:true，不调 LLM）→ 出笔记（source=clipboard-text、
+#      status=raw、正文就是那条剪贴板文本）、弹层关掉并卸载、暂存区清空。
+#   2) 解析失败（注入 /api/clip/parse 抛）→ toast「解析失败」、**弹层不关、勾选不丢**
+#      （产品侧同批改：以前失败也 closeSheet + clipSel={}，用户要重开页重勾一遍才能重试）、
+#      暂存区没被消费；清掉注入再点一次才真发出去。
+#   3) 一键解析（#clipParseBtn，真 LLM）→ toast「已入队解析 N 条」+ 弹层关掉，
+#      need_ai 时再等这几条笔记真的解析完（status=done）。
+#   4) clipError（#clipList 的「加载失败」）→ 注入 /api/clip/list 抛，重开弹层就是它；
+#      清掉注入再开一次，列表回来（失败不是终态）。
+# 夹具只能走系统剪贴板（clipset 钩子）：两条一组，组内隔 6s（go/clip.go:124 的 5s 同源
+# 去抖），文本互不相同（按内容去重）。
+CLIPFIX2=$(date +%s)
+stage_clips() {
+  # stage_clips <前缀>：清掉暂存区，写两条「<前缀> <随机> a/b」，等它们到位
+  api_post clip/clear '' >/dev/null 2>&1 || true
+  SI=0
+  for t in "$1 $CLIPFIX2 a" "$1 $CLIPFIX2 b"; do
+    [ "$SI" -gt 0 ] && sleep 6
+    am_start "$ACTIVITY" "--es hook clipset --es arg '$t'"
+    SI=$((SI + 1))
+  done
+  SN=0
+  while [ "$SN" -lt 60 ]; do
+    CN=$(api_get clip/list | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin).get("clips") or []))' 2>/dev/null) || CN=0
+    [ "${CN:-0}" -ge 2 ] && break
+    sleep 1; SN=$((SN + 1))
+  done
+  [ "${CN:-0}" -ge 2 ] || fail "剪贴板导入夹具只到 ${CN:-0} 条（需要 2）：clipset 钩子没被前台读取收进暂存区"
+}
+# js_run <token> <json>：touch .devmode → 跑载荷 → 等 <token> done=1。
+# 闸门⑯ 要求每个 jseval 调用点前面都有 touch（载荷块末尾会删掉它），这个函数就是那个调用点。
+js_run() {
+  asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
+  asroot_global "sh '$TMPDIR/jseval.sh' '$2'"
+  JSW=0
+  while [ "$JSW" -lt 120 ]; do
+    readtlog | tail -n +$((JSBASE + 1)) | grep -q "$1 done=1" && break
+    sleep 0.5; JSW=$((JSW + 1))
+  done
+  readtlog | tail -n +$((JSBASE + 1)) | grep "$1"
+  asroot_global "rm -f '$DATA/enote/.devmode'"
+}
+
+# ---- 1) 原样存为笔记（raw 路径，不调 LLM）----
+stage_clips "原样导入"
+"$PY" - > "$TMPDIR/jsclipraw.json" <<'PYRAW'
+import json
+js = r'''(async function(){
+  var L=function(m){console.log("CPRAW "+m)};
+  var E=window.__enote||{};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
+  var q=function(){ return qa("#sheet .clipitem") };
+  var on=function(){ var n=0; q().forEach(function(x){ if(x.classList.contains("on")) n++ }); return n };
+  var toastTxt=function(){ var e=document.querySelector("#toast"); return (e&&e.classList.contains("on"))?(e.textContent||"").trim():"" };
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
+  try{
+    L("isvue="+(E.vue.isVueSheet("clip")?1:0));
+    var st0=await api("/api/state");
+    var had0=(st0.notes||[]).map(function(n){ return n.id });
+    clipSheet();
+    for(var t=0;t<20 && !q().length;t++) await sleep(200);
+    L("n="+q().length);
+    if(!q().length){ L("skip=no-items"); L("done=1"); return }
+    document.querySelector("#sheet #clipSelAll").click();
+    // 目标状态：全选到位（clipSel 首次见到默认选中，这条把语义钉住）。
+    var tAll=await poll(function(){ var n=q().length; return n>0 && on()===n },30,200);
+    L("tAll="+tAll); L("on="+on());
+    L("notes0="+had0.length);
+    document.querySelector("#sheet #clipRaw").click();
+    // 目标状态：toast 出现「已存 N 条笔记」（轮询文案，不靠固定 sleep）。
+    var tToast=await poll(function(){ return toastTxt().indexOf("已存")>=0 },40,250);
+    L("tToast="+tToast); L("toast="+toastTxt());
+    // 目标状态：弹层关掉且 Vue 实例卸载（clipParse 成功才 closeSheet）。
+    var tClose=await poll(function(){ return !document.querySelector("#sheet.on") },30,200);
+    L("tClose="+tClose); L("mounted="+(E.vue.sheets.clip?1:0));
+    // 目标状态：服务端真的多出笔记（不是前端乐观更新）。
+    var st1=null;
+    var tNotes=await poll(async function(){ st1=await api("/api/state");
+      return (st1.notes||[]).length>=had0.length+2 },40,250);
+    var fresh=((st1&&st1.notes)||[]).filter(function(n){ return had0.indexOf(n.id)<0 });
+    L("tNotes="+tNotes); L("fresh="+fresh.length);
+    // 显式字段（§9.17 审计的 src/status 那一半）：raw 路径不调 LLM，
+    // 来源必须是 clipboard-text、状态必须停在 raw、正文就是那条剪贴板文本。
+    L("src="+fresh.map(function(n){ return n.source }).join(","));
+    L("status="+fresh.map(function(n){ return n.status }).join(","));
+    L("body="+fresh.map(function(n){ return (n.content||"").slice(0,10) }).join("|"));
+    L("todos="+fresh.map(function(n){ return (n.todos||[]).length }).join(","));
+    var cl=await api("/api/clip/list");
+    L("clipLeft="+(cl.clips||[]).length);
+  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
+  L("done=1");
+})()'''
+print(json.dumps({"js": js}))
+PYRAW
+JSBASE=$(readtlog | wc -l)
+js_run CPRAW "$TMPDIR/jsclipraw.json" > "$TMPDIR/cpraw.log"
+"$PY" -c '
+import sys, re
+lines=[l.strip() for l in open(sys.argv[1]) if "CPRAW " in l]
+d={}
+for l in lines:
+    m=re.search(r"CPRAW (\w+)=(.*)", l)
+    if m: d[m.group(1)]=m.group(2).strip()
+if d.get("skip"): raise AssertionError("原样存为笔记这一遍没跑成（%s）" % d["skip"])
+assert d.get("done")=="1", "CPRAW 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+assert d.get("ERR") is None, "原样存为笔记：前端抛异常：%s" % d.get("ERR")
+assert d.get("isvue")=="1", "剪贴板页没走 Vue：这一遍比的是遗留路径"
+n=int(d.get("n",0))
+assert n>=2, "剪贴板页没条目（n=%s）：夹具没到位，这一遍是空跑" % d.get("n")
+assert int(d.get("tAll",-1))>=0, "全选没生效（tAll=%s）" % d.get("tAll")
+assert int(d.get("on",0))==n, "全选后勾选数不对（on=%s n=%s）" % (d.get("on"), n)
+assert int(d.get("tToast",-1))>=0, "点原样存为笔记后没出「已存 N 条笔记」的 toast（tToast=%s）" % d.get("tToast")
+assert "已存" in d.get("toast","") and "条笔记" in d.get("toast",""), \
+  "原样保存的 toast 文案不对（实际 %r）" % d.get("toast")
+assert int(d.get("tClose",-1))>=0, "保存后弹层没关（tClose=%s）：clipParse 成功路径没走 closeSheet" % d.get("tClose")
+assert d.get("mounted")=="0", "弹层关了但 Vue 实例还在（mounted=%s）：unmountSheet 没生效" % d.get("mounted")
+assert int(d.get("tNotes",-1))>=0, "服务端没多出笔记（tNotes=%s）：toast 是前端的，服务端没落库" % d.get("tNotes")
+assert int(d.get("fresh",0))==n, "新增笔记数 %s ≠ 勾选条数 %s" % (d.get("fresh"), n)
+assert d.get("src")==",".join(["clipboard-text"]*n), \
+  "新笔记的 source 不全是 clipboard-text（实际 %r）" % d.get("src")
+assert d.get("status")==",".join(["raw"]*n), \
+  "原样保存的笔记状态不全是 raw（实际 %r）：raw:true 没传到 Go 侧，白调了 LLM" % d.get("status")
+assert "原样导入" in (d.get("body") or ""), \
+  "新笔记正文里找不到那条剪贴板文本（实际 %r）" % d.get("body")
+assert d.get("todos")==",".join(["0"]*n), \
+  "原样保存不该产出待办（实际 %r）：raw 路径调了 LLM" % d.get("todos")
+assert d.get("clipLeft")=="0", "导入后暂存区没清空（还剩 %s 条）" % d.get("clipLeft")
+print("  ok (原样存为笔记：真点击 %s 条 → 出 %s 条 clipboard-text/raw 笔记、弹层关掉卸载、暂存区清空)" % (n, d.get("fresh")))
+' "$TMPDIR/cpraw.log" || fail "原样存为笔记（raw 路径）客户端回归失败"
+
+# ---- 2) 解析失败可重试 + 3) 一键解析（真 LLM）----
+stage_clips "一键解析"
+CPAIIDS=""
+"$PY" - > "$TMPDIR/jsclipai.json" <<'PYAI'
+import json
+js = r'''(async function(){
+  var L=function(m){console.log("CPAI "+m)};
+  var E=window.__enote||{};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
+  var q=function(){ return qa("#sheet .clipitem") };
+  var on=function(){ var n=0; q().forEach(function(x){ if(x.classList.contains("on")) n++ }); return n };
+  var toastTxt=function(){ var e=document.querySelector("#toast"); return (e&&e.classList.contains("on"))?(e.textContent||"").trim():"" };
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
+  try{
+    L("isvue="+(E.vue.isVueSheet("clip")?1:0));
+    var st0=await api("/api/state");
+    var had0=(st0.notes||[]).map(function(n){ return n.id });
+    clipSheet();
+    for(var t=0;t<20 && !q().length;t++) await sleep(200);
+    L("n="+q().length);
+    if(!q().length){ L("skip=no-items"); L("done=1"); return }
+    document.querySelector("#sheet #clipSelAll").click();
+    var tAll=await poll(function(){ var n=q().length; return n>0 && on()===n },30,200);
+    L("tAll="+tAll);
+    /* 先注入失败点一次：这一支以前在客户端完全没有回归（Go 侧测过 ok=false，
+       而 fetch 抛错时 clipParse 连 toast 都没有）。 */
+    E.test.failApi="/api/clip/parse";
+    L("failOn="+E.test.failApi);
+    document.querySelector("#sheet #clipParseBtn").click();
+    // 目标状态：toast 出现「解析失败」。
+    var tFail=await poll(function(){ return toastTxt().indexOf("解析失败")>=0 },40,250);
+    L("tFail="+tFail); L("toastFail="+toastTxt());
+    // 失败不关页、不清勾选、不消费暂存区（这三条是产品侧这一步的改动）。
+    L("sheetOpen="+(document.querySelector("#sheet.on")?1:0));
+    L("mountedFail="+(E.vue.sheets.clip?1:0));
+    L("onAfterFail="+on());
+    var clf=await api("/api/clip/list");
+    L("clipAfterFail="+(clf.clips||[]).length);
+    var stf=await api("/api/state");
+    L("notesAfterFail="+((stf.notes||[]).filter(function(n){ return had0.indexOf(n.id)<0 })).length);
+    /* 清掉注入再点一次：失败必须是可重试的，不是终态。 */
+    E.test.failApi="";
+    L("failOff="+E.test.failApi);
+    document.querySelector("#sheet #clipParseBtn").click();
+    // 目标状态：toast 出现「已入队解析 N 条」（真 LLM 路径的入口）。
+    var tOk=await poll(function(){ return toastTxt().indexOf("已入队解析")>=0 },40,250);
+    L("tOk="+tOk); L("toastOk="+toastTxt());
+    var tClose=await poll(function(){ return !document.querySelector("#sheet.on") },30,200);
+    L("tClose="+tClose); L("mounted="+(E.vue.sheets.clip?1:0));
+    var st1=null;
+    var tNotes=await poll(async function(){ st1=await api("/api/state");
+      return ((st1.notes||[]).filter(function(n){ return had0.indexOf(n.id)<0 })).length>=2 },60,250);
+    var fresh=((st1&&st1.notes)||[]).filter(function(n){ return had0.indexOf(n.id)<0 });
+    L("tNotes="+tNotes); L("fresh="+fresh.length);
+    L("ids="+fresh.map(function(n){ return n.id }).join(","));
+    L("src="+fresh.map(function(n){ return n.source }).join(","));
+    L("status0="+fresh.map(function(n){ return n.status }).join(","));
+    var cl=await api("/api/clip/list");
+    L("clipLeft="+(cl.clips||[]).length);
+  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
+  L("done=1");
+})()'''
+print(json.dumps({"js": js}))
+PYAI
+JSBASE=$(readtlog | wc -l)
+js_run CPAI "$TMPDIR/jsclipai.json" > "$TMPDIR/cpai.log"
+CPAIIDS=$(grep -o 'CPAI ids=[^ ]*' "$TMPDIR/cpai.log" | tail -1 | cut -d= -f2)
+"$PY" -c '
+import sys, re
+lines=[l.strip() for l in open(sys.argv[1]) if "CPAI " in l]
+d={}
+for l in lines:
+    m=re.search(r"CPAI (\w+)=(.*)", l)
+    if m: d[m.group(1)]=m.group(2).strip()
+if d.get("skip"): raise AssertionError("一键解析这一遍没跑成（%s）" % d["skip"])
+assert d.get("done")=="1", "CPAI 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+assert d.get("ERR") is None, "一键解析：前端抛异常：%s" % d.get("ERR")
+assert d.get("isvue")=="1", "剪贴板页没走 Vue：这一遍比的是遗留路径"
+n=int(d.get("n",0))
+assert n>=2, "剪贴板页没条目（n=%s）：夹具没到位，这一遍是空跑" % d.get("n")
+assert int(d.get("tAll",-1))>=0, "全选没生效（tAll=%s）" % d.get("tAll")
+# 注入缝本身要可用（读回来是注入的那条路径，关掉后是空串）
+assert d.get("failOn")=="/api/clip/parse", "失败注入没生效（failApi=%r）：__enote.test 缝断了" % d.get("failOn")
+assert d.get("failOff") in ("", "None"), "失败注入关不掉（failApi=%r）" % d.get("failOff")
+assert int(d.get("tFail",-1))>=0, "注入失败后没出「解析失败」的 toast（tFail=%s）：fetch 抛错时 clipParse 没有反馈" % d.get("tFail")
+assert "解析失败" in d.get("toastFail",""), "解析失败的 toast 文案不对（实际 %r）" % d.get("toastFail")
+assert d.get("sheetOpen")=="1", "解析失败后弹层被关掉了：用户要重开页才能重试"
+assert d.get("mountedFail")=="1", "解析失败后弹层的 Vue 实例被拆了"
+assert int(d.get("onAfterFail",0))==n, "解析失败后勾选丢了（onAfterFail=%s n=%s）：clipSel 被清空，用户要重勾一遍" % (d.get("onAfterFail"), n)
+assert int(d.get("clipAfterFail",0))==n, "解析失败却把暂存区消费了（还剩 %s 条）" % d.get("clipAfterFail")
+assert d.get("notesAfterFail")=="0", "注入的那次失败其实建了笔记（%s 条）：注入没生效" % d.get("notesAfterFail")
+assert int(d.get("tOk",-1))>=0, "清掉注入再点一次没出「已入队解析 N 条」（tOk=%s）：失败不可重试" % d.get("tOk")
+assert "已入队解析" in d.get("toastOk",""), "一键解析的 toast 文案不对（实际 %r）" % d.get("toastOk")
+assert int(d.get("tClose",-1))>=0, "入队后弹层没关（tClose=%s）" % d.get("tClose")
+assert d.get("mounted")=="0", "弹层关了但 Vue 实例还在（mounted=%s）" % d.get("mounted")
+assert int(d.get("tNotes",-1))>=0, "入队后服务端没多出笔记（tNotes=%s）" % d.get("tNotes")
+assert int(d.get("fresh",0))==n, "新增笔记数 %s ≠ 勾选条数 %s" % (d.get("fresh"), n)
+assert d.get("src")==",".join(["clipboard-text"]*n), "新笔记 source 不全是 clipboard-text（实际 %r）" % d.get("src")
+assert d.get("clipLeft")=="0", "一键解析后暂存区没清空（还剩 %s 条）" % d.get("clipLeft")
+print("  ok (解析失败：toast 有反馈、弹层不关、勾选不丢、暂存区不消费；清掉注入再点一次才入队 %s 条)" % d.get("fresh"))
+' "$TMPDIR/cpai.log" || fail "解析失败分支客户端回归失败"
+
+# 真 LLM 路径：入队之后要真的解析完（need_ai 时；没 key 就跳过这一条，不判红）
+if need_ai "一键解析这条要真等 LLM 回来"; then
+  AIST=""
+  n=0
+  while [ "$n" -lt 150 ]; do
+    AIST=$(api_state | "$PY" -c '
+import json,sys
+ids=[x for x in sys.argv[1].split(",") if x]
+d=json.load(sys.stdin)
+ns=[x for x in (d.get("notes") or []) if x.get("id") in ids]
+done=[x for x in ns if x.get("status")=="done"]
+print("%d/%d" % (len(done), len(ids)))' "$CPAIIDS" 2>/dev/null) || AIST="?"
+    [ "$AIST" = "2/2" ] && break
+    sleep 1; n=$((n + 1))
+  done
+  if [ "$AIST" != "2/2" ]; then
+    ai_step_unhappy clipboard-text "the clipboard notes were never parsed" \
+      || fail "一键解析入队的笔记没解析完（done $AIST，ids=$CPAIIDS）"
+  fi
+  api_state | "$PY" -c '
+import json,sys
+ids=[x for x in sys.argv[1].split(",") if x]
+d=json.load(sys.stdin)
+ns=[x for x in (d.get("notes") or []) if x.get("id") in ids]
+assert len(ns)==len(ids)==2, "按 id 找回 %d 条（应为 2），ids=%s" % (len(ns), ids)
+for x in ns:
+    assert x.get("source")=="clipboard-text", "source 不是 clipboard-text：%s" % x.get("source")
+    assert x.get("status")=="done", "status 不是 done：%s（error=%s）" % (x.get("status"), x.get("error"))
+    assert (x.get("aiModel") or ""), "aiModel 是空的：这条没真走过 LLM"
+print("  ok (真 LLM 路径：入队的 2 条 clipboard-text 笔记解析完，status=done 且带 aiModel)")
+' "$CPAIIDS" || fail "一键解析（真 LLM 路径）客户端回归失败"
+fi
+
+# ---- 4) clipError：#clipList 的「加载失败」----
+am_start "$ACTIVITY" "--es hook clipset --es arg \"加载失败夹具 $CLIPFIX2\"" >/dev/null 2>&1
+n=0
+while [ "$n" -lt 30 ]; do
+  CN=$(api_get clip/list | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin).get("clips") or []))' 2>/dev/null) || CN=0
+  [ "${CN:-0}" -ge 1 ] && break
+  sleep 1; n=$((n + 1))
+done
+"$PY" - > "$TMPDIR/jscliperr.json" <<'PYERR'
+import json
+js = r'''(async function(){
+  var L=function(m){console.log("CPERR "+m)};
+  var E=window.__enote||{};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
+  var q=function(){ return qa("#sheet .clipitem") };
+  var emptyTxt=function(){ var e=document.querySelector("#sheet #clipList .empty"); return e?(e.textContent||"").replace(/\s+/g," "):"" };
+  var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
+  try{
+    L("isvue="+(E.vue.isVueSheet("clip")?1:0));
+    E.test.failApi="/api/clip/list";
+    L("failOn="+E.test.failApi);
+    clipSheet();
+    // 目标状态：#clipList 里出现「加载失败」的空态（clipError 那一支）。
+    var tErr=await poll(function(){ return emptyTxt().indexOf("加载失败")>=0 },40,250);
+    L("tErr="+tErr); L("empty="+emptyTxt());
+    L("clipError="+(E.vue.host.clipError||""));
+    L("items="+q().length);
+    /* 失败不是终态：清掉注入再开一次，列表要回来。 */
+    E.test.failApi="";
+    clipSheet();
+    var tBack=await poll(function(){ return q().length>0 },40,250);
+    L("tBack="+tBack); L("items2="+q().length);
+    L("clipError2="+(E.vue.host.clipError||""));
+    closeSheet();
+  }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
+  L("done=1");
+})()'''
+print(json.dumps({"js": js}))
+PYERR
+JSBASE=$(readtlog | wc -l)
+js_run CPERR "$TMPDIR/jscliperr.json" > "$TMPDIR/cperr.log"
+"$PY" -c '
+import sys, re
+lines=[l.strip() for l in open(sys.argv[1]) if "CPERR " in l]
+d={}
+for l in lines:
+    m=re.search(r"CPERR (\w+)=(.*)", l)
+    if m: d[m.group(1)]=m.group(2).strip()
+assert d.get("done")=="1", "CPERR 载荷没跑完（无 done）：前端抛异常了？日志=%s" % lines[:2]
+assert d.get("ERR") is None, "clipError 那一遍：前端抛异常：%s" % d.get("ERR")
+assert d.get("isvue")=="1", "剪贴板页没走 Vue：这一遍比的是遗留路径"
+assert d.get("failOn")=="/api/clip/list", "失败注入没生效（failApi=%r）" % d.get("failOn")
+assert int(d.get("tErr",-1))>=0, "注入 /api/clip/list 失败后没出「加载失败」空态（tErr=%s）：clipError 那一支断了" % d.get("tErr")
+assert "加载失败" in d.get("empty",""), "#clipList 的空态文案不对（实际 %r）" % d.get("empty")
+assert "injected failure" in (d.get("clipError") or ""), \
+  "clipError 里没记下这次失败（实际 %r）：loadClips 的 catch 没写状态" % d.get("clipError")
+assert d.get("items")=="0", "加载失败却还画出了条目（items=%s）" % d.get("items")
+assert int(d.get("tBack",-1))>=0, "清掉注入后重开弹层列表没回来（tBack=%s）：失败成了终态" % d.get("tBack")
+assert int(d.get("items2",0))>0, "重开弹层后条目数还是 0"
+assert d.get("clipError2") in ("", "None"), "列表回来了但 clipError 没清（实际 %r）" % d.get("clipError2")
+print("  ok (clipError：注入 /api/clip/list 失败 → #clipList 出「加载失败」空态并记下原因；清掉注入再开列表回来)")
+' "$TMPDIR/cperr.log" || fail "clipError 分支客户端回归失败"
+api_post clip/clear '' >/dev/null 2>&1 || true
+
 
 step "设置页（弹层）交互在 Vue 路径上真的生效（开页/主题/开关/保存/确认框）"
 # 设置页是本次迁移里唯一带表单的页面，也是唯一有「写完要恢复」的页面：主题、AI 开关、
@@ -1972,6 +2412,8 @@ js = r'''(async function(){
     var foot=function(){ var e=document.querySelector("#sheet #shotFoot"); return e?e.textContent.replace(/\s+/g,""):"" };
     var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
     var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
+    /* 稳定 id 定位（步骤 14，同剪贴板页）：q()[0] 在 DOM 顺序一变时会点到别的截图。 */
+    var sitem=function(i){ var x=(E.state.shotList||[])[i]||{}; return x.id?document.getElementById("shotitem-"+x.id):null };
     shotSheet();
     await new Promise(function(res){ var t=0;(function probe(){
       if(q().length||t>20){res();return} t++; setTimeout(probe,200); })(); });
@@ -1979,8 +2421,10 @@ js = r'''(async function(){
     L("n="+q().length);
     // 夹具没到位（列表空）→ 断言全空跑，python 侧判红
     if(!q().length){ L("skip=no-items"); L("done=1"); return }
+    L("item0="+(sitem(0)?"found":"no"));
+    L("id0="+((E.state.shotList[0]||{}).id||""));
     L("on0="+on()); L("foot0="+foot());
-    q()[0].click();                       // 真点击：证明 @click 真的绑上了
+    sitem(0).click();                     // 真点击：证明 @click 真的绑上了
     // 目标状态：至少一行带 on（点击真的落到 shotPick 并重绘）。
     var tPick=await poll(function(){ return on()>=1 },30,200);
     L("tPick="+tPick); L("on1="+on());
@@ -1993,7 +2437,7 @@ js = r'''(async function(){
     var tNone=await poll(function(){ return on()===0 },30,200);
     L("tNone="+tNone); L("on3="+on());
  L("foot3="+foot());
-    q()[0].click();                       // 只选 1 张：三个导入按钮塌成
+    sitem(0).click();                     // 只选 1 张：三个导入按钮塌成
     // 目标状态：勾选数恰好 1（按钮收敛这条断言的前提）。
     var tOne=await poll(function(){ return on()===1 },30,200);
     L("tOne="+tOne);
@@ -2068,6 +2512,9 @@ assert d.get("isvue") == "1" and d.get("mounted") == "1", \
   "截图页没走 Vue（isvue=%s mounted=%s）：这一遍比的是遗留路径" % (d.get("isvue"), d.get("mounted"))
 n = int(d.get("n", 0))
 assert n >= 2, "截图页没卡片（n=%s）：夹具没到位，这一遍是空跑" % d.get("n")
+# 稳定 id 定位（步骤 14）：找不到 shotitem-<id> 就是模板的 :id 断了，本用例在点空气。
+assert d.get("item0") == "found", \
+  "稳定 id shotitem-<id> 找不到那一张（id0=%s）：模板的 :id 断了，本用例在点空气" % d.get("id0")
 assert d.get("on1") != d.get("on0"), "点一张卡片后勾选数没变（%s → %s）：tick 链断了" % (d.get("on0"), d.get("on1"))
 assert d.get("foot1") != d.get("foot0"), "点一张卡片后计数文案没变（%s → %s）" % (d.get("foot0"), d.get("foot1"))
 assert d.get("on2") == d.get("n"), "全选后应全部勾中（on2=%s n=%s）" % (d.get("on2"), d.get("n"))
@@ -2152,6 +2599,19 @@ NIN=$(readtlog | wc -l)
   // 机器忙时不够（restored 少几条，红的是测试的等待而不是产品），空闲时白等两秒。
   var tRestore=await poll(async function(){ await A.refresh(true); return cards()>=ids.length },40,250);
   L("tRestore="+tRestore); L("restored="+cards());
+  /* 显式字段断言（§9.17 审计「不要只断言数量」，步骤 14 收笔记这一半）：卡片上的
+     src / status 两个 chip 必须来自 state 里那条笔记的 source / status。以前只数卡片
+     条数：srcChip 全画「手动」、statusChip 全画空，条数照样对。定位走稳定 id
+     （NoteCard 根节点的 id 就是 n 拼笔记 id），不靠 DOM 顺序。 */
+  var cn0=__enote.state.S.notes[0]||{};
+  var card=document.getElementById("n"+cn0.id);
+  L("card0="+(card?"found":"no"));
+  L("cardId="+(cn0.id||""));
+  L("cardSrc="+(cn0.source||""));
+  L("cardStatus="+(cn0.status||""));
+  L("cardModel="+(cn0.aiModel||""));
+  L("cardChips="+[].slice.call((card||document.body).querySelectorAll(".chip"))
+      .map(function(c){ return (c.textContent||"").replace(/\s+/g," ").trim() }).join("|"));
   // 3) 三横幅同时出现且顺序对
   __enote.state.MISSED={count:2,items:[{id:"t1",nid:"n1",title:"x",at:Date.now()-60000}]};
   __enote.state.S.info.clip=3;
@@ -2203,13 +2663,34 @@ assert d["empty"] == "true", "笔记清空后没出空态块（.empty）：Vue �
 assert int(d["emptyCards"]) == 0, \
   "走 /api/delete 清空后卡片数不是 0（实际 %s）：SR.notes 遮蔽又回来了" % d["emptyCards"]
 assert int(d["restored"]) == n, "恢复笔记后卡片数不对（%s→%s）" % (n, d["restored"])
+# 显式字段（步骤 14 收 §9.17 审计的笔记侧那一半）：src / status 两个 chip 的文案
+# 必须从 state 的 source / status 来，不是写死的。SRC_CHIP / STATUS_CHIP 是
+# app.js 里 srcChip / statusChip 的文案表，三处（app.js / 本表 / 真机 DOM）对不上就红。
+SRC_CHIP = {"manual-text": "手动", "clipboard-text": "剪贴板", "clipboard-image": "剪贴板图片",
+            "share-text": "分享文字", "share-image": "分享图片", "manual-image": "图片"}
+STATUS_CHIP = {"queued": "排队中", "parsing": "AI 解析中", "raw": "仅原文", "error": "失败"}
+assert d.get("card0") == "found", \
+  "稳定 id n<id> 找不到卡片（id=%s）：NoteCard 的 :id 断了，本用例在量空气" % d.get("cardId")
+chips = [x for x in (d.get("cardChips") or "").split("|") if x]
+assert len(chips) >= 2, "卡片上没出 src/status chip（实际 %r）：metaHTML 断了" % d.get("cardChips")
+srcs = d.get("cardSrc") or "manual-text"
+assert SRC_CHIP.get(srcs, "手动") in chips[0], \
+  "source=%s 的卡片第一个 chip 不是「%s」（实际 %r）：srcChip 的映射断了" % (srcs, SRC_CHIP.get(srcs, "手动"), chips[0])
+stt = d.get("cardStatus") or ""
+if stt == "done":
+    assert chips[1].startswith("✦ AI"), \
+      "status=done 的卡片第二个 chip 不是 AI 标记（实际 %r，aiModel=%r）" % (chips[1], d.get("cardModel"))
+else:
+    assert STATUS_CHIP.get(stt, "") and STATUS_CHIP[stt] in chips[1], \
+      "status=%s 的卡片第二个 chip 不是「%s」（实际 %r）：statusChip 的映射断了" % (stt, STATUS_CHIP.get(stt, ""), chips[1])
 assert d["missed"] == "true", "造了 MISSED 数据但 .missed 横幅没渲染"
 assert d["clip"] == "true", "造了 clip 计数但 .clipbanner 横幅没渲染（live() 没包？）"
 assert d["order"] == "ok", "首页横幅顺序不对：该是错过提醒 → 新截图 → 剪贴板"
 assert d["dlg"] == "删除", "delNote 没弹确认框, got %r" % d["dlg"]
 assert int(d["delAfter"]) == int(d["delBefore"]) - 1, \
   "删除后卡片数没掉（%s→%s）：删除走了但视图没重绘" % (d["delBefore"], d["delAfter"])
-print("  ok (展开/空态/三横幅/删除四条交互在 Vue 路径上都真生效，卡片 %d→%d)" % (n, int(d["delAfter"])))
+print("  ok (展开/空态/三横幅/删除四条交互在 Vue 路径上都真生效，卡片 %d→%d，"
+      "src/status chip 文案跟着 state 走)" % (n, int(d["delAfter"])))
 '
 asroot_global "rm -f '$DATA/enote/.devmode'"
 

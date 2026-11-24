@@ -37,7 +37,8 @@ export const ShotItem = {
     }
   },
   template: `
-  <div :class="cls" @click="H.shotPick(x.id)">
+  <!-- 稳定 id（步骤 14，同 clip.js 的 ClipItem）：截图页用例也靠它定位那一条。 -->
+  <div :id="'shotitem-'+x.id" :class="cls" @click="H.shotPick(x.id)">
     <img :src="src" alt="" loading="lazy">
     <div class="shottime">{{ clock }}</div>
     <div class="shotck" v-html="H.ic('check')"></div>
@@ -96,7 +97,8 @@ export const ShotsView = {
      .pfoot 默认是 flex + flex-wrap（步骤 13 为文件夹页窄屏加的），走 flex 会让计数和三个按钮挤一行。 -->
 <div class="pfoot" style="display:block">
   <div class="count" id="shotFoot" style="margin-bottom:var(--s2)" v-html="countHtml"></div>
-  <div style="display:flex;gap:var(--s2)">
+  <!-- class="btnrow"（步骤 14）：与 clip 弹层同一套做法，260px 面板下按钮文字不裁。 -->
+  <div class="btnrow">
     <button class="btn pri" id="shotGo" :style="goStyle" @click="H.doImportShots('merge')">{{ goText }}</button>
     <button class="btn" id="shotSplit" :style="subStyle" @click="H.doImportShots('split')">各存一条</button>
     <button class="btn" id="shotRaw" :style="subStyle" @click="H.doImportShots('raw')">原样存</button>

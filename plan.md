@@ -1741,3 +1741,116 @@ jseval 不认 display，所以载荷照样跑完、用例照样绿；红的时�
 * 260px 面板下 clip 弹层三个按钮文字被裁（「原样存为笔记」两侧切掉）：clip.js 给按钮写了内联
   `flex:1`/`flex:1.2`，`.btn` 左右 padding 16px 且没有 `min-width:0`。全宽实测三按钮一行放得下
   （footW=369、btnOverflow=0），只在 <320 CSS px 才咬人（Tony 审查记的 nit，非回归）。
+
+## 9.20 步骤 14：稳定 id 定位、显式字段断言、clipParse 客户端回归、260px 底部按钮
+
+§9.19 记进步骤 14 的四笔账全部收掉，另加一笔跑测设施账（它会让整族断言永远不可能通过）。
+
+**① 索引选择器 → 稳定 id**
+
+CIT（剪贴板弹层交互）与 SIT（截图弹层交互）以前都靠 `q()[0].click()` 点第一条。这类位置索引
+的失效方式是**静默的**：列表加个表头、排序规则变了、上面多一条横幅，`[0]` 就指向别的条目，
+点击照样有反应、计数照样变，断言全绿而测的已经不是目标条目。现在条目模板带稳定 id：
+
+* `ClipItem` 根节点 `:id="'clipitem-'+x.id"`（`go/ui/js/views/clip.js`）
+* `ShotItem` 根节点 `:id="'shotitem-'+x.id"`（`go/ui/js/views/shots.js`）
+* `NoteCard` 本来就有 `:id="'n'+n.id"`（`go/ui/js/components.js`），这次开始用它定位
+
+id 由服务端给的 `x.id` 派生，与 DOM 顺序无关。载荷侧统一走 `document.getElementById`，
+并且**把「找不到」打成 token 输出**（`item0=found` / `no`），python 侧断言它必须是 `found`
+—— 找不到元素时点击是空操作，不打印就是空跑。闸门⑳ 钉两侧：模板里那句 `:id` 在、
+`test.sh` 里那串前缀在，任一侧被删掉就红（只删一侧时另一侧的 `getElementById` 永远返回 null）。
+
+**② 断言显式写出 `kind` / `src` / `status`，不只断言数量**
+
+§9.17 审计那条「断言要显式写出 `src`/`status`/`pri`/`kind`」在步骤 12 只收了按钮文案那一半。
+这一轮收剩下两半：
+
+* 剪贴板条目：断 `kind0`（夹具是 text）、`.cliprev` 文本 = state 里那条 `text` 的前 220 字、
+  `.climthumb` 不出现、`.clipmeta` 含来源 app。`kind=image` 那一支真机夹具进不去（钩子只写文本），
+  换成注入 `E.state.clipList=[IMG]` + `E.vue.clipPaint()` 走组件的输入路径，断缩略图文案是
+  「图片 · <name>」（`clipThumbText` 的 name 那一半；剪贴板里的图片没有真缩略图）、不画文本预览、
+  meta 带来源 app，画完换回夹具列表（`tBack` 断言它真换回，否则后面的删除断言在空跑）。
+* 笔记卡片：NINT 恢复笔记后按稳定 id 找到卡片，断第一个 `.chip` 的文案 = `source` 经
+  `srcChip` 映射的结果、第二个 = `status` 经 `statusChip` 映射的结果（done 那支断 `✦ AI` 前缀）。
+  python 侧的映射表是 app.js 那两个函数的抄写，三处（app.js / 测试表 / 真机 DOM）对不上就红。
+
+只数条数时这些失效全绿：`srcChip` 全画「手动」、`statusChip` 全画空、三条夹具全画成缩略图。
+
+**③ clipParse 的三条客户端分支（原样存为笔记 / 解析失败 / clipError）**
+
+步骤 11 删掉遗留字符串渲染器之后，这两支连「与遗留渲染器共用一份字符串」那层间接保证都没了。
+进不去的原因一直是「fetch 在 WebView 里，测试侧没有让 Go 报错的通道」（步骤 11 原话：
+「要补得先做注入假 fetch」）。这一轮补的是**产品侧的失败注入缝**而不是假 fetch：
+
+```js
+var API_FAIL = '';
+async function api(path, body){
+  if(API_FAIL && String(path).indexOf(API_FAIL) >= 0) throw new Error('injected failure: ' + path);
+  …
+}
+// 文件末尾：__enote.test = { get failApi(){…}, set failApi(v){ API_FAIL = v || '' } }
+```
+
+默认空串 = 生产路径零影响；只认显式赋值。新步骤（`step "剪贴板导入的三条客户端分支…"`）用它跑四段：
+
+1. **原样存为笔记**（`#clipRaw`，`raw:true`）：toast「已存 N 条笔记」→ 弹层关掉且 Vue 实例卸载 →
+   服务端多出 N 条笔记，且 `source=="clipboard-text"`、`status=="raw"`、正文含那条剪贴板文本、
+   `todos` 为空（证明真没调 LLM）→ 暂存区清空。
+2. **解析失败**（注入 `/api/clip/parse` 抛）：toast「解析失败」，**弹层不关、勾选不丢、暂存区不消费**，
+   注入那次没建笔记。清掉注入再点一次才得到「已入队解析 N 条」。
+3. **一键解析（真 LLM）**：入队后按笔记 id 轮询到 `status=="done"` 且 `aiModel` 非空（`need_ai`
+   门控，没 key 时 loud skip）。
+4. **clipError**（注入 `/api/clip/list` 抛）：重开弹层 → `#clipList .empty` 出「加载失败」、
+   `__enote.vue.host.clipError` 记下原因、条目数 0；清掉注入再开一次列表回来（失败不是终态）。
+
+产品侧同批改动（两条都是这一步抓出来的真 bug）：
+
+1. `clipParse(ai)` 以前不 catch 异常，`r.ok===false` 也不看，失败时照样
+   `closeSheet()` + `clipSel = {}` —— 用户要点两次才能重试，第二次还得重开弹层重勾一遍。
+   现在 catch 住、toast 出原因、**保持弹层与勾选**并 return。
+2. `loadClips` 的 catch 只写 `clipError`，不落下 `clipLoading`；而模板的三态判定是
+   `v-if="loading"` 优先于 `v-else-if="err"` —— 加载失败时界面永远停在「加载中…」，
+   「加载失败」那一支是**死代码**（截图页的 `loadShots` 一直是两个一起写的）。
+   只测 Go 侧时这层根本看不出来：Go 确实返了错，前端确实记下了错，而用户看到的是永久骨架屏。
+
+**④ 260px 面板下弹层底部按钮裁字**
+
+`.btn` 是 `white-space:nowrap` + `overflow:hidden`。flex 项的自动最小尺寸（`min-width:auto`）
+**在 `overflow` 不是 `visible` 时退化成 0**，所以 clip.js 写的内联 `flex:1`/`flex:1.2` 让按钮可以
+缩到比自己的文字还窄，多出来的部分直接裁掉 —— 260px 面板下「原样存为笔记」两侧被切。
+修法是显式把下限要回来，并让整行允许换行：
+
+```css
+.pfoot .btnrow{display:flex;gap:var(--s2);flex-wrap:wrap}
+.pfoot .btnrow .btn{min-width:max-content}
+```
+
+clip.js / shots.js 的按钮行换成 `class="btnrow"`（内联 `flex:1` 保留，它现在只决定相对宽度）。
+真机断言：把弹层压到 260px，三个按钮逐个量 `scrollWidth <= clientWidth`，并断 `flex-wrap:wrap`、
+按钮数 = 3、文案含「原样存为笔记」（选择器失联时它是 0，不是「全没裁」）。
+
+**⑤ 跑测设施：重置之后 `useAI` 是关的，整族 AI 断言永远不可能通过**
+
+本轮的基线跑测红在「the shared text note was never parsed」。查下来设备 `settings.json` 里
+`useAI:false`（多半是某次设置页测试中途被打断留下的），笔记全停在 `status:"raw"`，
+而 `llm/test` 是 ok=1 —— 于是所有「等 LLM 解析完」的断言必红，红得完全不像设施问题。
+`test.sh` 的重置段以前只清数据不动设置。现在重置时把 `useAI` 归位成 `true`（baseUrl + model
+齐备时），基线打印带 `ai=yes`，基线断言不满足时单独给一条「重置后 useAI 仍是关闭…」的红话；
+`ai_step_unhappy` 补第三支：`--no-reset` 跑测时 AI 开关是关的，loud skip 而不是判红。
+
+**反向实验**
+
+`.test/s14_neg.sh`（四条，逐条实测红）：
+
+* `a` 把 `clip.js` 的 `:id="'clipitem-'+x.id"` 改成固定串 → 闸门⑳ 红（
+  「列表条目的稳定 id 定位断了」）。
+* `b` 把 `.pfoot .btnrow .btn` 的 `min-width:max-content` 删掉 → 真机红在 260px 裁字。
+* `c` 把 `clipParse` 的 catch 去掉 → 真机红在「注入失败后没出「解析失败」的 toast」。
+* `d` 把 `loadClips` catch 里的 `clipLoading = false` 删掉 → 真机红在「注入 /api/clip/list
+  失败后没出「加载失败」空态」（即：这条修复被回退后，回归真的会红）。
+
+**验收**：`node tools/ui_test.js` **117 ok / 0 FAIL**（新增闸门⑳）、`(cd go && go test ./...)` ok、
+`bash -n test.sh` ok、`GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd` 全绿
+（`$TMPDIR/s14_run5.log`：0 FAIL / 0 ERROR，真机 `  ok` 156→**161**，step 32→**33**，
+`test.sh` 2800→**3281** 行）。四条反向实验逐条实测红（见上）。

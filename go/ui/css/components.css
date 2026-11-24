@@ -155,6 +155,14 @@
 .pfoot .count{font-size:var(--fs-sm);color:var(--dim);line-height:1.35;flex:1;white-space:nowrap}
 /* 底部条里的按钮不许被挤掉字（用户反馈：「这批我知道了」被裁成「这批我知道」） */
 .pfoot .btn{flex:0 0 auto}
+/* 步骤 14（步骤 13 审查记的 nit）：260px 面板下 clip / shots 弹层底部按钮的文字被裁
+   （「原样存为笔记」两侧切掉）。clip.js / shots.js 给按钮写了内联 flex:1 / flex:1.2，
+   而 .btn 带 overflow:hidden —— flex 项的自动最小尺寸（min-width:auto）在 overflow 不是
+   visible 时退化成 0，于是按钮可以缩到比自己的文字还窄，多出来的部分直接裁掉。
+   显式写 min-width:max-content 把下限要回来，整行再允许换行：挤不下就整条掉到第二行，
+   文字永远完整（与步骤 13 文件夹页底部条同一套做法）。 */
+.pfoot .btnrow{display:flex;gap:var(--s2);flex-wrap:wrap}
+.pfoot .btnrow .btn{min-width:max-content}
 .pfoot .count b{color:var(--acc);font-size:var(--fs-base);font-weight:700;margin-right:var(--s0)}
 .clipdel{background:none;border:none;color:var(--dim);font-size:var(--fs-base);padding:var(--s0) var(--s2);cursor:pointer}
 .clipdel:active{color:var(--acc)}

@@ -43,7 +43,10 @@ export const ClipItem = {
     }
   },
   template: `
-  <div :class="cls" @click="H.clipPick(x.id)">
+  <!-- 稳定 id（步骤 14）：端到端用例要「真点击那一条」，以前写 q()[0].click()，
+       DOM 顺序一变（排序、新增字段、加表头）就静默点到别的条目，断言全绿而测的不是目标。
+       id 由服务端 x.id 派生，与 DOM 顺序无关；静态闸门⑳ 钉住模板里这句。 -->
+  <div :id="'clipitem-'+x.id" :class="cls" @click="H.clipPick(x.id)">
     <div class="clicb" v-html="H.ic('check')"></div>
     <div class="clipbody">
       <div class="climthumb" v-if="isImg" v-html="H.ic('image')+thumb"></div>
@@ -90,7 +93,9 @@ export const ClipSheetView = {
      .pfoot 默认是 flex + flex-wrap（步骤 13 为文件夹页窄屏加的），走 flex 会让计数和三个按钮挤一行。 -->
 <div class="pfoot" style="display:block">
   <div class="count" id="clipFoot" style="margin-bottom:var(--s2)" v-html="countHtml"></div>
-  <div style="display:flex;gap:var(--s2)">
+  <!-- class="btnrow"（步骤 14）：整行允许换行、按钮不许缩到比自己的文字还窄，
+       260px 面板下「原样存为笔记」不再被裁（css/components.css 的 .pfoot .btnrow）。 -->
+  <div class="btnrow">
     <button class="btn" style="flex:1" id="clipDelSel" @click="H.clipDelSel()">删除所选</button>
     <button class="btn" style="flex:1.2" id="clipRaw" @click="H.clipParse(false)">原样存为笔记</button>
     <button class="btn pri" style="flex:1.2" id="clipParseBtn" @click="H.clipParse(true)">{{ parseText }}</button>

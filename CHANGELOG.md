@@ -679,6 +679,50 @@
   闭集与导出表求交，「闭集里写了个导出表没有的名字」正好落在盲区（静态全绿、真机才红）。
   现在补 `CLOSED_FN ⊆ 导出表`，红时列出缺的名字。
 
+### 界面（P13 S3 步骤 14）：稳定 id 定位、显式字段断言、clipParse 客户端回归、260px 底部按钮
+
+这一步收 §9.19 明写「记进步骤 14」的四笔账，外加一笔跑测设施账。
+
+* **索引选择器 → 稳定 id**：CIT / SIT 以前靠 `q()[0].click()` 点第一条，这种位置索引的失效是
+  静默的（排序变了 / 上面多了横幅 → 点到别的条目，点击照样有反应、断言全绿）。`ClipItem` /
+  `ShotItem` 根节点加 `:id="'clipitem-'+x.id"` / `:id="'shotitem-'+x.id"`（`NoteCard` 本来就有
+  `n+id`），载荷走 `getElementById` 且把「找不到」打成 token（`item0=found/no`）由 python 判红。
+  **闸门⑳** 钉两侧：模板里那句 `:id` 在、`test.sh` 里那串前缀在，只删一侧就红。
+* **断言显式写出 `kind` / `src` / `status`**（§9.17 审计剩下那一半）：剪贴板条目断 `kind`、
+  `.cliprev` 文本 = state 里 `text` 的前 220 字、`.climthumb` 不出现、`.clipmeta` 含来源 app；
+  `kind=image` 那一支靠注入 `clipList` + `clipPaint()` 走组件输入路径（真机钩子只写文本），
+  断完换回夹具列表并断它真换回。笔记卡片按稳定 id 找到卡片，断两个 `.chip` 的文案 = `source` /
+  `status` 经 `srcChip` / `statusChip` 映射的结果。只数条数时这些失效全绿。
+* **clipParse 的三条客户端分支**（步骤 11 记的账，当时写的是「要补得先做注入假 fetch」）：
+  `app.js` 的 `api()` 加失败注入缝 `__enote.test.failApi`（默认空串 = 生产零影响），新步骤用它跑
+  四段：原样存为笔记（toast / 弹层关掉卸载 / 出 `clipboard-text`+`raw` 笔记且 `todos` 空 /
+  暂存区清空）、解析失败（toast「解析失败」且**弹层不关、勾选不丢、暂存区不消费**，清掉注入
+  再点一次才入队）、真 LLM 路径（按 id 轮询到 `status=done` 且 `aiModel` 非空，`need_ai` 门控）、
+  clipError（注入 `/api/clip/list` 抛 → `#clipList` 出「加载失败」并记下原因；清掉注入再开列表回来）。
+  **产品侧同批改动（两条都是这一步抓出来的真 bug）**：① `clipParse` 以前不 catch 异常、不看 `r.ok`，
+  失败时照样 `closeSheet()` + `clipSel = {}` —— 用户要重开弹层重勾一遍才能重试；现在 toast 出原因
+  并保持弹层与勾选。② `loadClips` 的 catch 只写 `clipError`、不落下 `clipLoading`，而模板三态判定是
+  `v-if="loading"` 优先于 `v-else-if="err"` —— 加载失败时界面永远停在「加载中…」，「加载失败」那一支
+  是**死代码**（Go 确实返了错、前端确实记下了错，用户看到的是永久骨架屏；截图页的 `loadShots`
+  一直是两个一起写的）。
+* **260px 面板下弹层底部按钮裁字**（Tony 审查记的 nit）：`.btn` 是 `white-space:nowrap` +
+  `overflow:hidden`，而 flex 项的自动最小尺寸（`min-width:auto`）在 `overflow` 不是 `visible` 时
+  退化成 0 —— 内联 `flex:1`/`flex:1.2` 于是能让按钮缩到比自己的文字还窄。新增
+  `.pfoot .btnrow{flex-wrap:wrap}` + `.btn{min-width:max-content}`，clip / shots 两个底部条改用
+  `class="btnrow"`；真机压到 260px 逐按钮量 `scrollWidth <= clientWidth`，并断按钮数 = 3、
+  文案含「原样存为笔记」（选择器失联时它是 0，不是「全没裁」）。
+* **跑测设施：重置之后 `useAI` 是关的**（本轮基线跑测红在「the shared text note was never
+  parsed」）：设备 `settings.json` 里 `useAI:false`（多半是某次设置页测试中途被打断留下的）时，
+  笔记全停在 `status:"raw"` 而 `llm/test` 是 ok=1，整族「等 LLM 解析完」的断言永远不可能通过，
+  红得完全不像设施问题。重置段现在把 `useAI` 归位成 `true`（baseUrl + model 齐备时），基线打印带
+  `ai=yes`，`ai_step_unhappy` 补第三支（`--no-reset` 时 AI 开关关着就 loud skip 而不是判红）。
+* **四条反向实验** `.test/s14_neg.sh`：模板 `:id` 改固定串 → 闸门⑳ 红；删掉
+  `min-width:max-content` → 真机红在 260px 裁字；去掉 `clipParse` 的 catch → 真机红在
+  「注入失败后没出解析失败的 toast」；删掉 `loadClips` catch 里的 `clipLoading = false` →
+  真机红在「注入 /api/clip/list 失败后没出加载失败空态」（这条就是上面那个死代码的修复）。
+* 数字：`test.sh` 2800→**3281** 行、step 32→**33**、真机 `  ok` 156→**161**、静态闸门 116→**117 ok**；
+  `GO_TEST=1 ./build.sh && ./install.sh && ./test.sh --vd` 全绿（`$TMPDIR/s14_run5.log`，0 FAIL / 0 ERROR）。
+
 ### 界面（P7）
 
 * **启动器图标**：`tools/gen_icon.py` 用一份几何同时生成自适应图标（前景 / 背景 / monochrome
