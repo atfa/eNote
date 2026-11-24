@@ -1,7 +1,7 @@
 # 更新日志
 
 版本按开发阶段（Pn）记录，全部在手机上完成。界面改动都经过后台屏截图核对 +
-`tools/ui_test.js`（115 项 UI 结构契约，S3 步骤 11 起吸收了原 `ui_sig_test.js` 的 84 项签名）
+`tools/ui_test.js`（116 项 UI 结构契约，S3 步骤 11 起吸收了原 `ui_sig_test.js` 的 84 项签名）
 + `go test ./...`。
 
 ## 0.1（当前）
@@ -663,7 +663,7 @@
 
 **验证**：`node tools/ui_test.js` **115 ok / 0 FAIL**（新增闸门⑰⑱；裸 hex 0 ≤ 0、裸 px 0 ≤ 0）、
 `(cd go && go test ./...)` ok、`bash -n test.sh` ok；真机 `./test.sh --skip-build --vd` 全绿，
-`  ok` 行 149 → 155（新增 FPRE / SLEAK / 窄屏计数）。
+`  ok` 行 149 → 156（新增 FPRE / SLEAK / 窄屏计数 / 筛选三态）。
 
 * **`--toast-bottom:96px`**（Tony 设备实测后定）：`#toast` 的 96px 看着与 body 原来的 96px 同源，
   实测是两个量 —— toast 底边距视口底 89.6px、tabbar 顶边 69.4px、body padding-bottom 104px。

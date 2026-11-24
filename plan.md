@@ -1728,7 +1728,10 @@ toast 抬 8px、与最后一行内容的重叠从 ~23px 变 ~31px，还把浮层
 「`ERROR: jseval 没跑完`」这种红通常是设施问题而不是产品问题：跑测期间另一个 agent 对同一个
 包 `pm install`（app 进程被换掉）或 VD 被重建，在飞的载荷就永远不打印 done token。
 全量验收期间不要并发 install；红了先看现场打印的 `--- per-display focus ---` 里目标 display
-上还有没有本 app 的窗口。
+上还有没有本 app 的窗口。实测签名（Tony 抓到）：那一轮 VD id 已漂到 190，focus 打印显示
+enote 在 **display 0**、VD 190 上是 launcher —— `am start --display` 落空时就是这个样子。
+jseval 不认 display，所以载荷照样跑完、用例照样绿；红的时候这条现场是唯一能一眼分清
+「jseval 真挂了」和「display 没了」的证据。
 
 **记进步骤 14 的账**
 
