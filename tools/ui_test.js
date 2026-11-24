@@ -572,13 +572,22 @@ if (jsevalPayloads.length < 7) {
 } else {
   const extra = [...refsAll].filter(n => !CLOSED.has(n)).sort();
   const unused = CLOSED_FN.filter(n => !refsAll.has(n));
+  const notExported = table instanceof Set
+    ? CLOSED_FN.filter(n => !table.has(n)) : ['(导出表没解析出来，闸门② 在假绿)'];
   // 顺序有讲究：裸状态名先报。它同时也是「闭集外」，但只说「闭集外」会把人往
   // 「新增要改闸门」的方向带，而真正的坑是「写到 window 上、模块没动」这种假绿。
   if (bareStateAll.length) bad('载荷里裸写了状态名', bareStateAll.join(', ') + '：裸名是往 window 上写，模块里的 ' + bareStateAll[0].split('@')[0] + ' 一动不动（假绿），要走 __enote.state.' + bareStateAll[0].split('@')[0]);
   else if (extra.length) bad('jseval 载荷引用了闭集外的全局名', extra.join(', ') + `（闭集 = 函数 ${CLOSED_FN.length} 个 + 状态 ${STATE_NAMES.length} 个走桥，新增要同步改闸门②）`);
   else if (unused.length) bad('闭集里有名字没人引用了', unused.join(', ') + '（闭集要同步缩小，否则改名后闸门② 查不出来）');
+  // 闭集里的名字必须在导出表里真的存在。闸门② 以前只做两向检查（载荷引用 ⊆ 闭集、
+  // 闭集 ⊆ 引用），从不和闸门① 解析出的导出表求交 —— 「闭集里写了个导出表没有的名字」
+  // 正好落在盲区：静态全绿，真机上 ReferenceError（步骤 13 的 sortSheet：它是
+  // $('#sortBtn').onclick = sortSheet 挂上去的，不是内联 handler，闸门① 从来不管它）。
+  else if (notExported.length) bad('闭集里的函数不在导出表里（jseval 载荷调它就是 ReferenceError）',
+    notExported.join(', ') + '：闸门① 只查内联 handler，onclick 之外挂上去的函数要手动进 __enoteActions');
   else if (renderCalls !== renderAwaited) bad('载荷里的 render 没全部 await', renderAwaited + '/' + renderCalls + '：render() 的契约是 Promise（D13），不 await 就断言不到新 DOM；包装也得是 async function');
-  else ok('jseval 载荷 ' + jsevalPayloads.length + ' 个：引用全局名 == 闭集（函数 ' + CLOSED_FN.length + '）+ 状态 6 个全走 __enote.state + render ' + renderCalls + ' 处全部 await');
+  else ok('jseval 载荷 ' + jsevalPayloads.length + ' 个：引用全局名 == 闭集（函数 ' + CLOSED_FN.length
+    + ' 个全在导出表）+ 状态 6 个全走 __enote.state + render ' + renderCalls + ' 处全部 await');
 }
 
 // ---------- 闸门⑯ 每个 jseval 调用前必须自己 touch .devmode ----------

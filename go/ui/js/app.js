@@ -1944,7 +1944,7 @@ window.__enoteActions = {
   folderSave, folderSelAll, folderSheet, importClip, importJSON, jump,
   missedDismiss, missedDone, missedGoTodos, missedSheet, openAttach, pickImage,
   refresh, render, reocr, reparse, resetPrefs, rescanShots, saveSettings,
-  scanShotsNow, settingsRefresh, settingsSheet, showDebug, showLog, statsNow,
+  scanShotsNow, settingsRefresh, settingsSheet, showDebug, showLog, sortSheet, statsNow,
   clearShots,
   setPref, setTheme, shotIgnoreSel, shotOverlay, shotOvlSub, shotPick, shotSelAll, shotSetup,
   shotGo, shotSheet, testLLM, toAlarm, toCalendar,
@@ -1960,6 +1960,10 @@ Object.assign(window, window.__enoteActions);
    onclick="…" 字面量，扇不到这种「叶子函数的参数」，转 module（步骤 2）后这四个名字不再是
    全局，我的页上「设置 / 现在扫描一次 / 回捞最近 7 天 / 清空截图暂存」四行点了就是
    ReferenceError。新增的闸门①d 扇 handler 字符串参数，钉住这一类。
+   步骤 13 补 sortSheet：它是 `$('#sortBtn').onclick = sortSheet` 挂上去的，不是内联 handler，
+   闸门① 扇不到；待办页筛选三态用例要在 jseval 里开排序筛选面板，裸调 sortSheet() 就是
+   ReferenceError（静态全绿、真机才红，真机日志 TINT ERR=sortSheet is not defined）。闸门②
+   现在会把闭集与导出表求交，这类「只有测试调的函数」漏导出会静态红。
    注意：表体里不能写注释 —— tools/ui_test.js 的 exportTableKeys() 是粗解析标识符列表，
    注释会被当成一个名字，运行时导出表比对（P6.6）立刻红。 */
 
