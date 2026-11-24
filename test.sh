@@ -2358,6 +2358,49 @@ NIT=$(readtlog | wc -l)
       L("tSrBack="+tSrBack);
     }
     L("srSkip="+(keys.length<2?"1":"0"));
+    // 5) 筛选三态（客户端 + prefPayload 的 done=all）：这条以前只有服务端那句
+    //    search?tab=todos&done=all 覆盖，客户端没人点过（步骤 13 的账）。
+    //    prefPayload 里 k === "done" 那个特例被删掉时：服务端给 todos 默认成 open，
+    //    筛选面板里的「全部」就是个空操作 —— 只有真点击才看得见。
+    var f3=await add("Vue 交互夹具丙");
+    st=await api("/api/state"); __enote.state.S=st;
+    if(f3){
+      await api("/api/todo",{action:"toggle",noteId:f3.n.id,todoId:f3.t.id});
+      st=await api("/api/state"); __enote.state.S=st;
+      var f3t=findByText(st,"Vue 交互夹具丙");
+      L("f3done="+(f3t?String(!!f3t.t.done):"-"));
+      var has=function(txt){ var y=0; qa(P+" .todo").forEach(function(x){
+        var tx=x.querySelector(".ttx");
+        if(tx&&tx.firstChild&&tx.firstChild.nodeValue===txt) y=1 }); return y };
+      // 真点击：状态分组里的那个 seg 按钮（group() 生成 label + .seg）
+      var segBtn=function(lab,txt){
+        var l=[].slice.call(document.querySelectorAll("#sheet label"))
+          .filter(function(x){ return x.textContent===lab })[0];
+        if(!l) return null;
+        return [].slice.call(l.nextElementSibling.querySelectorAll("button"))
+          .filter(function(b){ return b.textContent===txt })[0]||null };
+      __enote.state.tab="todos"; await render();
+      sortSheet();
+      var bAll=segBtn("状态","全部");
+      L("segAll="+(bAll?"1":"0"));
+      if(bAll){
+        bAll.click();   // setPref("done","all") → closeSheet + searchNow + savePrefs
+        var tAll=await poll(function(){ return has("Vue 交互夹具甲")&&has("Vue 交互夹具丙") },40,250);
+        L("tAll="+tAll); L("allOpen="+has("Vue 交互夹具甲")); L("allDone="+has("Vue 交互夹具丙"));
+        sortSheet();
+        var bDone=segBtn("状态","已完成");
+        L("segDone="+(bDone?"1":"0"));
+        if(bDone){
+          bDone.click();
+          var tD2=await poll(function(){ return has("Vue 交互夹具丙")&&!has("Vue 交互夹具甲") },40,250);
+          L("tDoneF="+tD2); L("onlyDone="+has("Vue 交互夹具丙")); L("openHidden="+has("Vue 交互夹具甲"));
+        }
+      }
+      // 复原：todos 默认是「未完成」，不恢复会改变后面所有用例看到的列表
+      resetPrefs();
+      var tBack=await poll(function(){ return has("Vue 交互夹具甲")&&!has("Vue 交互夹具丙") },40,250);
+      L("tBack="+tBack);
+    }
   }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
   var okDel=0;
   for(var i=0;i<fx.length;i++){
@@ -2409,7 +2452,20 @@ for g in geos:
         kv["circleL"], kv["padBoxL0"], kv["overflow"])
 assert d.get("cleaned") == d.get("made"), \
   "夹具待办没删干净（造 %s 删 %s）：会污染下一轮和真数据" % (d.get("made"), d.get("cleaned"))
-print("  ok (勾选/复原/SR 搜索态在 Vue 路径上真生效；.cb 圆圈未被裁 %s)" % geos[0])
+# 筛选三态（步骤 13 的账：prefPayload 的 done:'all' 以前只有服务端覆盖）
+assert d.get("f3done") == "true", \
+  "夹具丙没被勾成已完成（%s）：下面三条筛选断言就是空跑" % d.get("f3done")
+assert d.get("segAll") == "1" and d.get("segDone") == "1", \
+  "排序筛选面板里找不到「状态」分组的 全部/已完成 按钮（面板结构变了？闸门外的真点击失效）"
+assert d.get("allOpen") == "1" and d.get("allDone") == "1", \
+  "点「全部」之后 未完成夹具=%s 已完成夹具=%s（应 1/1）：prefPayload 没把 done:'all' 发给服务端，"\
+  "服务端给 todos 默认成 open，「全部」按钮就是个空操作" % (d.get("allOpen"), d.get("allDone"))
+assert d.get("onlyDone") == "1" and d.get("openHidden") == "0", \
+  "点「已完成」之后 已完成夹具=%s 未完成夹具=%s（应 1/0）：客户端的 done 筛选分支坏了" % (
+    d.get("onlyDone"), d.get("openHidden"))
+assert d.get("tBack") != "-1", \
+  "resetPrefs 之后没回到「未完成」默认筛选（tBack=%s）：夹具会污染后面的用例" % d.get("tBack")
+print("  ok (勾选/复原/SR 搜索态在 Vue 路径上真生效；.cb 圆圈未被裁 %s；筛选 全部/已完成/未完成 三态真生效)" % geos[0])
 '
 asroot_global "rm -f '$DATA/enote/.devmode'"
 

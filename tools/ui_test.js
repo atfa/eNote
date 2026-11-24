@@ -469,6 +469,10 @@ const CLOSED_FN = ['api', 'refresh', 'render', 'missedDismiss', 'missedSheet', '
   'shotOverlay', 'shotOvlSub',
   // 步骤 9：剪贴板页交互用例的入口（其余动作靠真点击 .clipitem / 按钮，不调函数）
   'clipSheet',
+  // 步骤 13：待办页筛选三态用例。sortSheet 是排序筛选面板的入口（seg 按钮在面板里，
+  // 要点「全部 / 已完成」就得先开面板），resetPrefs 是用例末尾的复原（不恢复默认筛选
+  // 会改变后面所有用例看到的列表）。两者都是导出表里的 DOM handler。
+  'sortSheet', 'resetPrefs',
   // 步骤 10 的 settingsSheet 在步骤 11 移出闭集：设置页交互用例是从「我的」页真点
   // 「设置」那一行进来的（比直接调函数强），VDIFF 的 settings 那一遍（唯一调它的载荷）
   // 随遗留基准一起删。闭集里留着没人引用的名字会让闸门② 认不出「改名」，所以要同步缩小。
