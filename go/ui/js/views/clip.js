@@ -1,6 +1,6 @@
-/* 剪贴板暂存页（S3 步骤 9）。模式同 views/shots.js：结构在模板里，叶子片段（图标、预览、
-   时间）调 app.js 的 clipPrevText / clipThumbText / clipMetaText / clipCountHTML ——
-   两条渲染路径共用同一批叶子函数，VDIFF 才逐字比得过。
+/* 剪贴板暂存页（S3 步骤 9；步骤 16b 把叶子片段翻成真组件）。结构在模板里；图标是
+   components/leaf.js 的 <ico>，底部计数条是 <clip-count>（#clipFoot 这个 id 是 CSS
+   与真机夹具的定位点，跟着进了组件模板）；本文件 v-html 已清零。
 
    前面几步踩过、写在这里省得再踩的坑：
    1) 读模块状态一律 live()：clipList / clipSel 是普通模块变量，loadClips() 与 clipParse()
@@ -15,9 +15,13 @@
 
    与遗留路径的**有意**差异（别当 bug 改回去）：遗留 clipPick / clipSelAll 会顺手给
    .clicb 也加一个 on 类，而 CSS 里没有任何 .clicb.on 规则（勾选态由 .clipitem.on .clicb
-   驱动），那是一次空操作；本步骤把遗留侧那次 toggle 删掉，两条路径都只动 .clipitem。 */
+   驱动），那是一次空操作；本步骤把遗留侧那次 toggle 删掉，两条路径都只动 .clipitem。
+
+   闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
+   components: { EmptyState, ClipItem, Ico, ClipCount } */
 import { V, H, Vue, live } from '../vue.js'
 import { EmptyState } from '../components.js'
+import { Ico, ClipCount } from '../components/leaf.js'
 
 const { computed } = Vue
 
@@ -31,6 +35,7 @@ const { computed } = Vue
    VDIFF 比的是 class 属性字符串（见 views/files.js 的 acard）。 */
 export const ClipItem = {
   name: 'ClipItem',
+  components: { Ico },
   props: ['tick', 'x'],
   setup(props){
     return {
@@ -47,13 +52,13 @@ export const ClipItem = {
        DOM 顺序一变（排序、新增字段、加表头）就静默点到别的条目，断言全绿而测的不是目标。
        id 由服务端 x.id 派生，与 DOM 顺序无关；静态闸门⑳ 钉住模板里这句。 -->
   <div :id="'clipitem-'+x.id" :class="cls" @click="H.clipPick(x.id)">
-    <div class="clicb" v-html="H.ic('check')"></div>
+    <div class="clicb"><ico n="check"/></div>
     <div class="clipbody">
-      <div class="climthumb" v-if="isImg" v-html="H.ic('image')+thumb"></div>
+      <div class="climthumb" v-if="isImg"><ico n="image"/>{{ thumb }}</div>
       <div class="cliprev" v-else>{{ prev }}</div>
       <div class="climeta">{{ meta }}</div>
     </div>
-    <button class="clipdel" aria-label="删除这条" @click.stop="H.clipDel($event, x.id)" v-html="H.ic('x')"></button>
+    <button class="clipdel" aria-label="删除这条" @click.stop="H.clipDel($event, x.id)"><ico n="x"/></button>
   </div>`
 };
 
@@ -62,7 +67,7 @@ export const ClipItem = {
    id（#clipList / #clipFoot）逐字保留：CSS 与真机夹具都靠它们定位，改了就是静默失联。 */
 export const ClipSheetView = {
   name: 'ClipSheetView',
-  components: { EmptyState, ClipItem },
+  components: { EmptyState, ClipItem, ClipCount },
   setup(){
     const tick = computed(() => V.tick);
     const items = live(() => H.clipList);
@@ -73,7 +78,6 @@ export const ClipSheetView = {
       loading: live(() => H.clipLoading),
       err: live(() => H.clipError),
       // 三态判定顺序与 loadClips() / clipListHTML() 一致：加载中 → 加载失败 → 空 → 列表
-      countHtml: live(() => H.clipCountHTML()),
       // clipCount() 那句：只选一条时不带数字
       parseText: live(() => H.clipParseText(selCount.value))
     }
@@ -92,7 +96,7 @@ export const ClipSheetView = {
 <!-- 内联 display:block 是有意的（闸门⑲ 钉住）：这两个弹层的计数独占一行、按钮整行排在下面。
      .pfoot 默认是 flex + flex-wrap（步骤 13 为文件夹页窄屏加的），走 flex 会让计数和三个按钮挤一行。 -->
 <div class="pfoot" style="display:block">
-  <div class="count" id="clipFoot" style="margin-bottom:var(--s2)" v-html="countHtml"></div>
+  <clip-count/>
   <!-- class="btnrow"（步骤 14）：整行允许换行、按钮不许缩到比自己的文字还窄，
        260px 面板下「原样存为笔记」不再被裁（css/components.css 的 .pfoot .btnrow）。 -->
   <div class="btnrow">

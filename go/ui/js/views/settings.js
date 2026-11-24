@@ -1,12 +1,14 @@
-/* 设置页（S3 步骤 10）。它是**弹层**（pageSheetVue('settings','设置')），不是 tab。
-   模式同 views/clip.js：结构在模板里，纯展示块（采集 / 本地 OCR / 用法 / 保活长说明）
-   整块 v-html 复用 app.js 的叶子函数，两条路径共用同一份字符串，零漂移面。
+/* 设置页（S3 步骤 10；步骤 16b 把叶子片段翻成真组件）。它是**弹层**
+   （pageSheetVue('settings','设置')），不是 tab。结构在模板里；数据卡 / 运行状态卡 /
+   本地 OCR 卡是 components/blocks.js 里的真组件，kv 行与 OCR 胶囊是 components/leaf.js 的
+   <kv-row> / <ocr-ready>；采集卡与用法卡是纯静态文本，直接写在模板里（v-html 已清零）。
 
    前面几步踩过、写在这里省得再踩的坑：
    1) 读模块状态一律 live()：S / ST / remindPending 是普通模块变量，refresh() 整体替换，
       computed 不依赖 tick 就永远缓存 → 从系统设置页回来后开关状态是旧的。
    2) 模板里用原始值 + {{ }}，不要再 esc（Vue 插值是 textContent）。
-   3) 一个元素里只放一个 {{ }}（两个插值 = 两个文本节点，VDIFF 序列化器 trim 后拼会丢空格）。
+   3) 一个元素里只放一个 {{ }}（两个插值 = 两个文本节点，VDIFF 序列化器 trim 后拼会丢空格）；
+      需要「3 / 2」那种三段拼接时写 {{ a }} / {{ b }}，中间那个「 / 」不是纯空白，不会被吃掉。
    4) 模板里用 H.xxx 的组件必须在 setup() 返回里暴露 H（闸门⑮ 强制）。
    5) class 用拼接，不用「静态 class + 对象语法」：遗留写的是 'btn sm '（带尾空格）这类
       拼接结果，Vue 合并 class 的顺序不同，VDIFF 比的是 class 属性字符串。
@@ -18,18 +20,25 @@
       值一律 `x || ''`：遗留 esc(undefined) 得到 value=""，Vue 的 .attr 遇到 null/undefined
       会 removeAttribute，两边就差一个属性。
    b) 开关 .sw 的 onclick="toggleAI(this)" 传的是元素本身（函数内部 el.classList.toggle），
-      Vue 里用 $event.currentTarget 拿同一个元素，两条路径共用同一个函数。 */
+      Vue 里用 $event.currentTarget 拿同一个元素，两条路径共用同一个函数。
+
+   闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
+   components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard } */
 import { V, H, Vue, live } from '../vue.js'
+import { Ico, KvRow } from '../components/leaf.js'
+import { SettingsDataCard, SettingsRunCard, SettingsOcrCard } from '../components/blocks.js'
 
 const { computed } = Vue
 
 export const SettingsSheetView = {
   name: 'SettingsSheetView',
+  components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard },
   setup(){
     return {
       H,
       tick: computed(() => V.tick),
       s: live(() => H.S.settings),
+      i: live(() => H.S.info),
       // 提醒卡：副标题的插值切分必须与遗留拼接一一对应（三个文本节点）
       notifyGranted: live(() => H.notifyGranted()),
       notifyBtnCls: live(() => 'btn sm ' + (H.notifyGranted() ? 'gh' : '')),
@@ -41,25 +50,17 @@ export const SettingsSheetView = {
         ? (H.batteryIgnoring() ? '已开启 · 已豁免电池优化' : '已开启 · 建议再豁免电池优化')
         : '关闭 · 只在打开 app 时可靠，后台可能收不到提醒'),
       keepSwCls: live(() => 'sw' + (H.keepAliveOn() ? ' on' : '')),
-      keepNote: live(() => H.settingsKeepAliveNoteHTML()),
       themes: live(function(){
         var cur = H.S.settings.theme || 'light';
         var label = { light: '亮色', dark: '暗色', auto: '跟随系统' };
         return ['light', 'dark', 'auto'].map(function(m){
           return {
             m: m, cls: m === cur ? 'on' : '', label: label[m],
-            icon: H.ic(m === 'light' ? 'sun' : m === 'dark' ? 'moon' : 'monitor')
+            icon: m === 'light' ? 'sun' : m === 'dark' ? 'moon' : 'monitor'
           };
         });
       }),
-      aiSwCls: live(() => 'sw' + (H.S.settings.useAI ? ' on' : '')),
-      // 数据卡 / 运行状态卡：整块（含按钮）复用叶子函数，见 views/stats.js 头部
-      // 「插值切分必须与遗留拼接一一对应」那条
-      dataCard: live(() => H.settingsDataCardHTML()),
-      runCard: live(() => H.settingsRunCardHTML(H.S.info)),
-      collect: live(() => H.settingsCollectHTML()),
-      ocrCard: live(() => H.settingsOcrCardHTML(H.S.info)),
-      usage: live(() => H.settingsUsageHTML())
+      aiSwCls: live(() => 'sw' + (H.S.settings.useAI ? ' on' : ''))
     }
   },
   template: `
@@ -81,10 +82,10 @@ export const SettingsSheetView = {
       <div class="acts"><button class="btn pri" @click="H.askBattery()">去关闭电池优化</button><button class="btn gh" @click="H.askNotify()">检查通知权限</button></div>
     </template>
   </template>
-  <div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)" v-html="keepNote"></div>
+  <div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">开启后通知栏会有一条常驻提示，这是系统允许的标准保活方式；服务每 10 分钟检查一次待办，把被系统丢掉的闹钟重新排上。仍有厂商会在后台强行冻结应用（连闹钟一起取消），app 无法绕过；那种情况下打开 app 时未完成的待办都还在「待办」页。电池优化页面的名字各厂商可能不同，这只是系统设置页，app 不侦测品牌。</div>
 </div>
 <div class="pgroup">外观</div>
-<div class="card"><div class="seg" style="margin-top:var(--s0)"><button v-for="t in themes" :key="t.m" :class="t.cls" @click="H.setTheme(t.m)" v-html="t.icon+t.label"></button></div><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">默认亮色；选「跟随系统」时随手机夜间模式切换，状态栏与导航栏同步变色</div></div>
+<div class="card"><div class="seg" style="margin-top:var(--s0)"><button v-for="t in themes" :key="t.m" :class="t.cls" @click="H.setTheme(t.m)"><ico :n="t.icon"/>{{ t.label }}</button></div><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">默认亮色；选「跟随系统」时随手机夜间模式切换，状态栏与导航栏同步变色</div></div>
 <div class="pgroup">AI 模型（BYOK）</div>
 <div class="card">
   <div class="row between" style="margin-top:var(--s0)"><div><b>启用 AI 解析</b><div style="font-size:var(--fs-xs);color:var(--dim)">关闭后只保存原文，不调用模型</div></div>
@@ -98,11 +99,11 @@ export const SettingsSheetView = {
   <div class="acts"><button class="btn pri" @click="H.saveSettings()">保存</button><button class="btn" @click="H.testLLM()">测试连接</button></div>
   <div id="llmOut"></div>
 </div>
-<div class="pgroup">采集</div><div class="card" v-html="collect"></div>
-<div class="pgroup">本地 OCR</div><div class="card" v-html="ocrCard"></div>
-<div class="pgroup">数据</div><div class="card" v-html="dataCard"></div>
-<div class="pgroup">运行状态</div><div class="card" v-html="runCard"></div>
-<div class="pgroup">用法</div><div class="card" v-html="usage"></div>`
+<div class="pgroup">采集</div><div class="card"><kv-row k="剪贴板暂存" v="前台自动 + 顶栏按钮手动" vstyle="color:var(--acc2)"/><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">打开 app 时自动暂存剪贴板里的文字；在别的 app 复制后切回「懒得记」即可看到，顶栏剪贴板按钮也可以随时手动收一条。Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。点「解析」才发到大模型，之前内容不会离开本机。</div></div>
+<div class="pgroup">本地 OCR</div><div class="card"><settings-ocr-card :i="i"/></div>
+<div class="pgroup">数据</div><div class="card"><settings-data-card/></div>
+<div class="pgroup">运行状态</div><div class="card"><settings-run-card :i="i"/></div>
+<div class="pgroup">用法</div><div class="card"><div class="body" style="margin-top:var(--s0)">· 在微信 / 浏览器 / 相册里点「分享」→ 选 懒得记<br>· 文字直接发给模型；图片先在本机用离线 OCR 识别成文字，再发给模型（图片不出门）<br>· 模型返回 JSON：标题、正文、标签、待办（含到期时间）<br>· 底部 ＋ 可手动记文字或选图片；返回键先关面板，再回笔记页</div></div>`
 };
 
 export default SettingsSheetView;

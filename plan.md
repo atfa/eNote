@@ -2106,3 +2106,63 @@ handler 总数 82（内联 19 + Vue 模板 63，基线 73）；导出表 68 个 
 **下一步（16b/16c）**：`stats.js`/`settings.js`/`files.js`/`clip.js` 的叶子片段（`kvHTML`、
 `liHTML`、`statsNotesCardHTML`、`settingsCollectHTML` 等 15 个函数）→ 组件；然后把六个字符串
 弹层翻成 Vue 弹层，删掉 SheetHost 的 `mode:'html'` 分支和最后 21 处内联 `onclick`。
+
+## 9.24 S3 步骤 16b 已完成（Austin：统计页 / 设置页 / 附件页 / 剪贴板页 / 截图页 / 文件夹页的叶子字符串 → 真组件）
+
+**做了什么**：16a 把核心视图（笔记卡、待办行）翻成真组件，剩下六个视图与两处弹层还在把
+HTML 片段交给 `app.js` 的 `*HTML` 字符串函数、模板里一个 `v-html` 插进去。那些字符串函数是
+步骤 10 的产物，当时的理由是「两条渲染路径共用同一份字符串，零漂移面」；步骤 11 删掉遗留渲染器
+之后只剩 Vue 一条路径，理由消失，负担留下（同 9.23 的三条：模板里看不见结构、事件写成字符串里的
+内联 `onclick`、整段 `innerHTML` 重画）。
+
+**新增 `go/ui/js/components/blocks.js`（6 个整块组件）**：`StatsHero`（含 `.hero` 外壳）、
+`StatsNotesCard`、`StatsRunCard`、`SettingsDataCard`、`SettingsRunCard`、`SettingsOcrCard`。
+`leaf.js` 加 6 个叶子：`KvRow`（设置页/我的页满屏的 `.kv` 行）、`OcrReady`（OCR 就绪胶囊）、
+`FileStrip`（附件页统计条）、`AttachGlyph` / `AttachMeta`（附件卡图标块与元信息行）、
+`ClipCount`（剪贴板弹层底部计数条）。消费方：`views/stats.js`、`views/settings.js`、
+`views/files.js`、`views/clip.js` 全部改成组件标签；`views/folders.js` / `views/shots.js`
+的勾选框图标与底部计数条（`#folderCount` / `#shotFoot`）也一并从 `v-html` 搬进模板。
+
+**`app.js` 删掉 17 个字符串函数**（`statsHeroInner` `statsNotesCardHTML` `ocrReadyHTML`
+`statsRunRowsHTML` `statsRunInnerHTML` `kvHTML` `liHTML` `settingsDataCardHTML`
+`settingsRunCardHTML` `settingsCollectHTML` `settingsOcrCardHTML` `settingsUsageHTML`
+`settingsKeepAliveNoteHTML` `clipCountHTML` `fileStripInner` `attachMetaHTML`
+`attachGlyphHTML`，净 −114 行），HOST 去掉这 17 个名字，加一个 `attachGlyphName(a)`
+（原 `attachGlyphHTML` 只做「按 kind 查图标名再包 `ic()`」，前半是算法、后半是模板，
+现在前半留作函数、后半是 `<ico :n="…"/>`）。设置页的采集卡与用法卡是纯静态文本，直接写进
+模板，`v-html` 归零。
+
+**`KvRow` 的三种形态（这一处返工了一次）**：迁移前的 `.kv` 行有三种拼法 —— 值是纯文本
+（`esc(x)`）、值是带样式的元素（`<span style="color:var(--acc2)">…</span>`）、值是富文本
+（`<b style="color:var(--bad)">`、OCR 胶囊）。第一版让插槽套在值 span 里面，DOM 多出一层
+`<span>`，等价性工具立刻抓到（`<span><span>7</span></span>` vs `<span>7</span>`）。
+现在三个分支各自直接当那个值 span：`vstyle`（样式落在值自己身上）/ 默认插槽（富文本）/
+`v`（HTML 字符串，`v-html`）。教训：**插槽不是免费的**，它插进哪里就多一层什么。
+
+**DOM 等价性（16b 版工具）**：`.test/probe_dom2_setup.sh` 分享一张 PDF 进来造真附件，
+`.test/probe_dom2.sh` 读真机同一份状态（`ST` / `S.info` / `FA` / `clipList` / `clipSel`）
+并抓 13 块 DOM，`.test/dom_equiv2.js` 用 `git show HEAD:go/ui/js/app.js` 抽出迁移前那批
+字符串函数、在 node 里跑同一份状态逐字比。归一化在 16a 的四条之外加两条，都写了理由：
+`style` 属性文本（遗留是字符串 innerHTML，Vue 解成对象再写 `el.style.cssText`，浏览器重序列化成
+`margin-top: var(--s0);`，计算样式相同）、`uptimeS`（状态是探针开头 dump 的，DOM 是几秒后抓的，
+秒数必然差）。探针自己的坑：`byText(".card", "Go 服务")` 会命中「设置 / 运行日志」那张卡
+（它的副标题里有「Go 服务、解析队列、OCR 状态」），选择器要挑只出现在目标块里的字面量；
+两次 dump 用同一个 key 会被 `Object.assign` 后者覆盖（我的页与设置页都叫 `runCard`）。
+结果：**13 块全部逐字一致**（hero 469 B / 笔记状态卡 306 / 我的页运行卡 333 / 附件统计条 43 /
+元信息行 46 / 图标块 81 / 剪贴板计数条 83 / 采集卡 332 / OCR 卡 307 / 数据卡 527 /
+设置运行卡 401 / 用法卡 222 / 保活长说明 236）。
+
+**数字**：模板里的 `v-html=` 属性从 **33 降到 7** —— 剩下的是 `shell.js` 三处（fab 图标、
+弹层 `.pbody`、`.panel`，16c 处理弹层那两处）、`empty-state.js` 一处（Tony owner，按设计）、
+`leaf.js` 一处（`KvRow` 的 `v` 兜底）、`shots.js` 一处（进度层 `warn` 是服务端 HTML 串）、
+`app.js` 一处是注释。`ic()` 调用 app.js 27 处（全在字符串弹层）；内联 `onclick` 21 处（同样
+全在 `app.js` 的六个字符串弹层）；handler 总数 81（内联 13 + Vue 模板 68，基线 73）；
+导出表 68 个 key；闸门 **119** 项。
+
+**验收**：`node tools/ui_test.js` **119 项全绿**；`GO_TEST=1 ./build.sh`（含 `go test ./...`）绿；
+`./install.sh` Success；`./test.sh --vd` **163 项 ok、0 FAIL、PASS**（与步骤 15/16a 基线逐条相同）；
+`.test/dom_equiv2.js` 13 块 DOM 逐字一致。
+
+**下一步（16c）**：六个字符串弹层（`sortSheet` `missedSheet` `addSheet` `addTodoSheet`
+`showLog` `showDebug`）翻成 Vue 弹层，删掉 `SheetHost` 的 `mode:'html'` 分支与最后 21 处内联
+`onclick`，闸门① 的内联基线随之从 13 降到 0。

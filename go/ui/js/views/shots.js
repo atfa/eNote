@@ -13,10 +13,14 @@
       文本节点再拼，「X · 已用 」+「0s」拼成「X · 已用0s」，空格丢了就比不过。
 
    <empty-state> 不收 :tick：EmptyState 的 props 只有 icon/title/sub，多传的 :tick 会
-   透传成根元素属性（步骤 7 的真机漂移：<div class="empty" tick="27">）。 */
+   透传成根元素属性（步骤 7 的真机漂移：<div class="empty" tick="27">）。
+
+   闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
+   components: { EmptyState, ShotItem, Ico, ShotProgress } */
 
 import { V, H, Vue, live } from '../vue.js'
 import { EmptyState } from '../components.js'
+import { Ico } from '../components/leaf.js'
 
 const { computed } = Vue
 
@@ -27,6 +31,7 @@ const { computed } = Vue
    VDIFF 比的是 class 属性字符串，多一个空格或多一次重复就红（见 views/files.js 的 acard）。 */
 export const ShotItem = {
   name: 'ShotItem',
+  components: { Ico },
   props: ['tick', 'x'],
   setup(props){
     return {
@@ -41,7 +46,7 @@ export const ShotItem = {
   <div :id="'shotitem-'+x.id" :class="cls" @click="H.shotPick(x.id)">
     <img :src="src" alt="" loading="lazy">
     <div class="shottime">{{ clock }}</div>
-    <div class="shotck" v-html="H.ic('check')"></div>
+    <div class="shotck"><ico n="check"/></div>
   </div>`
 };
 
@@ -51,7 +56,7 @@ export const ShotItem = {
    真机夹具和 CSS 都靠它们定位，改了就是静默失联。 */
 export const ShotsView = {
   name: 'ShotsView',
-  components: { EmptyState, ShotItem },
+  components: { EmptyState, ShotItem, Ico },
   setup(){
     const tick = computed(() => V.tick);
     const items = live(() => H.shotList);
@@ -68,9 +73,10 @@ export const ShotsView = {
       // 三态判定顺序与 loadShots() 一致：加载中 → 加载失败 → 空 → 网格。
       // 计数条单独一套：加载中时遗留路径写的是「已选 0 张」纯文本，loadShots() 完成后
       // 才换成 <b>N</b> 张已选 · 共 M 张 —— 首屏就照这个来，别提前显示 <b> 版。
-      countHtml: live(() => H.shotLoading
-        ? '已选 0 张'
-        : '<b>' + selCount.value + '</b> 张已选 · 共 ' + H.shotList.length + ' 张'),
+      // 步骤 16b：原来是整条字符串 v-html，现在结构在模板里（#shotFoot 这个 id 是
+      // test.sh 夹具与 CSS 的定位点，不能动）。
+      sel: selCount,
+      total: live(() => H.shotList.length),
       // syncShotBtns(n)：只有一张时「合并成一条」和「各存一条」是同一件事，只留一个按钮。
       one: live(() => selCount.value <= 1),
       goText: live(() => selCount.value <= 1 ? '创建笔记' : '合并成一条笔记'),
@@ -96,7 +102,7 @@ export const ShotsView = {
 <!-- 内联 display:block 是有意的（闸门⑲ 钉住）：这两个弹层的计数独占一行、按钮整行排在下面。
      .pfoot 默认是 flex + flex-wrap（步骤 13 为文件夹页窄屏加的），走 flex 会让计数和三个按钮挤一行。 -->
 <div class="pfoot" style="display:block">
-  <div class="count" id="shotFoot" style="margin-bottom:var(--s2)" v-html="countHtml"></div>
+  <div class="count" id="shotFoot" style="margin-bottom:var(--s2)"><template v-if="loading">已选 0 张</template><template v-else><b>{{ sel }}</b> 张已选 · 共 {{ total }} 张</template></div>
   <!-- class="btnrow"（步骤 14）：与 clip 弹层同一套做法，260px 面板下按钮文字不裁。 -->
   <div class="btnrow">
     <button class="btn pri" id="shotGo" :style="goStyle" @click="H.doImportShots('merge')">{{ goText }}</button>

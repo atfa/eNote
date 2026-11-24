@@ -18,7 +18,8 @@
    最早用到子组件的 CdChip 定义在 RemindBtns / TodoDue 之前，那里写全量会撞 TDZ），
    所以全量名单写在下面这行注释里；运行时每个组件仍各自注册自己模板里用到的那些。
    components: { Ico, SrcChip, StatusChip, CdChip, RemindBtns, TodoDue, TodoPriChips,
-                 NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoTx, TodoRowCompact } */
+                 NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoTx, TodoRowCompact,
+                 KvRow, OcrReady, FileStrip, AttachGlyph, AttachMeta, ClipCount } */
 import { H, live } from '../vue.js'
 
 /* 图标：sprite 引用。cls 不传时 class="ic"，传 's' 时 class="ic s"，与 ic(n, cls) 一致。 */
@@ -188,4 +189,70 @@ export const TodoRowCompact = {
   <div class="cb" :class="{on:t.done}" @click="H.toggle(n.id, t.id, $event.currentTarget)"><ico n="check"/></div>
   <div class="tx"><span class="ttx">{{ t.text }}</span><small><todo-due :t="t" :n="n" :tick="tick"/>{{ ' ' }}<todo-pri-chips :t="t" :compact="true" :tick="tick"/></small></div>
 </div>`
+}
+
+/* ---------- 步骤 16b：统计页 / 设置页 / 附件页 / 剪贴板页的叶子 ---------- */
+
+/* 设置页与我的页满屏都是这一行：左标签 + 右值。三种形态（对应迁移前的三种拼法）：
+   - vstyle：值本身带样式的（采集卡那行绿字）——样式落在值 span 自己身上，不能多套一层；
+   - 默认插槽：值是富文本（<b style="color:var(--bad)">、OCR 就绪胶囊）；
+   - v：值是 HTML 字符串（数字、esc 后的文本），v-html 直插，与遗留字符串拼出的节点一致。
+   多包一层 <span> 就是 DOM 差异（VDIFF 比结构），所以三个分支各自直接当那个值 span。 */
+export const KvRow = {
+  name: 'KvRow',
+  props: ['k', 'v', 'vstyle'],
+  template: `<div class="kv"><span>{{ k }}</span><span v-if="vstyle" :style="vstyle">{{ v }}</span><span v-else-if="hasSlot"><slot/></span><span v-else v-html="v"></span></div>`,
+  setup(props, ctx){
+    return { hasSlot: !!ctx.slots.default }
+  }
+}
+
+/* 本地 OCR 引擎状态胶囊（我的页运行信息卡与设置页「本地 OCR」卡共用） */
+export const OcrReady = {
+  name: 'OcrReady',
+  props: ['ready'],
+  template: `<b style="color:var(--ok)" v-if="ready">● 就绪</b><span style="color:var(--warn)" v-else>◌ 初始化中</span>`
+}
+
+/* 附件页顶部的统计条。原字符串是「附件 <b>N</b> · 大小 · <i>缺失</i>」：
+   「附件 」与「 · 」这些带空格的文本节点必须逐字保住，所以插值之间不写换行。 */
+export const FileStrip = {
+  name: 'FileStrip',
+  setup(){
+    return { H, FA: live(() => H.FA) }
+  },
+  template: `
+<div class="strip"><template v-if="!FA.total">附件 <b>0</b></template><template v-else>附件 <b>{{ FA.total }}</b> · {{ H.fmtSize(FA.bytes) }}<template v-if="FA.missing"> · <i>{{ FA.missing }} 个文件缺失</i></template></template></div>`
+}
+
+/* 附件卡的图标块（非图片附件走这里：按 kind 查 sprite 图标名） */
+export const AttachGlyph = {
+  name: 'AttachGlyph',
+  components: { Ico },
+  props: ['a'],
+  setup(props){
+    return { n: live(() => H.attachGlyphName(props.a)) }
+  },
+  template: `<div class="aglyph"><ico :n="n" cls="xl"/></div>`
+}
+
+/* 附件卡的元信息行：类型 · 大小 · 时间（三段文本 + 两个「 · 」分隔，逐字照抄原拼接） */
+export const AttachMeta = {
+  name: 'AttachMeta',
+  props: ['a'],
+  setup(){ return { H } },
+  template: `<div class="ameta">{{ a.kind }} · {{ H.fmtSize(a.size) }} · {{ H.fmtTime(a.createdAt) }}</div>`
+}
+
+/* 剪贴板弹层底部的计数条（#clipFoot 这个 id 是 test.sh 夹具与 CSS 的定位点，不能改） */
+export const ClipCount = {
+  name: 'ClipCount',
+  setup(){
+    return {
+      sel: live(() => { var n = 0; H.clipList.forEach(function(c){ if(H.clipSel[c.id]) n++ }); return n }),
+      total: live(() => H.clipList.length)
+    }
+  },
+  template: `
+<div class="count" id="clipFoot" style="margin-bottom:var(--s2)"><b>{{ sel }}</b> 条已选<template v-if="total"> · 共 {{ total }} 条</template></div>`
 }

@@ -1297,3 +1297,42 @@ Vue 模板用 `v-html` 插进去 —— 当时两条渲染路径要产出逐字�
   52 → 6，内联 `onclick` 只剩 `app.js` 字符串弹层里的 21 处；handler 总数 82（内联 19 + Vue 模板 63）。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15 基线逐条相同）。
+
+### 界面（P13 S3 步骤 16b）：统计页 / 设置页 / 附件页 / 剪贴板页 / 截图页 / 文件夹页的叶子字符串 → 真组件
+
+16a 清了核心视图，这一步清剩下六个视图与两处弹层里剩下的 `*HTML` 字符串函数。
+这些函数是步骤 10 的产物，理由是「两条渲染路径共用同一份字符串，零漂移面」；步骤 11 删掉
+遗留渲染器之后只剩 Vue 一条路径，理由消失，负担留下：闸门⑮ 编译模板时那块结构是一个字符串
+（卡片少个 `.kv` 它看不见），卡里的按钮写成字符串里的内联 `onclick`（绕过闸门①b 与闸门⑮，
+P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
+
+* 新增 `go/ui/js/components/blocks.js`：**6 个整块组件**（`StatsHero` 含 `.hero` 外壳、
+  `StatsNotesCard`、`StatsRunCard`、`SettingsDataCard`、`SettingsRunCard`、`SettingsOcrCard`）。
+  `leaf.js` 加 6 个叶子：`KvRow`（`.kv` 行）、`OcrReady`（OCR 就绪胶囊）、`FileStrip`（附件统计条）、
+  `AttachGlyph` / `AttachMeta`（附件卡图标块与元信息行）、`ClipCount`（剪贴板弹层计数条）。
+  `stats.js` / `settings.js` / `files.js` / `clip.js` 改成组件标签，`folders.js` / `shots.js` 的
+  勾选框图标与底部计数条（`#folderCount` / `#shotFoot`）从 `v-html` 搬进模板。
+* `app.js` 删掉 **17 个字符串函数**（净 −114 行），HOST 去掉这 17 个名字、加一个
+  `attachGlyphName(a)`：原 `attachGlyphHTML` 一半是算法（按 kind 查图标名）、一半是模板（包 `ic()`），
+  现在前半留作函数、后半是 `<ico :n="…"/>`。设置页的采集卡与用法卡是纯静态文本，直接写进模板。
+* **`KvRow` 的三种形态（返工一次）**：迁移前的 `.kv` 行有三种拼法（纯文本 / 值自带样式 /
+  值是富文本）。第一版让插槽套在值 span 里面，DOM 多出一层 `<span>`，等价性工具当场抓到。
+  现在三个分支各自直接当那个值 span：`vstyle` / 默认插槽 / `v`（`v-html`）。
+  教训：**插槽不是免费的**，它插进哪里就多一层什么。
+* **DOM 等价性（16b 版）**：`.test/probe_dom2_setup.sh` 分享一张 PDF 进来造真附件，
+  `.test/probe_dom2.sh` 读真机同一份状态（`ST` / `S.info` / `FA` / `clipList` / `clipSel`）抓 13 块
+  DOM，`.test/dom_equiv2.js` 用 `git show HEAD` 抽出迁移前的字符串函数在 node 里跑同一份状态逐字比。
+  归一化在 16a 四条之外加两条且各有理由：`style` 属性文本（遗留是字符串 innerHTML，Vue 解成对象
+  再写 `el.style.cssText`，浏览器重序列化成 `margin-top: var(--s0);`，计算样式相同）、`uptimeS`
+  （状态 dump 与抓 DOM 隔了几秒，秒数必然差）。探针的坑：`byText(".card", "Go 服务")` 会命中
+  「设置 / 运行日志」那张卡（副标题里有「Go 服务、解析队列、OCR 状态」），选择器要挑只出现在
+  目标块里的字面量；两次 dump 用同一个 key 会被 `Object.assign` 后者覆盖。
+  结果：**13 块全部逐字一致**（hero 469 B / 笔记状态卡 306 / 我的页运行卡 333 / 附件统计条 43 /
+  元信息行 46 / 图标块 81 / 剪贴板计数条 83 / 采集卡 332 / OCR 卡 307 / 数据卡 527 / 设置运行卡 401 /
+  用法卡 222 / 保活长说明 236）。
+* 数字：模板里的 `v-html=` 属性 **33 → 7**（剩下：`shell.js` 三处，其中弹层那两处归 16c；
+  `empty-state.js` 一处按设计；`leaf.js` 一处是 `KvRow` 的 `v` 兜底；`shots.js` 一处是服务端 HTML 串；
+  `app.js` 那处是注释）；内联 `onclick` 21 处与 `ic()` 27 处全部集中在 `app.js` 的六个字符串弹层里，
+  那是 16c。
+* 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a 基线逐条相同）。

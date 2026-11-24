@@ -13,16 +13,18 @@
    5) class 用拼接而不是「静态 class + 对象语法」：Vue 合并 class 的顺序与字符串拼接
       不同，VDIFF 比的是 class 属性字符串。
 
-   哪些块走 v-html、哪些块写进模板：
-   - hero、笔记状态卡、底部运行信息卡是**纯展示**（没有 handler、没有循环），整块用
-     v-html 复用叶子函数，两条路径共用同一份字符串，零漂移面。
-   - 数字格子、近 7 天图表、列表行有交互（点击 / 入场动画 class），结构写进模板，
-     只把图标与富文本片段交给叶子函数。
-   - 常见标签的 chip 写进模板，但插值的切分必须与遗留字符串的拼接一一对应：
-     VDIFF 的序列化器逐文本节点 trim 后拼，遗留的「#」+tag+「 · 」+n 是四个节点，
-     模板里写成一个插值就只剩一个节点（「#a · 3」 vs 「#a·3」）—— 这不是洁癖，
-     是比不过。 */
+   哪些块走 v-html、哪些块写进模板（步骤 16b 之后）：
+   - 全部写进模板。hero、笔记状态卡、底部运行信息卡现在是 components/blocks.js 里的真组件，
+     图标是 components/leaf.js 的 <ico>；v-html 只剩「一个元素里多个插值会被 Vue 合并成
+     一个文本节点」那种地方（本文件已清零）。
+   - 常见标签的 chip 写进模板，插值的切分与遗留字符串的拼接一一对应：遗留的「#」+tag+「 · 」+n
+     是四个节点，模板里写成一个插值就只剩一个节点（「#a · 3」 vs 「#a·3」）。
+
+   闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
+   components: { StatsStat, StatsChart, StatsLi, StatsHero, StatsNotesCard, StatsRunCard, Ico } */
 import { V, H, Vue, live } from '../vue.js'
+import { Ico } from '../components/leaf.js'
+import { StatsHero, StatsNotesCard, StatsRunCard } from '../components/blocks.js'
 
 const { computed } = Vue
 
@@ -35,13 +37,14 @@ const { computed } = Vue
    vdiff_tab 的注释）。 */
 export const StatsStat = {
   name: 'StatsStat',
+  components: { Ico },
   props: ['tick', 'i', 'v', 'label', 'icon', 'hot'],
   setup(props){
     return { H, cls: live(() => H.statCls(props.hot, props.label)) }
   },
   template: `
   <div :class="cls" :style="'--i:'+i">
-    <div class="si" v-html="H.ic(icon)"></div><b>{{ v }}</b><span>{{ label }}</span>
+    <div class="si"><ico :n="icon"/></div><b>{{ v }}</b><span>{{ label }}</span>
   </div>`
 };
 
@@ -85,14 +88,15 @@ export const StatsChart = {
    属性（它们是绑定机制不是 DOM 形状），所以比得过。sub 为空时两边都不渲染那行小字。 */
 export const StatsLi = {
   name: 'StatsLi',
+  components: { Ico },
   props: ['icon', 'title', 'sub'],
   emits: ['go'],
   // 末尾逗号不是风格：闸门⑮ 认的是 setup() 返回里的 `H,`，写成 return { H } 它认不出。
   setup(){ return { H, } },
   template: `
   <div class="li" @click="$emit('go')">
-    <span class="lico" v-html="H.ic(icon)"></span>
-    <div style="flex:1"><b style="font-size:var(--fs-base)" v-html="title"></b><div v-if="sub" style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--hair)" v-html="sub"></div></div>
+    <span class="lico"><ico :n="icon"/></span>
+    <div style="flex:1"><b style="font-size:var(--fs-base)">{{ title }}</b><div v-if="sub" style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--hair)">{{ sub }}</div></div>
     <span style="color:var(--dim2)">›</span>
   </div>`
 };
@@ -101,7 +105,7 @@ export const StatsView = {
   name: 'StatsView',
   // 注册表用简写形式（键 = 组件名）：闸门⑮ 的 components: 检查就是按这个形状扫的，
   // 写成 'stats-stat': StatsStat 会被它当成没注册（Vue 两种都认，闸门只认一种）。
-  components: { StatsStat, StatsChart, StatsLi },
+  components: { StatsStat, StatsChart, StatsLi, StatsHero, StatsNotesCard, StatsRunCard },
   setup(){
     const tick = computed(() => V.tick);
     return {
@@ -111,10 +115,6 @@ export const StatsView = {
       st: live(() => H.ST),
       stErr: live(() => H.stErr),
       sf: live(() => H.SHOTFLAGS || {}),
-      // 纯展示块：整块复用叶子函数（见文件头「哪些块走 v-html」）
-      heroInner: live(() => H.statsHeroInner(H.S.info, H.ST)),
-      notesCard: live(() => H.statsNotesCardHTML(H.ST)),
-      runCard: live(() => H.statsRunInnerHTML(H.S.info)),
       // 六格：值/图标/热态都从 ST 现算，顺序与遗留 renderMine() 逐字一致
       tiles: live(function(){
         var s = H.ST;
@@ -141,7 +141,7 @@ export const StatsView = {
     }
   },
   template: `
-<div class="hero" v-html="heroInner"></div>
+<stats-hero :i="i" :st="st"/>
 <template v-if="!st">
   <div class="card"><div class="skel l"></div><div class="skel s"></div></div>
   <div class="card" v-if="stErr"><div class="errbox">{{ stErr }} ·
@@ -155,7 +155,7 @@ export const StatsView = {
   <stats-chart :tick="tick" :days="st.days"/>
   <div class="legend"><span><i style="background:var(--acc)"></i>新增笔记</span><span><i style="background:var(--acc2)"></i>完成待办</span></div>
 </div>
-<div class="card" v-html="notesCard"></div>
+<div class="card"><stats-notes-card :st="st"/></div>
 <div class="card" v-if="tags.length"><h2>常见标签</h2><div class="tagrow"><span class="chip tag" v-for="t in tags" :key="t.tag">#{{ t.tag }} · {{ t.n }}</span></div></div>
 <div class="card"><h2>截图捕获</h2><div style="padding:0 var(--s3) var(--s1)">
   <stats-li icon="folder" title="监控文件夹" :sub="shotSubs.folders" @go="H.folderSheet()"/>
@@ -172,7 +172,7 @@ export const StatsView = {
   <stats-li icon="inbox" title="导入 JSON" sub="按笔记 ID 合并，不覆盖本地" @go="H.importJSON()"/>
   <stats-li icon="trash" title="清空全部" sub="删除所有笔记与附件" @go="H.clearAllNotes()"/>
 </div>
-<div class="card" v-html="runCard"></div>
+<div class="card"><stats-run-card :i="i"/></div>
 </template>`
 };
 

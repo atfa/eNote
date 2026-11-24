@@ -811,12 +811,6 @@ function clipThumbText(c){ return ' 图片' + (c.name ? ' · ' + c.name : '') }
 function clipMetaText(c){ return (c.app || '剪贴板') + ' · ' + relTime(c.createdAt) }
 /** #clipList 里的内容：加载中 / 加载失败 / 空 / 列表（判定顺序与 loadClips 一致） */
 /** 底部计数条：空暂存时是「<b>0</b> 条已选」（loadClips 的空态分支），有条目才是全式 */
-function clipCountHTML(){
-  if(!clipList.length) return '<b>0</b> 条已选'
-  var n = 0
-  clipList.forEach(function(c){ if(clipSel[c.id]) n++ })
-  return '<b>' + n + '</b> 条已选 · 共 ' + clipList.length + ' 条'
-}
 /** clipCount() 里那句按钮文案：只选一条时不带数字（一条没什么可「一键」的） */
 function clipParseText(n){ return n > 1 ? ('一键解析 ' + n + ' 条') : '一键解析' }
 function clipSheet(){
@@ -1004,57 +998,10 @@ function hit(s){ if(!q) return true; return (s||'').toLowerCase().indexOf(q.toLo
    这两块的文本是「3 / 2」这种三段拼接：模板里写成一个插值就只产生一个文本节点，
    VDIFF 的序列化器逐节点 trim 后拼出来是「3/2」，与遗留的「3 / 2」对不上。
    结构必须逐字一致，所以整块共用而不是拄进模板。 */
-function settingsDataCardHTML(){
-  var st = ST, i = S.info;
-  return '<div class="kv"><span>笔记 / 待办</span><span>'+(st?st.notes.total:i.notes||0)+' / '
-     +(st?st.todos.total:i.todos||0)+'</span></div>'
-   +'<div class="kv"><span>未完成 / 已逾期</span><span>'+(st?st.todos.open:i.open||0)+' / <b style="color:var(--bad)">'
-     +(st?st.todos.overdue:i.overdue||0)+'</b></span></div>'
-   +'<div class="kv"><span>附件 / 占用</span><span>'+(st?(st.attach.count||0):0)+' 个 / '
-     +fmtSize(st?st.bytes:0)+'</span></div>'
-   +'<div class="acts"><button class="btn gh" onclick="exportJSON()">导出 JSON</button>'
-   +'<button class="btn gh" onclick="importJSON()">导入 JSON</button>'
-   +'<button class="btn dg" onclick="clearAllNotes()">清空全部</button></div>'
-   +'<div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">导出＝全量备份（含待办与附件元数据）；'
-   +'导入按笔记 ID 合并，已存在的笔记不覆盖；清空只删笔记与附件，设置与 API Key 保留。</div>';
-}
-function settingsRunCardHTML(i){
-  return statsRunRowsHTML(i)
-   +'<div class="kv"><span>解析队列</span><span>'+(i.queue||0)+' 条待处理</span></div>'
-   +'<div class="acts"><button class="btn gh" onclick="showLog()">查看日志</button>'
-   +'<button class="btn gh" onclick="showDebug()">AI 调用记录</button></div>';
-}
 /* ---------- 步骤 10：设置页的纯展示块 ----------
    这三块没有 handler，整块交给叶子函数，Vue 侧 v-html 同一份字符串 —— 长段说明文字
    拄进模板的话，模板里多一个换行就少一个空格，VDIFF 比文本节点时很难查。 */
-function settingsCollectHTML(){
-  return '<div class="kv"><span>剪贴板暂存</span><span style="color:var(--acc2)">前台自动 + 顶栏按钮手动</span></div>'
-   +'<div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">打开 app 时自动暂存剪贴板里的文字；'
-   +'在别的 app 复制后切回「懒得记」即可看到，顶栏剪贴板按钮也可以随时手动收一条。'
-   +'Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。'
-   +'点「解析」才发到大模型，之前内容不会离开本机。</div>';
-}
-function settingsOcrCardHTML(i){
-  return '<div class="kv"><span>引擎状态</span><span>'+ocrReadyHTML(i.ocrReady)+'</span></div>'
-   +'<div class="kv"><span>引擎信息</span><span>'+(S.ocrInfo||'vivo 离线 OCR')+'</span></div>'
-   +'<div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">图片只在本机识别成文字，'
-   +'只有识别出的文字（和原文）会发给模型。单条笔记可在笔记卡片上「↻ 重新识别图片」。</div>';
-}
-function settingsUsageHTML(){
-  return '<div class="body" style="margin-top:var(--s0)">'
-   +'· 在微信 / 浏览器 / 相册里点「分享」→ 选 懒得记<br>'
-   +'· 文字直接发给模型；图片先在本机用离线 OCR 识别成文字，再发给模型（图片不出门）<br>'
-   +'· 模型返回 JSON：标题、正文、标签、待办（含到期时间）<br>'
-   +'· 底部 ＋ 可手动记文字或选图片；返回键先关面板，再回笔记页</div>';
-}
 /* 常驻后台那段长说明（无 handler）；电池优化那一段带两个按钮，留在模板里 */
-function settingsKeepAliveNoteHTML(){
-  return '开启后通知栏会有一条常驻提示，'
-   +'这是系统允许的标准保活方式；服务每 10 分钟检查一次待办，把被系统丢掉的闹钟重新排上。'
-   +'仍有厂商会在后台强行冻结应用（连闹钟一起取消），app 无法绕过；那种情况下打开 app 时'
-   +'未完成的待办都还在「待办」页。电池优化页面的名字各厂商可能不同，这只是系统设置页，'
-   +'app 不侦测品牌。';
-}
 /* 每个 tab 一个常驻面板（R14）：来回切页不重绘整个页面，滚动位置也不会丢。
    数据变了才把「其它页」标记为待重绘，切过去时重建一次。 */
 var panes = {}, paneBuilt = {}, paneDirty = {}, tabScroll = {notes:0, todos:0, files:0, mine:0};
@@ -1211,19 +1158,11 @@ async function filesNow(){
 /* 步骤 7 拆出的叶子：Vue 的 FilesView 直接画 <div class="strip" v-html=...>，
    两条路径共用一份 inner HTML，VDIFF 才能逐字比（步骤 5/6 定下的模式：结构在模板里，
    叶子片段同源）。 */
-function fileStripInner(){
-  if(!FA.total) return '附件 <b>0</b>';
-  return '附件 <b>'+FA.total+'</b> · '+fmtSize(FA.bytes)
-    + (FA.missing ? ' · <i>'+FA.missing+' 个文件缺失</i>' : '');
-}
 function attachCardCls(a){
   return 'acard' + (a.missing ? ' gone' : '') + enterCls('a' + a.id);
 }
-function attachMetaHTML(a){
-  return esc(a.kind) + ' · ' + fmtSize(a.size) + ' · ' + fmtTime(a.createdAt);
-}
-function attachGlyphHTML(a){
-  return ic(KIND[a.kind] || 'clipfile', 'xl');
+function attachGlyphName(a){
+  return KIND[a.kind] || 'clipfile';
 }
 function openAttach(id){
   var a = null;
@@ -1264,46 +1203,11 @@ async function statsNow(){
    这些片段函数是 Vue 模板的渲染帮手（经 setHost 暴露给组件）；步骤 11 删掉遗留字符串
    渲染器之后它们只剩一个调用者，留着是因为模板里拼 HTML 的写法与它们逐字一致；Vue 侧经 setHost
    的 H.xxx 调用。hero 整块是静态结构 + 三处动态值，留在叶子函数里比模板抄一遍少一处漂移面。 */
-function statsHeroInner(i, s){
-  return '<div class="hrow"><div class="hlogo"><img src="/icon.png" alt=""></div>'
-    + '<div><h1>懒得记</h1><div class="hver">'+esc(i.go||'')+' · 本机离线 OCR · BYOK</div></div></div>'
-    + '<div class="hstats">'
-    + (s ? '<span>'+ic('note')+s.notes.total+' 条笔记</span>'
-          + '<span>'+ic('check-square')+s.todos.total+' 条待办</span>'
-          + '<span>'+ic('clip')+(s.attach.count||0)+' 个附件</span>'
-          + '<span>'+ic('db')+fmtSize(s.bytes)+'</span>'
-      : '<span>正在统计本地数据…</span>')
-    + '</div>';
-}
 /* 笔记状态卡（纯展示，无 handler）：整块交给叶子函数，Vue 侧 v-html 同一份字符串。
    卡壳（<div class="card">）由两条路径各自写，内容逐字共用。 */
-function statsNotesCardHTML(s){
-  return '<h2>笔记状态</h2>'
-    + kvHTML('AI 解析完成', s.notes.done) + kvHTML('仅存原文', s.notes.raw)
-    + kvHTML('解析失败', s.notes.error) + kvHTML('队列中', (s.notes.queued||0)+(s.notes.parsing||0))
-    + kvHTML('附件缺失文件', s.attach.missing||0);
-}
-function ocrReadyHTML(ready){
-  return ready ? '<b style="color:var(--ok)">● 就绪</b>' : '<span style="color:var(--warn)">◌ 初始化中</span>';
-}
 /* 我的页最底部的运行信息卡。设置页的「运行状态」卡前三行相同、第四行是解析队列，
    所以只共用这三行，第四行各自写。 */
-function statsRunRowsHTML(i){
-  return kvHTML('Go 服务', esc(i.server||''))
-    + kvHTML('Go / 运行时长', esc(i.go||'')+' / '+(i.uptimeS||0)+'s')
-    + kvHTML('时区', esc(i.tz||''));
-}
-function statsRunInnerHTML(i){
-  return statsRunRowsHTML(i) + kvHTML('OCR 引擎', ocrReadyHTML(i.ocrReady));
-}
-function kvHTML(k, v){ return '<div class="kv"><span>'+k+'</span><span>'+v+'</span></div>' }
 function statCls(hot, label){ return 'stat'+(hot?' hot':'')+enterCls('s'+label) }
-function liHTML(icn, t, sub, fn){
-  return '<div class="li" onclick="'+fn+'"><span class="lico">'+ic(icn)+'</span>'
-    +'<div style="flex:1"><b style="font-size:var(--fs-base)">'+t+'</b>'
-    +(sub?'<div style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--hair)">'+sub+'</div>':'')+'</div>'
-    +'<span style="color:var(--dim2)">›</span></div>';
-}
 function settingsSheet(){
   /* 步骤 11：只剩 Vue 一条路径（SettingsSheetView）。dataset.kind 是 CSS 钩子
      （css/views/settings.css 靠它定位设置页）；步骤 15 面板归 Vue 所有，钩子走状态。 */
@@ -1784,9 +1688,7 @@ var HOST = setHost({
      FA / q 是模块状态，必须走 getter：直接传值的话 Vue 拿到的是装配时那份快照，
      2s 轮询换掉 FA 后视图不会动（症状是「附件页永远停在首屏数据」）。 */
   get FA(){ return FA }, get q(){ return q },
-  fileStripInner: fileStripInner,
-  attachCardCls: attachCardCls, attachMetaHTML: attachMetaHTML,
-  attachGlyphHTML: attachGlyphHTML,
+  attachCardCls: attachCardCls, attachGlyphName: attachGlyphName,
   openAttach: openAttach, delAttach: delAttach, filesNow: filesNow,
   /* 步骤 8 加：ShotsView / FoldersView / ShotProgress 的宿主接口。漏一个的症状同步骤 6：
      Vue 渲染抛错 → 静默回退字符串渲染器，闸门⑮ 静态扇模板里的 H.xxx 钉住它。
@@ -1808,7 +1710,7 @@ var HOST = setHost({
   clipPick: clipPick, clipSelAll: clipSelAll, clipDel: clipDel,
   clipDelSel: clipDelSel, clipParse: clipParse, relTime: relTime,
   clipItemCls: clipItemCls, clipPrevText: clipPrevText, clipThumbText: clipThumbText,
-  clipMetaText: clipMetaText, clipCountHTML: clipCountHTML, clipParseText: clipParseText,
+  clipMetaText: clipMetaText, clipParseText: clipParseText,
   /* 步骤 10 加：StatsView / SettingsSheetView 的宿主接口（同上，漏一个就是静默回退字符串渲染器，
      闸门⑮ 静态扇模板里的 H.xxx 钉住它）。
      ST / remindPending 会被整体赋值（statsNow / refresh），必须走 getter；SHOTFLAGS 步骤 8 已有。 */
@@ -1818,13 +1720,7 @@ var HOST = setHost({
   /* 步骤 13 加：真机竞态回归用例要能在附件页请求在飞时开一次笔记页搜索（抢占
      searchSeq），没有它只能靠 refresh() 间接抢，抢不中就是空跑。 */
   searchNow: searchNow,
-  statCls: statCls, kvHTML: kvHTML, liHTML: liHTML,
-  statsHeroInner: statsHeroInner, statsNotesCardHTML: statsNotesCardHTML,
-  statsRunRowsHTML: statsRunRowsHTML,
-  statsRunInnerHTML: statsRunInnerHTML,
-  settingsDataCardHTML: settingsDataCardHTML, settingsRunCardHTML: settingsRunCardHTML, ocrReadyHTML: ocrReadyHTML,
-  settingsCollectHTML: settingsCollectHTML, settingsOcrCardHTML: settingsOcrCardHTML,
-  settingsUsageHTML: settingsUsageHTML, settingsKeepAliveNoteHTML: settingsKeepAliveNoteHTML,
+  statCls: statCls,
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
   askNotify: askNotify, askExact: askExact, askBattery: askBattery,

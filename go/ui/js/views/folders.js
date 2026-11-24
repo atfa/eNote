@@ -16,10 +16,14 @@
    读模块状态一律 live()：folderSel 是普通模块变量，folderSelAll / folderPickShots 整体替换
    它，computed 不依赖 tick 就永远缓存 → 勾选点了没反应。
    模板里用原始值 + {{ }}，不要再 esc（见 views/shots.js 顶部第 2 条）。
-   <empty-state> 不收 :tick（步骤 7 的透传漂移）。 */
+   <empty-state> 不收 :tick（步骤 7 的透传漂移）。
+
+   闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
+   components: { EmptyState, FolderRow, Ico } */
 
 import { V, H, Vue, live } from '../vue.js'
 import { EmptyState } from '../components.js'
+import { Ico } from '../components/leaf.js'
 
 const { computed } = Vue
 
@@ -29,6 +33,7 @@ const { computed } = Vue
    </div></div><div class="fmeta">N 张|已不存在</div></div> */
 export const FolderRow = {
   name: 'FolderRow',
+  components: { Ico },
   props: ['tick', 'f'],
   setup(props){
     return {
@@ -40,7 +45,7 @@ export const FolderRow = {
   },
   template: `
   <div :class="cls" :data-path="f.path" @click="H.folderPick(f.path)">
-    <div class="fcb" v-html="H.ic('check')"></div>
+    <div class="fcb"><ico n="check"/></div>
     <div style="flex:1;min-width:0"><div class="fname">{{ label }}</div><div class="fpath">{{ f.path }}</div></div>
     <div class="fmeta">{{ meta }}</div>
   </div>`
@@ -61,7 +66,7 @@ function sortRows(all, sel){
 
 export const FoldersView = {
   name: 'FoldersView',
-  components: { EmptyState, FolderRow },
+  components: { EmptyState, FolderRow, Ico },
   setup(){
     const tick = computed(() => V.tick);
     const rows = live(() => sortRows(H.folderAll, H.folderSel));
@@ -76,10 +81,16 @@ export const FoldersView = {
                  : rows.value;
       }),
       // 计数与 folderCountLabel() 一致：missing 的行既不进「共 M 个」也不进「已选 N 个」
-      countHtml: live(() => {
-        let n = 0, total = 0;
-        H.folderAll.forEach(function(f){ if (!f.missing) { total++; if (H.folderSel[f.path]) n++ } });
-        return '<b>' + n + '</b> 个已选 · 共 ' + total + ' 个';
+      // 步骤 16b：原来是整条字符串 v-html，现在结构在模板里（#folderCount 是 test.sh 的断言点）
+      sel: live(() => {
+        let n = 0;
+        H.folderAll.forEach(function(f){ if (!f.missing && H.folderSel[f.path]) n++ });
+        return n;
+      }),
+      total: live(() => {
+        let total = 0;
+        H.folderAll.forEach(function(f){ if (!f.missing) total++ });
+        return total;
       }),
       saveText: live(() => {
         let n = 0;
@@ -100,7 +111,7 @@ export const FoldersView = {
   <folder-row v-for="f in shown" :key="f.path" :f="f" :tick="tick"/>
 </div>
 <div class="pfoot">
-  <div class="count" id="folderCount" v-html="countHtml"></div>
+  <div class="count" id="folderCount"><b>{{ sel }}</b> 个已选 · 共 {{ total }} 个</div>
   <div class="sp"></div>
   <button class="btn pri" @click="H.folderSave()">{{ saveText }}</button>
 </div>`
