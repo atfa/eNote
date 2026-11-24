@@ -92,7 +92,7 @@ export const StatsLi = {
   template: `
   <div class="li" @click="$emit('go')">
     <span class="lico" v-html="H.ic(icon)"></span>
-    <div style="flex:1"><b style="font-size:14.5px" v-html="title"></b><div v-if="sub" style="font-size:11px;color:var(--dim2);margin-top:1px" v-html="sub"></div></div>
+    <div style="flex:1"><b style="font-size:var(--fs-base)" v-html="title"></b><div v-if="sub" style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--hair)" v-html="sub"></div></div>
     <span style="color:var(--dim2)">›</span>
   </div>`
 };
@@ -157,14 +157,14 @@ export const StatsView = {
 </div>
 <div class="card" v-html="notesCard"></div>
 <div class="card" v-if="tags.length"><h2>常见标签</h2><div class="tagrow"><span class="chip tag" v-for="t in tags" :key="t.tag">#{{ t.tag }} · {{ t.n }}</span></div></div>
-<div class="card"><h2>截图捕获</h2><div style="padding:0 12px 4px">
+<div class="card"><h2>截图捕获</h2><div style="padding:0 var(--s3) var(--s1)">
   <stats-li icon="folder" title="监控文件夹" :sub="shotSubs.folders" @go="H.folderSheet()"/>
   <stats-li icon="image" title="截图暂存" :sub="shotSubs.staged" @go="H.shotSheet()"/>
   <stats-li icon="refresh" title="现在扫描一次" :sub="shotSubs.scan" @go="H.scanShotsNow()"/>
   <stats-li icon="calendar" title="回捞最近 7 天" sub="把最近 7 天的截图都收一遍（不会重复）" @go="H.rescanShots(7)"/>
   <stats-li icon="trash" title="清空截图暂存" sub="只删副本，不动系统相册" @go="H.clearShots()"/>
 </div></div>
-<div class="card" style="padding:2px 12px">
+<div class="card" style="padding:var(--s0) var(--s3)">
   <stats-li icon="settings" title="设置" sub="AI 模型 / 外观 / 采集 / OCR / 数据" @go="H.settingsSheet()"/>
   <stats-li icon="file-text" title="运行日志" sub="Go 服务、解析队列、OCR 状态" @go="H.showLog()"/>
   <stats-li icon="sparkle" title="AI 调用记录" sub="本次运行的请求与返回" @go="H.showDebug()"/>

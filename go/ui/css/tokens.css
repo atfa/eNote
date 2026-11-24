@@ -41,6 +41,11 @@
   --grad-text:linear-gradient(90deg,#2f6bff,#0fae88);
   --grad-hot:linear-gradient(135deg,#ff5f6d,#ff9a3c);
   --on-grad:#ffffff;
+  /* 步骤 13：彩色底上的白（开关滑块、截图角标文字、危险按钮文字）。
+     明暗两档都是白，不随主题变，所以放在调色板里而不是 --on-* 那组。 */
+  --on-solid:#ffffff;
+  /* 遮罩蒙版用的不透明黑（mask-image 的几何参数，不是调色板：暗色下也必须是纯黑）。 */
+  --mask-opaque:#000000;
   --header-bg:rgba(245,247,251,.86); --nav-bg:rgba(255,255,255,.92);
   --toast-bg:#131a24; --toast-fg:#ffffff;
   --pre-bg:#f1f4f9; --pre-fg:#2a3a52; --thumb-bg:#eef1f6; --grip:#c9d1de;
@@ -53,7 +58,10 @@
   --spring:cubic-bezier(.34,1.56,.64,1);
 
   /* ---- S2 新增：间距刻度。基准 4，半档 2 只用于图标与文字的视觉对齐 ---- */
-  --s0:2px; --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --s0:2px; --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;;
+  /* 步骤 13：底部留白 = nav(56) + fab + 余量。body 与 #list 原来各写 96px / 104px，
+     同一个意思两个数，统一成一个布局常量（取大的那个，内容不被 fab/nav 盖住）。 */
+  --clear-bottom:104px;
   --hair:1px;
 
   /* ---- S2 新增：圆角刻度（三档 + 胶囊）---- */

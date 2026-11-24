@@ -94,7 +94,7 @@ export const FoldersView = {
   <button class="btn sm" id="folderSelNone" @click="H.folderSelAll(false)">全不选</button>
   <button class="btn sm" @click="H.folderPickShots()">只选截图目录</button>
 </div>
-<div style="margin:8px 0 4px"><input id="folderQ" class="fin" placeholder="搜索文件夹" @input="H.folderFilter($event.target.value)"></div>
+<div style="margin:var(--s2) 0 var(--s1)"><input id="folderQ" class="fin" placeholder="搜索文件夹" @input="H.folderFilter($event.target.value)"></div>
 <div id="folderList" class="clipload">
   <empty-state v-if="!rows.length" icon="folder" title="读不到文件夹" sub="需要先允许读取照片（我的 → 截图捕获 → 去授权）"/>
   <folder-row v-for="f in shown" :key="f.path" :f="f" :tick="tick"/>

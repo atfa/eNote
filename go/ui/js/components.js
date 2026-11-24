@@ -133,7 +133,7 @@ export const NoteCard = {
   <div class="facts" v-if="facts" v-html="facts"></div>
   <div class="body" :class="{clamp: !exp}" v-text="body"></div>
   <div class="errbox" v-if="n.error" v-text="n.error"></div>
-  <div style="margin-top:10px" v-if="todos" v-html="todos"></div>
+  <div style="margin-top:var(--s2)" v-if="todos" v-html="todos"></div>
   <div class="acts">
     <button class="btn sm gh exp" @click="H.expand(n.id)" v-html="H.ic(exp?'chevup':'chev')+(exp?'收起':'展开详情')"></button>
     <button class="btn sm" v-if="n.status==='done'||n.status==='raw'" @click="H.reparse(n.id)" v-html="H.ic('refresh')+'重新解析'"></button>

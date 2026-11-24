@@ -87,8 +87,8 @@ export const ClipSheetView = {
   <clip-item v-for="(x,k) in items" :key="x.id" :x="x" :tick="tick"/>
 </div>
 <div class="pfoot" style="display:block">
-  <div class="count" id="clipFoot" style="margin-bottom:8px" v-html="countHtml"></div>
-  <div style="display:flex;gap:8px">
+  <div class="count" id="clipFoot" style="margin-bottom:var(--s2)" v-html="countHtml"></div>
+  <div style="display:flex;gap:var(--s2)">
     <button class="btn" style="flex:1" id="clipDelSel" @click="H.clipDelSel()">删除所选</button>
     <button class="btn" style="flex:1.2" id="clipRaw" @click="H.clipParse(false)">原样存为笔记</button>
     <button class="btn pri" style="flex:1.2" id="clipParseBtn" @click="H.clipParse(true)">{{ parseText }}</button>

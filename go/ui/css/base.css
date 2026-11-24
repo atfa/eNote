@@ -15,28 +15,28 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
 /* 关掉 Chromium 的“文字自动放大”：它按整块文字宽度放大字号，
    结果「重要」这种两字标签比旁边的时间标签大一圈，行高全乱 */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
-body{padding-bottom:calc(96px + env(safe-area-inset-bottom));overscroll-behavior:none}
+body{padding-bottom:calc(var(--clear-bottom) + env(safe-area-inset-bottom));overscroll-behavior:none}
 /* 页面内容左右留白：卡片不贴屏幕边（顶栏/底栏是通栏条，不归它们管）*/
-main#view{padding:0 var(--s3) 104px}
+main#view{padding:0 var(--s3) var(--clear-bottom)}
 a{color:var(--acc)}
 .sec{margin:var(--s3) var(--s0) var(--s2);font-size:var(--fs-sm);font-weight:700;color:var(--dim);letter-spacing:1px;
   display:flex;align-items:center;gap:var(--s2)}
 .sec:after{content:"";flex:1;height:1px;background:var(--line)}
-.card{background:var(--card);border:var(--hair) solid var(--line);border-radius:var(--r);padding:13px var(--s3);margin:var(--s2) 0;box-shadow:var(--sh)}
+.card{background:var(--card);border:var(--hair) solid var(--line);border-radius:var(--r);padding:var(--s3) var(--s3);margin:var(--s2) 0;box-shadow:var(--sh)}
 .row{display:flex;align-items:center;gap:var(--s2)}
 .between{justify-content:space-between}
 .t{font-size:var(--fs-lg);font-weight:700;margin:0 0 var(--s1);letter-spacing:-.2px;line-height:1.35}
 .meta{font-size:var(--fs-xs);color:var(--dim2);display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center}
-.body{font-size:13.5px;color:var(--dim);white-space:pre-wrap;word-break:break-word;margin-top:9px;
-  padding:9px 11px;border-radius:0 11px 11px 0;background:var(--card2);
+.body{font-size:var(--fs-md);color:var(--dim);white-space:pre-wrap;word-break:break-word;margin-top:var(--s2);
+  padding:var(--s2) var(--s3);border-radius:0 var(--r1) var(--r1) 0;background:var(--card2);
   border-left:3px solid var(--acc);line-height:1.65}
 /* 三行截断用 max-height，不能用 -webkit-line-clamp：那套要求正常换行，
    而正文是 white-space:pre-wrap（要保留用户写的换行），line-clamp 直接不生效，
    于是正文从来没被截断过、每张卡都挂着一个点了没反应的「展开详情」。
    3 行 = 3 * 1.65em，再加 18px 的上下内边距。 */
 .body.clamp{max-height:calc(3 * 1.65em + 18px);overflow:hidden;
-  -webkit-mask-image:linear-gradient(180deg,#000 68%,rgba(0,0,0,.08))}
-.chip{display:inline-flex;align-items:center;gap:var(--s1);font-size:var(--fs-xs);line-height:1.4;padding:1px var(--s2);border-radius:var(--r-pill);border:var(--hair) solid var(--line);color:var(--dim);background:var(--card2);white-space:nowrap;
+  -webkit-mask-image:linear-gradient(180deg,var(--mask-opaque) 68%,rgba(0,0,0,.08))}
+.chip{display:inline-flex;align-items:center;gap:var(--s1);font-size:var(--fs-xs);line-height:1.4;padding:var(--hair) var(--s2);border-radius:var(--r-pill);border:var(--hair) solid var(--line);color:var(--dim);background:var(--card2);white-space:nowrap;
   vertical-align:middle}
 .chip .ic{width:11px;height:11px;stroke-width:2}
 .chip.ai{color:var(--acc);border-color:var(--acc);background:var(--acc-s)}
@@ -53,15 +53,15 @@ a{color:var(--acc)}
 @keyframes hitin{from{opacity:0;transform:translateY(-4px) scale(.9)}to{opacity:1;transform:none}}
 /* 附件网格（R4）：图片给缩略图，其他文件给类型图标 */
 .agrid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--s2);margin-top:var(--s2)}
-.acard{background:var(--card);border:var(--hair) solid var(--line);border-radius:var(--r2);padding:9px;
+.acard{background:var(--card);border:var(--hair) solid var(--line);border-radius:var(--r2);padding:var(--s2);
   box-shadow:var(--sh);display:flex;flex-direction:column;gap:var(--s1);cursor:pointer;
   transition:transform var(--d1) var(--ease)}
 .acard:active{transform:scale(.97)}
 .acard.gone{opacity:.62}
 .athumb{width:100%;height:96px;object-fit:contain;border-radius:var(--r1);background:var(--card2)}
-.aglyph{height:96px;display:flex;align-items:center;justify-content:center;font-size:38px;
+.aglyph{height:96px;display:flex;align-items:center;justify-content:center;font-size:var(--fs-2xl);
   border-radius:var(--r1);background:var(--card2)}
-.aname{font-size:12.5px;font-weight:600;word-break:break-all;line-height:1.35}
+.aname{font-size:var(--fs-sm);font-weight:600;word-break:break-all;line-height:1.35}
 .ameta{font-size:var(--fs-xs);color:var(--dim2)}
 .anote{font-size:var(--fs-xs);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .amiss{font-size:var(--fs-xs);color:var(--bad)}
@@ -69,8 +69,8 @@ a{color:var(--acc)}
 .arow .btn{flex:1}
 /* 错误提示框：类名不能叫 .err，否则和 .chip.err（「重要」小标签）撞车，
    小标签会被套上 12px 字号 + 7px 内边距，比旁边的时间标签大一圈 */
-.errbox{margin-top:var(--s2);font-size:var(--fs-sm);color:var(--bad);background:var(--bad-s);border:var(--hair) solid var(--bad);border-radius:var(--r1);padding:var(--s2) 9px}
-.todo{display:flex;align-items:flex-start;gap:var(--s2);padding:9px var(--s0) 9px var(--s2);border-top:var(--hair) solid var(--line);
+.errbox{margin-top:var(--s2);font-size:var(--fs-sm);color:var(--bad);background:var(--bad-s);border:var(--hair) solid var(--bad);border-radius:var(--r1);padding:var(--s2)}
+.todo{display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s2) var(--s0) var(--s2) var(--s2);border-top:var(--hair) solid var(--line);
   border-left:3px solid transparent;
   max-height:260px;overflow:hidden;
   transition:opacity var(--d3) var(--ease),transform var(--d3) var(--ease),
@@ -89,13 +89,13 @@ a{color:var(--acc)}
 .cb.on:before{background:var(--grad);border-color:transparent;box-shadow:0 2px 8px var(--acc-s)}
 .cb.on .ic{opacity:1;transform:scale(1)}
 @keyframes cbpop{0%{transform:scale(1)}45%{transform:scale(1.34)}100%{transform:scale(1)}}
-.tx{flex:1;font-size:14.5px}
+.tx{flex:1;font-size:var(--fs-base)}
 /* 勾选完成动画（R10）：划线 → 原位淡出 → 新位置高亮入场 */
 .ttx{position:relative;display:inline-block;max-width:100%}
 .todo.done .ttx{text-decoration:line-through}
 .todo.justdone .ttx{text-decoration:none}
 .todo.justdone .ttx::after,.todo.leaving .ttx::after{content:'';position:absolute;left:-2px;
-  right:-2px;top:52%;height:1.6px;background:currentColor;border-radius:2px;
+  right:-2px;top:52%;height:1.6px;background:currentColor;border-radius:var(--r1);
   transform-origin:left center;animation:strike var(--d3) var(--ease) both}
 @keyframes strike{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 .todo.leaving{opacity:0;transform:translateX(-34px) scale(.98);max-height:0;padding-top:0;
@@ -111,25 +111,25 @@ a{color:var(--acc)}
 .todo.done .tx{color:var(--dim2);text-decoration:line-through}
 .pri-high{border-left-color:var(--bad)}
 .pri-low{opacity:.85}
-.due{display:inline-flex;align-items:center;gap:var(--s1);font-size:var(--fs-xs);line-height:1.4;padding:1px var(--s2);border-radius:var(--r1);border:var(--hair) solid transparent;background:var(--acc-s);color:var(--acc);vertical-align:middle}
+.due{display:inline-flex;align-items:center;gap:var(--s1);font-size:var(--fs-xs);line-height:1.4;padding:var(--hair) var(--s2);border-radius:var(--r1);border:var(--hair) solid transparent;background:var(--acc-s);color:var(--acc);vertical-align:middle}
 .due .ic{width:11px;height:11px;stroke-width:2}
 .due.over{background:var(--bad-s);color:var(--bad)}
 .due.today{background:var(--acc2-s);color:var(--acc2)}
 /* 到期倒计时（R11）：就地更新，不重建 DOM */
-.cd{display:inline-flex;align-items:center;gap:var(--s1);font-size:var(--fs-xs);font-weight:700;line-height:1.4;padding:1px var(--s2);border-radius:var(--r1);background:var(--card2);color:var(--dim);border:var(--hair) solid var(--line);
+.cd{display:inline-flex;align-items:center;gap:var(--s1);font-size:var(--fs-xs);font-weight:700;line-height:1.4;padding:var(--hair) var(--s2);border-radius:var(--r1);background:var(--card2);color:var(--dim);border:var(--hair) solid var(--line);
     vertical-align:middle;font-variant-numeric:tabular-nums}
 .cd .ic{width:11px;height:11px;stroke-width:2}
 .cd.soon{color:var(--warn);border-color:var(--warn);background:var(--warn-s)}
 .cd.over{color:var(--bad);border-color:var(--bad);background:var(--bad-s)}
 .cd.done{color:var(--dim2);font-weight:500;opacity:.8}
 /* 关键信息（R12）：六问提取出来的事实，问题做 label、答案做正文 */
-.facts{margin:var(--s2) 0 var(--s0);border:var(--hair) solid var(--line);border-radius:11px;background:var(--card2);overflow:hidden}
+.facts{margin:var(--s2) 0 var(--s0);border:var(--hair) solid var(--line);border-radius:var(--r2);background:var(--card2);overflow:hidden}
 .facts .fh{font-size:var(--fs-xs);font-weight:700;color:var(--dim);letter-spacing:1px;padding:var(--s2) var(--s2) var(--s1);border-bottom:var(--hair) solid var(--line);display:flex;align-items:center;gap:var(--s2)}
 .facts .fh .ic{width:13px;height:13px;color:var(--acc)}
 .facts .fr{display:flex;gap:var(--s2);padding:var(--s2) var(--s2);border-bottom:var(--hair) solid var(--line);align-items:baseline}
 .facts .fr:last-child{border-bottom:0}
 .facts .fq{flex:0 0 62px;font-size:var(--fs-xs);color:var(--acc);font-weight:600}
-.facts .fa{flex:1;font-size:12.5px;color:var(--fg);word-break:break-word}
+.facts .fa{flex:1;font-size:var(--fs-sm);color:var(--fg);word-break:break-word}
 /* 卡片入场（P7c）：只给新出现的卡片加 .enter，轮询重绘不会反复跳；
    延迟按 --i 递增，超过 6 张就不等了，免得一长列表最后一项半秒后才出现 */
 .card.enter,.acard.enter,.stat.enter{animation:cardin var(--d3) var(--ease) both;
@@ -158,15 +158,15 @@ a{color:var(--acc)}
 .btn.pri{background:var(--grad);color:var(--on-grad);border:0}
 .btn.gh{background:none;color:var(--dim)}
 .btn.dg{color:var(--bad);border-color:var(--bad)}
-.btn.sm{padding:var(--s1) 9px;font-size:var(--fs-sm)}
+.btn.sm{padding:var(--s1) var(--s2);font-size:var(--fs-sm)}
 input,textarea,select{width:100%;background:var(--card2);border:var(--hair) solid var(--line);
-  border-radius:11px;color:var(--fg);padding:var(--s2) var(--s3);font-size:var(--fs-base);font-family:inherit}
+  border-radius:var(--r2);color:var(--fg);padding:var(--s2) var(--s3);font-size:var(--fs-base);font-family:inherit}
 textarea{min-height:110px;resize:vertical}
 label{display:block;font-size:var(--fs-xs);color:var(--dim);margin:var(--s3) 0 var(--s1);font-weight:600;letter-spacing:.5px}
 /* 输入框下面的一行说明（比如"key 明文存在本机"） */
 .fhint{font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s1);line-height:1.45}
-.empty{text-align:center;color:var(--dim2);padding:56px var(--s4);font-size:var(--fs-base)}
-.empty div{font-size:44px;margin-bottom:var(--s2);opacity:.6}
+.empty{text-align:center;color:var(--dim2);padding:var(--s6) var(--s4);font-size:var(--fs-base)}
+.empty div{font-size:var(--fs-display);margin-bottom:var(--s2);opacity:.6}
 .sheet{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);display:none;
   align-items:flex-end;justify-content:center}
 .sheet.on{display:flex}
@@ -180,9 +180,9 @@ label{display:block;font-size:var(--fs-xs);color:var(--dim);margin:var(--s3) 0 v
 .sheet .panel{animation:up var(--d2) cubic-bezier(.2,1.08,.28,1);
   box-shadow:0 -8px 40px rgba(12,22,40,.16)}
 @keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
-.grip{width:38px;height:4px;border-radius:2px;background:var(--grip);margin:0 auto var(--s3)}
+.grip{width:38px;height:4px;border-radius:var(--r-pill);background:var(--grip);margin:0 auto var(--s3)}
 h2{font-size:var(--fs-lg);margin:0 0 var(--s1)}
-.kv{display:flex;justify-content:space-between;gap:var(--s2);padding:9px 0;border-bottom:var(--hair) solid var(--line);font-size:var(--fs-md)}
+.kv{display:flex;justify-content:space-between;gap:var(--s2);padding:var(--s2) 0;border-bottom:var(--hair) solid var(--line);font-size:var(--fs-md)}
 .kv span:first-child{color:var(--dim)}
 .kv span:last-child{text-align:right;word-break:break-all;color:var(--acc)}
 pre{background:var(--pre-bg);border:var(--hair) solid var(--line);border-radius:var(--r1);padding:var(--s2);font-size:var(--fs-xs);overflow:auto;max-height:260px;color:var(--pre-fg);white-space:pre-wrap;word-break:break-word}
@@ -201,7 +201,7 @@ pre{background:var(--pre-bg);border:var(--hair) solid var(--line);border-radius:
 .pill{display:inline-flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border-radius:var(--r-pill);
   background:var(--acc-s);color:var(--acc);font-size:var(--fs-sm);font-weight:600;border:var(--hair) solid var(--acc)}
 .sw{position:relative;width:46px;height:26px;flex:0 0 46px;border-radius:var(--r-pill);background:var(--grip);transition:background var(--d2) var(--ease)}
-.sw:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left var(--d2) var(--ease)}
+.sw:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--on-solid);transition:left var(--d2) var(--ease)}
 .sw.on{background:var(--acc2)}.sw.on:after{left:23px}
 /* 分段控件（主题切换等） */
 .seg{display:flex;gap:var(--s1);background:var(--card2);border:var(--hair) solid var(--line);border-radius:var(--r2);padding:var(--s1)}

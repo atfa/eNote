@@ -93,8 +93,8 @@ export const ShotsView = {
   </div>
 </div>
 <div class="pfoot" style="display:block">
-  <div class="count" id="shotFoot" style="margin-bottom:8px" v-html="countHtml"></div>
-  <div style="display:flex;gap:8px">
+  <div class="count" id="shotFoot" style="margin-bottom:var(--s2)" v-html="countHtml"></div>
+  <div style="display:flex;gap:var(--s2)">
     <button class="btn pri" id="shotGo" :style="goStyle" @click="H.doImportShots('merge')">{{ goText }}</button>
     <button class="btn" id="shotSplit" :style="subStyle" @click="H.doImportShots('split')">各存一条</button>
     <button class="btn" id="shotRaw" :style="subStyle" @click="H.doImportShots('raw')">原样存</button>
@@ -124,7 +124,7 @@ export const ShotProgress = {
     <b>{{ '正在处理 ' + P.total + ' 张截图' }}</b>
     <div class="osub" id="shotOvlSub">{{ P.what + ' · 已用 ' + P.secs + 's' }}</div>
     <div class="owarn" v-html="warn"></div>
-    <div style="font-size:11px;color:var(--dim2);margin-top:10px">完成后会自动回到列表，不用一直盯着</div>
+    <div style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s2)">完成后会自动回到列表，不用一直盯着</div>
   </div>
 </div>`
 };

@@ -65,29 +65,29 @@ export const SettingsSheetView = {
   template: `
 <div class="pgroup">提醒</div>
 <div class="card">
-  <div class="row between" style="margin-top:2px"><div><b>到期待办提醒</b><div style="font-size:11px;color:var(--dim)" v-if="notifyGranted">已排定 {{ H.remindPending }} 条 · 按系统闹钟登记，尽量不被后台清理</div><div style="font-size:11px;color:var(--dim)" v-else>需要通知权限 · 开启后到点用系统通知提醒</div></div>
+  <div class="row between" style="margin-top:var(--s0)"><div><b>到期待办提醒</b><div style="font-size:var(--fs-xs);color:var(--dim)" v-if="notifyGranted">已排定 {{ H.remindPending }} 条 · 按系统闹钟登记，尽量不被后台清理</div><div style="font-size:var(--fs-xs);color:var(--dim)" v-else>需要通知权限 · 开启后到点用系统通知提醒</div></div>
   <button :class="notifyBtnCls" @click="H.askNotify()">{{ notifyBtnText }}</button></div>
-  <div class="row between" style="margin-top:8px" v-if="!H.exactGranted()"><div><b>精确提醒</b><div style="font-size:11px;color:var(--dim)">允许「闹钟和提醒」后不再被系统延迟</div></div>
+  <div class="row between" style="margin-top:var(--s2)" v-if="!H.exactGranted()"><div><b>精确提醒</b><div style="font-size:var(--fs-xs);color:var(--dim)">允许「闹钟和提醒」后不再被系统延迟</div></div>
   <button class="btn sm" @click="H.askExact()">去开启</button></div>
 </div>
 <div class="pgroup">后台</div>
 <div class="card">
-  <div class="row between" style="margin-top:2px"><div><b>常驻后台</b><div style="font-size:11px;color:var(--dim)">{{ keepSub }}</div></div>
+  <div class="row between" style="margin-top:var(--s0)"><div><b>常驻后台</b><div style="font-size:var(--fs-xs);color:var(--dim)">{{ keepSub }}</div></div>
   <div :class="keepSwCls" @click="H.toggleKeepAlive($event.currentTarget)"></div></div>
   <template v-if="keepAlive">
-    <div class="kv" style="margin-top:10px" v-if="batteryIgn"><span>电池优化</span><span style="color:var(--ok)">已豁免，不会被冻结</span></div>
+    <div class="kv" style="margin-top:var(--s2)" v-if="batteryIgn"><span>电池优化</span><span style="color:var(--ok)">已豁免，不会被冻结</span></div>
     <template v-else>
-      <div style="margin-top:10px;font-size:12px;color:var(--dim);line-height:1.8">部分系统会在后台冻结应用，连闹钟一起丢掉。标准做法是把它加进电池优化白名单：<br>① 点下面的按钮；<br>② 在列表里找到「懒得记」；<br>③ 选「不限制 / 允许后台活动」。<br>如果系统另外还有「后台高耗电」「自启动」之类的开关，一并允许。</div>
+      <div style="margin-top:var(--s2);font-size:var(--fs-sm);color:var(--dim);line-height:1.8">部分系统会在后台冻结应用，连闹钟一起丢掉。标准做法是把它加进电池优化白名单：<br>① 点下面的按钮；<br>② 在列表里找到「懒得记」；<br>③ 选「不限制 / 允许后台活动」。<br>如果系统另外还有「后台高耗电」「自启动」之类的开关，一并允许。</div>
       <div class="acts"><button class="btn pri" @click="H.askBattery()">去关闭电池优化</button><button class="btn gh" @click="H.askNotify()">检查通知权限</button></div>
     </template>
   </template>
-  <div style="font-size:11px;color:var(--dim);margin-top:8px" v-html="keepNote"></div>
+  <div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)" v-html="keepNote"></div>
 </div>
 <div class="pgroup">外观</div>
-<div class="card"><div class="seg" style="margin-top:2px"><button v-for="t in themes" :key="t.m" :class="t.cls" @click="H.setTheme(t.m)" v-html="t.icon+t.label"></button></div><div style="font-size:11px;color:var(--dim);margin-top:8px">默认亮色；选「跟随系统」时随手机夜间模式切换，状态栏与导航栏同步变色</div></div>
+<div class="card"><div class="seg" style="margin-top:var(--s0)"><button v-for="t in themes" :key="t.m" :class="t.cls" @click="H.setTheme(t.m)" v-html="t.icon+t.label"></button></div><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">默认亮色；选「跟随系统」时随手机夜间模式切换，状态栏与导航栏同步变色</div></div>
 <div class="pgroup">AI 模型（BYOK）</div>
 <div class="card">
-  <div class="row between" style="margin-top:2px"><div><b>启用 AI 解析</b><div style="font-size:11px;color:var(--dim)">关闭后只保存原文，不调用模型</div></div>
+  <div class="row between" style="margin-top:var(--s0)"><div><b>启用 AI 解析</b><div style="font-size:var(--fs-xs);color:var(--dim)">关闭后只保存原文，不调用模型</div></div>
   <div :class="aiSwCls" @click="H.toggleAI($event.currentTarget)"></div></div>
   <label>API Base URL（OpenAI 兼容）</label><input id="sUrl" :value.attr="s.baseUrl || ''" placeholder="https://your-server:8080/v1">
   <label>API Key</label><input id="sKey" :value.attr="s.apiKey || ''" placeholder="sk-...">

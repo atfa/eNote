@@ -532,7 +532,7 @@ function shotOverlay(on, total, what){
     + '<div class="osub" id="shotOvlSub">' + SHOTOVL_TEXT + ' · 已用 0s</div>'
     + '<div class="owarn">'+ic('alert')+'请保持屏幕常亮：不要锁屏、不要让手机黑屏，'
     + '也不要退出 App 或切到别的应用，否则解析会中断。</div>'
-    + '<div style="font-size:11px;color:var(--dim2);margin-top:10px">'
+    + '<div style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s2)">'
     + '完成后会自动回到列表，不用一直盯着</div></div>';
   if(shotTimer) clearInterval(shotTimer);
   shotTimer = setInterval(function(){
@@ -1009,7 +1009,7 @@ function noteCard(n, k){
   h += '<div class="body'+(exp?'':' clamp')+'">'+esc(body)+'</div>';
   if(n.error) h += '<div class="errbox">'+esc(n.error)+'</div>';
   if(n.todos && n.todos.length){
-    h += '<div style="margin-top:10px">'+n.todos.map(function(t){return todoRow(t,n,true)}).join('')+'</div>';
+    h += '<div style="margin-top:var(--s2)">'+n.todos.map(function(t){return todoRow(t,n,true)}).join('')+'</div>';
   }
   h += '<div class="acts">';
   h += '<button class="btn sm gh exp" onclick="expand(\''+n.id+'\')">'+ic(exp?'chevup':'chev')+(exp?'收起':'展开详情')+'</button>';
@@ -1093,7 +1093,7 @@ function settingsDataCardHTML(){
    +'<div class="acts"><button class="btn gh" onclick="exportJSON()">导出 JSON</button>'
    +'<button class="btn gh" onclick="importJSON()">导入 JSON</button>'
    +'<button class="btn dg" onclick="clearAllNotes()">清空全部</button></div>'
-   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">导出＝全量备份（含待办与附件元数据）；'
+   +'<div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">导出＝全量备份（含待办与附件元数据）；'
    +'导入按笔记 ID 合并，已存在的笔记不覆盖；清空只删笔记与附件，设置与 API Key 保留。</div>';
 }
 function settingsRunCardHTML(i){
@@ -1107,7 +1107,7 @@ function settingsRunCardHTML(i){
    拄进模板的话，模板里多一个换行就少一个空格，VDIFF 比文本节点时很难查。 */
 function settingsCollectHTML(){
   return '<div class="kv"><span>剪贴板暂存</span><span style="color:var(--acc2)">前台自动 + 顶栏按钮手动</span></div>'
-   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">打开 app 时自动暂存剪贴板里的文字；'
+   +'<div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">打开 app 时自动暂存剪贴板里的文字；'
    +'在别的 app 复制后切回「懒得记」即可看到，顶栏剪贴板按钮也可以随时手动收一条。'
    +'Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。'
    +'点「解析」才发到大模型，之前内容不会离开本机。</div>';
@@ -1115,11 +1115,11 @@ function settingsCollectHTML(){
 function settingsOcrCardHTML(i){
   return '<div class="kv"><span>引擎状态</span><span>'+ocrReadyHTML(i.ocrReady)+'</span></div>'
    +'<div class="kv"><span>引擎信息</span><span>'+(S.ocrInfo||'vivo 离线 OCR')+'</span></div>'
-   +'<div style="font-size:11px;color:var(--dim);margin-top:8px">图片只在本机识别成文字，'
+   +'<div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">图片只在本机识别成文字，'
    +'只有识别出的文字（和原文）会发给模型。单条笔记可在笔记卡片上「↻ 重新识别图片」。</div>';
 }
 function settingsUsageHTML(){
-  return '<div class="body" style="margin-top:2px">'
+  return '<div class="body" style="margin-top:var(--s0)">'
    +'· 在微信 / 浏览器 / 相册里点「分享」→ 选 懒得记<br>'
    +'· 文字直接发给模型；图片先在本机用离线 OCR 识别成文字，再发给模型（图片不出门）<br>'
    +'· 模型返回 JSON：标题、正文、标签、待办（含到期时间）<br>'
@@ -1379,8 +1379,8 @@ function kvHTML(k, v){ return '<div class="kv"><span>'+k+'</span><span>'+v+'</sp
 function statCls(hot, label){ return 'stat'+(hot?' hot':'')+enterCls('s'+label) }
 function liHTML(icn, t, sub, fn){
   return '<div class="li" onclick="'+fn+'"><span class="lico">'+ic(icn)+'</span>'
-    +'<div style="flex:1"><b style="font-size:14.5px">'+t+'</b>'
-    +(sub?'<div style="font-size:11px;color:var(--dim2);margin-top:1px">'+sub+'</div>':'')+'</div>'
+    +'<div style="flex:1"><b style="font-size:var(--fs-base)">'+t+'</b>'
+    +(sub?'<div style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--hair)">'+sub+'</div>':'')+'</div>'
     +'<span style="color:var(--dim2)">›</span></div>';
 }
 function settingsSheet(){
@@ -1587,7 +1587,7 @@ async function saveSettings(){
 async function testLLM(){
   $('#llmOut').innerHTML='<div class="body"><span class="spin"></span> 连接中…</div>';
   var r = await api('/api/llm/test',{});
-  $('#llmOut').innerHTML='<div class="body" style="margin-top:10px">'
+  $('#llmOut').innerHTML='<div class="body" style="margin-top:var(--s2)">'
     +(r.ok?'✅ 成功（'+r.ms+'ms，HTTP '+r.httpCode+'）<br>'+esc(r.reply)
            :'❌ 失败（'+(r.ms||0)+'ms）<br>'+esc(r.error||''))+'</div>';
 }
@@ -1603,7 +1603,7 @@ async function showDebug(){
   r.calls.slice(0,10).forEach(function(c){
     h+='<div class="card"><div class="meta"><span class="chip">'+esc(c.model)+'</span>'
      +'<span class="chip">'+c.ms+'ms</span><span class="chip">HTTP '+c.httpCode+'</span></div>'
-     +'<div class="body" style="font-size:12px">输入：'+esc(clip(c.user,200))+'</div>'
+     +'<div class="body" style="font-size:var(--fs-sm)">输入：'+esc(clip(c.user,200))+'</div>'
      +'<pre>'+esc(c.err?('错误：'+c.err):c.raw)+'</pre></div>';
   });
   sheet(h);

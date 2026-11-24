@@ -606,11 +606,13 @@ if (jsevalPayloads.length < 7) {
 // 全部 px 是 650 处，其中 259 处是 width/height/top/left 这类布局尺寸，
 // 那些本来就不归间距刻度管，拉进来只会把信号淡掉。
 const RATCHET = {
-  hex: 8,    // tokens.css 之外的裸 hex。tokens.css 自已是调色板定义，那 55 处必须是字面值，
+  hex: 0,    // tokens.css 之外的裸 hex。tokens.css 自已是调色板定义，那 55 处必须是字面值，
              // 把它们算进棘轮会把信号淡掉：新增一个硬编码颜色被新增一个 token 抵消就查不出来。
-             // 62（拆分前全量）→ 12（只统计 tokens.css 之外）→ 8（--teal 从 fallback 转正）。
-             // 剩下 8 处是刻意保留的字面值：#fff 7（彩色底上的白字，不随主题变）、#000 1（遮罩渐变）。
-  px: 57,    // 刻度相关属性里的裸 px：391 →（密度 10px→8px）341 →（stats/settings）292 →（base/components 全量迁移）57
+             // 62（拆分前全量）→ 12（只统计 tokens.css 之外）→ 8（--teal 从 fallback 转正）
+             // → 0（步骤 13：#fff 7 处收进 --on-solid，#000 1 处收进 --mask-opaque）。
+  px: 0,     // 刻度相关属性里的裸 px：391 →（密度 10px→8px）341 →（stats/settings）292
+             // →（base/components 全量迁移）57 → 0（步骤 13：css 57 + js 内联 style 48 全部上刻度，
+             // 9px / 11px / 13.5px 这些刻度外的值就近归档，映射表在 tokens.css 顶部）。
 };
 const cssFiles = SPLIT
   ? walkDirPairs(path.join(uiDir, 'css'), 'css/')
@@ -619,14 +621,28 @@ const cssText = cssFiles.map(x => x[1]).join('\n');
 const cssBody = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
 const leakBody = cssFiles.filter(x => !/tokens\.css$/.test(x[0])).map(x => x[1]).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
 function count(re, s) { const m = s.match(re); return m ? m.length : 0; }
-const hexCount = count(/#[0-9a-fA-F]{3,8}\b/g, leakBody);
+const HEX_RE = /#[0-9a-fA-F]{3,8}\b/g;
+const SCALE_RE = /(?:margin|padding|gap|border-radius|font-size)[^;{}"']*/g;
+/* 步骤 13：扫描范围从 css/** 扩到 js/** 的内联 style。Vue 模板把结构搬进 js 之后，
+   新样式越来越多直接写在 style="…" 里，旧闸门只看 css/** 就完全看不见它们 ——
+   闸门还在、账本已经不管这一页。只抽 style="…" 的内容，不整扫 js：整扫会把
+   $('#fab') 这种选择器当成颜色（实测假阳性 #fab），把信号淡掉。vendor 的 vue.js 不参与。 */
+const jsStyleSrc = SPLIT
+  ? walkJs(uiDir).filter(x => !/vue\.js$/.test(x[0])).map(x => x[1]).join('\n')
+  : '';
+const jsInline = (jsStyleSrc.match(/(?::?style)="([^"]*)"/g) || []).join('\n');
+const jsHex = count(HEX_RE, jsInline);
+const jsPx = count(/\d+px\b/g, (jsInline.match(SCALE_RE) || []).join('\n'));
+const hexCount = count(HEX_RE, leakBody) + jsHex;
 const hexTokens = count(/#[0-9a-fA-F]{3,8}\b/g, cssFiles.filter(x => /tokens\.css$/.test(x[0])).map(x => x[1]).join('\n'));
-const scaleDecls = (cssBody.match(/(?:margin|padding|gap|border-radius|font-size)[^;{}]*/g) || []).join('\n');
-const pxCount = count(/\d+px\b/g, scaleDecls);
-if (hexCount > RATCHET.hex) bad('裸 hex 比基线多了', hexCount + ' > ' + RATCHET.hex + '，新样式必须用 token');
-else ok('裸 hex ' + hexCount + ' ≤ 基线 ' + RATCHET.hex + '（tokens.css 内 ' + hexTokens + ' 处定义不计）');
-if (pxCount > RATCHET.px) bad('裸 px 比基线多了', pxCount + ' > ' + RATCHET.px + '，新样式必须用 --s*/--r*/--fs-*');
-else ok('裸 px ' + pxCount + ' ≤ 基线 ' + RATCHET.px);
+const scaleDecls = (cssBody.match(SCALE_RE) || []).join('\n');
+const pxCount = count(/\d+px\b/g, scaleDecls) + jsPx;
+if (!SPLIT) bad('闸门③ 没扫到 js 内联 style', '扫描范围失效了，闸门③ 自己在假绿');
+else if (jsInline.indexOf('var(--') < 0) bad('闸门③ js 内联 style 里一个 var(-- 也没有', '抽 style="…" 的正则失效了，闸门③ 在假绿');
+if (hexCount > RATCHET.hex) bad('裸 hex 比基线多了', hexCount + ' > ' + RATCHET.hex + '，新样式必须用 token（css 外 js 内联另有 ' + jsHex + ' 处）');
+else ok('裸 hex ' + hexCount + ' ≤ 基线 ' + RATCHET.hex + '（tokens.css 内 ' + hexTokens + ' 处定义不计；js 内联 ' + jsHex + ' 处已计入）');
+if (pxCount > RATCHET.px) bad('裸 px 比基线多了', pxCount + ' > ' + RATCHET.px + '，新样式必须用 --s*/--r*/--fs-*（css 外 js 内联另有 ' + jsPx + ' 处）');
+else ok('裸 px ' + pxCount + ' ≤ 基线 ' + RATCHET.px + '（含 js 内联 style ' + jsPx + ' 处）');
 
 // ---------- 闸门④ 调色板 5 处必须一致 ----------
 // 同一套背景色今天写在 5 个地方，改一处漏四处就是状态栏和页面颜色不一致。
@@ -637,14 +653,24 @@ const themeJava = read('src/dev/xduo/enote/Theme.java');
 const jLight = (themeJava.match(/BG_LIGHT\s*=\s*0xFF([0-9a-fA-F]{6})/) || [, ''])[1].toLowerCase();
 const jDark = (themeJava.match(/BG_DARK\s*=\s*0xFF([0-9a-fA-F]{6})/) || [, ''])[1].toLowerCase();
 const meta = (ui.match(/<meta\s+name="theme-color"\s+content="(#[0-9a-fA-F]{3,8})"/) || [, ''])[1].toLowerCase();
+/* 步骤 13：app.js 切主题时会把 meta theme-color 改成字面量（状态栏跟着变），那是第 6 处
+   调色板副本。棘轮把 js 内联 style 的 hex 清零了，这两个是调色板定义本身（不是样式值），
+   所以不靠棘轮管，靠这里逐字比；找不到那句就报「闸门在假绿」，不许静默空跑。 */
+const jsTheme = read('go/ui/js/app.js');
+const jsThemeColors = jsTheme.match(/mc\.setAttribute\('content',\s*t === 'dark' \? '(#[0-9a-fA-F]{6})' : '(#[0-9a-fA-F]{6})'/) || [, '', ''];
 const pal = [];
 if (!bgLight) pal.push('tokens 里找不到亮色 --bg');
 if (!bgDark) pal.push('tokens 里找不到暗色 --bg');
+if (!jsThemeColors[1]) pal.push("app.js 里找不到 meta theme-color 的切换语句（闸门④ 在假绿）");
+else {
+  if (jsThemeColors[1].toLowerCase() !== bgDark) pal.push('app.js 暗色 theme-color ' + jsThemeColors[1] + ' ≠ --bg ' + bgDark);
+  if (jsThemeColors[2].toLowerCase() !== bgLight) pal.push('app.js 亮色 theme-color ' + jsThemeColors[2] + ' ≠ --bg ' + bgLight);
+}
 if (jLight && bgLight && '#' + jLight !== bgLight) pal.push('Theme.java BG_LIGHT=#' + jLight + ' ≠ --bg ' + bgLight);
 if (jDark && bgDark && '#' + jDark !== bgDark) pal.push('Theme.java BG_DARK=#' + jDark + ' ≠ --bg ' + bgDark);
 if (meta && bgLight && bgDark && meta !== bgLight && meta !== bgDark) pal.push('meta theme-color ' + meta + ' 两个 --bg 都不是');
 if (pal.length) bad('调色板一致性被破坏', pal.join('；'));
-else ok('调色板一致：--bg ' + bgLight + '/' + bgDark + ' = Theme.java = meta theme-color');
+else ok('调色板一致：--bg ' + bgLight + '/' + bgDark + ' = Theme.java = meta theme-color = app.js 切换值');
 
 // ---------- 闸门⑤ 已删除的类名不许复活 ----------
 // test.sh:652 是负向断言，这两个类名今天不存在，存在就说明提醒面板退回了整块重绘。
@@ -1245,7 +1271,7 @@ if (SPLIT) {
   function tok(lit, token) { return '(' + lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '|var\\(' + token + '\\))'; }
 
   // 页面内容左右留白（卡片不贴屏幕边）
-  const pad = new RegExp('main#view\{padding:0 ' + tok('14px', '--s3') + ' 104px\}').test(src);
+  const pad = new RegExp('main#view\{padding:0 ' + tok('14px', '--s3') + ' ' + tok('104px', '--clear-bottom') + '\}').test(src);
   sig('页面左右有留白', pad);
 
   // 主题开关只在设置面板里，“我的”页不重复列一项
@@ -1348,7 +1374,7 @@ if (SPLIT) {
     b => b.includes('align-items:center'),
     b => /font-size:(10\.5px|var\(--fs-xs\))/.test(b),
     b => b.includes('line-height:1.4'),
-    b => /padding:1px (7px|var\(--s2\))/.test(b),
+    b => /padding:(1px|var\(--hair\)) (7px|var\(--s2\))/.test(b),
     b => /border:(1px|var\(--hair\)) solid/.test(b),
   ];
   const chipH = ['chip', 'due', 'cd'].every(c => NEED.every(f => f(ruleBody(c))))
@@ -1447,7 +1473,7 @@ if (SPLIT) {
   // 待办行左侧竖条：所有行统一 3px 透明占位，重要行只改颜色 → checkbox 对齐
   const priBar = /border-left:3px solid transparent/.test(src)
     && /\.pri-high\{border-left-color:var\(--bad\)\}/.test(src)
-    && new RegExp('padding:9px ' + tok('2px', '--s0') + ' 9px ' + tok('8px', '--s2')).test(src);
+    && new RegExp('padding:' + tok('9px', '--s2') + ' ' + tok('2px', '--s0') + ' ' + tok('9px', '--s2') + ' ' + tok('8px', '--s2')).test(src);
   sig('待办竖条统一占位（checkbox 对齐）', priBar);
 
   // P6.5 常驻后台：设置页开关 + 引导 + 前台服务/电池优化接口都存在
