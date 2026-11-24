@@ -1713,6 +1713,17 @@ toast 抬 8px、与最后一行内容的重叠从 ~23px 变 ~31px，还把浮层
 * SIT 里还有 `q()[0]` 这类索引选择器，DOM 顺序一变就测到别的元素；换成稳定 id。
 * 断言要显式写出 `src`/`status`/`pri`/`kind`，不要只断言数量（§9.17 审计条目，步骤 12 收了一半）。
 * `clipParse` 的真 LLM 路径与 `clipError` 分支没有客户端回归（现在只在 Go 侧测）。
+**跑全量验收时的设施约束（Tony 定位，步骤 13 踩过两次）**
+
+`test.sh --vd` 开头抓一次 VD display id，`am_start` 会在 Permission Denial / does not exist
+时重新解析并更新 `VDID`；但 **jseval 走的是 app 进程里的日志 hook，不认 display**。所以
+「`ERROR: jseval 没跑完`」这种红通常是设施问题而不是产品问题：跑测期间另一个 agent 对同一个
+包 `pm install`（app 进程被换掉）或 VD 被重建，在飞的载荷就永远不打印 done token。
+全量验收期间不要并发 install；红了先看现场打印的 `--- per-display focus ---` 里目标 display
+上还有没有本 app 的窗口。
+
+**记进步骤 14 的账**
+
 * 260px 面板下 clip 弹层三个按钮文字被裁（「原样存为笔记」两侧切掉）：clip.js 给按钮写了内联
   `flex:1`/`flex:1.2`，`.btn` 左右 padding 16px 且没有 `min-width:0`。全宽实测三按钮一行放得下
   （footW=369、btnOverflow=0），只在 <320 CSS px 才咬人（Tony 审查记的 nit，非回归）。

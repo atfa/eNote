@@ -2277,7 +2277,7 @@ NIT=$(readtlog | wc -l)
     st=await api("/api/state");
     var f2=await add("Vue 交互夹具乙");
     st=await api("/api/state");
-    L("made="+(f1&&f2?"2":"0"));
+    L("madeOK="+(f1&&f2?"1":"0"));
     // 模块里的 S 由 2s 轮询更新，夹具是刚建的：不把新 state 灌进模块，render() 画的
     // 还是旧数据，症状是「行找不到」（实测 row=none，夹具明明建成功了）
     __enote.state.S = st;
@@ -2407,6 +2407,8 @@ NIT=$(readtlog | wc -l)
     try{ var rr=await api("/api/todo",{action:"delete",noteId:fx[i].nid,todoId:fx[i].tid});
          if(rr&&rr.ok) okDel++ }catch(e){ L("cleanErr="+(e&&e.message)) }
   }
+  L("made="+fx.length);   // 必须是 fx.length：筛选三态（第 5 段）又加了一条夹具，
+                          // 写死 2 时 cleaned=3 永远对不上（实测红在「造 2 删 3」）
   L("cleaned="+okDel);
   L("done=1");
 })()' > "$TMPDIR/jstint.json"
@@ -2450,6 +2452,7 @@ for g in geos:
     assert float(kv["circleL"]) >= float(kv["padBoxL0"]) - 0.5, \
       ".cb 圆圈左边缘 %s 在父 padding-box 左边缘 %s 之外（被裁）：overflow=%s" % (
         kv["circleL"], kv["padBoxL0"], kv["overflow"])
+assert d.get("madeOK") == "1", "造不出待办夹具数据，本步断言会是空跑"
 assert d.get("cleaned") == d.get("made"), \
   "夹具待办没删干净（造 %s 删 %s）：会污染下一轮和真数据" % (d.get("made"), d.get("cleaned"))
 # 筛选三态（步骤 13 的账：prefPayload 的 done:'all' 以前只有服务端覆盖）
