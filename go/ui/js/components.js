@@ -26,7 +26,8 @@ import { EmptyState } from './components/empty-state.js'
 import { Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact } from './components/leaf.js'
 export { EmptyState, Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact }
 
-/* 读模块状态的 computed 一律用 computed() 包（见 vue.js）：漏一个就是「数据变了视图不动」 */
+/* 本文件的 computed 全部裸写（真依赖追踪）：读到的模块状态都是 reactive 的。
+   返容器本身是陷阱（FileStrip 的 i 就是浅拷贝），见 vue.js 头部两条契约。 */
 
 export const StripBar = {
   name: 'StripBar',

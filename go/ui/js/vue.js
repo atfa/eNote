@@ -3,10 +3,12 @@
    混合期 = Vue 视图与遗留字符串渲染器共存：render() 仍是唯一绘制入口，已迁移的 tab 走这里，
    未迁移的 tab 走 app.js 里的老函数。步骤 11 删掉遗留路径。
 
-   组件不持有数据：数据在 app.js 的模块状态里，组件通过宿主接口 H 读，靠 V.tick 递增触发重算。
-   为什么用 tick 而不是把 S 改成 reactive：迁移期要「行为零变化」可对照，今天的语义就是
-   「每次 render() 全量重绘」，tick 是它的一比一翻译；数据层响应式化留到步骤 11（遗留路径删完、
-   只剩一条绘制路径时再动，那时出问题只有一条路径要查）。 */
+   组件不持有数据：数据在 app.js 的模块状态里，组件通过宿主接口 H 读。
+   步骤 17e–17h 之后这些模块状态本身是 Vue.reactive 的（CLIP / FOLD / SHOTS / SHOTPROG / S /
+   prefs / SR / FA 原地改键，MISSED / ST / SHOTFLAGS / LOGDATA / DEBUGDATA 是 {v:} 容器），
+   所以组件里写裸 computed 就建立依赖 —— 谁读了谁重画，没有「每次 render 全量重绘」这回事。
+   两条契约（闸门⑮ 钉着）：不许再包 live()（已删）；computed 不许只返回容器本身，
+   原地改键时值没变，Vue 判定「没变化」直接跳过渲染。 */
 
 export const Vue = window.Vue;
 
@@ -99,10 +101,12 @@ export function sheetPaint(){
 }
 
 /* 验收缝（步骤 17b）：真机探针要证明「DOM 变了而 V.tick 一动没动」，也就是更新来自
-   响应式依赖本身，不是 tick 大锤。迁移完成后 live() 与这个缝一起删。 */
+   响应式依赖本身，不是 tick 大锤。live() 已删（17h），这个缝留着继续当反证。 */
 if (typeof window !== "undefined") window.__enoteVtick = function(){ return V.tick };
 
 /* 一次绘制：bump tick → 等 Vue 把 DOM 打完。
+   17h 之后 bump 不再是「让所有 computed 失效」（数据是 reactive 的，赋值自己就重画），
+   而是告诉组件「原生状态可能变了」——见上面 sheetPaint() 的注释。DOM 落地靠 nextTick。
    返回的 Promise 就是 render() 对外的 Promise（D13），调用点 await 它即可。 */
 export function vuePaint(){
   V.tick++;
