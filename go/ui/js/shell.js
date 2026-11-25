@@ -16,9 +16,10 @@
    5. 挂载点分两类：
       - 在流内的（.topbar 是 sticky、.tabbar 是 fixed）挂在**原元素上**，只渲染它的内容。
         包一层 div 会让 sticky 的包含块变成那层 div，顶栏会跟着内容一起滚走。
-      - 浮层（.sheet/.dlg/#toast 都是 position:fixed）挂在 body 级的 *Root 容器里，
+      - 浮层（.sheet 是 position:fixed）挂在 body 级的 *Root 容器里，
         这样 :class="{on:…}" 能落在真正带样式的那个元素上（Vue 的模板根元素是挂载点的
-        子节点，绑不到挂载点自身）。
+        子节点，绑不到挂载点自身）。步骤 18b/18c 起 #toast 与 #dlg 是 Vant 的 popup：
+        显隐走 v-model:show，定位与 z-index 由 van-popup 自带，*Root 只剩挂载作用。
 
    顶栏的显隐（我的页不显示顶栏）走 body[data-tab] + CSS，不走 JS 写 style：
    它是「当前在哪个页签」这个状态的纯函数，写在 CSS 里比写在 JS 里少一处会漏同步的地方。
@@ -172,21 +173,42 @@ export const SheetHost = {
 
 /* 自绘对话框：原生 confirm/alert 会显示“网址为 http://127.0.0.1 的网页显示：”。
    Java 的 onJsAlert/onJsConfirm 也转发到这里（app.js window.uiDialog）。
-   按钮顺序 No 在左 Yes 在右，与迁移前一致；noCancel 用 v-show（迁移前是 style.display）。 */
+   按钮顺序 No 在左 Yes 在右，与迁移前一致；noCancel 用 v-show（迁移前是 style.display）。
+
+   步骤 18c：外壳换成 van-dialog（遮罩、居中、入场动画、滚动锁定、z-index 分层交给 Vant），
+   标题/正文/按钮三个区走它的 title / default / footer 三个插槽，元素 id、类名、按钮文案
+   一个没动（test.sh 用 #dlgYes/#dlgNo 点按钮，闸门 ⑥ 钉着 .dacts .btn）。
+   两个 prop 是有讲究的：
+     :show-confirm-button="false" + :show-cancel-button="false" —— 不用 Vant 那对平铺文字按钮，
+       footer 插槽里是我们自己的 .btn（Vant 的 footer 插槽无条件渲染，不受这两个开关影响）；
+     :close-on-click-overlay="true" —— van-dialog 这个 prop 默认 false，旧版点遮罩是取消的
+       （@click.self），不显式打开就少一条退出路径；点遮罩走 click-overlay → dlgCancel，
+       回调照旧跑（Vant 自己只把 show 置 false，不会调 onCancel）。
+
+   显隐用 v-if + :show="true"，不用 v-model:show。原因：van-popup 的显隐是 Vue 的
+   <Transition> 驱动的，而 Vue 的 enter/leave 都在 nextFrame（双 requestAnimationFrame）里
+   起跳。Chrome 不给「不可见窗口」出帧，rAF 就不跑，于是 enter-from 类永不摘除（对话框永久
+   opacity:0）、leave 永不结束（点取消关不掉、遮罩留在屏上）。虚拟屏（测试用的 VD）必踩，
+   息屏时后台弹出的对话框是同一类场景。v-if 让「对话框在不在」退回成状态的纯函数：
+   创建即可见、销毁即消失，动画只剩我们自己的 pop 关键帧（合成器驱动，不经过 Vue）。
+   代价：节点随开合创建/销毁，静息态没有 #dlg —— __enote.dom.dlg 的测缝契约因此改成
+   「先弹一个再读」，与步骤 17i 的 #sheet、18b 的 #toast 完全同构。 */
 export const DialogHost = {
   name: 'DialogHost',
   setup(){ const H = inject('H'); return { H, s: shell } },
   template: `
-<div class="dlg" id="dlg" :class="{on: s.dlg.on}" @click.self="H.dlgCancel()">
-  <div class="dbox">
-    <h3 id="dlgT">{{ s.dlg.title }}</h3>
-    <div class="dbody" id="dlgB">{{ s.dlg.body }}</div>
+<van-dialog v-if="s.dlg.on" id="dlg" class="enote-dialog" :show="true"
+            :show-confirm-button="false" :show-cancel-button="false"
+            :close-on-click-overlay="true" @click-overlay="H.dlgCancel()">
+  <template #title><h3 id="dlgT">{{ s.dlg.title }}</h3></template>
+  <div class="dbody" id="dlgB">{{ s.dlg.body }}</div>
+  <template #footer>
     <div class="dacts">
       <button class="btn" id="dlgNo" v-show="!s.dlg.noCancel" @click="H.dlgCancel()">{{ s.dlg.cancel }}</button>
       <button class="btn" id="dlgYes" :class="s.dlg.danger ? 'dg' : 'pri'" @click="H.dlgOk()">{{ s.dlg.ok }}</button>
     </div>
-  </div>
-</div>
+  </template>
+</van-dialog>
 `
 }
 
@@ -195,13 +217,16 @@ export const DialogHost = {
    让 Vant 不管自动收起，视图与行为的分工与 18a 之前一致（Vant 自己的定时器会在
    message 变化时重启，语义相同，但定时器是行为不是视图，不搬过去）。
    `id="toast"` 落在 van-toast 根节点上（Vant 不拦 attrs），test.sh 与 __enote.dom.toast 照旧。
-   像素变化（用户已批准）：去掉信息图标（那是我们自己的 sprite，Vant 的 icon  prop 走它自带的
-   图标字体）、圆角从 pill 收到 8px、阴影去掉、入场从「淡入 + 上推」换成 van-fade。 */
+   像素变化（用户已批准）：去掉信息图标（那是我们自己的 sprite，Vant 的 icon prop 走它自带的
+   图标字体）、圆角从 pill 收到 8px、阴影去掉。
+   显隐同样用 v-if + :show="true"（理由见上面 DialogHost 的注释：Vue 的 <Transition> 靠 rAF
+   排程，不可见窗口上永不结束），入场动画由 .enote-toast 上的 pop 关键帧提供，与迁移前一致。
+   节点随开合创建/销毁，静息态没有 #toast —— 测缝契约改成「先弹一条再读」，见 test.sh。 */
 export const ToastHost = {
   name: 'ToastHost',
   setup(){ return { s: shell } },
   template: `
-<van-toast id="toast" class="enote-toast" v-model:show="s.toast.on" :duration="0"
+<van-toast v-if="s.toast.on" id="toast" class="enote-toast" :show="true" :duration="0"
            position="bottom" :message="s.toast.msg"></van-toast>
 `
 }

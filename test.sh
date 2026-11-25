@@ -917,6 +917,19 @@ N0S=$(readtlog | wc -l)
     E.toast("测试缝");
     for(var ti=0; ti<40 && !d.toast; ti++){ await new Promise(function(r){ setTimeout(r,50) }) }
   }
+  /* 步骤 18c：对话框外壳换成 van-dialog，同样是随开随建（v-if，见 js/shell.js 的注释）。
+     这里主动弹一个、读到节点就关掉（不给后面的用例留状态），所以契约记在 dlgseen 里 ——
+     下面那行 seam dom 里的 dlg= 是静息态，v-if 之后本来就是 0。 */
+  var dlgseen=0;
+  if(!d.dlg && window.uiDialog){
+    window.uiDialog("测试缝","对话框外壳契约","ok");
+    for(var di=0; di<40 && !d.dlg; di++){ await new Promise(function(r){ setTimeout(r,50) }) }
+    dlgseen=d.dlg?1:0;
+    var dyes=document.getElementById("dlgYes");
+    if(dyes) dyes.click();
+    for(var dj=0; dj<40 && d.dlg; dj++){ await new Promise(function(r){ setTimeout(r,50) }) }
+  }
+  L("seam dlgseen="+dlgseen);
   L("seam dom main="+(d.main?d.main.id+":"+d.main.tagName:"none")+" sheet="+(d.sheet?d.sheet.id+":"+d.sheet.tagName:"none")+" panel="+(d.panel?1:0)+" toast="+(d.toast?1:0)+" dlg="+(d.dlg?1:0));
   if(A.closeSheet) A.closeSheet();
   L("seam api="+(typeof E.api)+" markReady="+(typeof E.markReady));
@@ -943,8 +956,10 @@ assert d.get("build") == want, "页面里跑的是 %s，刚装的是 %s：no-sto
 assert d.get("buildready") == "ok", "__enote.buildReady 是 %s：build.json 的 fetch 没在 5s 内完成，那 E.build 就是上一版的残留" % d.get("buildready")
 assert d.get("main") == "view:MAIN", "__enote.dom.main = %s，期望 view:MAIN" % d.get("main")
 assert d.get("sheet") == "sheet:DIV", "__enote.dom.sheet = %s，期望 sheet:DIV" % d.get("sheet")
-for k in ("panel", "toast", "dlg"):
+for k in ("panel", "toast"):
     assert d.get(k) == "1", "__enote.dom.%s 拿不到" % k
+# 步骤 18c：van-dialog 随开随建，静息态没有 #dlg 节点，契约是「弹一个就能拿到」
+assert d.get("dlgseen") == "1", "__enote.dom.dlg 弹开之后也拿不到"
 assert d.get("api") == "function", "__enote.api 是 %s：api(path, body) 是测试的入口" % d.get("api")
 assert d.get("probeok") == "true", "feature probe 报缺特性：%s" % d.get("missing")
 assert d.get("missing") == "none", "feature probe 报缺特性：%s" % d.get("missing")
@@ -2355,12 +2370,16 @@ js = r'''(async function(){
     var clearBtn=byText("#sheet .btn","清空全部");
     L("clearBtn="+(clearBtn?1:0));
     click(clearBtn);
-    var tDlg=await poll(function(){ return on(document.getElementById("dlg"),"on") },30,200);
-    L("tDlg="+tDlg); L("dlgOn="+(on(document.getElementById("dlg"),"on")?1:0));
+    /* 步骤 18c：对话框外壳是 van-dialog，显隐不再是 #dlg 上的 .on 类，
+       而是节点随 s.dlg.on 创建/销毁（v-if，理由见 js/shell.js）——
+       offsetParent 为 null 就是不可见，两种实现都成立。 */
+    var dlgOn=function(){ var e=document.getElementById("dlgYes"); return !!(e&&e.offsetParent) };
+    var tDlg=await poll(function(){ return dlgOn() },30,200);
+    L("tDlg="+tDlg); L("dlgOn="+(dlgOn()?1:0));
     L("dlgYes="+document.getElementById("dlgYes").textContent.trim());
     click(document.getElementById("dlgNo"));
-    var tDlgClosed=await poll(function(){ return !on(document.getElementById("dlg"),"on") },30,200);
-    L("tDlgClosed="+tDlgClosed); L("dlgClosed="+(on(document.getElementById("dlg"),"on")?0:1));
+    var tDlgClosed=await poll(function(){ return !dlgOn() },30,200);
+    L("tDlgClosed="+tDlgClosed); L("dlgClosed="+(dlgOn()?0:1));
     /* 关闭：弹层头部是 .iconbtn 图标按钮（aria-label=返回），没有「关闭」文字按钮
        —— 第一版按 byText("关闭") 找，找不到就是点了个空，closed 永远 0。 */
     var closeBtn=document.querySelector("#sheet .phead .iconbtn");
@@ -2662,7 +2681,7 @@ NIN=$(readtlog | wc -l)
   // 多一个裸全局就要改一次闸门，而桥就在边上，没理由扩它。
   if(id){ __enote.actions.delNote(id);
     // 目标状态：确认框真的弹出来（delNote 走 dialog，按钮在 DOM 里才点得到）。
-    var tDlg=await poll(function(){ return !!q("#dlgYes") },30,200);
+    var tDlg=await poll(function(){ var e=q("#dlgYes"); return !!(e&&e.offsetParent) },30,200);  /* 18c：van-dialog 节点随开合创建/销毁，要按可见性轮询 */
     L("tDlg="+tDlg);
     var yes=q("#dlgYes"); L("dlg="+(yes?yes.textContent.trim():"none"));
     if(yes) yes.click();
@@ -3173,8 +3192,8 @@ NFT=$(readtlog | wc -l)
     var cardsBefore=qa(P+" .acard").length;
     del.click();
     // 目标状态：删除确认框弹出（askDel 走 dialog）。
-    var tDlg=await poll(function(){ return document.getElementById("dlg").classList.contains("on") },30,200);
-    L("tDlg="+tDlg); L("dlg="+document.getElementById("dlg").classList.contains("on"));
+    var tDlg=await poll(function(){ var e=document.getElementById("dlgYes"); return !!(e&&e.offsetParent) },30,200);  /* 18c：van-dialog 节点随开合创建/销毁，要按可见性轮询 */
+    L("tDlg="+tDlg); L("dlg="+String(!!document.getElementById("dlgYes").offsetParent));
     document.getElementById("dlgYes").click();
     var left=-1;
     for(var i=0;i<40;i++){ await sleep(300);

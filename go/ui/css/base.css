@@ -201,7 +201,8 @@ pre{background:var(--pre-bg);border:var(--hair) solid var(--line);border-radius:
    旧的 #toast 整块删除：position / transform / opacity / transition 都是 van-toast
    自己的事，留着会和它的 van-fade 入场打架。这里只补设计系统里保留的两条：
    字重与阴影（Vant 的 toast 无阴影）。 */
-.enote-toast{font-weight:500;box-shadow:0 8px 28px rgba(12,22,40,.26)}
+.enote-toast{font-weight:500;box-shadow:0 8px 28px rgba(12,22,40,.26);
+  animation:pop var(--d2) var(--ease)}  /* 迁移前 #toast.on 的入场动画，Vant 的 slide 归零后由它补回（见 views/shell.css）*/
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);
   border-top-color:var(--acc);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}

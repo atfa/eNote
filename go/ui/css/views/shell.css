@@ -4,6 +4,14 @@
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 
+/* Vant 的弹层（van-toast / van-dialog，18d 的 van-popup 同理）不用 Vue 的 <Transition>
+   控制显隐：外壳模板里是 v-if + :show="true"，理由见 js/shell.js 的 DialogHost 注释
+   （Vue 的 enter/leave 在双 requestAnimationFrame 里起跳，Chrome 不给不可见窗口出帧时
+   rAF 不跑，弹层会永久停在 enter-from 的 opacity:0 上、且 leave 永不结束）。
+   于是 Vant 那些 van-fade-* / van-dialog-bounce-* / van-popup-slide-* 类一个都不会出现，
+   这里无需覆盖；入场动效是 .enote-toast / .enote-dialog 上的 pop 关键帧（components.css、
+   base.css），CSS 动画走合成器，不经过 Vue。 */
+
 /* 顶栏显隐（步骤 15）：我的页用自己的 hero 头部，不显示顶栏。
    以前是 setTab() 里 $('#topbar').style.display = mine?'none':'flex'，现在它是
    「当前在哪个页签」这个状态的纯函数，写在 CSS 里就少一处 JS 会漏同步的地方。

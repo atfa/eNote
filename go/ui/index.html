@@ -105,7 +105,8 @@
      .topbar 是 position:sticky（包一层会让它的包含块变成那层 div，高度就是它自己，
      顶栏会跟着内容一起滚走），.tabbar 是 position:fixed，同理。
      三个浮层各有一个 body 级容器（*Root）：Vue 的模板根元素是挂载点的**子节点**，
-     :class="{on:…}" 必须落在真正带定位与 z-index 的那个元素上（.sheet/.dlg/#toast），
+     :class="{on:…}" 必须落在真正带定位与 z-index 的那个元素上（.sheet；#toast 与 #dlg
+     自 18b/18c 起是 Vant 的 popup，显隐走 v-model:show，定位与 z-index 自带），
      所以容器本身不带 class。相对顺序保持迁移前那样（弹层 → 对话框 → 进度层 → toast），
      层叠由 CSS 的 z-index 决定。
      顶栏的显隐（我的页不显示顶栏）走 body[data-tab] + CSS，见 css/views/shell.css。 -->

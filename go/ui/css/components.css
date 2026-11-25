@@ -247,17 +247,20 @@
    这条「给右上角 ✕ 让位」的子选择器要同时认两条，否则排序页 / 记一笔的标题会钻到按钮底下。 */
 .sheet .panel>h2, .sheet #sheetBody>h2{padding-right:calc(var(--s6) + var(--s3))}
 
-/* --- 自绘对话框：原生 confirm() 会带上“网址为 http://127.0.0.1 的网页显示：” --- */
-.dlg{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:none;
-  align-items:center;justify-content:center;padding:var(--s5)}
-.dlg.on{display:flex}
-.dlg .dbox{width:100%;max-width:400px;background:var(--card);border:var(--hair) solid var(--line);border-radius:var(--r3);padding:var(--s4);box-shadow:0 18px 48px rgba(0,0,0,.28);
-  animation:pop var(--d2) var(--ease)}
-.dlg h3{margin:0;font-size:var(--fs-lg)}
-.dlg .dbody{margin-top:var(--s2);font-size:var(--fs-md);color:var(--dim);word-break:break-word}
-.dlg .dacts{display:flex;gap:var(--s2);margin-top:var(--s4)}
-.dlg .dacts .btn{flex:1;padding:var(--s2) 0;text-align:center;border-radius:var(--r2)}
-.dlg .dacts .btn.dg{background:var(--bad);color:var(--on-solid);border:0}
+/* --- 对话框（步骤 18c：外壳是 van-dialog，这里只补 Vant 没有的维度）---
+     遮罩色 / 宽度 / 圆角 / 底色 / 字号 / 正文字色全部在 tokens.css 的 --van-dialog-* 映射表里；
+     边框和阴影 Vant 没有对应变量（它靠 overflow:hidden 切圆角），落在这个类上，
+     和 .enote-toast 同一套路。top:50% 是把 Vant 的 45% 视觉重心改回旧版的真居中。 */
+.enote-dialog{top:50%;padding:var(--s4);border:var(--hair) solid var(--line);
+  box-shadow:0 18px 48px rgba(0,0,0,.28);animation:pop var(--d2) var(--ease)}
+.enote-dialog .van-dialog__header{padding:0;text-align:left;
+  /* Vant 这里写死 var(--van-text-color)（#323233），那是它自己的灰，不是我们的 --fg */
+  color:var(--fg)}
+.enote-dialog h3{margin:0;font-size:var(--fs-lg);line-height:inherit}
+.dbody{margin-top:var(--s2);font-size:var(--fs-md);color:var(--dim);word-break:break-word}
+.dacts{display:flex;gap:var(--s2);margin-top:var(--s4)}
+.dacts .btn{flex:1;padding:var(--s2) 0;text-align:center;border-radius:var(--r2)}
+.dacts .btn.dg{background:var(--bad);color:var(--on-solid);border:0}
 
 /* --- 开关 / 勾选动画 --- */
 .cb{animation:none}

@@ -2708,3 +2708,56 @@ D5/D15 的类名冻结只对**被 Vant 取代的那片**解冻，其余照旧。
 三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。
 设备实测（探针读计算样式）：上表八项全部命中；后台屏截图（记一笔空文本保存）toast 位置、圆角、
 配色、阴影与旧版一致，仍在 tabbar 上方。
+
+**步骤 18c：`DialogHost` → `van-dialog`（2026-11-25，全绿）**
+
+结构：标题走 `#title` 插槽（内容仍是 `<h3 id="dlgT">`）、按钮走 `#footer` 插槽（`.dacts` +
+`.btn` / `.btn.pri` / `.btn.dg` 原样保留，闸门⑥ 钉的就是 `.dacts .btn{`），Vant 自己那对平铺
+文字按钮用 `:show-confirm-button="false"` + `:show-cancel-button="false"` 关掉。读渲染函数确认的
+两件事（文档里没写）：footer 插槽**无条件渲染**，不受这两个开关影响；`close-on-click-overlay`
+在 van-dialog 里默认 **false**，旧版点遮罩是取消的（`@click.self`），必须显式打开，
+并接 `@click-overlay="H.dlgCancel()"`（Vant 自己只把 show 置 false，不会调 onCancel 回调）。
+
+映射表（`tokens.css`，紧跟 18b 的 toast 表）：
+
+| 旧 `.dlg` / `.dbox` | Vant 变量 / 我们的类 | 说明 |
+|---|---|---|
+| `max-width:400px` + 遮罩 `padding:var(--s5)` | `--van-dialog-width` **和** `--van-dialog-small-screen-width` = `min(400px, calc(100% - var(--s5) * 2))` | 只给前者会在窄屏被 `@media (max-width:320px)` 覆盖 |
+| `background:var(--card)` | `--van-dialog-background` | |
+| `border-radius:var(--r3)` | `--van-dialog-radius` | Vant 默认 16px |
+| 标题 `font-size:var(--fs-lg)` / 行高继承 body | `--van-dialog-font-size:var(--fs-lg)`、`--van-dialog-header-line-height:1.55`、`--van-dialog-header-padding-top:0` | 1.55 就是 base.css 的 body 行高，h3 继承它才是旧版实测的 28.46px |
+| 正文 `padding:var(--s4)`、`margin-top:var(--s2)`、`color:var(--dim)` | `--van-dialog-message-padding`、`--van-dialog-has-title-message-padding-top`、`--van-dialog-has-title-message-text-color` | |
+| 遮罩 `rgba(0,0,0,.45)` | `--van-overlay-background` | **全局**：18d 换 sheet 时要单独覆盖（旧 `.sheet` 遮罩是 `.5`） |
+| 阴影、边框 | `.enote-dialog`（components.css） | Vant 没有这两个维度 |
+| 标题色 | `.enote-dialog .van-dialog__header{color:var(--fg)}` | Vant 写死 `var(--van-text-color)` = `#323233`，深色主题下会糊 |
+
+真机计算样式对比（`.test/p18dlg.js` + `.test/dlgcmp.py`，基线 `.test/dlg_base_clean.txt`）：
+**正文 / 取消 / 确定 / 标题 零差异**；盒子那几处是定位方式换了（fixed + transform 居中 vs flex 居中），
+视觉 top 546.6px vs 546.5px；遮罩只差 z-index（50 → Vant 全局 2001，Vant 的弹层从 2001 起递增，
+我们的 tabbar 30 / sheet 40 / toast 90 那套层级以后要整体迁，不要混用）。后台屏截图核对通过。
+
+**踩出来的大坑：Vue 的 `<Transition>` 在不可见窗口上永不结束。** 第一版装完，`test.sh --vd` 从 164
+掉到 155，症状是「对话框弹出来看不见、点取消关不掉」。根因不在我们的 CSS：`van-popup` 的显隐是
+Vue 的 `<Transition>` 驱动的，`enter()` 与 `leave()` 都在 `nextFrame`（双 `requestAnimationFrame`）
+里起跳。Chrome 不给「不可见窗口」出帧 → rAF 不跑 → `enter-from` 类永不摘除
+（`van-dialog-bounce-enter-from{opacity:0}` 永久留着 → 弹层全透明），`leave()` 永不结束
+（`display:none` 永不落下 → 关不掉、遮罩留在屏上）。真机前台不受影响，虚拟屏必踩，
+息屏时后台弹出的对话框是同一类场景。探针实测（`.test/p18vd2.js` 读 leave 期间的计算样式）：
+`animDur=0s animName=none transDur=0s op=1 disp=` —— CSS 时长已经归零，节点仍然关不掉，
+因为 Vue 连 `getTransitionInfo` 都放在 `nextFrame` 里，量到 0 也照样先进 rAF 回调。
+
+改法：显隐退回 **`v-if` + `:show="true"`**（`ToastHost` 同步改，18b 是同一隐患）。「对话框在不在」
+是状态的纯函数：创建即可见、销毁即消失，Vant 那些 `van-fade-*` / `van-dialog-bounce-*` /
+`van-popup-slide-*` 类一个都不出现（`transitionAppear` 默认 false，挂载不走 appear 过渡），
+入场动效由 `.enote-dialog` / `.enote-toast` 上的 `pop` 关键帧提供（CSS 动画走合成器，不经过 Vue）。
+代价：节点随开合创建/销毁，静息态没有 `#dlg` / `#toast` —— 测缝契约改成「先弹一个再读」
+（新增 `seam dlgseen=1` 断言），与 17i 的 `#sheet`、18b 的 `#toast` 完全同构。
+`views/shell.css` 与 `js/shell.js` 各留一段注释，防止以后有人把 v-if 改回 `v-model:show`。
+
+test.sh：三处对话框轮询（设置页清空、笔记删除、附件删除）从「`.on` 类」改成「`offsetParent`
+可见性」判定 —— 对旧实现和新实现都成立；测缝补开合一次对话框。闸门两处：⑥ 的选择器
+`.dlg .dacts .btn{` → `.dacts .btn{`；「var() 解析不了」那条现在把 `vendor/*.css` 的 `--van-*`
+定义也算进 defined 集合（否则 `var(--van-text-color)` 被报成整条声明失效）。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
+三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。

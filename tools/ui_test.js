@@ -826,6 +826,14 @@ if (SPLIT) {
       for (const m of src.matchAll(/['"](--[\w-]+)\s*:/g)) jsSet.add(m[1]);
     }
   }
+  /* vendor 的 CSS 也是定义方：Vant 在 :root 里定义了 2557 个 --van-*，我们映射表里
+     引用它们（var(--van-text-color) 这类）不是笔误，是消费它的默认值。
+     只补进 defined（认它定义过），不补进 used（不拿它的使用情况算我们的闲置 token）。 */
+  for (const f of fs.readdirSync(path.join(uiDir, 'vendor'), { withFileTypes: true })) {
+    if (!/\.css$/.test(f.name)) continue;
+    const src = fs.readFileSync(path.join(uiDir, 'vendor', f.name), 'utf8');
+    for (const m of src.matchAll(/(--[\w-]+)\s*:/g)) defined.add(m[1]);
+  }
   const undef = [...used].filter(([n, v]) => !defined.has(n) && !v.fb && !jsSet.has(n))
     .map(([n, v]) => n + ' @ ' + v.rel + ':' + v.line);
   if (undef.length) bad('CSS 里有 var() 解析不了（整条声明会静默失效）', undef);
@@ -1751,7 +1759,7 @@ if (SPLIT) {
 
   // 按钮文字必须和按钮居中：.btn 是 inline-flex，text-align 管不到 flex 子项，得用 justify-content
   const btnCenter = /\.btn\{[^}]*display:inline-flex;[^}]*justify-content:center/.test(src)
-    && /\.dlg \.dacts \.btn\{/.test(src);
+    && /\.dacts \.btn\{/.test(src);
   sig('所有按钮文字居中（inline-flex + justify-content）', btnCenter);
 
   // 二级页面 = 整页，不是底部弹层：不要 grip，也不要有 border-top 的那条缝

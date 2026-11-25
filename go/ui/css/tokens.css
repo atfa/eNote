@@ -87,6 +87,28 @@
   --van-toast-text-min-width:0;
   --van-toast-text-padding:var(--s2) var(--s4);
   --van-toast-position-bottom-distance:calc(var(--toast-bottom) + env(safe-area-inset-bottom));
+
+  /* 步骤 18c：van-dialog 的映射表（同上，只指回自己的刻度）。
+     宽度：旧版是 max-width:400px + 遮罩 padding var(--s5)，Vant 的 .van-dialog 是
+     fixed + left:50%，没有 max-width，直接给 400px 在窄屏上会溢出，所以用 min()。
+     header 的 padding-top 归 0：旧版的 16px 净空是盒子 padding 给的（在 .enote-dialog 上），
+     两边都加就变 42px。message 的两个 padding 同理对齐旧版：左右 16px、标题下 8px。 */
+  --van-dialog-width:min(400px, calc(100% - var(--s5) * 2));
+  --van-dialog-small-screen-width:min(400px, calc(100% - var(--s5) * 2));
+  --van-dialog-background:var(--card);
+  --van-dialog-radius:var(--r3);
+  --van-dialog-font-size:var(--fs-lg);
+  --van-dialog-header-font-weight:700;
+  --van-dialog-header-line-height:1.55;   /* = base.css 的 body 行高：h3 继承它才是旧版的 28.46px */
+  --van-dialog-header-padding-top:0;
+  --van-dialog-message-padding:var(--s4);
+  --van-dialog-message-font-size:var(--fs-md);
+  --van-dialog-has-title-message-padding-top:var(--s2);
+  --van-dialog-has-title-message-text-color:var(--dim);
+  /* 遮罩：旧版 .dlg 是 rgba(0,0,0,.45)，Vant 默认 .7。这是全局变量，
+     18d 的 van-popup（底部弹层）旧版是 .5，到时候用 overlay-class 单独盖。 */
+  --van-overlay-background:rgba(0,0,0,.45);
+
   --hair:1px;
 
   /* ---- S2 新增：圆角刻度（三档 + 胶囊）---- */

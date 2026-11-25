@@ -1374,6 +1374,46 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 对话框换成 `van-dialog`（P14 S5 步骤 18c）：顺带挖出 Vue 的 `<Transition>` 在不可见窗口上永不结束
+
+`DialogHost` 的模板换成 `<van-dialog>`，标题走 `#title` 插槽（里面还是我们的 `<h3 id="dlgT">`）、
+按钮走 `#footer` 插槽（`.dacts` + `.btn` 原样保留，闸门⑥ 钉的就是它）。Vant 那对平铺文字按钮用
+`show-confirm-button=false` / `show-cancel-button=false` 关掉 —— 注意 footer 插槽是无条件渲染的，
+这两个开关只管 Vant 自己的按钮，这点在 Vant 文档里没写，是读渲染函数确认的。
+
+映射表进 `tokens.css`：宽度 `min(400px, calc(100% - var(--s5) * 2))`（旧版是 max-width:400px +
+遮罩内距，Vant 的宽度变量在 `@media (max-width:320px)` 里会被 `--van-dialog-small-screen-width`
+覆盖，两个都得给）、背景/圆角/字号/行高/内距/标题字重/正文色全部指回 D6 刻度。
+`components.css` 的 `.dlg` 整块删掉，换成 `.enote-dialog`（阴影、边框、pop 动画）+
+`.enote-dialog .van-dialog__header{color:var(--fg)}`（Vant 在这里写死 `var(--van-text-color)`
+= `#323233`，那是它自己的灰，深色主题下会糊成一片）。遮罩色 `--van-overlay-background:.45`
+是全局的，18d 换 sheet 时要单独覆盖（旧 `.sheet` 遮罩是 `.5`）。
+
+**真机计算样式对比**（基线 vs 装 Vant，`.test/dlg_base_clean.txt` / `.test/dlg_vant2_clean.txt`，
+`.test/dlgcmp.py`）：正文、取消、确定、标题 **零差异**；盒子那几处是定位方式换了（fixed +
+transform 居中 vs flex 居中），视觉 top 546.6px vs 546.5px；遮罩只差 z-index（50 → Vant 全局 2001+）。
+后台屏截图核对：白卡、左对齐粗标题、暗色正文、取消/确定胶囊按钮、遮罩压暗，与旧版一致。
+
+**最大的收获是踩出来的**：装完第一版在虚拟屏上对话框「弹出来就看不见、点取消也关不掉」，
+测试套件从 164 掉到 155。根因不在我们的 CSS，在 Vue：`van-popup` 的显隐是 Vue 的
+`<Transition>` 驱动的，而 `enter()` 和 `leave()` 都在 `nextFrame`（双 `requestAnimationFrame`）
+里起跳。Chrome 不给「不可见窗口」出帧，rAF 就不跑，于是 `enter-from` 类永不摘除
+（`van-dialog-bounce-enter-from` 的 `opacity:0` 永久留着 → 弹层全透明），`leave()` 永不结束
+（`display:none` 永不落下 → 关不掉、遮罩留在屏上）。真机前台不受影响，虚拟屏（`test.sh --vd`）
+必踩，息屏时后台弹出的对话框是同一类场景。把 CSS 时长归零救不回来 —— Vue 的 `leave()`
+连 `getTransitionInfo` 都在 `nextFrame` 里，量到 0 也照样先进 rAF 回调。
+
+改法：显隐退回 **`v-if` + `:show="true"`**，「对话框在不在」是状态的纯函数，创建即可见、
+销毁即消失，动画只剩我们自己的 `pop` 关键帧（CSS 动画走合成器，不经过 Vue，rAF 被节流也照跑）。
+`ToastHost` 同步改成 v-if（18b 遗留的同一隐患）。代价是节点随开合创建/销毁，静息态没有
+`#dlg`/`#toast` —— 测缝契约改成「先弹一个再读」（`seam dlgseen=1`），与 17i 的 `#sheet`、
+18b 的 `#toast` 完全同构。`views/shell.css` 留一段注释说明这件事，避免以后有人把 v-if 改回
+`v-model:show`。
+
+test.sh 三处对话框轮询从「`.on` 类」改成「`offsetParent` 可见性」（两种实现都成立），
+测缝补开合一次对话框。验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、
+`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Toast 换成 `van-toast`（P14 S5 步骤 18b）：第一块 Vant 组件落地，八项计算样式逐项命中
 
 `ToastHost` 的模板从手写的 `<div id="toast" class="on">` 换成 `<van-toast v-model:show

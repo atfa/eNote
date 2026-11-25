@@ -1,36 +1,46 @@
-P14 S5 步骤 18b：ToastHost → van-toast，第一块 Vant 组件落地
+P14 S5 步骤 18c：DialogHost → van-dialog，顺带挖出 Vue 的 <Transition> 在不可见窗口上永不结束
 
-Vant 的 toast 尺寸全部走 --van-toast-* CSS 变量，旧 #toast 的每个值都能一一对上，
-是「用 Vant 换掉手搓 UI」风险最低的一块，所以拿它打头阵。
+结构：标题走 #title 插槽（内容仍是 <h3 id="dlgT">）、按钮走 #footer 插槽（.dacts + .btn /
+.btn.pri / .btn.dg 原样保留，闸门⑥ 钉的就是 .dacts .btn{），Vant 自己那对平铺文字按钮用
+:show-confirm-button="false" + :show-cancel-button="false" 关掉。读渲染函数确认的两件事
+（文档里没写）：footer 插槽无条件渲染，不受这两个开关影响；close-on-click-overlay 在
+van-dialog 里默认 false，旧版点遮罩是取消的（@click.self），必须显式打开并接
+@click-overlay="H.dlgCancel()"（Vant 自己只把 show 置 false，不会调 onCancel 回调）。
 
-tokens.css：新增 Vant 映射表（--van-toast-background/-text-color/-font-size/-radius/
--text-padding/-position-bottom-distance/-max-width/-text-min-width），全部指向 D6 刻度。
-注释写明这张表是 Vant 和设计刻度之间唯一的桥。
+tokens.css 映射表：宽度 min(400px, calc(100% - var(--s5) * 2)) —— 必须同时给
+--van-dialog-small-screen-width，否则窄屏被 @media (max-width:320px) 覆盖；背景/圆角/
+字号/行高/内距/标题字重/正文色全部指回 D6 刻度；--van-overlay-background:.45 是全局的，
+18d 换 sheet 时要单独覆盖（旧 .sheet 遮罩是 .5）。components.css 的 .dlg 整块删掉，换成
+.enote-dialog（阴影、边框、pop 动画）+ .enote-dialog .van-dialog__header{color:var(--fg)}
+（Vant 在这里写死 var(--van-text-color) = #323233，深色主题下会糊成一片）。
 
-base.css：删掉 #toast{} / #toast .ic / #toast.on 三条，只留 .enote-toast（字重 + 阴影，
-Vant 没有阴影这个维度）。
+真机计算样式对比（.test/p18dlg.js + .test/dlgcmp.py，基线 vs 新）：正文 / 取消 / 确定 /
+标题 零差异；盒子那几处是定位方式换了（fixed + transform 居中 vs flex 居中），视觉 top
+546.6px vs 546.5px；遮罩只差 z-index（50 → Vant 全局 2001）。后台屏截图核对：白卡、
+左对齐粗标题、暗色正文、取消/确定胶囊按钮、遮罩压暗，与旧版一致。
 
-shell.js：ToastHost 模板换成 <van-toast v-model:show :duration="0" position="bottom"
-:message>。:duration="0" 是关键 —— Vant 默认 2000ms 自动关，会和 app.js 的 2200ms
-定时器抢着关，谁后到谁赢。行为一行没改：2.2s 定时、200ms 串行队列、S.toast.on/msg
-全部留在 app.js。
+最大的收获是踩出来的：第一版在虚拟屏上「对话框弹出来看不见、点取消关不掉」，test.sh --vd
+从 164 掉到 155。根因不在我们的 CSS，在 Vue —— van-popup 的显隐是 Vue 的 <Transition>
+驱动的，enter() 与 leave() 都在 nextFrame（双 requestAnimationFrame）里起跳。Chrome 不给
+「不可见窗口」出帧，rAF 就不跑，于是 enter-from 类永不摘除（van-dialog-bounce-enter-from
+的 opacity:0 永久留着 → 弹层全透明），leave() 永不结束（display:none 永不落下 → 关不掉、
+遮罩留在屏上）。真机前台不受影响，虚拟屏必踩，息屏时后台弹出的对话框是同一类场景。
+CSS 时长归零救不回来：探针实测 leave 期间 animDur=0s animName=none transDur=0s op=1
+disp= —— 时长已经归零，节点仍关不掉，因为 Vue 连 getTransitionInfo 都放在 nextFrame 里。
 
-DOM 形状是本次唯一的像素外变化：没弹时节点整个不存在（旧版常驻 + 切 .on），文案多包
-一层 .van-toast__text，z-index 90 → Vant 全局 2001。消费方只有 test.sh 四处（两处
-toastTxt()、设置页保存轮询、附件页预览 toast），全部改成「节点存在即弹出」；测试缝
-那条顺手补了真弹一次 toast 再断言（以前 toast 这个键在不在都能过）。
-app.js：window.__enote.toast 进测试缝，探针不必再手改 S.toast。
+改法：显隐退回 v-if + :show="true"（ToastHost 同步改，18b 是同一隐患）。「对话框在不在」
+是状态的纯函数：创建即可见、销毁即消失，Vant 那些 van-fade-* / van-dialog-bounce-* /
+van-popup-slide-* 类一个都不出现（transitionAppear 默认 false，挂载不走 appear 过渡），
+入场动效由 .enote-dialog / .enote-toast 上的 pop 关键帧提供（CSS 动画走合成器，不经过
+Vue）。代价是节点随开合创建/销毁，静息态没有 #dlg / #toast —— 测缝契约改成「先弹一个再读」
+（新增 seam dlgseen=1 断言），与 17i 的 #sheet、18b 的 #toast 完全同构。views/shell.css
+与 js/shell.js 各留一段注释，防止以后有人把 v-if 改回 v-model:show。
 
-闸门⑩（闲置 token 棘轮）把 vendor/*.css 也算消费方，否则新加的 --van-toast-* 会被自己
-报成闲置（Vant 自己的 2557 个定义只进 used 不进 defined）；闸门⑮ 的自定义标签注册表
-放行 van-*（走 app.use(Vant)，不是 app.component，上面两条断言在守）。
+test.sh：三处对话框轮询（设置页清空、笔记删除、附件删除）从「.on 类」改成「offsetParent
+可见性」判定，对旧实现和新实现都成立；测缝补开合一次对话框。闸门两处：⑥ 的选择器
+.dlg .dacts .btn{ → .dacts .btn{；「var() 解析不了」那条把 vendor/*.css 的 --van-* 定义
+也算进 defined 集合（否则 var(--van-text-color) 被报成整条声明失效）。
 
-设备实测（探针读计算样式）：rgb(19,26,36)、rgb(255,255,255)、14.04px、8px 圆角、
-8px 16px 内距、96px + safe-area 底距、z=2001、字重 500 —— 八项全部命中。后台屏截图
-（记一笔空文本保存）位置、圆角、配色、阴影与旧版一致，仍在 tabbar 上方。
-
-验收：122 闸门、GO_TEST=1 ./build.sh、./install.sh、./test.sh --vd 164 ok / 0 FAIL /
-PASS、三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、
-设置页 236 B 逐字未动）。
-
-文档：plan.md §9.40 补步骤 18b（含旧值↔Vant 变量对照表与实测值）、CHANGELOG 新节。
+验收：122 闸门、GO_TEST=1 ./build.sh、./install.sh、./test.sh --vd 164 ok / 0 FAIL / PASS、
+三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页
+236 B 逐字未动）。
