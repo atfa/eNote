@@ -1374,6 +1374,19 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 真响应式第 3 片（P14 S4 步骤 17d）：截图页摘掉 `V.tick`
+
+- `shotSel/shotList/shotLoading/shotError` 收进 `SHOTS = Vue.reactive({sel,list,loading,error})`；
+  `views/shots.js` 的 13 个 `live()` 换成裸 `computed()`；`loadShots()` 返回 `Promise.resolve()`，
+  `shotPick`/`shotSelAll` 的 `sheetPaint()` 删掉。真机：注入 2 张 → 2 格画出来，点一张 →
+  `.shotitem.on` 0→1、主按钮变「创建笔记」（`selCount<=1` 分支），`tick 6→6` 没动。
+- `SHOTFLAGS` 故意没进来：它是 `Android.shotFlags()` 的整包返回、读它的是「我的」页（还没迁）。
+- 闸门签名跟着迁移走：`one: live(...)` → `one: (live|computed)(...)`，迁移期两种写法都认。
+- OCR 有一次 flake（`test.sh --vd` 首轮在「读不出 VVVFEVMY」上 ERROR 中止，重跑 166 项全绿）；
+  本地 tesseract 路径，与本轮 JS 改动无关。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项、`.test/dom_equiv3.js` 13 项全绿。
+
+
 ### 真响应式第 2 片（P14 S4 步骤 17c）：文件夹页摘掉 `V.tick`
 
 - `folderSel/folderAll/folderQ` 收进 `FOLD = Vue.reactive({sel,all,q})`；`views/folders.js` 的

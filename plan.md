@@ -2382,4 +2382,18 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
   跑在热 app 上会继承上一轮停在的 tab（本轮症状是「排序页·笔记」画出附件页的排序项）。
   现在第一步显式 `__enote.state.tab = "notes"; await render()`。
 - 验收：122 静态检查、build/install、`./test.sh --vd` 166 项、`.test/dom_equiv3.js` 13 项全绿。
+### 9.30 步骤 17d：真响应式第 3 片 —— 截图页（2026-11-25）
+
+- `shotSel/shotList/shotLoading/shotError` → `var SHOTS = Vue.reactive({sel,list,loading,error})`；
+  `views/shots.js` 的 13 个 `live()` 换成裸 `computed()`；`loadShots()` 返回 `Promise.resolve()`，
+  `shotPick`/`shotSelAll` 的 `sheetPaint()` 删掉。
+- `SHOTFLAGS` **没**进来：它是 `Android.shotFlags()` 的整包返回、读它的是「我的」页（还没迁），
+  整对象 reactive 化要连 `shotFlags()` 的回调一起动，留到 stats 那片。
+- 闸门签名跟着迁移走：`只选一张时只显示「创建笔记」一个按钮` 的签名从
+  `one: live(...)` 改成 `one: (live|computed)(...)`——迁移期两种写法都认，迁完的文件不会漏网。
+- 真机证明：注入 2 张 → 2 格画出来；点一张 → `.shotitem.on` 0→1、主按钮变成「创建笔记」
+  （`selCount<=1` 的分支），`tick 6→6` 没动。
+- 一次 OCR flake：`test.sh --vd` 第一次跑在「OCR 没能在现造的图里读出 VVVFEVMY」上 ERROR 中止，
+  重跑 166 项全绿。OCR 是本地 tesseract 路径，与本轮改动无关（本轮只动 JS）。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项、`.test/dom_equiv3.js` 13 项全绿。
 

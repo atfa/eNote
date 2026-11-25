@@ -285,7 +285,7 @@ function askBattery(){
 /** 通知点按后打开对应笔记（Java 侧调用）*/
 // ---- 剪贴板暂存（R7/P6）：横幅 + 批量勾选 + 一键解析 ----
 /* 步骤 9 转 Vue：CLIP.list 是 /api/clip/list 的结果，CLIP.loading / CLIP.error 是加载三态。
-   三个都会被整体赋值，进 setHost 必须走 getter（同 shotList / FA 的教训：传值的话
+   三个都会被整体赋值，进 setHost 必须走 getter（同 SHOTS.list / FA 的教训：传值的话
    Vue 拿的是装配时那份快照，症状是「数据变了界面不动」）。 */
 /* 步骤 17b：这四个从「普通模块变量 + V.tick 大锤」换成一个 reactive 对象。
    之前 computed 看不见它们（不是响应式的），所以每个读它们的 computed 都得包 live()、
@@ -341,8 +341,11 @@ function missedDismiss(){
 /* 点清单里的一条：跳到笔记并展开那条待办 */
 // ---- 截图捕获（P11）：扫描监控文件夹 → 横幅 → 多选 → 导入笔记 ----
 var SHOTFLAGS = null;    // {enabled, granted, folders:n, watermark}  便宜的状态，每次 refresh 都行
-var shotSel = {};        // 暂存区里被勾选的截图 id
-var shotList = [];       // /api/shots/list 的结果（sheet 用）
+/* 步骤 17d：截图页的四份状态收进一个 reactive 对象（同 17b CLIP / 17c FOLD）。
+   SHOTFLAGS 不进来：它是 Android.shotFlags() 的整包返回，读它的是「我的」页（还没迁），
+   整对象 reactive 化要连 shotFlags() 的回调一起动，留到 stats 那片。 */
+var SHOTS = Vue.reactive({ sel: {}, list: [], loading: false, error: '' });
+// 暂存区里被勾选的截图 id / /api/shots/list 的结果（sheet 用）
 /* 步骤 17c：文件夹页的三份状态收进一个 reactive 对象（同 17b 的 CLIP）。
    勾中集合是「整体替换 + 逐键改」两种写法都有，所以整对象 reactive，逐键改也能被追踪。 */
 var FOLD = Vue.reactive({ sel: {}, all: [], q: '' });
@@ -351,7 +354,7 @@ var shotTimer = 0, shotStartAt = 0;
 /* 步骤 8：Vue 路径的加载态。今天 #shotGrid 的「加载中…」与「加载失败」是 innerHTML 直写，
    组件拿不到这个信息，所以提升成状态位（契约：shotSheet() 置 loading，loadShots() 收尾）。
    遗留路径不读它们，步骤 11 随遗留 DOM 写入一起消失。 */
-var shotLoading = false, shotError = '';
+// SHOTS.loading / SHOTS.error 在 SHOTS 里
 // 搜索框的当前值（在 FOLD.q）
 /* 导入进度层的状态（契约 (c)）：必须是 reactive，因为 shotOvlSub 是 Java 侧回调写的
    全局函数，状态放组件里 Java 写不到；组件（views/shots.js 的 ShotProgress）是纯渲染器。
@@ -404,23 +407,23 @@ window.shotsScanned = function(n){
    否则比出来的是「未同步」的 DOM，真机红。 */
 function shotSheet(){
   // 步骤 11：只剩 Vue 一条路径（ShotsView），字符串渲染器与它的 pageSheet 分支一起删了
-  shotLoading = true; shotError = '';
+  SHOTS.loading = true; SHOTS.error = '';
   pageSheetVue('shots', '新截图');
   loadShots();
 }
 async function loadShots(){
   try{
     var r = await api('/api/shots/list');
-    shotList = (r && r.shots) || [];
-    if(S.info) S.info.shot = shotList.length;
+    SHOTS.list = (r && r.shots) || [];
+    if(S.info) S.info.shot = SHOTS.list.length;
     var keep = {};
-    shotList.forEach(function(x){ keep[x.id] = shotSel[x.id] !== undefined ? shotSel[x.id] : true });
-    shotSel = keep;
-    shotLoading = false; shotError = '';
-    return sheetPaint();   // 数据写完 bump tick 就够
+    SHOTS.list.forEach(function(x){ keep[x.id] = SHOTS.sel[x.id] !== undefined ? SHOTS.sel[x.id] : true });
+    SHOTS.sel = keep;
+    SHOTS.loading = false; SHOTS.error = '';
+    return Promise.resolve();   /* 步骤 17d：SHOTS 是 reactive，Vue 自己重画 */
   }catch(e){
-    shotLoading = false; shotError = 'fail';
-    return sheetPaint();
+    SHOTS.loading = false; SHOTS.error = 'fail';
+    return Promise.resolve();
   }
 }
 function fmtClock(sec){
@@ -429,12 +432,10 @@ function fmtClock(sec){
   return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
 }
 function shotPick(id, el){
-  shotSel[id] = !shotSel[id];
-  return sheetPaint();   // class 由 computed 重算，el 不传
+  SHOTS.sel[id] = !SHOTS.sel[id];   /* 步骤 17d：class 由 computed 重算，不用 bump tick */
 }
 function shotSelAll(on){
-  shotList.forEach(function(x){ shotSel[x.id] = !!on });
-  return sheetPaint();
+  SHOTS.list.forEach(function(x){ SHOTS.sel[x.id] = !!on });
 }
 /**
  * 只有一张的时候「合并成一条」和「各存一条」是同一件事，摆两个按钮只会让人犹豫
@@ -450,7 +451,7 @@ function syncShotBtns(n){
   if(rw) rw.style.display = one ? 'none' : '';
 }
 function shotPicked(){
-  return shotList.filter(function(x){ return !!shotSel[x.id] });
+  return SHOTS.list.filter(function(x){ return !!SHOTS.sel[x.id] });
 }
 /**
  * 导入。merge = 一条笔记多附件（一次 AI），split = 每张一条，raw = 不调 AI 原样存。
@@ -518,7 +519,7 @@ window.shotsImported = function(res){
     return;
   }
   var staged = shotPicked().map(function(x){ return x.id });
-  shotSel = {};
+  SHOTS.sel = {};
   Promise.resolve(staged.length ? api('/api/shots/remove', {ids: staged}) : null)
     .catch(function(){}).then(function(){
       closeSheet();
@@ -567,7 +568,7 @@ async function shotIgnoreSel(){
   if(!picks.length) return toast('先勾选要忽略的截图');
   var ids = picks.map(function(x){ return x.id });
   await api('/api/shots/ignore', {ids: ids});
-  shotSel = {};
+  SHOTS.sel = {};
   loadShots();
   refresh();
   toast('已忽略 ' + ids.length + ' 张，以后不再提醒');
@@ -699,7 +700,7 @@ async function clearShots(){
       api('/api/shots/list').then(function(r){
         var ids = ((r && r.shots) || []).map(function(x){ return x.id });
         return api('/api/shots/remove', {ids: ids});
-      }).then(function(){ shotSel = {}; refresh(); toast('已清空截图暂存') });
+      }).then(function(){ SHOTS.sel = {}; refresh(); toast('已清空截图暂存') });
     }
   });
 }
@@ -755,7 +756,7 @@ async function loadClips(){
     /* CLIP.loading 必须一起落下：模板的三态判定是 `v-if="loading"` 优先于
        `v-else-if="err"`，只写 CLIP.error 的话加载失败永远停在「加载中…」，
        「加载失败」那一支是死代码（步骤 14 的 CLIP.error 客户端回归抓到的真 bug）。
-       截图页的 loadShots 一直是两个一起写的（app.js 的 shotLoading = false; shotError = 'fail'）。 */
+       截图页的 loadShots 一直是两个一起写的（app.js 的 SHOTS.loading = false; SHOTS.error = 'fail'）。 */
     CLIP.loading = false; CLIP.error = String(e);
     // #clipList 的子节点是 Vue 管的，直接写 innerHTML 会与它的虚拟 DOM 抢；
     // 现在两个属性都是响应式的，赋值就让模板的三态判定重算。
@@ -1572,10 +1573,10 @@ var HOST = setHost({
   openAttach: openAttach, delAttach: delAttach, filesNow: filesNow,
   /* 步骤 8 加：ShotsView / FoldersView / ShotProgress 的宿主接口。漏一个的症状同步骤 6：
      Vue 渲染抛错 → 静默回退字符串渲染器，闸门⑮ 静态扇模板里的 H.xxx 钉住它。
-     shotList / shotSel / FOLD.all / FOLD.sel / SHOTPROG 会被整体赋值，必须走 getter
+     SHOTS.list / SHOTS.sel / FOLD.all / FOLD.sel / SHOTPROG 会被整体赋值，必须走 getter
      （同 FA / q 的教训：传值的话 Vue 拿的是装配时那份快照）。 */
-  get shotList(){ return shotList }, get shotSel(){ return shotSel },
-  get shotLoading(){ return shotLoading }, get shotError(){ return shotError },
+  get shotList(){ return SHOTS.list }, get shotSel(){ return SHOTS.sel },
+  get shotLoading(){ return SHOTS.loading }, get shotError(){ return SHOTS.error },
   get folderAll(){ return FOLD.all }, get folderSel(){ return FOLD.sel },
   get folderQ(){ return FOLD.q }, get SHOTPROG(){ return SHOTPROG },
   fmtClock: fmtClock, folderLabel: folderLabel,
@@ -1721,10 +1722,10 @@ Object.assign(window, window.__enoteActions);
    注释会被当成一个名字，运行时导出表比对（P6.6）立刻红。 */
 
 /* ---------- S3（D21）：状态桥 ----------
-   jseval 测试载荷跑在 module 外面，拿不到模块作用域里的变量。tab / MISSED / shotSel
+   jseval 测试载荷跑在 module 外面，拿不到模块作用域里的变量。tab / MISSED / SHOTS.sel
    在载荷里是**整体赋值**（tab="notes"），必须有 setter：否则赋值只是在 window 上新建一个
    同名全局变量，模块里的 tab 一动不动，测试会「绿着骗过去」——这正是最难查的一类假绿。
-   S / open / shotList 载荷只读或只改属性，getter 就够；一并给 setter 免得以后踩同一个坑。
+   S / open / SHOTS.list 载荷只读或只改属性，getter 就够；一并给 setter 免得以后踩同一个坑。
    闸门②（步骤 4）按「载荷引用的名字 ⊆ 导出表 ∪ 状态桥 ∪ 内建 ∪ 载荷局部名」判红。 */
 window.__enote = window.__enote || {};
 window.__enote.actions = window.__enoteActions;
@@ -1733,8 +1734,8 @@ window.__enote.state = {
   get S(){ return S }, set S(v){ S = v },
   get MISSED(){ return MISSED }, set MISSED(v){ MISSED = v },
   get open(){ return open }, set open(v){ open = v },
-  get shotSel(){ return shotSel }, set shotSel(v){ shotSel = v },
-  get shotList(){ return shotList }, set shotList(v){ shotList = v },
+  get shotSel(){ return SHOTS.sel }, set shotSel(v){ SHOTS.sel = v },
+  get shotList(){ return SHOTS.list }, set shotList(v){ SHOTS.list = v },
   /* 步骤 8 加：文件夹页夹具要整体注入 FOLD.all / FOLD.sel（Android.shotFolders() 在
      真机上是设备目录，夹具不能依赖它），FOLD.q 是搜索框的当前值。闭合集 17 → 20 名，
      闸门③与 web_test 的名单同步。没 setter 就是 D21 那个坑：赋值只写 window，

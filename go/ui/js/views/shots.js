@@ -3,7 +3,7 @@
    同一份叶子函数，VDIFF 才逐字比得过。
 
    三个坑，都是前面几步踩过、写在这里省得再踩：
-   1) 读模块状态一律 live()（见 js/vue.js）：shotList / shotSel 是普通模块变量，
+   1) 读模块状态一律 computed()（见 js/vue.js）：shotList / shotSel 是普通模块变量，
       shotSelAll 整体替换它，computed 不依赖 tick 就永远缓存 → 勾选点了没反应。
    2) 模板里用原始值 + {{ }}，不要再 esc：遗留路径是 innerHTML 拼 esc(x)，DOM 文本 =
       解码后的原值；Vue 的 {{ }} 是 textContent，传原值才等价（传 esc(x) 会双重转义）。
@@ -36,9 +36,9 @@ export const ShotItem = {
   setup(props){
     return {
       H,
-      cls: live(() => 'shotitem' + (H.shotSel[props.x.id] ? ' on' : '')),
-      src: live(() => '/shotimg?id=' + encodeURIComponent(props.x.id)),
-      clock: live(() => H.fmtClock(props.x.dateAdded || 0))
+      cls: computed(() => 'shotitem' + (H.shotSel[props.x.id] ? ' on' : '')),
+      src: computed(() => '/shotimg?id=' + encodeURIComponent(props.x.id)),
+      clock: computed(() => H.fmtClock(props.x.dateAdded || 0))
     }
   },
   template: `
@@ -59,8 +59,8 @@ export const ShotsView = {
   components: { EmptyState, ShotItem, Ico },
   setup(){
     const tick = computed(() => V.tick);
-    const items = live(() => H.shotList);
-    const selCount = live(() => H.shotList.filter(function(x){ return !!H.shotSel[x.id] }).length);
+    const items = computed(() => H.shotList);
+    const selCount = computed(() => H.shotList.filter(function(x){ return !!H.shotSel[x.id] }).length);
     return {
       // 模板里写 H.xxx 的组件必须把 H 返回出去：模板表达式编译成 _ctx.H.xxx(...)，
       // setup 没返回 H 时，渲染期不碰它就不报错，点一下才抛
@@ -68,20 +68,20 @@ export const ShotsView = {
       // 实测：全选 就是这么静默死掉的（步骤 8，被「截图页交互」用例抓到）。
       H,
       tick, items,
-      loading: live(() => H.shotLoading),
-      err: live(() => H.shotError),
+      loading: computed(() => H.shotLoading),
+      err: computed(() => H.shotError),
       // 三态判定顺序与 loadShots() 一致：加载中 → 加载失败 → 空 → 网格。
       // 计数条单独一套：加载中时遗留路径写的是「已选 0 张」纯文本，loadShots() 完成后
       // 才换成 <b>N</b> 张已选 · 共 M 张 —— 首屏就照这个来，别提前显示 <b> 版。
       // 步骤 16b：原来是整条字符串 v-html，现在结构在模板里（#shotFoot 这个 id 是
       // test.sh 夹具与 CSS 的定位点，不能动）。
       sel: selCount,
-      total: live(() => H.shotList.length),
+      total: computed(() => H.shotList.length),
       // syncShotBtns(n)：只有一张时「合并成一条」和「各存一条」是同一件事，只留一个按钮。
-      one: live(() => selCount.value <= 1),
-      goText: live(() => selCount.value <= 1 ? '创建笔记' : '合并成一条笔记'),
-      goStyle: live(() => 'flex:' + (selCount.value <= 1 ? '1' : '1.6')),
-      subStyle: live(() => selCount.value <= 1 ? 'flex:1;display:none' : 'flex:1')
+      one: computed(() => selCount.value <= 1),
+      goText: computed(() => selCount.value <= 1 ? '创建笔记' : '合并成一条笔记'),
+      goStyle: computed(() => 'flex:' + (selCount.value <= 1 ? '1' : '1.6')),
+      subStyle: computed(() => selCount.value <= 1 ? 'flex:1;display:none' : 'flex:1')
     }
   },
   template: `
@@ -126,7 +126,7 @@ export const ShotProgress = {
   setup(){
     return {
       H,
-      P: live(() => H.SHOTPROG)
+      P: computed(() => H.SHOTPROG)
     }
   },
   template: `

@@ -1,0 +1,92 @@
+
+== build (go unit tests + apk)
+    package: name='dev.xduo.enote' versionCode='1' versionName='0.1' platformBuildVersionName='13' platformBuildVersionCode='33' compileSdkVersion='33' compileSdkVersionCodename='13'
+    application-label:'懒得记'
+    launchable-activity: name='dev.xduo.enote.MainActivity'  label='' icon=''
+
+== install + start
+  apk sha256=896f0eb05ae6835b  head=a8a2604  branch=main  build=a8a260494946-dirty@2026-11-25T01:41:19Z
+  on background display 222
+  api: http://127.0.0.1:40505/
+
+== 跑前重置数据（确定基线）
+  baseline: notes=0 todos=0 clip=0 theme=light base=yes ai=yes att=0 shots=0
+
+== AI 是否可用（没配好 key 就跳过依赖大模型的用例）
+  llm ok=1
+
+== selftest hook (store + web + llm + ocr)
+  store ok, web 200 in 2ms, llm ok in 4872ms, ocr ready=True
+
+== share text -> note with a dated todo
+  title: 购物、取快递及周会测试 | 3 todos, first due 2026-11-25T20:00
+
+== share image -> local ocr -> note
+  ocr 129 chars in 501ms, llm 5650ms, title: 设计评审与快递待办
+
+== share 现造的随机串图 → 本地 OCR 逐字读出（搜索断言只靠它）
+  图上画的随机串 VVVFEVMY；对照组 LTFDUA77（图上没有，搜索必须 0 命中）
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok (canvas 现造 39162 字节的图，随机串已画进去)
+  最近一条图片笔记：status=done ocrMs=338 ocrText='图片文字搜索断言用唯一随机串\n取快递VWWFEVMY'
+--- go log ---
+  2026-11-25 09:34:09.062 enqueue 1795570449061769ypv3 kind=file source=share-file len=0 ocrMs=0 status=raw
+  2026-11-25 09:34:11.344 attach delete 1795570449061781ud2r (vue-files-fixture.pdf)
+  2026-11-25 09:40:45.739 worker started
+  2026-11-25 09:40:45.740 appInit dir=/data/user/0/dev.xduo.enote/files notes=7 model=exec tz=Asia/Shanghai (UTC+8:00) now=2026-11-25T09:40
+  2026-11-25 09:40:45.945 http server on http://127.0.0.1:33835/
+  2026-11-25 09:40:46.025 ocr state: ready=true cpu, v8.4.1.77
+  2026-11-25 09:41:40.760 worker started
+  2026-11-25 09:41:40.761 appInit dir=/data/user/0/dev.xduo.enote/files notes=7 model=exec tz=Asia/Shanghai (UTC+8:00) now=2026-11-25T09:41
+  2026-11-25 09:41:41.015 http server on http://127.0.0.1:40505/
+  2026-11-25 09:41:41.184 ocr state: ready=true cpu, v8.4.1.77
+  2026-11-25 09:41:42.005 shot remove: 0 条
+  2026-11-25 09:41:44.636 llm: ok 84 chars in 2303ms (finish=stop)
+  2026-11-25 09:41:44.770 enqueue 1795570904770241cui2 kind=text source=manual-text len=49 ocrMs=0 status=queued
+  2026-11-25 09:41:48.879 llm: ok 333 chars in 4107ms (finish=stop)
+  2026-11-25 09:41:48.881 note 1795570904770241cui2 parsed: title="产品评审会安排" todos=1 in 4107ms
+  2026-11-25 09:41:49.652 llm: ok 547 chars in 4872ms (finish=stop)
+  2026-11-25 09:41:51.171 enqueue 1795570911170575qw1d kind=text source=share-text len=78 ocrMs=0 status=queued
+  2026-11-25 09:41:56.617 llm: ok 594 chars in 5445ms (finish=stop)
+  2026-11-25 09:41:56.619 note 1795570911170575qw1d parsed: title="购物、取快递及周会测试" todos=3 in 5445ms
+  2026-11-25 09:41:59.054 enqueue 17955709190540077qdx kind=image source=share-image len=261 ocrMs=501 status=queued
+  2026-11-25 09:42:04.705 llm: ok 833 chars in 5650ms (finish=stop)
+  2026-11-25 09:42:04.707 note 17955709190540077qdx parsed: title="设计评审与快递待办" todos=2 in 5650ms
+  2026-11-25 09:42:07.831 enqueue 1795570927831092uffa kind=image source=share-image len=60 ocrMs=338 status=queued
+  2026-11-25 09:42:12.497 llm: ok 253 chars in 4664ms (finish=stop)
+  2026-11-25 09:42:12.498 note 1795570927831092uffa parsed: title="取快递验证码" todos=1 in 4664ms
+--- app log ---
+  1795570926.384 web console: OCRB64 d 51600 wKoZWjr2JYA8BCAAAQhAAAIQgAAEIAABCEAAAu1PIM8KUWDloUYbCEAAAhCAAAQgAAEIQAACEIBA4wgwMgQ6jgAKrI675CwYAhCAAAQgAAEIQAACEDAGBhCAAAQg0EoEUGC10tVirhCAAAQgAAEIQKCZCDAXCEAAAhCAAAQgUCcCKLDqBJphIAABCEAAAnEEKIMABCAAAQhAAAIQgAAEsgmgwMpmhAQEINDcBJgdBCAAAQhAAAIQgAAEIAABCLQ5ARRYbX6B3ZaHFAQgAAEIQAACEIAABCAAAQhAAALtT6B1V4gCq3WvHTOHAAQgAAEIQAACEIAABCAAgXoTYDwIQKAhBFBgNQQ7g0IAAhCAAAQgAAEIQKBzCbByCEAAAhCAgC8BFFi+xJCHAAQgAAEIQAACjSfADCAAAQhAAAIQgEBHEUCB1VGXm8VCAAIQgMBYAuQgAAEIQAACEIAABCAAgVYhgAKrVa4U84RAMxJgThCAAAQgAAEIQAACEIAABCAAgToQQIFVB8hpQ1AHAQhAAAIQgAAEIAABCEAAAhCAQPsTYIXVEfh/AAAA//83QmI/AAAABklEQVQDAMgg6Munx4m7AAAAAElFTkSuQmCC
+  1795570926.385 web console: OCRB64 done=1
+  1795570926.528 clip 只有空白字符
+  1795570926.562 web: page finished http://127.0.0.1:40505/
+  1795570927.467 share: handle action=android.intent.action.SEND type=image/* text=null
+  1795570927.537 window focus: false
+  1795570927.695 web console: SELFCHECK OK
+  1795570929.110 clip 只有空白字符
+  1795570929.144 shots: scan -> 0
+  1795570929.152 window focus: true
+  FOREGROUND: yes
+      mCurrentFocus=Window{3ea3064 u0 dev.xduo.enote/dev.xduo.enote.MainActivity}
+      mFocusedApp=ActivityRecord{203668735 u0 dev.xduo.enote/.MainActivity t2644}
+  --- crashes ---
+  11-23 14:23:36.966 21595 21595 F DEBUG   : Cmdline: /system/bin/app_process -Djava.class.path=/data/app/~~hR_7Zau5WQ6s1UfEDU2z-wAA/dev.xduo.enote-AFOV7xT3J6XW79QnjFgMsQ==/base.apk /dev/null com.k2fsa.soloist.nativebridge.Main main 127.0.0.1 44299 jseval
+  11-23 14:23:36.966 21595 21595 F DEBUG   : pid: 21584, tid: 21584, name: main  >>> /system/bin/app_process <<<
+  11-23 14:23:36.966 21595 21595 F DEBUG   : uid: 0
+  11-23 14:23:36.966 21595 21595 F DEBUG   : tagged_addr_ctrl: 0000000000000001 (PR_TAGGED_ADDR_ENABLE)
+  11-23 14:23:36.966 21595 21595 F DEBUG   : esr: 0000000092000006 (Data Abort Exception 0x24)
+  11-23 14:23:36.966 21595 21595 F DEBUG   : signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------
+  11-23 14:23:36.966 21595 21595 F DEBUG   : Abort message: 'No pending exception expected: java.lang.ClassNotFoundException: com.k2fsa.soloist.nativebridge.Main
+  11-23 14:23:36.966 21595 21595 F DEBUG   : (Throwable with empty stack trace)'
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x0  0000000000000000  x1  0000000000005450  x2  0000000000000006  x3  0000007fcd99b1c0
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x4  6f646277641f666d  x5  6f646277641f666d  x6  6f646277641f666d  x7  7f7f7f7f7f7f7f7f
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x8  00000000000000f0  x9  d48185b7f0a02322  x10 000000ff00000020  x11 000000000012800c
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x12 0000007619b54020  x13 000000007fffffff  x14 000000000b77303e  x15 000013d2fa13da9b
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x16 000000760fb8a120  x17 000000760fb72380  x18 00000076196b4000  x19 0000000000005450
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x20 0000000000005450  x21 00000000ffffffff  x22 0000000000000002  x23 b400007463d94010
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x24 00000073432d6000  x25 0000000000fffff9  x26 000000005a000000  x27 0000007fcd99b600
+  --- per-display focus ---
+    display 222: Window{d880402 u0 com.sec.android.app.launcher/com.honeyspace.dexservice.SecondaryLauncher}
+    display 6: null
+    display 0: Window{3ea3064 u0 dev.xduo.enote/dev.xduo.enote.MainActivity}   <-- target
+ERROR: OCR 没能在现造的图里读出 VVVFEVMY（图上画的就是它：读不出就是本地 OCR 路径坏了）
