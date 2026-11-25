@@ -68,6 +68,8 @@ import { now, fmtTime, relTime } from './timeflow.js'
 import { toast, api, apiTimeout, errText, REQ_TIMEOUT_MS, setApiFail, apiFail } from './netflow.js'
 /* 步骤 48：$ / esc / ic 搬进 js/domutil.js（零依赖小工具）。 */
 import { $, clip, esc, ic } from './domutil.js'
+/* 步骤 49：启动自检搬进 js/selfcheck.js（它自己排 1200ms 后的定时器）。 */
+import './selfcheck.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
 import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
@@ -583,34 +585,8 @@ setTab();
 loadMissed();
 // 截图捕获的轻量状态（横幅要按"未开启/没权限/没选文件夹"分状态显示）
 shotFlags(function(){ render(); shotIntroOnce() });
-/* 启动自检（R15）：把各页渲染和「展开详情」这类交互入口真跑一遍。
-   起因：expand() 用了从没声明过的 expAnim，点了抛 ReferenceError，界面一动不动，
-   而语法检查、结构断言都发现不了 —— 只有真调用才会暴露。 */
-function selfCheck(){
-  var errs = [], probe = function(name, fn){
-    try { fn() } catch(e){ errs.push(name + ': ' + ((e && e.message) || e)) }
-  };
-  /* 步骤 11 起四个 tab 只能走 render()（字符串渲染器已删）：逐个切过去渲染一次，
-     组件的 setup / computed 抛异常会直接进 SELFCHECK FAIL。 */
-  var tab0 = tab;
-  ['notes','todos','files','mine'].forEach(function(t){
-    probe('render:' + t, function(){ setTab(t); });
-  });
-  setTab(tab0);
-  var n = (S.notes || [])[0];
-  if(n){
-    probe('expand', function(){
-      var was = !!open[n.id];
-      expand(n.id);            // 打开
-      if(!open[n.id]) throw new Error('点了没展开');
-      expand(n.id);            // 收回原状
-      open[n.id] = was;
-    });
-  }
-  if(errs.length) console.log('SELFCHECK FAIL ' + errs.join(' | '));
-  else console.log('SELFCHECK OK');
-}
-setTimeout(selfCheck, 1200);
+/* 启动自检（R15）搬进 js/selfcheck.js（P14 S6 步骤 49）：把各页渲染和「展开详情」
+   这类交互入口真跑一遍，异常打 SELFCHECK FAIL。 */
 
 /* ---------- S3（D12）：ES module 导出表 ----------
    页面里 70 处内联 handler（69 onclick + 1 oninput）按**全局**作用域解析函数名。

@@ -1,27 +1,19 @@
-P14 S6 步骤 48：小工具簇搬进 js/domutil.js + 闸门⑩ 加严格死函数扫描（app.js 757 → 756）
+P14 S6 步骤 49：启动自检搬进 js/selfcheck.js（app.js 756 → 732）
 
-第二十簇：$、esc、clip、ic 四个小工具搬成 go/ui/js/domutil.js。app.js 757 → 756 行（模块 16 行，函数体逐字搬、0 处改写）。
+第二十一簇：selfCheck() 搬成 go/ui/js/selfcheck.js。app.js 756 → 732 行（模块 43 行，28 行逐字搬、0 处改写）。
 
-- 第三个零依赖模块（timeflow 之后第二个纯函数模块）：$ 只碰 document，clip/esc/ic 是纯字符串函数，顶层谁都不碰。
-  取用面：shotflow（$ + esc）、clipflow（esc）、sheetflow（$）、searchflow（$）、settingsflow（$）；
-  app.js 导出表里 $ / esc 两笔删掉。
-- 闸门⑩ 从五路变六路（闸门总数仍是 122，加的是同一条 ok 行里的另一路扫描）：原来那一路的引用侧带着 test.sh
-  与 ui_test.js 自己（连注释一起），函数名只要在这些地方被提过就算活着；补的这路只看 go/ui/js/**（剔注释），
-  边界用 (?<![\w$])name(?![\w$]) —— \b 匹配不到 $，$() 这种名字在旧那路是假阴性。基线 0，反向测试（往 domutil.js
-  加一个没人调的函数 → FAIL 严格扫描抓到 s48ReverseProbe）通过。新门顺手抓到 clipflow 的死 import（import 了
-  esc 却一次没调），删掉。
-- 踩坑（这一步唯一一次真崩）：先用 grep -n "\bclip(" 判定 clip() 是死函数，删掉、装机、探针，页面全白——
-  Uncaught ReferenceError: clip is not defined at app.js:470，那行是 HOST 里的 clipText: clip。函数被当值传出去时
-  不带括号，name( 这种找法看不见它；新加的严格扫描判定是对的（它说 clip 活着），错的是临时 grep：判死函数要扫全名
-  词边界，不是扫调用形式。崩掉时探针形态记档：就绪：use=0 loads=1 + __enoteActions is not defined——loads=1 说明
-  app.js 跑过，图标数 0 与全局缺失说明它在半途抛了异常。clip 于是搬进 domutil.js，HOST 的 clipText 继续用它。
+- 依赖：S / tab / open 来自 app.js（环），setTab 直接找 js/tabflow.js、expand 直接找 js/noteflow.js，都不绕 app.js。
+  环安全的原因写进文件头：selfCheck 只在 setTimeout(…, 1200) 里跑，那时 app.js 早已求值完，读到的都是活绑定的
+  最终值；求值期谁都不碰对面。
+- setTimeout(selfCheck, 1200) 跟着函数一起搬进模块（模块求值期自己排定时器），app.js 那边只剩 import './selfcheck.js'
+  一行副作用型 import——没有具名导入，闸门㉑/㉒ 无需改；selfCheck 本来就不在 app.js 导出表里，导出表一行没动。
+- 闸门「启动自检覆盖各页渲染与展开详情」读的是全部 UI 源码拼接（src），搬文件对它透明，闸门总数仍 122；
+  闸门⑩ 严格扫描里 selfCheck 被同文件的 setTimeout 引用，不算死函数。
 
-探针（物理屏 .test/probe_util.js）：ic：#view 里的图标 use=45 第一个 href="#i-check-square"、底栏 use=5
-hrefs=#i-note,#i-check-square,#i-plus,#i-clip,#i-user → $：设置弹层 #sheet=yes #sheetBody 子节点=18 → 关掉后
-#sheet=no → 页面里 import(location.origin+"/js/domutil.js") 拿到同一份模块 keys=$,clip,esc,ic → esc 语义
-"a&lt;b&gt;&amp;&quot;"、clip 语义 "abcd…"、ic 语义逐字、$ 语义 "MAIN view" → esc 走进度层：#shotOvlRoot 文本里是
-字面 &lt;b&gt;（b 标签数=1 是模板自己的）→ 收起来后文本长度 0 → loads=1。坑：探针脚本是 CORS-cross-origin 注入的，
-import("./js/domutil.js") 报 base URL is about:blank，得写绝对 URL。
+探针（物理屏冷启动 .test/probe_selfcheck.js）：就绪 loads=1 tab=notes → selfCheck 跑过之后 tab=notes 图标 use=44
+卡片=8（selfCheck 会逐个切 tab 再 setTab(tab0) 切回来，这条证明「切完还原」没丢）→ 页面里
+import(location.origin+"/js/selfcheck.js") 拿到同一份模块 keys=selfCheck → 手动再跑一次 selfCheck 完成，tab=notes →
+end loads=1。日志：SELFCHECK OK 三次（启动两次 + 手动一次），没有 SELFCHECK FAIL。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

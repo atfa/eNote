@@ -1374,6 +1374,24 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 启动自检搬进 js/selfcheck.js（P14 S6 步骤 49）
+
+第二十一簇：`selfCheck()` 搬成 `go/ui/js/selfcheck.js`。**app.js 756 → 732 行**（模块 43 行，28 行逐字搬、0 处改写）。
+
+* 依赖：`S`/`tab`/`open` 来自 app.js（环），`setTab` 直接找 `js/tabflow.js`、`expand` 直接找 `js/noteflow.js`，
+  都不绕 app.js。环安全的原因写进文件头：selfCheck 只在 `setTimeout(…, 1200)` 里跑，那时 app.js 早已求值完，
+  读到的都是活绑定的最终值；求值期谁都不碰对面。
+* `setTimeout(selfCheck, 1200)` 跟着函数一起搬进模块（模块求值期自己排定时器），app.js 只剩
+  `import './selfcheck.js'` 一行副作用型 import——没有具名导入，闸门㉑/㉒ 无需改。
+* 闸门「启动自检覆盖各页渲染与展开详情」读的是全部 UI 源码拼接（`src`），搬文件对它透明；闸门总数仍 122。
+  闸门⑩ 严格扫描：`selfCheck` 被同文件的 `setTimeout` 引用，不算死函数。`selfCheck` 本来就不在 app.js
+  导出表里（只被自己的定时器调），搬走不需要动导出表。
+* 探针（`.test/probe_selfcheck.js`，冷启动）：`就绪 loads=1 tab=notes` → 3.5s 后 `tab=notes 图标 use=44 卡片=8`
+  （selfCheck 会逐个切 tab 再切回来，这条证明「切完还原」没丢）→ 页面里 `import(location.origin+"/js/selfcheck.js")`
+  拿到同一份模块 keys=`selfCheck` → 手动再跑一次完成 → `loads=1`；日志里 `SELFCHECK OK` 三次、无 `SELFCHECK FAIL`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 小工具簇搬进 js/domutil.js + 闸门⑩ 加严格死函数扫描（P14 S6 步骤 48）
 
 第二十簇：`$`、`esc`、`clip`、`ic` 四个小工具搬成 `go/ui/js/domutil.js`。**app.js 757 → 756 行**（模块 16 行，
