@@ -3791,3 +3791,44 @@ end loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.70 P14 S6：小工具簇搬进 js/domutil.js + 闸门⑩ 加严格死函数扫描（步骤 48）
+
+第二十簇：`$`、`esc`、`clip`、`ic` 四个小工具搬成 `go/ui/js/domutil.js`。
+**app.js 757 → 756 行**（模块 16 行，四个函数体逐字搬，0 处改写）。
+
+* 第三个**零依赖**模块（`timeflow` 之后第二个纯函数模块）：`$` 只碰 `document`，`clip`/`esc`/`ic` 是纯字符串函数。
+  取用面：`shotflow`（`$`+`esc`）、`clipflow`（`esc`，**顺手删掉一个死 import**——它 import 了 `esc`
+  却一次没调）、`sheetflow`（`$`）、`searchflow`（`$`）、`settingsflow`（`$`）；app.js 导出表里 `$`/`esc` 两笔删掉。
+* **闸门⑩ 从五路变六路**（总数仍是 122，加的是同一条 ok 行里的一路扫描）：原来那一路的引用侧带着
+  `test.sh` 与 `ui_test.js` 自己（连注释一起），函数名只要在这些地方被提过就算活着；补的这路
+  **只看 `go/ui/js/**`（剔注释）**，边界用 `(?<![\w$])name(?![\w$])`——`\b` 匹配不到 `$`，
+  所以 `$()` 这种名字在旧那路是假阴性。基线 0，反向测试：往 domutil.js 加一个
+  `function s48ReverseProbe(x){ return x + 1 }` → `FAIL 严格扫描（只看 UI 源码、剔注释）抓到定义了没人调的函数 1 > 0`。
+* 新门顺手抓到 **clipflow 的死 import**（`esc` 只 import 不调用），删掉。
+
+踩坑记档（这一步唯一一次真崩）：我先用 `grep -n "\bclip("` 判定 `clip()` 是死函数，删掉、装机、探针，
+页面全白——`Uncaught ReferenceError: clip is not defined at app.js:470`，那行是 HOST 里的
+`clipText: clip`。**函数被当值传出去时不带括号**，`name(` 这种找法看不见它。新加的严格扫描判定是对的
+（它说 clip 活着），是我的临时 grep 错了：判死函数要用词边界扫全名，不是扫调用形式。
+崩掉时探针的输出形态也记一下：`就绪：use=0 loads=1` + `__enoteActions is not defined`——
+`loads=1` 说明 app.js 跑过，图标数 0 与全局缺失说明它在半途抛了异常。
+
+探针（物理屏，`.test/probe_util.js`）：
+
+```
+ic：#view 里的图标 use=45 第一个 href="#i-check-square"；底栏 use=5 hrefs=#i-note,#i-check-square,#i-plus,#i-clip,#i-user
+$：设置弹层 #sheet=yes #sheetBody 子节点=18 → 关掉后 #sheet=no
+domutil 同一份模块（页面里 import 得到）keys=$,clip,esc,ic
+esc 语义="a&lt;b&gt;&amp;&quot;"      clip 语义="abcd…"      ic 语义="<svg class="ic y"><use href="#i-x"/></svg>"
+$ 语义="MAIN view"
+esc 走进度层：#shotOvlRoot 文本="正在处理 3 张截图AI 正在解析（3 条）&lt;b&gt;&amp;&quot; · 已用 2s…"（b 标签数=1，是模板自己的）
+收起来后 #shotOvlRoot 文本长度=0        end loads=1
+```
+
+页面里验语义的写法记一下：探针脚本是 CORS-cross-origin 注入的，`import("./js/domutil.js")` 会报
+`Failed to resolve module specifier … base URL is about:blank`，得写绝对 URL
+`import(location.origin+"/js/domutil.js")`——同一 URL 命中同一份模块实例，所以验的就是 app.js 用的那份。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

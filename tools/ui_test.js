@@ -942,6 +942,23 @@ if (SPLIT) {
     if (hits <= where.length) dead.push(name + '（' + where.join(', ') + '）');
   }
 
+  /* 步骤 48：上面那一路的引用侧带着 test.sh 与本文件（连注释一起），函数名只要在这些地方
+     被提过就算活着——app.js 里的 clip() 就是这么藏住的：全库 0 调用，但 test.sh 与注释里
+     到处是 clip 字样（clipSheet / clipPick 之类）。补一路严格的：引用侧只看 go/ui/js/**
+     （剔注释），边界用 (?<![\w$])…(?![\w$]) —— `\b` 匹配不到 `$`，所以 `$()` 那种名字在
+     上一路是假阴性。基线 0：新函数必须在 UI 源码里真有人调。 */
+  const STRICT_DEAD_BASELINE = 0;
+  const uiStrictText = jsSources.map(([, s]) => stripComments(s)).join('\n');
+  const strictDead = [];
+  for (const [name, where] of jsDefs) {
+    const re = new RegExp('(?<![\\w$])' + name.replace(/[$.*+?^{}()|[\]\\]/g, '\\$&') + '(?![\\w$])', 'g');
+    const hits = (uiStrictText.match(re) || []).length;
+    if (hits <= where.length) strictDead.push(name + '（' + where.join(', ') + '）');
+  }
+  if (strictDead.length > STRICT_DEAD_BASELINE)
+    probs0.push('严格扫描（只看 UI 源码、剔注释）抓到定义了没人调的函数 '
+      + strictDead.length + ' > ' + STRICT_DEAD_BASELINE + '：' + strictDead.join(' | '));
+
   /* 步骤 24：同一套扫 CSS 类名。抓出 14 个（.pri-low / .ib / .swi / .tgl / .cnt / .num /
      .ts / .fbar / .ntx / .mt / .mtt / .mts / .mcd / .clipacts），全是字符串渲染器时代与
      Vant 化（van-switch 顶掉 .swi/.tgl）之后留下的死样式。类名是字符串，动态拼接
@@ -1005,7 +1022,9 @@ if (SPLIT) {
     probs.push('定义了没人调的函数 ' + dead.length + ' > ' + DEAD_BASELINE + '：' + dead.join(' | '));
   if (probs.length) bad('定义了却没人用（棘轮）', probs.join(' ; '));
   else ok('无新增闲置 token（' + unused.length + ' ≤ ' + UNUSED_BASELINE + '）、无死函数（' +
-    jsDefs.size + ' 个定义，死函数 ' + dead.length + ' ≤ ' + DEAD_BASELINE + '）、无死 class（' +
+    jsDefs.size + ' 个定义，死函数 ' + dead.length + ' ≤ ' + DEAD_BASELINE
+    + '；严格扫描（只看 UI 源码、剔注释）' + jsDefs.size + ' 个定义，死函数 ' + strictDead.length
+    + ' ≤ ' + STRICT_DEAD_BASELINE + '）、无死 class（' +
     cssClassDefs.size + ' 个 class 定义，死 class ' + deadCls.length + ' ≤ ' + CSS_CLASS_BASELINE +
     '）、无死图标（' + iconIds.length + ' 个 symbol，死图标 ' + deadIcons.length + ' ≤ ' + ICON_BASELINE +
     '）、无死动画（' + kfNames.length + ' 个 keyframes，死动画 ' + deadKf.length + ' ≤ ' + KF_BASELINE + '）');

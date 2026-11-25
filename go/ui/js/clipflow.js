@@ -1,10 +1,10 @@
 // go/ui/js/clipflow.js — 剪贴板暂存队列（P7）从 app.js 搬出来（P14 S6 步骤 30）。
 //
 // 循环依赖安全（契约同 js/shotflow.js 文件头）：本模块先被求值，顶层只碰 vue.js 的 Vue 与
-// 自己新建的 reactive 盒子；app.js 那边（S / toast / esc / relTime / api / refresh /
+// 自己新建的 reactive 盒子；app.js 那边（S / toast / relTime / api / refresh /
 // closeSheet / pageSheetVue）全部只在函数体里读，求值期谁都不碰谁。
 import { Vue } from './vue.js'
-import { S, esc, refresh, closeSheet, pageSheetVue } from './app.js'
+import { S, refresh, closeSheet, pageSheetVue } from './app.js'
 import { api, toast } from './netflow.js'
 import { relTime } from './timeflow.js'
 

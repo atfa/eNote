@@ -11,7 +11,8 @@ import { Vue } from './vue.js'
 import { shell } from './shell.js'
 import { P, prefQS, savePrefs } from './prefsflow.js'
 import { filesNow } from './filesflow.js'
-import { tab, q, SRERR, syncBox, reassign, paintStatus, render, $, setQ, setQRaw } from './app.js'
+import { tab, q, SRERR, syncBox, reassign, paintStatus, render, setQ, setQRaw } from './app.js'
+import { $ } from './domutil.js'
 import { apiTimeout, errText } from './netflow.js'
 var SR = Vue.reactive({notes:null, todoIds:null, where:{}, total:0, scanned:0});
 var searchSeq = 0;

@@ -6,7 +6,8 @@
 // cssMs 是 closeSheet 的私有工具（收场时长只从样式表读），也不导出。
 import { nextTick, mountSheet, unmountAllSheets } from './vue.js'
 import { shell } from './shell.js'
-import { $, VUE_SHEETS } from './app.js'
+import { VUE_SHEETS } from './app.js'
+import { $ } from './domutil.js'
 /* 弹层开启序号（步骤 8）。两个开启入口（pageSheetVue / sheetVue）都是「先改 shell.sheet 状态，
    再 nextTick 往 #sheetBody 里挂 app」；连点两下、开 A 立刻改开 B 时，迟到的 nextTick 回调会
    把上一个弹层的组件挂进新面板里：DOM 在 .panel 里但 app 已死，弹层空白且点了没反应。

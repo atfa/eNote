@@ -66,6 +66,8 @@ import { todoRowCls, notesFiltered, groupTodos, rank, hit } from './listflow.js'
 import { now, fmtTime, relTime } from './timeflow.js'
 /* 步骤 47：toast 与请求层搬进 js/netflow.js（只依赖 js/shell.js，零循环依赖）。 */
 import { toast, api, apiTimeout, errText, REQ_TIMEOUT_MS, setApiFail, apiFail } from './netflow.js'
+/* 步骤 48：$ / esc / ic 搬进 js/domutil.js（零依赖小工具）。 */
+import { $, clip, esc, ic } from './domutil.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
 import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
@@ -112,8 +114,7 @@ var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘�
 var q = QB.v;
 /* 页签偏好（排序/筛选/搜索词）那一簇搬进 js/prefsflow.js（P14 S6 步骤 35）。
    这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
-/* 图标：ic('search') → 一个 24dp 线性图标，颜色跟着 currentColor */
-function ic(n, cls){ return '<svg class="ic' + (cls ? ' ' + cls : '') + '"><use href="#i-' + n + '"/></svg>' }
+/* ic()（图标字符串生成器）搬进 js/domutil.js（P14 S6 步骤 48）。 */
 /* ---------- 服务端搜索（R3）----------
    列表数据一律来自 /api/search；请求失败时退回本地过滤，断网也能看。 */
 var prefsLoaded = false;
@@ -135,9 +136,7 @@ function setTabTo(v){ tab = syncBox(TAB, v) }
 
 /* 主题（R8）那一簇（themeOf / applyTheme / setTheme）搬进 js/prefsflow.js（P14 S6 步骤 35）。 */
 
-function $(s){return document.querySelector(s)}
-function esc(s){return (s||'').replace(/[&<>"]/g,function(c){
-  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+/* $ 与 esc 搬进 js/domutil.js（P14 S6 步骤 48）：零依赖的小工具，谁用谁直接 import。 */
 /* toast（步骤 15）与请求层 api / apiTimeout / errText / REQ_TIMEOUT_MS（步骤 13、14）搬进
    js/netflow.js（P14 S6 步骤 47）：那边只 import js/shell.js，零循环依赖。
    测试缝 API_FAIL 留在那边，app.js 的 __enote.test.failApi 调 setApiFail() 写它。 */
@@ -373,7 +372,7 @@ async function refresh(quiet){
    它读的是 settingsflow 的 SFORM，formFill 也在那边（步骤 42 / 44）。 */
 /* 运行日志 / AI 调用记录 / AI 连通测试那一簇（LLMTEST / testLLM / LOGDATA / DEBUGDATA /
    showLog / showDebug）搬进 js/logflow.js（P14 S6 步骤 42，循环依赖，同上）。 */
-function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
+/* clip()（截断字符串加省略号，HOST 的 clipText）搬进 js/domutil.js（P14 S6 步骤 48）。 */
 
 /* 步骤 39：自绘对话框那一簇（dialog / closeDlg / askDel）搬进 js/dlgflow.js（循环依赖，
    同上：本模块顶层不碰 app.js，只在函数体里读 tab，写 tab 走 setTabTo）。
@@ -748,7 +747,7 @@ window.__enote.buildReady = fetch('/build.json').then(function(r){ return r.json
    活绑定，重新赋值那边看得见，这一点是这次搬迁最容易踩空的地方。
    步骤 38 起这张表也是 js/sheetflow.js 的取用面（$ / VUE_SHEETS）：VUE_SHEETS 是 var，
    只在 nextTick 回调里读，求值期不碰，安全。 */
-export { S, tab, open, q, $, esc, dialog, closeSheet, pageSheetVue, setTab,
+export { S, tab, open, q, dialog, closeSheet, pageSheetVue, setTab,
   refresh, paneDirty, statsNow, statCls,
   P, SRK, reassign, paintStatus, render, enterCls, askDel,
   prefs, savePrefs, searchNow, setQ, setQRaw, setTabTo, ST, syncBox, STERR,

@@ -1374,6 +1374,30 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 小工具簇搬进 js/domutil.js + 闸门⑩ 加严格死函数扫描（P14 S6 步骤 48）
+
+第二十簇：`$`、`esc`、`clip`、`ic` 四个小工具搬成 `go/ui/js/domutil.js`。**app.js 757 → 756 行**（模块 16 行，
+函数体逐字搬，0 处改写）。
+
+* 第三个零依赖模块（`timeflow` 之后第二个纯函数模块）：`$` 只碰 `document`，`clip`/`esc`/`ic` 是纯字符串函数。
+  取用面：shotflow（`$`+`esc`）、clipflow（`esc`）、sheetflow（`$`）、searchflow（`$`）、settingsflow（`$`）；
+  app.js 导出表里 `$`/`esc` 两笔删掉。
+* **闸门⑩ 从五路变六路**（闸门总数仍是 122）：补的一路只看 `go/ui/js/**`（剔注释）找「定义了没人调」，
+  边界用 `(?<![\w$])name(?![\w$])`——`\b` 匹配不到 `$`，`$()` 那种名字在旧那路是假阴性。基线 0，
+  反向测试（加一个没人调的函数 → FAIL）通过。新门顺手抓到 clipflow 的死 import（import 了 `esc` 却不调用），删掉。
+* 踩坑：先用 `grep "\bclip("` 判定 `clip()` 是死函数，删掉装机后页面全白——`Uncaught ReferenceError:
+  clip is not defined at app.js:470`，那行是 HOST 里的 `clipText: clip`。**函数被当值传出去时不带括号**，
+  `name(` 看不见它；新加的严格扫描判定是对的（它说 clip 活着），错的是临时 grep。崩掉时探针形态：
+  `就绪：use=0 loads=1` + `__enoteActions is not defined`（loads=1 说明 app.js 跑过，图标 0 与全局缺失说明中途抛异常）。
+  `clip` 于是搬进 domutil.js（HOST 的 `clipText` 继续用它）。
+* 探针（`.test/probe_util.js`）：ic 图标 `#view use=45`、底栏 5 个 href；`$` 开设置弹层（`#sheetBody` 18 个子节点）
+  与关掉；页面里 `import(location.origin+"/js/domutil.js")` 拿到同一份模块（keys=`$,clip,esc,ic`），
+  `esc("a<b>&\"")="a&lt;b&gt;&amp;&quot;"`、`clip("abcdefgh",4)="abcd…"`、`ic("x","y")` 逐字、`$("#view")="MAIN view"`；
+  esc 走进度层：`#shotOvlRoot` 文本里是字面 `&lt;b&gt;`（没被解析成元素），收起后文本长度 0；`loads=1`。
+  坑：探针脚本是 cross-origin 注入的，`import("./js/domutil.js")` 报 base URL is about:blank，得用绝对 URL。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### toast 与请求层搬进 js/netflow.js（P14 S6 步骤 47）
 
 第十九簇：**跟 Go 说话的那几行**——`toast`（`toastT`）、`api`（测试缝 `API_FAIL`）、`apiTimeout`
