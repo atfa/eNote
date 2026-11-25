@@ -2329,8 +2329,25 @@ if (SPLIT) {
       }
     }
   }
-  if (bad22.length) bad('闸门㉒ import/export 对不上', bad22.join(' | '));
-  else ok('闸门㉒ ' + mods.size + ' 个模块的 ' + impCount + ' 处具名 import 全部真被导出（解析期 SyntaxError 类故障）');
+  /* 搬出去的簇连一行 window 桥都不能带走：步骤 37 真事——搬 openNote 时把
+     `window.openNote = openNote; window.notifyResult = notifyResult;` 一起带走了，
+     notifyResult 在 openflow.js 里没 import，整份 app.js 静默不执行（页面空白、
+     __enoteAppLoads 是 undefined），122 闸门全绿。Java 侧入口桥与测试缝是 app.js 的
+     固定名单，少一行就是这类故障（模块自己的桥不在此列，例如 clipflow 的 onClipRead）。 */
+  const APP_BRIDGES = [
+    "window.__enoteAppLoads =", "window.openClip = openClip;",
+    "window.openNote = openNote; window.notifyResult = notifyResult;",
+    "window.openTodo = openTodo;", "window.onAppResume = function(){",
+    "window.uiDialog = function(", "window.uiBack = function(){",
+    "window.__enote.vue = {", "window.__enoteActions = {", "window.__enote.state = {"
+  ];
+  const appBridgeSrc = read('go/ui/js/app.js');
+  const badTop = [];
+  for (const b of APP_BRIDGES)
+    if (!appBridgeSrc.includes(b)) badTop.push('app.js 少了入口桥「' + b + '」（搬走的簇把桥带走了 → 整份 app.js 不执行）');
+  if (bad22.length + badTop.length) bad('闸门㉒ import/export 对不上', bad22.concat(badTop).join(' | '));
+  else ok('闸门㉒ ' + mods.size + ' 个模块的 ' + impCount + ' 处具名 import 全部真被导出（解析期 SyntaxError 类故障）；'
+    + APP_BRIDGES.length + ' 行 Java 侧入口桥 / 测试缝都还在 app.js');
 }
 
 /* ---------- 闸门㉓：组件模板里 v-html 归零（S3 步骤 16d）----------

@@ -47,6 +47,9 @@ import { ST, statsNow, statCls } from './statsflow.js'
 /* 步骤 36：错过的提醒那一簇搬进 js/missedflow.js（循环依赖，同上）。 */
 import { MISSED, loadMissed, missedSheet, missedDone, missedGoTodos, missedDismiss }
          from './missedflow.js'
+/* 步骤 37：打开笔记 / 待办 + 系统日历 / 闹钟那一簇搬进 js/openflow.js（循环依赖，同上）。 */
+import { openNote, openTodo, openTodoFocus, jump, dueMs, toCalendar, toAlarm }
+         from './openflow.js'
 import { prefs, P, prefQS, flattenPrefs, savePrefs, CUR, themeOf, applyTheme, setTheme }
          from './prefsflow.js'
 import { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, askNotify,
@@ -219,52 +222,12 @@ function relTime(iso){
   return Math.floor(s/86400)+' 天前';
 }
 window.openClip = openClip;
-function openNote(id){
-  if(!id) return;
-  tab='notes'; open[id]=true; setTab(true); refresh();
-  setTimeout(function(){var el=document.getElementById('n'+id);
-    if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
-    else toast('这条笔记已删除');}, 300);
-}
+/* 打开一条笔记 / 一条待办（通知点进来定位到那条待办）+ 把到期时间交给系统日历 /
+   闹钟那一簇搬进 js/openflow.js（P14 S6 步骤 37）。下面两行是 Java 侧通知的入口桥，
+   名字不能动，留在 app.js。 */
 window.openNote = openNote; window.notifyResult = notifyResult;
-/* 通知点进来：展开这条笔记并定位到那一条待办（滚过去 + 亮一下）*/
-function openTodo(nid, tid){
-  if(!nid) return;
-  var n = (S.notes||[]).filter(function(x){return x.id===nid})[0];
-  if(n) open[nid] = true;
-  tab='notes'; setTab(true); refresh();
-  openTodoFocus(nid, tid, 0);
-}
-function openTodoFocus(nid, tid, tries){
-  setTimeout(function(){
-    var el = document.getElementById('t'+nid+'_'+tid);
-    if(!el){
-      if(tries < 6) return openTodoFocus(nid, tid, tries+1);
-      toast('这条待办已完成或已删除'); return;
-    }
-    el.scrollIntoView({behavior:'smooth', block:'center'});
-    el.classList.add('flash');
-    setTimeout(function(){ el.classList.remove('flash') }, 2600);
-  }, 320);
-}
 window.openTodo = openTodo;
 
-function dueMs(iso){ if(!iso) return 0; var d=new Date(iso); return isNaN(d)?0:d.getTime() }
-/* R13：把到期时间交给系统日历 / 闹钟（intent，不需要权限）*/
-function toCalendar(nid,tid,ev){
-  ev.stopPropagation();
-  var n=S.notes.filter(function(x){return x.id===nid})[0]; if(!n) return;
-  var t=(n.todos||[]).filter(function(x){return x.id===tid})[0]; if(!t||!t.due) return;
-  if(!window.Android||!Android.addToCalendar){ toast('日历只在 app 内可用'); return }
-  Android.addToCalendar(t.text, dueMs(t.due));
-}
-function toAlarm(nid,tid,ev){
-  ev.stopPropagation();
-  var n=S.notes.filter(function(x){return x.id===nid})[0]; if(!n) return;
-  var t=(n.todos||[]).filter(function(x){return x.id===tid})[0]; if(!t||!t.due) return;
-  if(!window.Android||!Android.setAlarm){ toast('闹钟只在 app 内可用'); return }
-  Android.setAlarm(dueMs(t.due), t.text);
-}
 /* .todo 的类名串：done / pri-high / 入场动画。Vue 模板用 :class 算出来的必须和这里一致。 */
 function todoRowCls(n, t){
   return (t.done?' done':'')+(t.priority==='high'?' pri-high':'')+todoEnterCls(n,t);
@@ -594,8 +557,7 @@ function delNote(id){
 }
 function reocr(id){ if(!window.Android){toast('图片识别只在 app 内可用');return;}
   toast('正在识别图片…'); Android.reocr(id); setTimeout(refresh,1500); setTimeout(refresh,5000); }
-function jump(id){ tab='notes'; open[id]=true; setTab(true); refresh();
-  setTimeout(function(){var el=document.getElementById('n'+id);if(el)el.scrollIntoView({behavior:'smooth',block:'center'})},250); }
+/* jump(id)（从弹层 / 附件页跳回那条笔记并展开）搬进 js/openflow.js（P14 S6 步骤 37）。 */
 function toggleAI(){ var s=S.settings; s.useAI=!s.useAI; saveSettings(); }
 async function saveSettings(){
   /* 步骤 20：六项全部来自 SFORM（输入框是它的纯函数），不再 $('#sUrl').value 读 DOM。
@@ -1186,7 +1148,7 @@ window.__enote.buildReady = fetch('/build.json').then(function(r){ return r.json
    它们，模块求值期谁都不碰谁 —— 那边文件头写了这条契约。
    `tab` 是 `var tab = TAB.v` 且会被 `tab = syncBox(TAB, …)` 重新赋值：ES module 的导入是
    活绑定，重新赋值那边看得见，这一点是这次搬迁最容易踩空的地方。 */
-export { S, tab, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, setTab,
+export { S, tab, open, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, setTab,
   refresh, api, paneDirty, statsNow, relTime, statCls,
   apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel,
   prefs, savePrefs, searchNow, setQ, setTabTo, ST, REQ_TIMEOUT_MS, syncBox, STERR,

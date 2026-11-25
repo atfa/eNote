@@ -3351,3 +3351,40 @@ PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、待办行 651 B �
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL /
 PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、待办行 651 B 逐字未动）。
+
+## 9.59 P14 S6：打开笔记 / 待办 + 系统日历 / 闹钟那一簇搬进 js/openflow.js（步骤 37）
+
+第九簇：**打开一条笔记 / 一条待办 + 把到期时间交给系统日历 / 闹钟**——`openNote`、`openTodo`、
+`openTodoFocus`、`jump`、`dueMs`、`toCalendar`、`toAlarm`，搬成 `go/ui/js/openflow.js`，
+**app.js 1193 → 1155 行**（模块 60 行）。
+
+* `openNote` / `openTodo` / `jump` 都写 `tab`，走 app.js 的 `setTabTo('notes')`（ESM 的 import
+  绑定只读，同 setQ）。
+* `open`（= `OPENB.v` 那个 reactive 代理）以前没导出，这次加进导出表：写属性（`open[id]=true`）
+  不算写绑定，安全。
+* `dueMs` 由 app.js **再导出**（remindflow.js 从 app.js 拿它），remindflow 那边一行没动。
+
+**两个真 bug，都是「连续区间切片」切出来的，静态闸门全绿：**
+
+1. 搬 `openNote` 时把 `window.openNote = openNote; window.notifyResult = notifyResult;` 一起带走了，
+   而 `notifyResult` 在 openflow.js 里没有 import → 整份 app.js 在链接期就抛
+   `ReferenceError: notifyResult is not defined`，页面空白、`__enoteAppLoads` 是 `undefined`，
+   **122 闸门全绿**（闸门㉑ 只核对 import 的名字在不在对方导出表里，看不出「用了没 import」）。
+   定位手法：往页面塞一个 `<script type="module">` 去 `import("/js/openflow.js")` 打印
+   `e.stack`，直接指到 `openflow.js:18:51`。
+   → **闸门㉒ 加了入口桥棘轮**：app.js 必须有那 10 行 Java 侧入口桥 / 测试缝
+   （`__enoteAppLoads`、`openClip`、`openNote+notifyResult`、`openTodo`、`onAppResume`、
+   `uiDialog`、`uiBack`、`__enote.vue`、`__enoteActions`、`__enote.state`），少一行就红。
+2. `openTodoFocus` 少了函数体第一句 `var el = document.getElementById('t'+nid+'_'+tid);`
+   （切片时那一行被吞了）→ `el` 未定义，通知点进来的「滚过去 + 亮一下」永远不亮。
+   A/B 探针（`git stash push -- go/ui` 回到步骤 36 重建）：基线 `flashWindow=0111111111`、
+   改动后 `0000000000`，一眼见红。修完再 A/B：`0111111111` 与基线逐位一致。
+   → **搬迁清单 (g) 条升级**：不能只对「顶层定义清单」，要把搬走的每一段函数体与
+   `git show HEAD:go/ui/js/app.js` 逐字 diff（脚本化：逐个函数取 N 行比对，本次 7 个函数
+   全部逐字一致才算过）。
+
+探针（物理屏）：`jump` → 笔记页 + 展开 ✓；`openTodo` → 笔记页 + 找到那条待办 + flash ✓；
+`openNote` → 笔记页 + 元素在 ✓；`toCalendar` / `toAlarm` 走守卫分支不抛 ✓；`loads=1`。
+
+验收：122 闸门（闸门㉒ 新增桥棘轮）、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、待办行 651 B 逐字未动）。
