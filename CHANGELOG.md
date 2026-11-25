@@ -1374,6 +1374,24 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 运行日志簇搬进 js/logflow.js，设置页保存搬回 js/settingsflow.js（P14 S6 步骤 42）
+
+第十四簇：**运行日志 / AI 调用记录 / AI 连通测试**——`LLMTEST`、`testLLM`、`LOGDATA`、`DEBUGDATA`、
+`showLog`、`showDebug` 搬成 `go/ui/js/logflow.js`；同一批把 **`saveSettings`** 搬回它的数据源所在的
+`js/settingsflow.js`。**app.js 977 → 948 行**（logflow 37 行，settingsflow 78 → 90 行）。
+
+* 这一簇是**纯搬家、零改写**：清单 (g) 条的逐字 diff 是 0 处改写（前十三簇里第一次）——三个盒子是模块
+  自己的 `Vue.reactive`，app.js 的 HOST getter 读 `.v`，方向天然干净。
+* `saveSettings` 早就该在 settingsflow.js：它读的是那边的 `SFORM.v`、保存成功后调那边的 `formFill()`，
+  之前是「app.js 里的函数读 settingsflow 的盒子」这条反向依赖。搬过去后 settingsflow 的 import 表多一个
+  `render`，app.js 的 `toggleAI` 从那边 import `saveSettings`——依赖变成单向（settingsflow → app.js）。
+* 探针（`.test/probe_log.js`，真实路径：`showLog`/`showDebug` 开弹层、设置页里点「保存」「测试连接」）：
+  运行日志 `body=11263`（`LOGDATA.v` 灌到了）、AI 记录 `body=15`、保存 `toast="已保存"`、
+  测试连接两态 `" 连接中…"` → `"✅ 成功（2531ms，HTTP 200）…"`（`testLLM` 写盒子 → settings.js 的三个
+  computed 画两态，跨 logflow.js → settings.js 两个文件）、`loads=1`。
+* 验收：`ui_test.js` **122 项全绿**（一次全绿，这一簇没有需要教闸门的行锚）、`GO_TEST=1 ./build.sh` 绿、
+  `./install.sh` Success、`./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 服务端搜索那一簇搬进 js/searchflow.js（P14 S6 步骤 41）
 
 第十三簇：**服务端搜索**——`SR`、`SRK`（上次结果指纹盒子）、`searchSeq`、`searchNow`、`searchInput`、

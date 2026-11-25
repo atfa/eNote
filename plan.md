@@ -3543,3 +3543,40 @@ end       loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.64 P14 S6：运行日志簇搬进 js/logflow.js，设置页保存搬回 js/settingsflow.js（步骤 42）
+
+第十四簇：**运行日志 / AI 调用记录 / AI 连通测试**——`LLMTEST`、`testLLM`、`LOGDATA`、`DEBUGDATA`、
+`showLog`、`showDebug` 搬成 `go/ui/js/logflow.js`；同一批把 **`saveSettings`** 搬回它的数据源所在的
+`js/settingsflow.js`。**app.js 977 → 948 行**（logflow 37 行，settingsflow 78 → 90 行）。
+
+* 这一簇是**纯搬家，零改写**：清单 (g) 条的逐字 diff 是 0 处改写（前十三簇里第一次），
+  因为三个盒子（`LLMTEST` / `LOGDATA` / `DEBUGDATA`）是模块自己的 `Vue.reactive`，
+  app.js 的 HOST getter 读 `.v`，方向天然干净。
+* `saveSettings` 早就该在 settingsflow.js：它读的是那边的 `SFORM.v`、保存成功后调那边的
+  `formFill()`，之前是「app.js 里的函数读 settingsflow 的盒子」这条反向依赖。搬过去后
+  settingsflow 的 import 表多一个 `render`（app.js 已导出），app.js 的 `toggleAI` 从那边 import
+  `saveSettings`——方向变成单向（settingsflow → app.js），符合文件头那条契约。
+* 模块顶层只 import `Vue`（vue.js）、`sheetVue`（sheetflow.js）、`api`（app.js，只在函数体里读）。
+* 闸门㉑/㉒ 自动覆盖新模块，122 项一次全绿，没有需要教闸门的行锚（这一簇没有骨架屏/调色板/
+  弹层契约相关的门）。
+
+探针（物理屏，`.test/probe_log.js`，走真实路径：`__enoteActions.showLog/showDebug` 开弹层、
+设置页里点「保存」与「测试连接」两个真按钮）：
+
+```
+base        sheet=none
+运行日志    sheet=on body=11263 首行="✕运行日志OCR readyhttp://127.0"   ← LOGDATA.v 灌到了
+AI记录      sheet=on body=15                                            ← 还没有 AI 调用记录
+设置页      sheet=on body=1030 保存按钮=保存
+保存后      toast="已保存"                                              ← settingsflow 里的 saveSettings
+测试连接中  " 连接中…"
+测试连接后  "✅ 成功（2531ms，HTTP 200）我是连接测试助手…"              ← LLMTEST.v → 模板两态
+end         sheet=none loads=1
+```
+
+「测试连接」这一路是 `testLLM()` 写盒子 → `views/settings.js` 的 `llmBusy` / `llmLine` / `llmBody`
+三个 computed 画两态，跨了 logflow.js → settings.js 两个文件，探针把「连接中」和结果两态都抓到了。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

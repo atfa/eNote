@@ -53,6 +53,8 @@ import { MISSED, loadMissed, missedSheet, missedDone, missedGoTodos, missedDismi
 /* 步骤 39：自绘对话框那一簇搬进 js/dlgflow.js（循环依赖，同上）。 */
 /* 步骤 40：「记一笔」/「添加待办」那一簇搬进 js/addflow.js（循环依赖，同上）。 */
 /* 步骤 41：服务端搜索那一簇搬进 js/searchflow.js（循环依赖，同上）。 */
+/* 步骤 42：运行日志 / AI 调用记录那一簇搬进 js/logflow.js（循环依赖，同上）。 */
+import { LLMTEST, testLLM, LOGDATA, DEBUGDATA, showLog, showDebug } from './logflow.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
 import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
@@ -64,7 +66,7 @@ import { prefs, P, prefQS, flattenPrefs, savePrefs, CUR, themeOf, applyTheme, se
 import { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, askNotify,
          notifyResult, keepAliveOn, batteryIgnoring, toggleKeepAlive, askBattery } from './remindflow.js'
 import { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
-         clearAllNotes, sortSheet, setPref, resetPrefs } from './settingsflow.js'
+         clearAllNotes, sortSheet, setPref, resetPrefs, saveSettings } from './settingsflow.js'
 import { FA, fmtSize, filesNow, attachCardCls, attachGlyphName, openAttach, delAttach,
          pickFile } from './filesflow.js'
 import { CLIP, openClip, importClip, clipItemCls, clipPrevText, clipThumbText, clipMetaText,
@@ -490,41 +492,10 @@ function reocr(id){ if(!window.Android){toast('图片识别只在 app 内可用'
   toast('正在识别图片…'); Android.reocr(id); setTimeout(refresh,1500); setTimeout(refresh,5000); }
 /* jump(id)（从弹层 / 附件页跳回那条笔记并展开）搬进 js/openflow.js（P14 S6 步骤 37）。 */
 function toggleAI(){ var s=S.settings; s.useAI=!s.useAI; saveSettings(); }
-async function saveSettings(){
-  /* 步骤 20：六项全部来自 SFORM（输入框是它的纯函数），不再 $('#sUrl').value 读 DOM。
-     useAI 是开关，直接读 S.settings（van-switch 的那条线，见 18e）。 */
-  var f = SFORM.v || {};
-  var s = {baseUrl:String(f.baseUrl||'').trim(), apiKey:String(f.apiKey||'').trim(),
-    model:String(f.model||'').trim(), timeoutS:parseInt(f.timeoutS)||90,
-    maxTokens:parseInt(f.maxTokens)||2048, useAI:S.settings.useAI,
-    temperature:f.temperature===''?0.2:parseFloat(f.temperature)||0.2};
-  var r = await api('/api/settings', s);
-  toast(r.ok?'已保存':'保存失败');
-  if(r.ok){ S.settings=r.settings; formFill(); render(); }
-}
-/* 步骤 19：这是全项目最后一处「拼字符串 + esc() 写 innerHTML」。换成一个 {v:} 盒子，
-   #llmOut 里的 DOM 由 settings.js 的模板画 —— 转义交给 Vue 的插值（textContent），
-   「连接中」与结果两态都是状态的纯函数。整包赋值，所以读它的是 getter（同 LOGDATA）。 */
-var LLMTEST = Vue.reactive({ v: null });
-async function testLLM(){
-  LLMTEST.v = {busy:true};
-  var r = await api('/api/llm/test',{});
-  LLMTEST.v = {busy:false, ok:!!r.ok, ms:r.ms, httpCode:r.httpCode, reply:r.reply, error:r.error};
-}
-/* 运行日志 / AI 调用记录：步骤 16c 之前是「取完数据才弹」（await api 然内拼字符串），
-   组件里自己 fetch 会变成「先弹出一个空的再填」，那是行为改动不是重构，所以数据依旧
-   在这里取好，经 HOST 的 logData / debugData 递给组件（弹层每次打开都是新实例）。 */
-var LOGDATA = Vue.reactive({ v: null }), DEBUGDATA = Vue.reactive({ v: null });
-async function showLog(){
-  var r = await api('/api/log?n=150');
-  LOGDATA.v = r;
-  return sheetVue('log');
-}
-async function showDebug(){
-  var r = await api('/api/llmlog');
-  DEBUGDATA.v = r;
-  return sheetVue('debug');
-}
+/* 设置页保存（saveSettings）搬进 js/settingsflow.js（P14 S6 步骤 42）：它读的就是那边的
+   SFORM，formFill 也在那边；toggleAI 翻完 useAI 直接调它。 */
+/* 运行日志 / AI 调用记录 / AI 连通测试那一簇（LLMTEST / testLLM / LOGDATA / DEBUGDATA /
+   showLog / showDebug）搬进 js/logflow.js（P14 S6 步骤 42，循环依赖，同上）。 */
 function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
 
 /* 步骤 39：自绘对话框那一簇（dialog / closeDlg / askDel）搬进 js/dlgflow.js（循环依赖，

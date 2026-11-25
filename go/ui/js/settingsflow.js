@@ -7,7 +7,7 @@
 import { Vue, sheetPaint } from './vue.js'
 import { shell } from './shell.js'
 import { S, tab, $, toast, api, prefs, P, savePrefs, searchNow, setQ, closeSheet, askDel,
-  refresh, ST, statsNow, pageSheetVue } from './app.js'
+  refresh, ST, statsNow, pageSheetVue, render } from './app.js'
 
 /* 步骤 20：设置页六个输入框的值搬进状态（SFORM）。以前 saveSettings() 是
    `$('#sUrl').value.trim()` —— DOM 是用户输入的真相源，Vue 那一侧看不见正在打的东西，
@@ -72,7 +72,19 @@ function resetPrefs(){
   closeSheet(); searchNow(); savePrefs();
 }
 
+async function saveSettings(){
+  /* 步骤 20：六项全部来自 SFORM（输入框是它的纯函数），不再 $('#sUrl').value 读 DOM。
+     useAI 是开关，直接读 S.settings（van-switch 的那条线，见 18e）。 */
+  var f = SFORM.v || {};
+  var s = {baseUrl:String(f.baseUrl||'').trim(), apiKey:String(f.apiKey||'').trim(),
+    model:String(f.model||'').trim(), timeoutS:parseInt(f.timeoutS)||90,
+    maxTokens:parseInt(f.maxTokens)||2048, useAI:S.settings.useAI,
+    temperature:f.temperature===''?0.2:parseFloat(f.temperature)||0.2};
+  var r = await api('/api/settings', s);
+  toast(r.ok?'已保存':'保存失败');
+  if(r.ok){ S.settings=r.settings; formFill(); render(); }
+}
 /* 步骤 32：app.js 把下面这些名字挂进 HOST / HOST_KEYS / window.__enoteActions，
    views/settings.js 与 views/sheets.js 通过 H.xxx 读它们。 */
 export { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
-  clearAllNotes, sortSheet, setPref, resetPrefs }
+  clearAllNotes, sortSheet, setPref, resetPrefs, saveSettings }
