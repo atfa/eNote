@@ -3218,3 +3218,31 @@ PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、t
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL /
 PASS**、三套 DOM 等价工具全部一致（含附件页统计条 43 B）。
+
+## 9.54 P14 S6：设置页那一簇搬进 js/settingsflow.js（步骤 32）
+
+第四簇：**设置页 / 排序偏好**——`SFORM` 表单状态、`formFill`/`formInput`、`settingsSheet`/
+`settingsRefresh`、导出/导入 JSON、清空全部笔记、排序浮层与偏好读写，11 个顶层定义，
+搬成 `go/ui/js/settingsflow.js`，**app.js 1449 → 1400 行**（settingsflow.js 78 行）。`pageSheetVue`/`sheetVue` 是弹层
+基础设施（shotflow / clipflow 都在用），留在 app.js；`window.onAppResume` 是 app 级胶水，也留。
+
+* `resetPrefs` 要清搜索框：`q = syncBox(QB, ''); shell.q = ''; shell.has = false;`。`q` 是
+  app.js 的 var，导入方只读（步骤 31 的 SRK 教训），所以 app.js 加了
+  `function setQ(v){ q = syncBox(QB, v); shell.q = q; shell.has = !!q }`，簇里改成 `setQ('')`。
+  这三行赋值原本在三处连着写，收敛成一个 setter 是净收益。
+
+**顺手抓到一个真 bug**（搬迁时逐行读代码读出来的，探针复现）：`settingsRefresh()` 第一行取
+`var top = p.scrollTop;`，而 `p` 在模块作用域里**根本没定义**——index.html 里那个 `var p` 是探针
+函数里的局部变量。于是每次调用都抛：
+
+```
+SREF refresh ERR=ReferenceError: p is not defined
+```
+
+三个调用点全中：`applyKeepAlive()` 抛在 toast 之前（开关不重画、提示不弹）、`notifyResult()`
+抛在重画上、`window.onAppResume` 抛在 `render()` 之前（从系统设置页回来列表不刷新）。
+改成 `var el = $('#panel'); var top = el ? el.scrollTop : 0;`，rAF 里复用 `el`。修完探针：
+`SREF refresh ok`。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL /
+PASS**、三套 DOM 等价工具全部一致（设置页用法卡 222 B、保活长说明 236 B 逐字未动）。

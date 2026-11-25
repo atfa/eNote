@@ -39,6 +39,9 @@ import SettingsSheetView from './views/settings.js'
    反过来 import app.js 的 S / tab / toast / closeSheet …），只在函数体里读，安全。 */
 /* 步骤 30：剪贴板暂存那一簇搬进 clipflow.js（循环依赖，同上，只在函数体里读）。 */
 /* 步骤 31：附件页那一簇搬进 filesflow.js（循环依赖，同上）。 */
+/* 步骤 32：设置页那一簇搬进 settingsflow.js（循环依赖，同上）。 */
+import { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
+         clearAllNotes, sortSheet, setPref, resetPrefs } from './settingsflow.js'
 import { FA, fmtSize, filesNow, attachCardCls, attachGlyphName, openAttach, delAttach,
          pickFile } from './filesflow.js'
 import { CLIP, openClip, importClip, clipItemCls, clipPrevText, clipThumbText, clipMetaText,
@@ -119,6 +122,10 @@ function savePrefs(){
    步骤 31：附件页那一簇（filesflow.js）也要读写它，而 ES module 的 import 是**只读**绑定
    —— 导入方一写就抛「Assignment to constant variable」（模块永远是严格模式）。所以它从
    字符串改成盒子，两边都写 SRK.v：这是本项目把 var 交给别的模块用的标准做法（同 S / CLIP）。 */
+/* q 是 app.js 里的 var，会被重新赋值，别的模块拿到的是只读绑定（同 SRK 装盒那条教训），
+   要清它就走这个 setter。shell.q / shell.has 是搜索框的显示状态，这几处赋值一直是连着的。 */
+function setQ(v){ q = syncBox(QB, v); shell.q = q; shell.has = !!q }
+
 var SRK = { v: '' };
 /* 步骤 13：首页搜索也走 apiTimeout —— fetch 没有超时会永久挂起（WebView 进后台
    再回来，在飞的 fetch 永不 resolve），症状是首页永久停在上一份数据上。失败退回
@@ -643,35 +650,8 @@ async function statsNow(){
 /* 我的页最底部的运行信息卡。设置页的「运行状态」卡前三行相同、第四行是解析队列，
    所以只共用这三行，第四行各自写。 */
 function statCls(hot, label){ return 'stat'+(hot?' hot':'')+enterCls('s'+label) }
-/* 步骤 20：设置页六个输入框的值搬进状态（SFORM）。以前 saveSettings() 是
-   `$('#sUrl').value.trim()` —— DOM 是用户输入的真相源，Vue 那一侧看不见正在打的东西，
-   夹具要改一个字段只能写 DOM，settingsRefresh() 还得专门写注释警告「重建会把正在打的
-   字清掉」。现在输入写进 SFORM，DOM 是它的纯函数：重绘不再丢字，探针能读能写。
-   打开设置页时从 S.settings 灌初值；保存成功后用服务端回包重灌（服务端会规范化）。 */
-var SFORM = Vue.reactive({ v: null });
-function formFill(){
-  var s = S.settings || {};
-  SFORM.v = { baseUrl: s.baseUrl || '', apiKey: s.apiKey || '', model: s.model || '',
-    timeoutS: s.timeoutS || 90, maxTokens: s.maxTokens || 2048,
-    temperature: s.temperature == null ? 0.2 : s.temperature };
-}
-function formInput(k, v){ if(SFORM.v) SFORM.v[k] = v }
-function settingsSheet(){
-  /* 步骤 11：只剩 Vue 一条路径（SettingsSheetView）。dataset.kind 是 CSS 钩子
-     （css/views/settings.css 靠它定位设置页）；步骤 15 面板归 Vue 所有，钩子走状态。 */
-  formFill();
-  pageSheetVue('settings', '设置', 'settings');
-}
-/* 只重绘设置页本身，并把滚动位置放回去（开关、权限回来后刷新用）*/
-function settingsRefresh(){
-  if(shell.sheet.kind !== 'settings' || !shell.sheet.on) return;
-  var top = p.scrollTop;
-  /* 不重建 DOM：computed 全依赖 tick，sheetPaint() bump 一次就整页重算。
-     步骤 20 起输入框的值在 SFORM 里，重建也不会丢正在打的字了；这里依旧只重画不重建，
-     因为重建会打断输入法的组合中状态（Android 上拼音打一半被吞）。 */
-  sheetPaint();
-  requestAnimationFrame(function(){ var q = $('#panel'); if(q) q.scrollTop = top });
-}
+/* 设置页那一簇（SFORM / 表单 / 设置弹层 / 导出导入 / 清空 / 排序偏好）搬进
+   js/settingsflow.js（P14 S6 步骤 32）。这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
 /* 从系统设置页回来后重新读一次权限/保活状态；顺便重画，让「剪贴板刚有更新」提示立刻出现 */
 window.onAppResume = function(){
   shotFlags();
@@ -730,38 +710,8 @@ function sheetVue(name, full){
     if(p) p.scrollTop = 0;
   });
 }
-/* 导出 JSON：遗留写法是把赋值直接写进 handler（我的页那一行是单引号套双引号属性的
-   字符串，设置页是内联属性），抽成函数后两条路径共用一份，handler 字符串里也只剩
-   一个名字。 */
-function exportJSON(){ location.href = '/api/export' }
-function importJSON(){
-  if(!window.Android){ toast('导入只在 app 内可用'); return }
-  toast('选择之前导出的 JSON 文件…');
-  Android.pickJSON();
-}
-function clearAllNotes(){
-  var n = ST.v ? ST.v.notes.total : (S.info.notes||0);
-  askDel('清空全部 '+n+' 条笔记？附件文件一并删除，设置与 API Key 保留。', function(){
-    api('/api/clear', {}).then(function(r){
-      toast(r.ok ? ('已删除 '+r.deleted+' 条') : ('清空失败: '+(r.error||'')));
-      ST.v = null; refresh(); statsNow();
-    }, function(e){ toast('清空失败: '+e) });
-  });
-}
-/* ---------- 排序 / 筛选浮层（R3，P3 接服务端）----------
-   步骤 16c：组由当前 tab 决定这件事进了 views/sheets.js 的 SortSheetView（那里逐字
-   比对过迁移前的字符串），本文件只留「开哪个弹层」。setPref / resetPrefs 的副作用
-   （写 prefs → 关弹层 → searchNow → savePrefs）没动：test.sh 的排序页用例直接点那些按钮。 */
-function sortSheet(){
-  return pageSheetVue('sort', '排序与筛选');
-}
-function setPref(k, v){ P()[k] = v; closeSheet(); searchNow(); savePrefs(); }
-function resetPrefs(){
-  prefs[tab] = tab==='todos' ? {sort:'due',done:'open',pri:'all'}
-             : tab==='files' ? {sort:'new',kind:'all'} : {sort:'new',src:'all',status:'all',file:'all'};
-  q = syncBox(QB, ''); shell.q = ''; shell.has = false;
-  closeSheet(); searchNow(); savePrefs();
-}
+/* 导出 JSON / 导入 JSON / 清空全部笔记 / 排序浮层 / 偏好读写搬进 js/settingsflow.js
+   （P14 S6 步骤 32）。 */
 /* ---------- 轮询：只在数据真的变了才重绘（避免秒级闪烁 ----------
    2s 一次的 /api/state 很便宜，但 render() 要重建整个列表、重载缩略图、
    重播入场动画。所以先比指纹，没变就只刷新右上角状态点。 */
@@ -1446,4 +1396,5 @@ window.__enote.buildReady = fetch('/build.json').then(function(r){ return r.json
    活绑定，重新赋值那边看得见，这一点是这次搬迁最容易踩空的地方。 */
 export { S, tab, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, setTab,
   refresh, api, paneDirty, statsNow, relTime,
-  apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel }
+  apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel,
+  prefs, savePrefs, searchNow, setQ, ST }

@@ -1374,6 +1374,26 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 设置页那一簇搬进 js/settingsflow.js，顺手修掉一个每次调用必抛的 bug（P14 S6 步骤 32）
+
+第四簇：设置页 / 排序偏好——`SFORM` 表单状态、`formFill`/`formInput`、`settingsSheet`/
+`settingsRefresh`、导出/导入 JSON、清空全部笔记、排序浮层与偏好读写，11 个顶层定义，搬成
+`go/ui/js/settingsflow.js`，**app.js 1449 → 1401 行**。`pageSheetVue`/`sheetVue` 是弹层基础
+设施（shotflow / clipflow 都在用），留在 app.js。
+
+* `resetPrefs` 要清搜索框：`q = syncBox(QB, ''); shell.q = ''; shell.has = false;`。`q` 是
+  app.js 的 var，导入方只读（步骤 31 的 SRK 教训），所以 app.js 加了
+  `function setQ(v){ q = syncBox(QB, v); shell.q = q; shell.has = !!q }`，簇里改成 `setQ('')`。
+* **抓到一个真 bug**：`settingsRefresh()` 第一行取 `var top = p.scrollTop;`，而 `p` 在模块作用域
+  里根本没定义——index.html 里那个 `var p` 是探针函数里的局部变量。每次调用都抛
+  `ReferenceError: p is not defined`（探针复现）。三个调用点全中：`applyKeepAlive()` 抛在 toast
+  之前（开关不重画、提示不弹）、`notifyResult()` 抛在重画上、`window.onAppResume` 抛在
+  `render()` 之前（从系统设置页回来列表不刷新）。改成 `var el = $('#panel'); var top = el ?
+  el.scrollTop : 0;`，修完探针 `SREF refresh ok`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致
+  （设置页用法卡 222 B、保活长说明 236 B 逐字未动）。
+
 ### 附件页那一簇搬进 js/filesflow.js（P14 S6 步骤 31）
 
 第三簇：附件页（R4）——`FA` 盒子、一页一序号的抢占判定（`filesSeq`）、`KIND` 图标映射、
