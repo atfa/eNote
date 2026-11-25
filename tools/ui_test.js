@@ -2054,7 +2054,7 @@ if (SPLIT) {
   // 首页横幅（剪贴板/截图/错过的提醒）不在 /api/search 结果里：
   // 搜索结果没变但条数变了时必须强制重绘，否则删光剪贴板、扫到新截图后横幅都不刷新
   const forcePaint = /async function searchNow\(force\)/.test(src)
-    && /if\(k === SRK && !force\)/.test(src)
+    && /if\(k === SRK\.v && !force\)/.test(src)
     && /searchNow\(dirty\)/.test(src);
   sig('横幅变化会强制重绘（searchNow(force)）', forcePaint);
 
@@ -2095,11 +2095,18 @@ if (SPLIT) {
   const appSrc = read('go/ui/js/app.js');
   const filesSrc = read('go/ui/js/views/files.js');
   const statsSrc = read('go/ui/js/views/stats.js');
+  /* 步骤 31：附件页那一簇搬进了 js/filesflow.js，函数体不在 app.js 里了。
+     闸门跟着搬家：按顺序在几个源里找函数头，找到哪个算哪个 —— 找不到就是
+     函数签名改了（下面那句 bad 的措辞不变，闸门不许自己假绿）。 */
+  const srcs = [appSrc, read('go/ui/js/filesflow.js')];
   const body = (head) => {
-    const i = appSrc.indexOf(head);
-    if (i < 0) return null;
-    const j = appSrc.indexOf('\n}', i);
-    return appSrc.slice(i, j < 0 ? appSrc.length : j);
+    for (const src of srcs) {
+      const i = src.indexOf(head);
+      if (i < 0) continue;
+      const j = src.indexOf('\n}', i);
+      return src.slice(i, j < 0 ? src.length : j);
+    }
+    return null;
   };
   const filesBody = body('async function filesNow(){');
   const statsBody = body('async function statsNow(){');

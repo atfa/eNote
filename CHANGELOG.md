@@ -1374,6 +1374,26 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 附件页那一簇搬进 js/filesflow.js（P14 S6 步骤 31）
+
+第三簇：附件页（R4）——`FA` 盒子、一页一序号的抢占判定（`filesSeq`）、`KIND` 图标映射、
+`fmtSize`、`filesNow`、卡片类名/图标名、打开与删除、系统文件选择，74 行 10 个顶层定义，
+搬成 `go/ui/js/filesflow.js`，**app.js 1513 → 1446 行**。
+
+* **新坑：ES module 的 import 是只读绑定。** `filesNow` 里有一句 `SRK = k`（搜索指纹，和
+  app.js 的 `searchNow` 共用），搬到 filesflow.js 之后变成给 import 绑定赋值 —— 模块永远是
+  严格模式，运行时直接抛 `Assignment to constant variable`。静态全绿（122 闸门、build、
+  install 全过），套件附件页那块红：`AssertionError: FLOAD 抛异常：Assignment to constant
+  variable.`。修法是这个项目已有的标准做法：**要跨模块写的 var 就装进盒子**，两边都写
+  `SRK.v`（`var SRK = { v: '' }`）。同一条规则解释了步骤 29 为什么 `tab` 只能读不能写。
+  配套：闸门⑰ 旁边那条签名 `if(k === SRK && !force)` 的正则改成 `SRK\.v`。
+* **闸门⑰ 自己也要跟着搬家**：它按 `async function filesNow(){` 在 app.js 里取函数体，
+  函数搬走后报 `FAIL 闸门⑰ 找不到 filesNow()：函数签名改了，闸门自己在假绿`。改成按顺序在
+  `[app.js, filesflow.js]` 里找函数头 —— 闸门不许因为代码搬家就悄悄不守。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致
+  （含附件页统计条 43 B）。
+
 ### 剪贴板暂存那一簇搬进 js/clipflow.js（P14 S6 步骤 30）
 
 步骤 29 的流程照搬一遍，这次是剪贴板暂存队列（P7：顶栏 📋 → 暂存队列 → 勾选 → 存笔记 / 一键

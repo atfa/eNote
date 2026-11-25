@@ -38,6 +38,9 @@ import SettingsSheetView from './views/settings.js'
 /* 步骤 29：截图捕获那一簇（含监控文件夹）搬进 shotflow.js；这里是循环依赖（shotflow.js
    反过来 import app.js 的 S / tab / toast / closeSheet …），只在函数体里读，安全。 */
 /* 步骤 30：剪贴板暂存那一簇搬进 clipflow.js（循环依赖，同上，只在函数体里读）。 */
+/* 步骤 31：附件页那一簇搬进 filesflow.js（循环依赖，同上）。 */
+import { FA, fmtSize, filesNow, attachCardCls, attachGlyphName, openAttach, delAttach,
+         pickFile } from './filesflow.js'
 import { CLIP, openClip, importClip, clipItemCls, clipPrevText, clipThumbText, clipMetaText,
          clipParseText, clipSheet, loadClips, clipPick, clipSelAll, clipDel, clipDelSel,
          clipParse } from './clipflow.js'
@@ -112,7 +115,11 @@ function savePrefs(){
   clearTimeout(saveT);
   saveT = setTimeout(function(){ api('/api/prefs', prefPayload()).catch(function(){}) }, 350);
 }
-var SRK = ''; // 上次搜索结果的指纹，内容一样就不重建 DOM
+/* 上次搜索结果的指纹，内容一样就不重建 DOM。
+   步骤 31：附件页那一簇（filesflow.js）也要读写它，而 ES module 的 import 是**只读**绑定
+   —— 导入方一写就抛「Assignment to constant variable」（模块永远是严格模式）。所以它从
+   字符串改成盒子，两边都写 SRK.v：这是本项目把 var 交给别的模块用的标准做法（同 S / CLIP）。 */
+var SRK = { v: '' };
 /* 步骤 13：首页搜索也走 apiTimeout —— fetch 没有超时会永久挂起（WebView 进后台
    再回来，在飞的 fetch 永不 resolve），症状是首页永久停在上一份数据上。失败退回
    本地过滤（原有行为）并记 srErr，首页顶部给一条可重试的错误条。 */
@@ -129,9 +136,9 @@ async function searchNow(force){
     // 顶部横幅（剪贴板暂存 / 新截图 / 错过的提醒）不在搜索结果里：搜索结果没变、
     // 但页面签名变了（条数变了）时必须强制重绘，否则「删光剪贴板」「刚扫到新截图」
     // 回到首页都看不到横幅 —— 这两处的 bug 都是这里短路掉的。
-    if(k === SRK && !force){ paintStatus(); return }
-    SRK = k;
-  }catch(e){ reassign(SR, {notes:null, todoIds:null, where:{}, total:0, scanned:0}); SRK = ''; srErr = syncBox(SRERR, errText(e)) }
+    if(k === SRK.v && !force){ paintStatus(); return }
+    SRK.v = k;
+  }catch(e){ reassign(SR, {notes:null, todoIds:null, where:{}, total:0, scanned:0}); SRK.v = ''; srErr = syncBox(SRERR, errText(e)) }
   render();
 }
 
@@ -611,80 +618,8 @@ function paintStatus(){
   var i = S.info;
   shell.dot = (i.server && i.ocrReady) ? '' : 'bad';
 }
-/* ---------- 附件页（R4）----------
-   数据来自 /api/attachments（服务端过滤/排序，含磁盘文件数校验）。 */
-var FA = Vue.reactive({items:[], total:0, bytes:0, files:0, missing:0, scanned:0, diskFiles:0, loaded:false, error:''});
-/* 步骤 13：附件页的抢占判定以前用**服务端搜索共用的** searchSeq，笔记页搜索一在飞，
-   附件页这次请求的结果就被整次丢掉（`if(my !== searchSeq) return`），FA.loaded 永远停在
-   false → 用户侧症状是附件页停在骨架屏，只能切走再切回来。真机套件也撞过（步骤 11 的
-   「跑一次红一次绿」，当时只在测试侧轮询盖住）。现在：
-   ① 用附件页自己的 filesSeq，只有更新的 filesNow 能抢占它；
-   ② 请求有超时（apiTimeout），卡死的 fetch 不会把这一页永久钉在骨架屏；
-   ③ 失败记 FA.error 并自动退避重试（最多 2 次），骨架屏上同时给「重试」按钮。 */
-var filesSeq = 0, filesRetry = 0;
-var KIND = {image:'image',pdf:'file-pdf',doc:'file',sheet:'file-sheet',slides:'file-slides',text:'file-text',audio:'music',video:'film',archive:'archive',file:'clipfile'};
-function fmtSize(b){
-  b = b||0;
-  if(b >= 1073741824) return (b/1073741824).toFixed(2)+' GB';
-  if(b >= 1048576) return (b/1048576).toFixed(1)+' MB';
-  if(b >= 1024) return Math.round(b/1024)+' KB';
-  return b+' B';
-}
-async function filesNow(){
-  var my = ++filesSeq, p = P();
-  var s = 'q='+encodeURIComponent(q)+'&sort='+encodeURIComponent(p.sort||'new');
-  if(p.dir) s += '&dir='+encodeURIComponent(p.dir);
-  if(p.kind && p.kind!=='all') s += '&mime='+encodeURIComponent(p.kind);
-  try{
-    var d = await apiTimeout('/api/attachments?'+s);
-    if(my !== filesSeq) return;
-    var k = JSON.stringify(d);
-    reassign(FA, {items:d.items||[], total:d.total||0, bytes:d.bytes||0, files:d.files||0,
-          missing:d.missing||0, scanned:d.scanned||0, diskFiles:d.diskFiles||0,
-          loaded:true, error:''});
-    filesRetry = 0;
-    if(k === SRK){ paintStatus(); return }
-    SRK = k;
-  }catch(e){
-    if(my !== filesSeq) return;
-    reassign(FA, {items:FA.items, total:FA.total, bytes:FA.bytes, files:FA.files,
-          missing:FA.missing, scanned:FA.scanned, diskFiles:FA.diskFiles,
-          loaded:false, error:errText(e)});
-    SRK = '';
-    if(filesRetry < 2){ filesRetry++; setTimeout(filesNow, 1500*filesRetry) }
-  }
-  render();
-}
-/* 步骤 7 拆出的叶子：Vue 的 FilesView 直接画 <div class="strip" v-html=...>，
-   两条路径共用一份 inner HTML，VDIFF 才能逐字比（步骤 5/6 定下的模式：结构在模板里，
-   叶子片段同源）。 */
-function attachCardCls(a){
-  return 'acard' + (a.missing ? ' gone' : '') + enterCls('a' + a.id);
-}
-function attachGlyphName(a){
-  return KIND[a.kind] || 'clipfile';
-}
-function openAttach(id){
-  var a = null;
-  FA.items.forEach(function(x){ if(x.id===id) a = x });
-  toast('预览即将上线' + (a ? '：' + a.name : ''));
-}
-async function delAttach(id){
-  var a = null;
-  FA.items.forEach(function(x){ if(x.id===id) a = x });
-  askDel('附件「' + (a ? a.name : '') + '」？文件会从存储中删除。', function(){
-    api('/api/attach/delete', {id:id}).then(function(r){
-      toast(r.ok ? '已删除' : ('删除失败: ' + (r.error||'')));
-      filesNow(); refresh();
-    }, function(e){ toast('删除失败: '+e) });
-  });
-}
-function pickFile(){
-  if(!window.Android){ toast('文件选择只在 app 内可用'); return; }
-  Android.pickFile();
-  setTimeout(function(){ filesNow() }, 2500);
-  setTimeout(function(){ filesNow() }, 8000);
-}
+/* 附件页（R4）整簇搬进 js/filesflow.js（P14 S6 步骤 31）：FA 盒子、抢占判定、大小/图标
+   格式化、打开与删除、系统文件选择。这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
 /* ---------- 我的页（R5）：本地数据摘要 + 近 7 天活动 ----------
    数字全部来自 /api/stats（服务端从同一份 store 现算，不会和列表页对不上）。 */
 /* 步骤 13：stBusy 以前没有超时 —— 一次永不返回的 /api/stats 把我的页永久钉在骨架屏
@@ -1510,4 +1445,5 @@ window.__enote.buildReady = fetch('/build.json').then(function(r){ return r.json
    `tab` 是 `var tab = TAB.v` 且会被 `tab = syncBox(TAB, …)` 重新赋值：ES module 的导入是
    活绑定，重新赋值那边看得见，这一点是这次搬迁最容易踩空的地方。 */
 export { S, tab, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, setTab,
-  refresh, api, paneDirty, statsNow, relTime }
+  refresh, api, paneDirty, statsNow, relTime,
+  apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel }
