@@ -1374,6 +1374,29 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 弹层开合那一簇搬进 js/sheetflow.js（P14 S6 步骤 38）
+
+第十簇：**弹层开合**——`pageSheetVue`（全屏页）、`sheetVue`（底部卡片）、`closeSheet`（收场动画 +
+摘节点）、`sheetLeft`（van-popup `@vue:unmounted` 拆 app），连 `sheetGen`（开启序号，防「开 A 立刻
+改开 B」时迟到的 nextTick 把上一个弹层挂进新面板）与 `cssMs`（时长只从样式表读）一起搬成
+`go/ui/js/sheetflow.js`，**app.js 1155 → 1068 行**（模块 106 行）。
+
+* `sheetGen` 与 `cssMs` 是模块私有（只有这两个入口 bump / 只有 closeSheet 用），不导出。
+* 从 app.js 只拿 `$` 与 `VUE_SHEETS`，都只在 `nextTick` 回调里读 → 求值期不碰，循环依赖安全。
+  `VUE_SHEETS` 这次加进 app.js 导出表，**闸门㉒ 立刻抓到**：没导出就是链接期 SyntaxError、
+  整份脚本不执行（步骤 37 那个静默空白页的同一类）。
+* `shell` / `nextTick` / `mountSheet` / `unmountAllSheets` 直接从 `shell.js` / `vue.js` 拿，不绕 app.js。
+* **闸门⑱ 教它读两个文件**：`bodyOf` 原来只在 app.js 里找 `pageSheetVue` / `closeSheet` /
+  `sheetLeft` 的函数体，搬走之后它报「找不到 pageSheetVue（闸门⑱ 在假绿）」——这条门本来就是
+  「找不到就红」，不会静默通过，但契约的新家必须一起扫。现在 `appSrc = app.js ∪ sheetflow.js`。
+* 探针（`.test/probe_sheet.js`）：设置页（全屏页 apps=1 body=4351 kind=settings）、运行日志
+  （卡片形态 apps=1 body=11358）、排序页（apps=1 body=893）、关掉（`sheet=none apps=0`，
+  `sheetLeft` 拆干净）、**连开两个**（`settingsSheet()` 后立刻 `sortSheet()` → `apps=1 kind=null`，
+  `sheetGen` 守卫生效；搬坏的话是 `apps=2` + 面板空白点了没反应）。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致
+  （卡片 2495 B、待办行 651 B 逐字未动，弹层 DOM 基准 `dom_equiv3` 全部一致）。
+
 ### 打开笔记 / 待办 + 系统日历 / 闹钟那一簇搬进 js/openflow.js（P14 S6 步骤 37）
 
 第九簇：**打开一条笔记 / 一条待办 + 把到期时间交给系统日历 / 闹钟**——`openNote`、`openTodo`、

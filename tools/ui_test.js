@@ -2147,7 +2147,10 @@ if (SPLIT) {
    现在进度层是外壳组件 SheetHost 里的 <teleport to="#shotOvlRoot"> 子组件，常驻外壳树、
    不在 sheetApps 里，例外名单整个没用了 —— 这里钉住「不许再带例外」。 */
 {
-  const appSrc = read('go/ui/js/app.js');
+  /* 步骤 38：弹层开合那一簇搬进了 js/sheetflow.js，这条闸门的契约跨两个文件，
+     bodyOf 要在 app.js ∪ sheetflow.js 里找函数体（只读 app.js 会假绿：找不到函数体
+     时它本来就报「找不到 pageSheetVue」，不会静默通过）。 */
+  const appSrc = read('go/ui/js/app.js') + '\n' + read('go/ui/js/sheetflow.js');
   const vueSrc = read('go/ui/js/vue.js');
   const leaks = [];
   if (!/export function unmountAllSheets\s*\(/.test(vueSrc) || !/Object\.keys\(sheetApps\)/.test(vueSrc))

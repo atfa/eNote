@@ -3388,3 +3388,42 @@ PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、待办行 651 B �
 
 验收：122 闸门（闸门㉒ 新增桥棘轮）、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、待办行 651 B 逐字未动）。
+
+## 9.60 P14 S6：弹层开合那一簇搬进 js/sheetflow.js（步骤 38）
+
+第十簇：**弹层开合**——`pageSheetVue`（全屏页形态）、`sheetVue`（底部卡片形态）、`closeSheet`
+（收场动画 + 摘节点）、`sheetLeft`（van-popup `@vue:unmounted` 拆 app），连 `sheetGen`
+（开启序号，防「开 A 立刻改开 B」时迟到的 nextTick 把上一个弹层挂进新面板）与 `cssMs`
+（时长只从样式表读）一起搬成 `go/ui/js/sheetflow.js`，**app.js 1155 → 1068 行**（模块 106 行）。
+
+* `sheetGen` 与 `cssMs` 是模块私有：前者只有这两个开启入口 bump，后者只有 `closeSheet` 用，
+  都不导出（闸门⑩ 的死函数扫描认「模块内被用」，不要求导出）。
+* 从 app.js 只拿 `$` 与 `VUE_SHEETS`，都只在 `nextTick` 回调里读 → 求值期不碰，循环依赖安全；
+  `VUE_SHEETS` 是 `var`，这次加进 app.js 的导出表（闸门㉒ 立刻抓到：没导出就是链接期
+  `SyntaxError`，整份脚本不执行）。
+* `shell` / `nextTick` / `mountSheet` / `unmountAllSheets` 直接从 `shell.js` / `vue.js` 拿，
+  不绕 app.js。
+* **闸门⑱ 教它读两个文件**：`bodyOf` 原来只在 app.js 里找 `pageSheetVue` / `closeSheet` /
+  `sheetLeft` 的函数体，搬走之后它会报「找不到 pageSheetVue（闸门⑱ 在假绿）」——这条闸门
+  本来就是「找不到就红」，不会静默通过，但必须把契约的新家一起扫，否则整条门永远红着。
+  现在 `appSrc = app.js ∪ sheetflow.js`。
+
+探针（物理屏，`.test/probe_sheet.js`，逐次打印 `#sheet` 的 class / 已挂载 sheet app 数 /
+`#sheetBody` 字节数 / `#panel` 的 `data-kind`）：
+
+```
+base    sheet=none apps=0 body=-1
+settings sheet on page apps=1 body=4351 kind=settings
+closed  sheet=none apps=0
+log     sheet on apps=1 body=11358          ← 卡片形态（无 .page）
+sort    sheet on page apps=1 body=893
+race    settingsSheet() 后立刻 sortSheet() → apps=1 kind=null body=893   ← sheetGen 守卫生效
+end     sheet=none apps=0 loads=1
+```
+
+`race` 那一行是这次搬迁的关键回归点：如果 `sheetGen` 没跟着搬（或搬成了两份），迟到的
+nextTick 会把设置页组件挂进排序页的面板，症状是 `apps=2` 且面板空白、点了没反应。
+
+验收：122 闸门（闸门⑱ 跨文件）、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、待办行 651 B 逐字未动，
+弹层 DOM 基准 `dom_equiv3` 全部一致）。
