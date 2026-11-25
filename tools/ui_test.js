@@ -1670,7 +1670,8 @@ if (SPLIT) {
     && /row\.classList\.add\('leaving'\)/.test(src);
   sig('勾选 → 划线动画 → 原位淡出 → 新位置高亮入场', anim);
   // 动画期间不能被轮询重绘打断
-  const lock = /if\(Date\.now\(\) < animLock\)\{ paintStatus\(\); return \}/.test(src);
+  /* 步骤 44：动画锁搬进 js/noteflow.js 后是盒子，app.js 的 refresh() 读 ANIMLOCK.v。 */
+  const lock = /if\(Date\.now\(\) < (?:animLock|ANIMLOCK\.v)\)\{ paintStatus\(\); return \}/.test(src);
   sig('动画期间轮询不重绘（不打断划线动画）', lock);
 
   // ---------- R5 我的页统计 + 全屏设置面板 ----------

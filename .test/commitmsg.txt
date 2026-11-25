@@ -1,24 +1,27 @@
-P14 S6 步骤 43：页签切换 / 底部 fab 簇搬进 js/tabflow.js（app.js 948 → 880）
+P14 S6 步骤 44：笔记/待办操作簇搬进 js/noteflow.js（app.js 880 → 838）
 
-第十五簇：页签与 fab——setTab、moveInd（页签指示条测量）、FABS、tabPick、brandGo、fabAct，连涟漪监听
-（pointerdown → .rip）与 resize → moveInd 一起搬成 go/ui/js/tabflow.js。app.js 948 → 880 行（模块 94 行）。
+第十六簇：对一条笔记/待办能做的事——expand、toggle、keyOf、todoEnterCls、clearEnter、enterCls、
+clearSeen、delTodo、reparse、delNote、reocr、toggleAI 搬成 go/ui/js/noteflow.js。
+app.js 880 → 838 行（模块 70 行）。
 
-- 清单 (c) 条（写导入绑定）这一簇一次出现四处：tab = syncBox(TAB, …) 三处走 setTabTo(…)；
-  q = syncBox(QB, P().q || ''); shell.q = q; shell.has = !!q; 三行整体就是 setQ(P().q || '')
-  （逐字等价，setQ 的定义就是这三句）。
-- lastTab（上一个页签）只有 setTab 读写，跟着搬成模块私有；tabScroll 是 app.js 的 var，簇里只做属性写
-  （tabScroll[lastTab] = window.scrollY），写导入对象的属性合法，直接 import 不用盒子（同 S 的用法）。
-- 模块顶层只有 FABS 这张表（函数引用不调用）与两个 addEventListener，不读 app.js 的绑定。
-  window.addEventListener('resize', moveInd) 必须跟着搬：它读的 moveInd 现在是模块内的函数声明
-  （提升，安全），留在 app.js 就得把 moveInd 再导出一次，白绕一圈。
-- 搬完 app.js 里 pickFile 与 FABS 两个 import 变成死的（FABS 只在注释里出现），删掉——闸门⑩ 只扫函数
-  定义，import 侧的死引用它看不见。
-- 清单 (g) 条：整段（511-582 + 585）与 git show HEAD:go/ui/js/app.js 逐字 diff，除上述 4 处改写外全部一致。
+- 清单 (c) 条（写导入绑定）：这一簇写 app.js 的 var 只有一处——动画锁 animLock（toggle 写、refresh 读），
+  装成盒子 ANIMLOCK，app.js 的 refresh() 读 ANIMLOCK.v。钉这条契约的闸门正则两种写法都认。
+- seen 与 justDone 是只有本簇读写的表（enterCls/clearSeen 用 seen，toggle/todoEnterCls/clearEnter 用
+  justDone），整张表跟着搬成模块私有，app.js 连 var 都不留——比装盒子干净：跨模块的可变共享直接没有了。
+  闸门那条「var seen = {} 必须声明过」查的是全部 UI 文件拼接后的 src，声明搬家照样绿。
+- open / expAnim / busy 留在 app.js（render / syncExpand / HOST 都读），簇里只做属性写
+  （open[id]=…、expAnim[id]=1、busy[id]=1），写导入对象的属性合法。
+- toggleAI 顺手搬进这一簇，它调的 saveSettings 在 settingsflow.js（步骤 42 搬过去的），于是 app.js 里
+  那条「app.js 的函数调 settingsflow 的函数」也消掉了：现在只剩 noteflow.js → settingsflow.js 一条边。
+- 清单 (g) 条：整段（450-493 + 495-497）与 git show HEAD:go/ui/js/app.js 逐字 diff，除声明的 5 处改写
+  （animLock → ANIMLOCK.v 四处、var justDone = {}, animLock = 0; 拆成两条）外全部一致。
+- 闸门㉒ 立刻抓到 app.js 少导出 expAnim / busy（noteflow 要 import）——补上；其余 122 项全绿。
 
-探针（物理屏 .test/probe_tab.js，点真 DOM：底栏四个页签、顶栏 brand、#fab，外加派发 pointerdown 与 resize）：
-base tab=notes body=notes on=notes fab="记一笔" ph="搜索笔记与待办" ind=yes → 切待办 fab="记待办" ph="搜索待办"
-→ 再点同页签（tabPick 早退分支）→ 切附件 fab="加附件" → 切我的 统计=8笔记0待办0…（setTab 里的 statsNow()）
-→ brandGo tab=mine → 涟漪 rip=yes → resize ind=yes → #fab 弹出记一笔 sheet on → end loads=1。
+探针（物理屏 .test/probe_note.js + .test/probe_ai.js，真 DOM：待办行 .cb、笔记卡「展开详情」「删除」、
+设置页 AI 开关）：建待办 todos=1 → 勾选瞬间 justdone=yes cb.on=yes → 1.8s 后 done=1 划线=yes（动画窗口内
+refresh() 被 ANIMLOCK 挡住不重绘）→ delTodo 1→0 → expand 后按钮变「收起」→ reparse toast
+"AI 重新解析中…" → reocr toast "正在识别图片…" → delNote 对话框 title="删除" 确认后 notes 8→7 →
+toggleAI useAI true→false（toast="已保存"、开关类名 van-switch sw）→true → end loads=1。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

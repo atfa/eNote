@@ -57,6 +57,9 @@ import { MISSED, loadMissed, missedSheet, missedDone, missedGoTodos, missedDismi
 import { LLMTEST, testLLM, LOGDATA, DEBUGDATA, showLog, showDebug } from './logflow.js'
 /* 步骤 43：页签切换 / 底部 fab 那一簇搬进 js/tabflow.js（循环依赖，同上）。 */
 import { setTab, moveInd, tabPick, brandGo, fabAct } from './tabflow.js'
+/* 步骤 44：笔记/待办的操作那一簇搬进 js/noteflow.js（循环依赖，同上）。 */
+import { expand, toggle, todoEnterCls, clearEnter, enterCls, clearSeen, delTodo,
+         reparse, delNote, reocr, toggleAI, ANIMLOCK } from './noteflow.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
 import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
@@ -97,7 +100,7 @@ var SHEETARGB = Vue.reactive({ v: '' });
    而 `var tab = TAB.v` 在第 32 行 —— var 提升让 TAB 在那一刻是 undefined，
    整份 app.js 抛 TypeError，页面全白（真机日志：Cannot read properties of undefined (reading 'v')）。 */
 var tab = TAB.v, open = OPENB.v, busy = {};
-var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
+/* seen（已出现过的卡片 id）只有入场动画那一簇读写，跟着它搬进 js/noteflow.js（步骤 44）。 */
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
 
 var q = QB.v;
@@ -427,7 +430,7 @@ function stateSig(d){
     [sf.enabled?1:0, sf.folders||0, sf.granted?1:0]]);
 }
 async function refresh(quiet){
-  if(Date.now() < animLock){ paintStatus(); return }
+  if(Date.now() < ANIMLOCK.v){ paintStatus(); return }
   try{ var d = await api('/api/state'); reassign(S, d); if(MISSED.v) S.missed = MISSED.v;
        var dirty = !quiet || !drawn || stateSig(d) !== SIG;
        if(!prefsLoaded && S.settings && S.settings.ui){
@@ -447,54 +450,8 @@ async function refresh(quiet){
        searchNow(dirty); }
   catch(e){ shell.dot = 'bad'; if(!drawn) render(); }
 }
-function expand(id){ open[id]=!open[id]; expAnim[id]=1; render(); setTimeout(function(){ delete expAnim[id] }, 400) }
-async function toggle(nid,tid,el){
-  // 先就地动画（划线 + 勾选 + 淡出），再提交，再让新位置高亮入场；轮询在动画期间不重绘
-  var row = el && el.closest ? el.closest('.todo') : null;
-  var done = row ? row.classList.contains('done') : false;
-  justDone[nid+'|'+tid] = 1;
-  if(row){
-    if(!done){
-      row.classList.add('justdone');
-      var cb = row.querySelector('.cb');
-      if(cb){ cb.classList.add('on'); }
-      animLock = Date.now() + 900;
-      setTimeout(function(){ row.classList.add('leaving') }, 430);
-    }else{
-      row.classList.add('undone');
-      animLock = Date.now() + 520;
-    }
-  }
-  api('/api/todo', {action:'toggle', noteId:nid, todoId:tid}).then(function(){
-    setTimeout(function(){ animLock = 0; refresh(true) }, done ? 300 : 780);
-  }, function(){ animLock = 0; refresh(true) });
-}
-var justDone = {}, animLock = 0;
-function keyOf(n,t){ return n.id+'|'+t.id }
-function todoEnterCls(n,t){ return justDone[keyOf(n,t)] ? ' enter' : '' }
-function clearEnter(){ setTimeout(function(){ justDone = {} }, 120) }
-/* 入场动画只给“新出现”的元素：tab 切换时清空 seen，轮询重绘就不会反复跳 */
-function enterCls(id){
-  if(!id) return '';
-  if(seen[id]) return '';
-  seen[id] = 1;
-  return ' enter';
-}
-function clearSeen(){ seen = {} }
-async function delTodo(nid,tid){ await api('/api/todo',{action:'delete',noteId:nid,todoId:tid}); refresh(); }
-async function reparse(id){ if(busy[id])return; busy[id]=1; toast('AI 重新解析中…');
-  await api('/api/reparse',{id:id}); setTimeout(refresh,600); setTimeout(refresh,4000); }
-function delNote(id){
-  askDel('这条笔记？删除后不可恢复。', function(){
-    api('/api/delete', {id:id}).then(function(){ toast('已删除'); refresh(); });
-  });
-}
-function reocr(id){ if(!window.Android){toast('图片识别只在 app 内可用');return;}
-  toast('正在识别图片…'); Android.reocr(id); setTimeout(refresh,1500); setTimeout(refresh,5000); }
-/* jump(id)（从弹层 / 附件页跳回那条笔记并展开）搬进 js/openflow.js（P14 S6 步骤 37）。 */
-function toggleAI(){ var s=S.settings; s.useAI=!s.useAI; saveSettings(); }
-/* 设置页保存（saveSettings）搬进 js/settingsflow.js（P14 S6 步骤 42）：它读的就是那边的
-   SFORM，formFill 也在那边；toggleAI 翻完 useAI 直接调它。 */
+/* 设置页保存（saveSettings）跟着 toggleAI 搬进 js/settingsflow.js / js/noteflow.js：
+   它读的是 settingsflow 的 SFORM，formFill 也在那边（步骤 42 / 44）。 */
 /* 运行日志 / AI 调用记录 / AI 连通测试那一簇（LLMTEST / testLLM / LOGDATA / DEBUGDATA /
    showLog / showDebug）搬进 js/logflow.js（P14 S6 步骤 42，循环依赖，同上）。 */
 function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
@@ -877,4 +834,5 @@ export { S, tab, open, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, 
   apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel,
   prefs, savePrefs, searchNow, setQ, setQRaw, setTabTo, ST, REQ_TIMEOUT_MS, syncBox, STERR,
   dueMs, REMIND, toggle, VUE_SHEETS, SHEETARGB, SRERR,
-  showPane, paneBuilt, clearSeen, tabScroll }
+  showPane, paneBuilt, clearSeen, tabScroll,
+  expAnim, busy }

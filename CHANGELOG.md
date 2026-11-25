@@ -1374,6 +1374,28 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 笔记/待办操作簇搬进 js/noteflow.js（P14 S6 步骤 44）
+
+第十六簇：**对一条笔记/待办能做的事**——`expand`、`toggle`、`keyOf`、`todoEnterCls`、`clearEnter`、
+`enterCls`、`clearSeen`、`delTodo`、`reparse`、`delNote`、`reocr`、`toggleAI` 搬成
+`go/ui/js/noteflow.js`。**app.js 880 → 838 行**（模块 70 行）。
+
+* 清单 (c) 条：这一簇写 app.js 的 var 只有一处——动画锁 `animLock`（`toggle` 写、`refresh` 读），
+  装成盒子 `ANIMLOCK`，app.js 的 `refresh()` 读 `ANIMLOCK.v`；钉这条契约的闸门正则两种写法都认。
+* `seen` 与 `justDone` **只有本簇读写**，整张表跟着搬成模块私有，app.js 连 `var` 都不留——比装盒子干净：
+  跨模块的可变共享直接没有了。闸门那条「`var seen = {}` 必须声明过」查的是全部 UI 文件拼接后的 `src`，
+  声明搬家照样绿。
+* `open` / `expAnim` / `busy` 留在 app.js，簇里只做**属性写**（`open[id]=…`、`busy[id]=1`），合法。
+* `toggleAI` 调的 `saveSettings` 在 settingsflow.js，于是 app.js 里那条「app.js 的函数调 settingsflow
+  的函数」也消掉了：现在只剩 noteflow.js → settingsflow.js 一条边。
+* 探针（`.test/probe_note.js` + `.test/probe_ai.js`，真 DOM：待办行 `.cb`、笔记卡「展开详情」「删除」、
+  设置页 AI 开关）：建待办 → 勾选瞬间 `justdone=yes cb.on=yes` → 1.8s 后 `done=1 划线=yes`（动画窗口内
+  `refresh()` 被 `ANIMLOCK` 挡住不重绘）、`delTodo` 1→0、`expand` 后按钮变「收起」、`reparse`/`reocr`
+  两条 toast、`delNote` 对话框确认后 notes 8→7、`toggleAI` useAI true→false（toast="已保存"）→true、`loads=1`。
+* 验收：`ui_test.js` **122 项全绿**（闸门㉒ 抓到 app.js 少导出 `expAnim`/`busy`，补上）、
+  `GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、
+  三套 DOM 等价工具全部一致。
+
 ### 页签切换 / 底部 fab 那一簇搬进 js/tabflow.js（P14 S6 步骤 43）
 
 第十五簇：**页签与 fab**——`setTab`、`moveInd`（页签指示条测量）、`FABS`、`tabPick`、`brandGo`、

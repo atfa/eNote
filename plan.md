@@ -3623,3 +3623,51 @@ end       tab=notes loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.66 P14 S6：笔记/待办操作簇搬进 js/noteflow.js（步骤 44）
+
+第十六簇：**对一条笔记/待办能做的事**——`expand`、`toggle`、`keyOf`、`todoEnterCls`、`clearEnter`、
+`enterCls`、`clearSeen`、`delTodo`、`reparse`、`delNote`、`reocr`、`toggleAI` 搬成
+`go/ui/js/noteflow.js`。**app.js 880 → 838 行**（模块 70 行）。
+
+* 清单 (c) 条：这一簇写 app.js 的 var 只有一处——动画锁 `animLock`（`toggle` 写、`refresh` 读），
+  装成盒子 `ANIMLOCK`，app.js 的 `refresh()` 读 `ANIMLOCK.v`。闸门里钉着这条契约的正则
+  （`if(Date.now() < animLock){ paintStatus(); return }`）认两种写法，注释写明步骤 44 起是盒子。
+* `seen` 与 `justDone` 是**只有本簇读写**的表（`enterCls`/`clearSeen` 用 `seen`，
+  `toggle`/`todoEnterCls`/`clearEnter` 用 `justDone`），所以整张表跟着搬成模块私有，
+  app.js 连 `var` 都不留——比装盒子干净：没有跨模块的可变共享了。
+  闸门那条「`var seen = {}` 必须声明过」查的是全部 UI 文件拼接后的 `src`，声明搬了家照样绿。
+* `open` / `expAnim` / `busy` 留在 app.js（`render`/`syncExpand`/HOST 都读），簇里只做**属性写**
+  （`open[id]=…`、`expAnim[id]=1`、`busy[id]=1`），写导入对象的属性合法，直接 import。
+* `toggleAI` 顺手搬进这一簇，它调的 `saveSettings` 在 settingsflow.js（步骤 42 搬过去的），
+  于是 app.js 里那条「app.js 的函数调 settingsflow 的函数」也消掉了：现在只有
+  noteflow.js → settingsflow.js 这一条边。
+* 清单 (g) 条：整段（450-493 + 495-497）与 `git show HEAD:go/ui/js/app.js` 逐字 diff，
+  除声明的 5 处改写（`animLock` → `ANIMLOCK.v` 四处、`var justDone = {}, animLock = 0;` 拆成两条）外全部一致。
+* 闸门㉒ 立刻抓到 app.js 少导出 `expAnim` / `busy`（noteflow 要 import）——补上；
+  122 项其余全绿，没有需要教行锚的门。
+
+探针（物理屏，`.test/probe_note.js` + `.test/probe_ai.js`，点的是真 DOM：待办行的 `.cb`、
+笔记卡的「展开详情」「删除」、设置页的 AI 开关）：
+
+```
+base        notes=8 todos=0 done=0
+建待办      todos=1                                   ← addTodoSheet + 表单
+待办行      cb=yes enter卡片=8                        ← enterCls 给新出现的卡片
+勾选瞬间    justdone=yes cb.on=yes leaving=no         ← toggle 的就地动画
+勾选后      done=1 划线=yes                           ← 提交 + 新位置高亮
+delTodo     todos=1 → 0
+展开前      clamp=yes  →  expand 后 open=true（按钮文案变「收起」）
+reparse     toast="AI 重新解析中…"
+reocr       toast="正在识别图片…"
+delNote     对话框 dlg=on title="删除" → 确定 → notes=8 → 7、dlg=none
+toggleAI    useAI=true → false（toast="已保存"，开关类名 van-switch sw）→ true
+end         notes=7 todos=0 loads=1
+```
+
+`勾选瞬间` 那一行是这一簇最难验的部分：`toggle` 先往真 DOM 上加 `justdone`/`cb.on`/`leaving`
+三个类，动画窗口内 `refresh()` 被 `ANIMLOCK` 挡住不重绘（否则划线动画会被打断），
+1.8 秒后才由 `refresh(true)` 把新位置画出来——探针在两个时刻各测一次，两个时刻都对。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
