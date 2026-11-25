@@ -1,24 +1,28 @@
-P14 S6 步骤 46：时间格式化簇搬进 js/timeflow.js（app.js 799 → 790）
+P14 S6 步骤 47：toast 与请求层搬进 js/netflow.js（app.js 790 → 757）
 
-第十八簇：时间的三种说法——now()（due 字段的线格式 YYYY-MM-DDTHH:MM）、fmtTime()（「今天 09:05」/
-「11/25 09:00」）、relTime()（「刚刚 / 15 分钟前 / 5 小时前 / 3 天前」）搬成 go/ui/js/timeflow.js。
-app.js 799 → 790 行（模块 26 行）。
+第十九簇：跟 Go 说话的那几行——toast（toastT）、api（测试缝 API_FAIL）、apiTimeout（REQ_TIMEOUT_MS）、
+errText 搬成 go/ui/js/netflow.js。app.js 790 → 757 行（模块 53 行）。
 
-- 这是第一个零 import 的模块：三个函数都是纯函数（只吃参数、只读 Date.now()），不碰 app.js 的任何东西，
-  所以连循环依赖都没有——「模块顶层不读 app.js」那条契约在这里是空满足的。逐字 diff 0 处改写（第三次纯搬家）。
-- 搬走之后，原先「谁都能从 app.js 拿 now」的取用面收窄了：shotflow.js（now）、listflow.js（now）、
-  clipflow.js（relTime）三处 import 直接指向 ./timeflow.js，app.js 的导出表里 now / relTime 两笔删掉——
-  app.js 不再是所有工具的中间商。relTime 本来就不进 HOST（步骤 22 从宿主摘掉，模板里没人读）。
-- 三个名字散在 app.js 的两处（now/fmtTime 在 api 簇后面，relTime 在剪贴板注释群中间），所以是两段删除 +
-  两处留路标注释；替换自下而上做，行号不会漂。
-- 122 项全绿，没有需要教行锚的门（ui_test.js 里只有一句注释提到 relTime）。
+- 第二个零循环依赖的模块：只 import { shell } from './shell.js'（toast 写的是 shell.toast 两个字段），
+  顶层不读 app.js 的任何东西——连「只在函数体里读」那条契约都不需要。逐字 diff 0 处改写（第四次纯搬家）。
+- 这一簇真正的收益是取用面收窄：13 个模块的 from './app.js' 里，请求层的名字改成直接 from './netflow.js'
+  （addflow api+toast、clipflow api+toast、filesflow api+apiTimeout+errText+toast、logflow api、
+  missedflow api+toast、noteflow api+toast、openflow toast、prefsflow api+toast、remindflow toast、
+  searchflow apiTimeout+errText、settingsflow api+toast、shotflow api、statsflow REQ_TIMEOUT_MS+apiTimeout+errText）。
+  app.js 的导出表里 toast/api/apiTimeout/errText/REQ_TIMEOUT_MS 五笔删掉——app.js 不再是请求层的中间商。
+- 清单 (c) 条的反向情形第一次出现：不是新模块写 app.js 的 var，而是 app.js 写新模块的 var——测试缝
+  API_FAIL 由 app.js 末尾的 __enote.test.failApi 赋值。ES module 的导入是只读活绑定，app.js 不能替
+  netflow 赋值，所以 netflow 导出 setApiFail(v) / apiFail()，app.js 那对 getter/setter 改成调它们
+  （声明的改写 2 处，setter 里的 v || '' 搬进 setApiFail，语义逐字不变）。
+- 122 项全绿，没有需要教行锚的门（ui_test.js 里没有一处正则钉 function toast / async function api /
+  REQ_TIMEOUT_MS = 12000）。
 
-探针（物理屏 .test/probe_time.js + .test/probe_rel.js，读真 DOM：笔记卡时间段、待办行到期段与
-.due.over/.due.today 类、剪贴板弹层计数条）：笔记卡时间 "手动仅原文 今天 04:13" → 到期段
-11/25 09:00[over] | 今天 23:50[today] → 分组 已逾期·1|今天·1|无日期·1 → relTime 四个分支
-["微信 · 刚刚","浏览器 · 15 分钟前","某笔记 · 5 小时前","某阅读器 · 3 天前"]（fetch 打补丁喂四条已知
-createdAt 的假剪贴板记录）→ end notes=8 待办行=0 loads=1。[over]/[today] 那两个类由 leaf.js 里
-t.due < H.now() 算出，所以这一探针同时验了 now() 的字符串比较语义（线格式必须逐字不变）。
+探针（物理屏 .test/probe_net.js + .test/probe_net2.js）：测试缝读回 "/api/stats" → 冷启动 + fetch 永久挂起
+apiTimeout 12s 超时：骨架=1 错条="加载超时 · 立即重试" → 立即重试按钮=yes → 重试后 错条=none 磁贴=6 →
+注入失败（有旧数据时）磁贴=6 错条=none（views/stats.js 的 v-if="!st"：有旧数据就留着旧数据）→
+toast="步骤四十七 toast" → 2.6s 后 toast=none → api /api/stats keys=ok,notes,todos,attach,ai,days → loads=1。
+两个坑记档：热实例上我的页有数据就不画错条，要 asroot_global "am force-stop" 冷启动（asroot_global 是
+lib/root.sh 里的函数，不 source 会静默失败）；冷启动时 hook 跑在页面之前，探针第一句得先等 window.__enote。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

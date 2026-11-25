@@ -6,7 +6,8 @@
 // （ES module 的 import 是只读绑定，直接赋值会在链接期就 SyntaxError，同 SRK 那条教训）。
 // seen / justDone 这两张表只有本簇读写（enterCls / clearSeen / toggle / todoEnterCls /
 // clearEnter），所以它们跟着搬成模块私有，app.js 那边连 var 都不留。
-import { S, open, expAnim, busy, api, toast, refresh, render, askDel } from './app.js'
+import { S, open, expAnim, busy, refresh, render, askDel } from './app.js'
+import { api, toast } from './netflow.js'
 import { saveSettings } from './settingsflow.js'
 
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）

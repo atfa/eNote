@@ -1374,6 +1374,27 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### toast 与请求层搬进 js/netflow.js（P14 S6 步骤 47）
+
+第十九簇：**跟 Go 说话的那几行**——`toast`（`toastT`）、`api`（测试缝 `API_FAIL`）、`apiTimeout`
+（`REQ_TIMEOUT_MS`）、`errText` 搬成 `go/ui/js/netflow.js`。**app.js 790 → 757 行**（模块 53 行）。
+
+* 第二个零循环依赖的模块：只 `import { shell } from './shell.js'`，顶层不读 app.js；逐字 diff 0 处改写。
+* 取用面收窄：13 个模块的 `from './app.js'` 里请求层的名字改成直接 `from './netflow.js'`
+  （addflow / clipflow / filesflow / logflow / missedflow / noteflow / openflow / prefsflow / remindflow /
+  searchflow / settingsflow / shotflow / statsflow），app.js 导出表里 `toast`/`api`/`apiTimeout`/`errText`/
+  `REQ_TIMEOUT_MS` 五笔删掉——app.js 不再是请求层的中间商。
+* 清单 (c) 条的反向情形第一次出现：不是新模块写 app.js 的 var，而是 **app.js 写新模块的 var**（测试缝
+  `API_FAIL`）。ES module 的导入是只读活绑定，所以 netflow 导出 `setApiFail(v)` / `apiFail()`，
+  app.js 的 `__enote.test.failApi` 那对 getter/setter 改成调它们（声明的改写 2 处）。
+* 探针（`.test/probe_net.js` + `.test/probe_net2.js`）：测试缝读回 `"/api/stats"`、**冷启动 + fetch 永久挂起
+  → 骨架=1 错条="加载超时 · 立即重试"**（apiTimeout 12s + `errText`）→ 立即重试 → 磁贴=6、注入失败且已有旧数据时
+  保留旧数据（`v-if="!st"`）、toast 出现与 2.6s 自动收、`api /api/stats keys=ok,notes,todos,…`、`loads=1`。
+  坑两条：热实例上我的页有数据就不画错条（要 `asroot_global "am force-stop …"` 冷启动，而 `asroot_global`
+  得先 `source lib/root.sh`）；冷启动时 hook 跑在页面之前，探针得先等 `window.__enote`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 时间格式化簇搬进 js/timeflow.js（P14 S6 步骤 46）
 
 第十八簇：**时间的三种说法**——`now()`（due 字段的线格式）、`fmtTime()`（「今天 09:05」）、

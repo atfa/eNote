@@ -9,8 +9,8 @@
 // `var x = S.foo` 这种求值期读取。
 import { Vue, mountSheet, unmountAllSheets, sheetPaint } from './vue.js'
 import { CLIP } from './clipflow.js'   /* 步骤 30：CLIP 搬去 clipflow.js 了 */
-import { S, tab, q, $, esc, toast, dialog, closeSheet, pageSheetVue, setTab,
-  refresh, api, paneDirty, statsNow } from './app.js'
+import { S, tab, q, $, esc, dialog, closeSheet, pageSheetVue, setTab, refresh, paneDirty, statsNow } from './app.js'
+import { api, toast } from './netflow.js'
 import { now } from './timeflow.js'
 
 // ---- 截图捕获（P11）：扫描监控文件夹 → 横幅 → 多选 → 导入笔记 ----

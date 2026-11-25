@@ -6,7 +6,8 @@
 // `tab` 是 app.js 的 var，ESM 的 import 绑定只读，切页签走 app.js 的 setTabTo()（同 setQ）；
 // `open` 是 OPENB.v 那个 reactive 代理，写属性（open[id]=true）不算写绑定，安全。
 // dueMs 由 app.js 再导出（remindflow.js 从 app.js 拿它），搬过来只是换了定义处。
-import { S, open, toast, setTab, setTabTo, refresh } from './app.js'
+import { S, open, setTab, setTabTo, refresh } from './app.js'
+import { toast } from './netflow.js'
 
 function openNote(id){
   if(!id) return;

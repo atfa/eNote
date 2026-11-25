@@ -7,7 +7,8 @@
 // curTheme 两边都要写，所以装进盒子 CUR：app.js 的 refresh() 写 CUR.v，本模块的 setTheme()
 // 也写 CUR.v（同 SRK 那条规矩）。
 import { Vue } from './vue.js'
-import { S, tab, q, api, toast, render } from './app.js'
+import { S, tab, q, render } from './app.js'
+import { api, toast } from './netflow.js'
 
 /* 上次应用的主题名：app.js 的 refresh() 用它判断「主题变了没有」，两边都要写，所以是盒子。 */
 var CUR = { v: '' };

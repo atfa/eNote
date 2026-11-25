@@ -6,7 +6,7 @@
 // 读它们的 .v（整包赋值，所以读的是 getter，同 SFORM 那条规矩）。
 import { Vue } from './vue.js'
 import { sheetVue } from './sheetflow.js'
-import { api } from './app.js'
+import { api } from './netflow.js'
 
 /* 步骤 19：这是全项目最后一处「拼字符串 + esc() 写 innerHTML」。换成一个 {v:} 盒子，
    #llmOut 里的 DOM 由 settings.js 的模板画 —— 转义交给 Vue 的插值（textContent），

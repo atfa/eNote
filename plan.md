@@ -3748,3 +3748,46 @@ end                    notes=8 待办行=0 loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.69 P14 S6：toast 与请求层搬进 js/netflow.js（步骤 47）
+
+第十九簇：**跟 Go 说话的那几行**——`toast`（`toastT`）、`api`（测试缝 `API_FAIL`）、
+`apiTimeout`（`REQ_TIMEOUT_MS`）、`errText` 搬成 `go/ui/js/netflow.js`。
+**app.js 790 → 757 行**（模块 53 行）。
+
+* 第二个**零循环依赖**的模块：它只 `import { shell } from './shell.js'`（`toast` 写的是
+  `shell.toast` 两个字段），顶层不读 app.js 的任何东西——连「只在函数体里读」那条契约都不需要。
+  逐字 diff 0 处改写（第四次纯搬家）。
+* 这一簇真正的收益是**取用面收窄**：13 个模块的 `from './app.js'` 里，请求层的名字改成直接
+  `from './netflow.js'`（`addflow` api+toast、`clipflow` api+toast、`filesflow` api+apiTimeout+errText+toast、
+  `logflow` api、`missedflow` api+toast、`noteflow` api+toast、`openflow` toast、`prefsflow` api+toast、
+  `remindflow` toast、`searchflow` apiTimeout+errText、`settingsflow` api+toast、`shotflow` api、
+  `statsflow` REQ_TIMEOUT_MS+apiTimeout+errText）。app.js 的导出表里 `toast`/`api`/`apiTimeout`/
+  `errText`/`REQ_TIMEOUT_MS` 五笔删掉——app.js 不再是请求层的中间商。
+* 清单 (c) 条的**反向**情形第一次出现：不是新模块写 app.js 的 var，而是 **app.js 写新模块的 var**
+  ——测试缝 `API_FAIL` 由 app.js 末尾的 `__enote.test.failApi` 赋值。ES module 的导入是只读活绑定，
+  app.js 不能替 netflow 赋值，所以 netflow 导出 `setApiFail(v)` / `apiFail()`，app.js 那对
+  getter/setter 改成调它们（声明的改写 2 处，语义逐字不变：setter 里那个 `v || ''` 搬进了 setApiFail）。
+* 122 项全绿，没有需要教行锚的门（`ui_test.js` 里没有一处正则钉 `function toast` / `async function api` /
+  `REQ_TIMEOUT_MS = 12000`）。
+
+探针（物理屏，`.test/probe_net.js` + `.test/probe_net2.js`）：
+
+```
+测试缝读回            "/api/stats"                       ← __enote.test.failApi 走 setApiFail/apiFail
+apiTimeout 12s 超时   骨架=1 错条="加载超时 · 立即重试"    ← fetch 永久挂起（冷启动、无旧数据）
+立即重试按钮=yes → 重试后 错条=none 磁贴=6
+注入失败（有旧数据时）磁贴=6 错条=none                    ← views/stats.js 的 v-if="!st"：有旧数据就留着旧数据
+toast="步骤四十七 toast" → 2.6s 后 toast=none            ← 2200ms 自动收
+api /api/stats keys=ok,notes,todos,attach,ai,days
+end loads=1
+```
+
+两个探针踩的坑记下来：
+1. **设备上的 app 实例是热的**——我的页已经有数据时，请求失败不画错条（`v-if="!st"` 只在没数据时画骨架+错条），
+   所以「超时」这一支必须冷启动才看得到：`source lib/root.sh; asroot_global "am force-stop dev.xduo.enote"`
+   （`asroot_global` 是 `lib/root.sh` 里的函数，不在函数体里 source 会静默失败）。
+2. 冷启动时 hook 跑在页面之前，探针第一句得先等：`for(var z=0;z<120 && !window.__enote;z++){ await W(250) }`。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

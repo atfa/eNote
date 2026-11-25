@@ -7,7 +7,8 @@
 // TypeError、页面全白），而且 SHEETARG 只写不读，是个死变量。写 nid 直接 syncBox。
 import { Vue } from './vue.js'
 import { sheetVue, closeSheet } from './sheetflow.js'
-import { toast, api, refresh, syncBox, SHEETARGB } from './app.js'
+import { refresh, syncBox, SHEETARGB } from './app.js'
+import { api, toast } from './netflow.js'
 /* 步骤 21：「记一笔」与「添加待办」的表单值也搬进状态（步骤 20 的同一套做法）。
    这两个弹层是每次新建，所以初值就是空串 / 默认值，不需要从服务端灌。
    与设置页的差别：这里用 :value（DOM property）而不是 :value.attr —— 这些元素今天

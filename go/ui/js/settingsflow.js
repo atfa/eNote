@@ -6,8 +6,8 @@
 // `q` 是只读绑定，resetPrefs 要清它，走 app.js 的 setQ()（同 SRK 装盒那条教训）。
 import { Vue, sheetPaint } from './vue.js'
 import { shell } from './shell.js'
-import { S, tab, $, toast, api, prefs, P, savePrefs, searchNow, setQ, closeSheet, askDel,
-  refresh, ST, statsNow, pageSheetVue, render } from './app.js'
+import { S, tab, $, prefs, P, savePrefs, searchNow, setQ, closeSheet, askDel, refresh, ST, statsNow, pageSheetVue, render } from './app.js'
+import { api, toast } from './netflow.js'
 
 /* 步骤 20：设置页六个输入框的值搬进状态（SFORM）。以前 saveSettings() 是
    `$('#sUrl').value.trim()` —— DOM 是用户输入的真相源，Vue 那一侧看不见正在打的东西，

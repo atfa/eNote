@@ -64,6 +64,8 @@ import { expand, toggle, todoEnterCls, clearEnter, enterCls, clearSeen, delTodo,
 import { todoRowCls, notesFiltered, groupTodos, rank, hit } from './listflow.js'
 /* 步骤 46：时间格式化那一簇搬进 js/timeflow.js（零 import 的纯函数模块）。 */
 import { now, fmtTime, relTime } from './timeflow.js'
+/* 步骤 47：toast 与请求层搬进 js/netflow.js（只依赖 js/shell.js，零循环依赖）。 */
+import { toast, api, apiTimeout, errText, REQ_TIMEOUT_MS, setApiFail, apiFail } from './netflow.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
 import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
@@ -136,44 +138,9 @@ function setTabTo(v){ tab = syncBox(TAB, v) }
 function $(s){return document.querySelector(s)}
 function esc(s){return (s||'').replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-/* toast（步骤 15）：以前是 innerHTML + classList.add('on') + 把定时器挂在 DOM 节点上
-   （t._t）。现在只改 shell.toast 两个字段，显隐与文案由 ToastHost 渲染 —— 定时器是行为，
-   留在模块里，不再寄生在 DOM 上。 */
-var toastT = 0;
-function toast(m){
-  shell.toast.msg = String(m);
-  shell.toast.on = true;
-  clearTimeout(toastT);
-  toastT = setTimeout(function(){ shell.toast.on = false }, 2200);
-}
-/* 测试缝（步骤 14）：`__enote.test.failApi = '/api/clip/parse'` 让含该子串的请求在 fetch 前
-   直接抛。需要它是因为「加载失败 / 解析失败」这两支在真机上要 Go 侧真报错才进得去，
-   而测试侧没有让 Go 报错的通道（步骤 11 记的账，当时写的是「要补得先做注入假 fetch」）。
-   默认空串 = 生产路径零影响；只认显式赋值，见文件末尾 __enote.test。 */
-var API_FAIL = '';
-async function api(path, body){
-  if(API_FAIL && String(path).indexOf(API_FAIL) >= 0)
-    throw new Error('injected failure: ' + path);
-  var o = body ? {method:'POST',headers:{'Content-Type':'application/json'},
-                  body:JSON.stringify(body)} : {};
-  var r = await fetch(path, o);
-  if(!r.ok) throw new Error('HTTP '+r.status);
-  return r.json();
-}
-/* 步骤 13：给「一页的数据源」用的带超时 api。fetch 没有超时时会永久挂起（真机撞过：
-   WebView 进后台再回来，在飞的 fetch 永不 resolve），症状是这一页永久停在骨架屏。
-   超时只放弃等待，不取消请求（fetch 的 result 被丢弃即可），所以调用方的序号判定照旧有效。 */
-var REQ_TIMEOUT_MS = 12000;
-function apiTimeout(path, body, ms){
-  return new Promise(function(res, rej){
-    var to = setTimeout(function(){ rej(new Error('timeout')) }, ms || REQ_TIMEOUT_MS);
-    api(path, body).then(function(v){ clearTimeout(to); res(v) },
-                         function(e){ clearTimeout(to); rej(e) });
-  });
-}
-function errText(e){
-  return (e && e.message === 'timeout') ? '加载超时' : '加载失败';
-}
+/* toast（步骤 15）与请求层 api / apiTimeout / errText / REQ_TIMEOUT_MS（步骤 13、14）搬进
+   js/netflow.js（P14 S6 步骤 47）：那边只 import js/shell.js，零循环依赖。
+   测试缝 API_FAIL 留在那边，app.js 的 __enote.test.failApi 调 setApiFail() 写它。 */
 /* 本地时间 now()（服务端 due 字段的线格式）与「今天 09:05」fmtTime() 搬进
    js/timeflow.js（P14 S6 步骤 46）：两个纯函数，没有跨模块依赖。 */
 /* 到期倒计时（R11）+ 自研到期提醒（R13-E）+ 常驻后台（P6.5）整簇搬进 js/remindflow.js
@@ -763,7 +730,7 @@ Object.assign(window.__enote, {
   clearSeen: clearSeen,
   /* 步骤 14：失败注入缝（见上面 API_FAIL 的注释）。setter 而不是直接赋值函数：
      载荷里 `__enote.test.failApi = '/api/clip/list'` 就能让下一次请求抛，赋空串关掉。 */
-  test: { get failApi(){ return API_FAIL }, set failApi(v){ API_FAIL = v || '' } }
+  test: { get failApi(){ return apiFail() }, set failApi(v){ setApiFail(v) } }
 });
 /* buildReady（步骤 4，Tony 提的竞态）：ready 在首屏就兑现，build 由这个独立 fetch 填，
    载荷 await ready 后立刻读 E.build 是没顺序保证的（实测不犯：seam 载荷是在桥载荷轮询完
@@ -781,10 +748,10 @@ window.__enote.buildReady = fetch('/build.json').then(function(r){ return r.json
    活绑定，重新赋值那边看得见，这一点是这次搬迁最容易踩空的地方。
    步骤 38 起这张表也是 js/sheetflow.js 的取用面（$ / VUE_SHEETS）：VUE_SHEETS 是 var，
    只在 nextTick 回调里读，求值期不碰，安全。 */
-export { S, tab, open, q, $, esc, toast, dialog, closeSheet, pageSheetVue, setTab,
-  refresh, api, paneDirty, statsNow, statCls,
-  apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel,
-  prefs, savePrefs, searchNow, setQ, setQRaw, setTabTo, ST, REQ_TIMEOUT_MS, syncBox, STERR,
+export { S, tab, open, q, $, esc, dialog, closeSheet, pageSheetVue, setTab,
+  refresh, paneDirty, statsNow, statCls,
+  P, SRK, reassign, paintStatus, render, enterCls, askDel,
+  prefs, savePrefs, searchNow, setQ, setQRaw, setTabTo, ST, syncBox, STERR,
   dueMs, REMIND, toggle, VUE_SHEETS, SHEETARGB, SRERR,
   showPane, paneBuilt, clearSeen, tabScroll,
   expAnim, busy }

@@ -7,7 +7,8 @@
 // app.js 的 `var STERR` 还是 undefined，读它的 .v 会抛 TypeError —— 初值改成字面量 ''
 // （STERR 的初值本来就是 ''，语义逐字不变）。
 import { Vue } from './vue.js'
-import { REQ_TIMEOUT_MS, apiTimeout, errText, syncBox, STERR, tab, render, enterCls } from './app.js'
+import { syncBox, STERR, tab, render, enterCls } from './app.js'
+import { REQ_TIMEOUT_MS, apiTimeout, errText } from './netflow.js'
 
 /* ---------- 我的页（R5）：本地数据摘要 + 近 7 天活动 ----------
    数字全部来自 /api/stats（服务端从同一份 store 现算，不会和列表页对不上）。 */

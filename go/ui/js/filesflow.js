@@ -5,8 +5,8 @@
 // paintStatus / errText / render / enterCls / toast / askDel / refresh）全部只在函数体里读。
 // `q` 与 `tab` 一样是会被重新赋值的 var，靠 ES module 的活绑定传过来。
 import { Vue } from './vue.js'
-import { S, api, apiTimeout, P, q, SRK, reassign, paintStatus, errText, render, enterCls,
-  toast, askDel, refresh } from './app.js'
+import { S, P, q, SRK, reassign, paintStatus, render, enterCls, askDel, refresh } from './app.js'
+import { api, apiTimeout, errText, toast } from './netflow.js'
 
 /* ---------- 附件页（R4）----------
    数据来自 /api/attachments（服务端过滤/排序，含磁盘文件数校验）。 */

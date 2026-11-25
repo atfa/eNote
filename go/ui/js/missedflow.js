@@ -6,7 +6,8 @@
 // `tab` 是 app.js 的 var，ESM 的 import 绑定只读，写它要走 app.js 的 setTabTo()（同 setQ）。
 // MISSED 是 {v:} 盒子：app.js 的 refresh() 与 __enote.state 桥都写 MISSED.v，写属性不算写绑定。
 import { Vue } from './vue.js'
-import { S, api, toast, render, toggle, pageSheetVue, closeSheet, setTab, setTabTo } from './app.js'
+import { S, render, toggle, pageSheetVue, closeSheet, setTab, setTabTo } from './app.js'
+import { api, toast } from './netflow.js'
 
 /* 错过的提醒（后台被冻结时到点的那些）：只在有内容时出现，点开看清单 */
 var MISSED = Vue.reactive({ v: null });   // 服务端只在启动时算一次，之后 refresh 覆盖 S 时要把它贴回去

@@ -6,7 +6,8 @@
 // 顶层那句 `var remindPending = REMIND.v` 是这条契约的例外：那时 app.js 的 `var REMIND` 还是
 // undefined，读它的 .v 会抛 TypeError（步骤 33 的 stErr 同一个坑），初值改成字面量 0
 // （REMIND 的初值本来就是 0，语义逐字不变）。
-import { S, REMIND, syncBox, toast, dialog, dueMs } from './app.js'
+import { S, REMIND, syncBox, dialog, dueMs } from './app.js'
+import { toast } from './netflow.js'
 import { settingsRefresh } from './settingsflow.js'
 
 /* ---------- 到期倒计时（R11）----------
