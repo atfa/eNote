@@ -2866,3 +2866,40 @@ Vant 的 `van-skeleton--animate` 会给根节点挂一个 opacity 呼吸动画�
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
 三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。
 设置页开关与附件页骨架屏各有一张 VD 截图核对（`.test/shot_18e_settings.png` / `.test/shot_18e_skel.png`）。
+
+## 9.41 P14 S6：全项目最后一处 innerHTML 字符串渲染换成响应式模板（步骤 19）
+
+P14 路线图 ①–⑥ 走完（⑥ Vant 见 §9.40）之后继续「优化代码质量」。扫下来剩下的最大一块
+字符串 HTML 是设置页「测试连接」的结果区：`testLLM()` 拼字符串 + `esc()` 写
+`$('#llmOut').innerHTML`，是全项目最后一处 `innerHTML=` 赋值（其余命中全在注释里）。
+它与闸门㉓ 已经钉死的 v-html 是同一个面：字符串 HTML 绕过模板编译（闸门⑮）、绕过
+handler 扫描（闸门①），`esc()` 漏一个就是 XSS 面。
+
+**改法**：app.js 加一个 `var LLMTEST = Vue.reactive({ v: null })`（整包赋值，所以宿主侧是
+getter，同 `LOGDATA` / `DEBUGDATA`），`testLLM()` 只写状态：
+
+```js
+async function testLLM(){
+  LLMTEST.v = {busy:true};
+  var r = await api('/api/llm/test',{});
+  LLMTEST.v = {busy:false, ok:!!r.ok, ms:r.ms, httpCode:r.httpCode, reply:r.reply, error:r.error};
+}
+```
+
+`settings.js` 的模板画三态（未测 = 空、连接中 = `<span class="spin">` + 文本、结果 = 一行结论
++ `<br>` + 回复/错误原文），转义交给插值（textContent），`esc()` 不再需要。宿主接口加
+`get llmTest()`，`HOST_KEYS['sheet:settings']` 21 → 22 个 key（闸门⑮ 的越界检查会红）。
+
+**闸门㉓ 扩一半**：原来只扫组件模板里的 `v-html`，现在同时扫 `go/ui/js/**.js`（剔注释后）里的
+`.innerHTML =` / `.outerHTML =` 赋值，ok 行改成「v-html 归零，JS 里 innerHTML 赋值归零」。
+反向实验：往 app.js 塞一行 `x.innerHTML='<b>hi</b>'` → 立刻红并点名 app.js。闸门总数仍 122。
+
+设备 A/B（`.test/p19llm.js` 读 `#llmOut` 的 outerHTML，基线 = `git stash` 出 18e 的构建，
+比对器 `.test/cmp_llm.js`）：连接中态与结果态**逐字一致**，未测态只差 v-if 的注释占位
+`<!---->`（不产生元素，三套 DOM 等价工具的归一化也吃它）。结果行的 `style` 属性文本从
+`margin-top:var(--s2)` 变成 `margin-top: var(--s2);` —— 旧版是 innerHTML 解析保留原文，
+Vue 写 `el.style.cssText` 后浏览器重序列化，计算样式相同（步骤 16b 记过同一条）。
+大模型回复文本与耗时每次不同，比对器把这两处归一化成占位。设置页结果区有一张 VD 截图核对。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
+三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。

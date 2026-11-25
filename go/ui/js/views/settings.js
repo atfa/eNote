@@ -57,6 +57,15 @@ export const SettingsSheetView = {
         ? (H.batteryIgnoring() ? '已开启 · 已豁免电池优化' : '已开启 · 建议再豁免电池优化')
         : '关闭 · 只在打开 app 时可靠，后台可能收不到提醒' }),
       keepSwCls: computed(() => { nat.value; return 'sw' + (H.keepAliveOn() ? ' on' : '') }),
+      /* 「测试连接」的结果（步骤 19 起是响应式盒子，app.js 的 testLLM() 只写状态）。
+         两态的 DOM 与旧 innerHTML 逐字相同：连接中 = <span class="spin"> + 文本，
+         结果 = 一行结论 + <br> + 回复/错误原文。转义交给插值（textContent），不再 esc()。 */
+      llmBusy: computed(() => !!(H.llmTest && H.llmTest.busy)),
+      llmLine: computed(() => { var t = H.llmTest; if(!t || t.busy) return '';
+        return t.ok ? '✅ 成功（' + t.ms + 'ms，HTTP ' + t.httpCode + '）'
+                    : '❌ 失败（' + (t.ms || 0) + 'ms）' }),
+      llmBody: computed(() => { var t = H.llmTest; if(!t || t.busy) return '';
+        return t.ok ? t.reply : (t.error || '') }),
       themes: computed(function(){
         var cur = H.S.settings.theme || 'light';
         var label = { light: '亮色', dark: '暗色', auto: '跟随系统' };
@@ -104,7 +113,7 @@ export const SettingsSheetView = {
   <div class="grid2"><div><label>超时（秒）</label><input id="sTimeout" :value.attr="s.timeoutS || 90"></div><div><label>最大 tokens</label><input id="sMax" :value.attr="s.maxTokens || 2048"></div></div>
   <label>温度 temperature</label><input id="sTemp" :value.attr="s.temperature == null ? '0.2' : s.temperature">
   <div class="acts"><button class="btn pri" @click="H.saveSettings()">保存</button><button class="btn" @click="H.testLLM()">测试连接</button></div>
-  <div id="llmOut"></div>
+  <div id="llmOut"><div class="body" v-if="llmBusy"><span class="spin"></span> 连接中…</div><div class="body" v-else-if="llmLine" style="margin-top:var(--s2)">{{ llmLine }}<br>{{ llmBody }}</div></div>
 </div>
 <div class="pgroup">采集</div><div class="card"><kv-row k="剪贴板暂存" v="前台自动 + 顶栏按钮手动" vstyle="color:var(--acc2)"/><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">打开 app 时自动暂存剪贴板里的文字；在别的 app 复制后切回「懒得记」即可看到，顶栏剪贴板按钮也可以随时手动收一条。Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。点「解析」才发到大模型，之前内容不会离开本机。</div></div>
 <div class="pgroup">本地 OCR</div><div class="card"><settings-ocr-card :i="i"/></div>

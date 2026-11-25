@@ -2217,9 +2217,21 @@ if (SPLIT) {
       if (/v-html[=:]/.test(m[1])) hits.push(rel);
     }
   }
+  /* 步骤 19：另一半是「JS 里直接写 innerHTML」。testLLM() 是最后一处（拼字符串 + esc()
+     写进 #llmOut），现在它写一个响应式盒子，DOM 由模板画。字符串 HTML 的坏处与 v-html
+     同源：闸门⑮ 编译不到它、闸门① 的 handler 扫描扫不到它里面的 onclick，esc() 漏一个
+     就是 XSS 面（用户笔记里的 <b> 会真的加粗）。uiCode 已剔注释，注释里提 innerHTML 不算。 */
+  const ih = [];
+  for (const [rel, src] of walkJs(uiDir)) {
+    const code = stripComments(src);
+    for (const m of code.matchAll(/{\.(innerHTML|outerHTML)\s*=/g)) ih.push(rel);
+    for (const m of code.matchAll(/\.(innerHTML|outerHTML)\s*=[^=]/g)) ih.push(rel);
+  }
   if (hits.length) bad('闸门㉓ 模板里还有 v-html（字符串 HTML 绕过闸门⑮ 的模板编译与 tick 检查）',
     [...new Set(hits)].join(', '));
-  else ok('闸门㉓ ' + tplCount + ' 个组件模板里 v-html 归零（字符串 HTML 全部翻成真模板）');
+  else if (ih.length) bad('闸门㉓ JS 里还有 .innerHTML 赋值（拼字符串 + esc() 是 v-html 的孪生面）',
+    [...new Set(ih)].join(', '));
+  else ok('闸门㉓ ' + tplCount + ' 个组件模板里 v-html 归零，JS 里 innerHTML 赋值归零（字符串 HTML 全部翻成真模板）');
 }
 
 /* ---------- 闸门㉔：组件模板里的自定义标签必须在它自己的 components 里声明 ----------

@@ -1374,12 +1374,14 @@ async function saveSettings(){
   var r = await api('/api/settings', s);
   toast(r.ok?'已保存':'保存失败'); if(r.ok){S.settings=r.settings; render();}
 }
+/* 步骤 19：这是全项目最后一处「拼字符串 + esc() 写 innerHTML」。换成一个 {v:} 盒子，
+   #llmOut 里的 DOM 由 settings.js 的模板画 —— 转义交给 Vue 的插值（textContent），
+   「连接中」与结果两态都是状态的纯函数。整包赋值，所以读它的是 getter（同 LOGDATA）。 */
+var LLMTEST = Vue.reactive({ v: null });
 async function testLLM(){
-  $('#llmOut').innerHTML='<div class="body"><span class="spin"></span> 连接中…</div>';
+  LLMTEST.v = {busy:true};
   var r = await api('/api/llm/test',{});
-  $('#llmOut').innerHTML='<div class="body" style="margin-top:var(--s2)">'
-    +(r.ok?'✅ 成功（'+r.ms+'ms，HTTP '+r.httpCode+'）<br>'+esc(r.reply)
-           :'❌ 失败（'+(r.ms||0)+'ms）<br>'+esc(r.error||''))+'</div>';
+  LLMTEST.v = {busy:false, ok:!!r.ok, ms:r.ms, httpCode:r.httpCode, reply:r.reply, error:r.error};
 }
 /* 运行日志 / AI 调用记录：步骤 16c 之前是「取完数据才弹」（await api 然内拼字符串），
    组件里自己 fetch 会变成「先弹出一个空的再填」，那是行为改动不是重构，所以数据依旧
@@ -1661,6 +1663,7 @@ var HOST = setHost({
   missedDone: missedDone, missedGoTodos: missedGoTodos, missedDismiss: missedDismiss,
   addNote: addNote, pickImage: pickImage, addTodo: addTodo, clipText: clip,
   get logData(){ return LOGDATA.v }, get debugData(){ return DEBUGDATA.v },
+  get llmTest(){ return LLMTEST.v },
   get sheetArg(){ return SHEETARGB.v },
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
@@ -1706,11 +1709,11 @@ var HOST_KEYS = {
   'sheet:clip': ['clipDel', 'clipDelSel', 'clipError', 'clipItemCls', 'clipList', 'clipLoading',
     'clipMetaText', 'clipParse', 'clipParseText', 'clipPick', 'clipPrevText', 'clipSel',
     'clipSelAll', 'clipThumbText'],
-  /* sheet:settings 组件根 SettingsSheetView，21 个 key */
+  /* sheet:settings 组件根 SettingsSheetView，22 个 key（步骤 19 加 llmTest） */
   'sheet:settings': ['S', 'ST', 'askBattery', 'askExact', 'askNotify', 'batteryIgnoring',
     'clearAllNotes', 'exactGranted', 'exportJSON', 'fmtSize', 'importJSON', 'keepAliveOn',
-    'notifyGranted', 'remindPending', 'saveSettings', 'setTheme', 'showDebug', 'showLog',
-    'testLLM', 'toggleAI', 'toggleKeepAlive'],
+    'llmTest', 'notifyGranted', 'remindPending', 'saveSettings', 'setTheme', 'showDebug',
+    'showLog', 'testLLM', 'toggleAI', 'toggleKeepAlive'],
   /* sheet:sort     组件根 SortSheetView，5 个 key */
   'sheet:sort': ['P', 'closeSheet', 'resetPrefs', 'setPref', 'tab'],
   /* sheet:missed   组件根 MissedSheetView，10 个 key */

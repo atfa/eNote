@@ -1,66 +1,35 @@
-P14 S5 步骤 18e：开关与骨架屏换成 Vant 组件（van-picker 判定为不适用）
+P14 S6 步骤 19：全项目最后一处 innerHTML 字符串渲染换成响应式模板
 
-⑥（Vant 组件库）的收尾。设置页两个手写开关换成 `<van-switch>`，附件页与我的页的
-骨架屏换成 `<van-skeleton>`；计划里的第三项 `van-picker` 判定为不适用。
+P14 路线图 ①–⑥ 走完（⑥ Vant 见 §9.40）之后继续优化代码质量。扫下来剩下的最大一块
+字符串 HTML 是设置页「测试连接」的结果区：testLLM() 拼字符串 + esc() 写
+$('#llmOut').innerHTML —— 全项目最后一处 innerHTML= 赋值（其余命中全在注释里）。
+它与闸门㉓ 已经钉死的 v-html 是同一个面：字符串 HTML 绕过模板编译（闸门⑮）、绕过
+handler 扫描（闸门①），esc() 漏一个就是 XSS 面。
 
-开关：状态重新成为唯一来源
-- 旧写法是「像素与状态各改各的」：`onclick="toggleAI(this)"` 把元素递进函数，函数里
-  `el.classList.toggle('on')` / `el.className='sw'+(on?' on':'')` 乐观改类名，500ms 后才
-  `settingsRefresh()` 校准。现在 `:model-value` 读状态、`@update:model-value` 写状态，
-  类名是状态的纯函数（settings.js 的 `keepSwCls` / `aiSwCls` 拼 `'sw' + (on?' on':'')`，
-  test.sh 断言的 `on` 类名契约不变）。
-- 三个 handler 的元素参数与两处 DOM 写操作一起删掉：`toggleKeepAlive(el)`→`()`、
-  `applyKeepAlive(el,on)`→`(on)`（乐观那一步交给 computed，立刻 `settingsRefresh()`，
-  500ms 那次校准保留）、`toggleAI(el)`→`()`。
-- 尺寸映射是这一步全部的技术含量：Vant 的开关全部由 font-size 驱动（高 = 1em+4px、
-  宽 = 1.8em+4px、圆点 = 1em、位移 = 宽−圆点−4px），旧 `.sw` 是 46×26（不是 2:1），
-  所以 tokens.css 给 `--van-switch-size:22px`（高正好 26px）+ `--van-switch-width:46px`
-  （位移自动算成 46−22−4 = 20px，与旧版 `left:3px→23px` 逐字相同）。圆点 22px（旧版
-  20px）是这一步唯一的像素差，两边都垂直居中。
-- `base.css` 三条 `.sw` 规则只剩两条：`flex:0 0 46px`（`.setrow` 给开关留的宽度）与
-  `transition-timing-function:var(--ease)`（Vant 的轨道没写 timing-function、圆点写死
-  `cubic-bezier(.3,1.05,.4,1.05)` 回弹，旧版两处都是 `var(--ease)`）。
-  `.sw.dis{opacity:.45}` 是死代码（JS 与 test.sh 都不挂这个类），删掉，禁用态改由
-  `--van-switch-disabled-opacity` 给。
+改法
+- app.js 加 var LLMTEST = Vue.reactive({ v: null })（整包赋值，所以宿主侧是 getter，
+  同 LOGDATA / DEBUGDATA），testLLM() 只写状态：先 {busy:true}，api 回来后整包写结果。
+- settings.js 的模板画三态：未测 = 空、连接中 = <span class="spin"> + 文本、
+  结果 = 一行结论 + <br> + 回复/错误原文。转义交给插值（textContent），esc() 不再需要。
+- 宿主接口加 get llmTest()，HOST_KEYS['sheet:settings'] 21 → 22 个 key
+  （闸门⑮ 的越界检查会红：模板里写 H.llmTest 而表里没有 → 运行时是 undefined）。
 
-骨架屏
-- Vant 的骨架是「标题 + 一排等高段落」，我们是 120 / 14 / 10 px 三档，`components.css`
-  用 `:nth-child` / `:last-child` 把高度与圆角补回来，动画保留我们自己的渐变扫过（`shim`）。
-- `:animate="false"` 是必需的：Vant 的 `van-skeleton--animate` 给根节点挂 opacity 呼吸动画
-  （实测 0.73~1 之间跳），与 shim 叠起来就是双重动画。`.skel` 类名留在根节点
-  （test.sh 用它判定「还在加载」）。
+闸门㉓ 扩一半
+- 原来只扫组件模板里的 v-html，现在同时扫 go/ui/js/**.js（剔注释后）里的
+  .innerHTML = / .outerHTML = 赋值，ok 行改成「v-html 归零，JS 里 innerHTML 赋值归零」。
+- 反向实验：往 app.js 塞一行 x.innerHTML='<b>hi</b>' → 立刻红并点名 app.js。闸门仍 122 项。
 
-闸门两处
-- 常驻后台的签名断言改成新签名，并加两条负断言：`applyKeepAlive(on)` 里必须能看到
-  `settingsRefresh()`、`el.className='sw'` 必须不存在 —— 防 DOM 写操作回来。
-- 闸门㉔（组件模板里的自定义标签必须在自己的 `components:` 里声明）加 `van-*` 豁免，
-  与闸门⑮ 同源（Vant 走 `app.use(Vant)` 全局注册）；两处豁免必须成对出现。
+设备 A/B（.test/p19llm.js 读 #llmOut 的 outerHTML，基线 = git stash 出 18e 的构建，
+比对器 .test/cmp_llm.js）
+- 连接中态与结果态逐字一致；未测态只差 v-if 的注释占位 <!---->（不产生元素，三套 DOM
+  等价工具的归一化也吃它）。
+- 结果行的 style 属性文本从 margin-top:var(--s2) 变成 margin-top: var(--s2);：旧版是
+  innerHTML 解析保留原文，Vue 写 el.style.cssText 后浏览器重序列化，计算样式相同
+  （步骤 16b 记过同一条）。大模型回复文本与耗时每次不同，比对器把这两处归一化成占位。
 
-van-picker 判定：不适用
-- app 里没有 app 内的时间选择器：添加待办的日期/时间是原生 `<input type="date">` /
-  `<input type="time">`（views/sheets.js:131），点开的是系统控件。换成 van-picker 是换交互
-  （滚轮 vs 系统弹窗）而不是换实现，属于新增功能；⑥ 的边界是「只用 Vant 重写已有 UI」。
-
-设备 A/B（.test/p18sw.js + .test/cmp_sw.js，基线 = git stash 出 18d 的构建）
-- 开关轨道（46×26、--grip/--acc2、background-color 0.18s）、圆点（22px、白、无阴影、位移
-  20px、var(--ease)）、开/关两态与「点一下翻转」全部对齐；骨架屏三条（120/14/10 px、圆角
-  12/8/8、margin 8/8/0、宽度 100%/100%/45%、渐变与 shim 动画）逐字一致。
-- 四条允许的结构性等价（同一个像素的两种写法）写在比对器里：轨道圆角 999px→22px（26px
-  高上都算胶囊）、圆点圆角 50%→100%、位移 transition:left→transition:transform、轨道
-  transition-property:background→background-color。类名 `sw on` → `van-switch
-  van-switch--on sw on`（我们的 `on` 在后，契约不变）。
-- 我的页骨架屏（同一套 CSS 的两行变体）在探针里抓不到：本机 /api/stats 往返 < 16ms，
-  加载帧观察不到；附件页那三行已逐字覆盖同一批规则。
-
-顺手修了探针一处污染：.test/probe_sheets.sh 读 fab_notes 前必须 tabPick("files") 再
-tabPick("notes") 走一趟 —— tabPick 对「已经在的页签」是早退（app.js:1565 只滚回顶部），
-上一支探针停在附件页时 fab 不会被重写，症状是 dom_equiv3 的「fab 图标 · 笔记页」抓到
-#i-clip。新增 .test/vdshot.sh（探针 + 虚拟屏截图）。
-
-数字：`.sw` 的 DOM 写操作 2 → 0；base.css 的 `.sw` 规则 3 → 2；components.css 的 `.skel`
-规则 6 → 4（+1 条 @keyframes）；tokens.css 新增 11 条 --van-switch-* / --van-skeleton-* 映射。
+数字：go/ui/js 里的 .innerHTML 赋值 2 → 0，esc() 的调用点随之减 2；宿主 key 132 → 133。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、
-./test.sh --vd **164 ok / 0 FAIL / PASS**（与 18a–18d 基线逐条相同）、三套 DOM 等价工具全部
-一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页保活长说明 236 B 逐字未动）；
-设置页开关与附件页骨架屏各一张 VD 截图核对。
+./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、
+todoRow 651 B、todoTx 454 B、进度层、设置页保活长说明 236 B 逐字未动）；设置页结果区一张
+VD 截图核对（.test/shot_19_llm.png）。

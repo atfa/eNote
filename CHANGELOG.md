@@ -1374,6 +1374,31 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 全项目最后一处 `innerHTML` 字符串渲染换成响应式模板（P14 S6 步骤 19）
+
+设置页「测试连接」的结果区是最后一处 `$('#…').innerHTML = 拼字符串 + esc()`：它和闸门㉓
+已经钉死的 `v-html` 是同一个面 —— 字符串 HTML 绕过模板编译（闸门⑮）、绕过 handler 扫描
+（闸门①），`esc()` 漏一个就是 XSS 面。现在 `testLLM()` 只写一个 `Vue.reactive({v:null})`
+盒子（整包赋值，宿主侧是 getter，同 `LOGDATA` / `DEBUGDATA`），三态 DOM 由 `settings.js`
+的模板画，转义交给插值（textContent）。
+
+* 宿主接口加 `get llmTest()`，`HOST_KEYS['sheet:settings']` 21 → 22 个 key（闸门⑮ 的越界
+  检查会红：模板里写了 `H.llmTest` 而表里没有 → 运行时是 `undefined`）。
+* 闸门㉓ 扩一半：原来只扫组件模板里的 `v-html`，现在同时扫 `go/ui/js/**.js`（剔注释后）里的
+  `.innerHTML =` / `.outerHTML =` 赋值，ok 行改成「v-html 归零，JS 里 innerHTML 赋值归零」。
+  反向实验：往 app.js 塞一行 `x.innerHTML='<b>hi</b>'` → 立刻红并点名 app.js。闸门仍 122 项。
+* 设备 A/B（`.test/p19llm.js` 读 `#llmOut` 的 outerHTML，基线 = `git stash` 出 18e 的构建，
+  比对器 `.test/cmp_llm.js`）：连接中态与结果态逐字一致，未测态只差 v-if 的注释占位
+  `<!---->`（不产生元素，三套 DOM 等价工具的归一化也吃它）；结果行的 `style` 属性文本从
+  `margin-top:var(--s2)` 变成 `margin-top: var(--s2);`（innerHTML 解析保留原文 vs Vue 写
+  `el.style.cssText` 后浏览器重序列化，计算样式相同，步骤 16b 记过同一条）。大模型回复文本
+  与耗时每次不同，比对器把这两处归一化成占位。
+* 数字：`go/ui/js` 里的 `.innerHTML` 赋值 **2 → 0**，`esc()` 的调用点随之减 2；宿主 key 132 → 133；
+  闸门 **122** 项。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致；设置页结果区
+  一张 VD 截图核对（`.test/shot_19_llm.png`）。
+
 ### 开关与骨架屏换成 `van-switch` / `van-skeleton`（P14 S5 步骤 18e）：状态重新成为开关的唯一来源
 
 设置页两个开关（常驻后台 / 启用 AI 解析）从手写的 `.sw` 换成 `<van-switch>`，附件页与我的页的
