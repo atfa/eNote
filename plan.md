@@ -3177,3 +3177,23 @@ app.js 1957 行是全项目最大的文件，里面最自成的一簇是**截图
 PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、设置页用法卡
 222 B / 保活长说明 236 B、进度层整张卡逐字未动 —— 进度层正是 shotflow.js 里的
 `shotOverlay`/`shotOvlSub`）。
+
+## 9.52 P14 S6：剪贴板暂存那一簇搬进 js/clipflow.js（步骤 30）
+
+步骤 29 的流程照搬一遍，这次是**剪贴板暂存队列**（P7：顶栏 📋 → 暂存队列 → 勾选 → 存笔记 /
+一键解析）：`var CLIP` 盒子 + 16 个函数，113 行，搬成 `go/ui/js/clipflow.js`，
+**app.js 1620 → 1513 行**（clipflow.js 133 行）。
+
+* 依赖：从 `vue.js` 只要 `Vue`（建 CLIP 盒子），从 `app.js` 要
+  `S toast esc relTime api refresh closeSheet pageSheetVue`；`reassign` 只在注释里提到，
+  没进 import 列表（`.test/scan_module_deps.js` 会报注释里的名字，人工过一遍即可）。
+* **闸门㉒ 第一次在「模块之间搬家」这件事上发挥作用**：CLIP 从 app.js 搬到 clipflow.js 之后，
+  shotflow.js 里那句 `import { CLIP } from './app.js'` 立刻失效 —— 闸门㉒ 直接
+  `FAIL 闸门㉒ import/export 对不上：go/ui/js/shotflow.js import 的 CLIP 不是 ./app.js 的导出
+  （module 解析期 SyntaxError → 整份脚本不执行、页面空白）`。步骤 29 那两个漏 import 的坑是
+  「app.js 读一个没 import 的名字」，闸门看不见；这次是「import 的名字没了」，闸门当场抓住。
+  修法：shotflow.js 改成 `import { CLIP } from './clipflow.js'`。
+* app.js 末尾给 shotflow/clipflow 的导出表相应调整：`CLIP` 移出（它不再属于 app.js），
+  `relTime` 加入（clipflow 的 `clipMetaText` 用它）。
+* 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL /
+  PASS**、三套 DOM 等价工具全部一致（含剪贴板计数条 83 B、进度层整张卡）。

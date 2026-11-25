@@ -8,7 +8,8 @@
 // 里读，求值时不会碰到 TDZ。这条契约是这次搬迁的前提，写在这里防止以后有人在顶层加
 // `var x = S.foo` 这种求值期读取。
 import { Vue, mountSheet, unmountAllSheets, sheetPaint } from './vue.js'
-import { S, tab, q, $, esc, now, toast, CLIP, dialog, closeSheet, pageSheetVue, setTab,
+import { CLIP } from './clipflow.js'   /* 步骤 30：CLIP 搬去 clipflow.js 了 */
+import { S, tab, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, setTab,
   refresh, api, paneDirty, statsNow } from './app.js'
 
 // ---- 截图捕获（P11）：扫描监控文件夹 → 横幅 → 多选 → 导入笔记 ----
