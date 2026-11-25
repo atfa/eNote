@@ -1374,6 +1374,29 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 错过的提醒那一簇搬进 js/missedflow.js（P14 S6 步骤 36）
+
+第八簇：**错过的提醒**（后台被冻结时到点的那些）——`MISSED` 盒子、`loadMissed`（启动拉一次
+`/api/missed`）、`missedSheet`、`missedDone`（勾 ✓ 复用待办页动画）、`missedGoTodos`、
+`missedDismiss`，搬成 `go/ui/js/missedflow.js`，**app.js 1226 → 1193 行**（模块 56 行）。
+
+* `missedGoTodos` 要写 `tab`（`tab = syncBox(TAB, 'todos')`），而 ESM 的 import 是只读绑定，
+  导入方一写就抛。app.js 加了 `setTabTo(v)`（`setQ` 的同款做法），模块里写
+  `setTabTo('todos'); setTab(true)`。
+* `MISSED` 本来就是 `{v:}` 盒子，app.js 的 `refresh()`（把错过的提醒贴回 `S.missed`）、HOST 的
+  getter、`__enote.state` 桥都只写 `MISSED.v` —— 写属性不算写绑定，不用改。
+* 闸门「错过的提醒面板：跳转用真存在的函数（setTab / jump）」是签名断言，读的是拼接后的 `ui`
+  字符串，函数搬走还在；只有 `tab = syncBox(TAB, 'todos')` 那句换成了 `setTabTo('todos')`，
+  签名第三种写法加进去（闸门不许静默空跑）。
+* 搬迁清单第 (g) 条这次用上了：切完区间把新模块的顶层定义清单与计划清单逐字对了一遍——正好 6
+  个，没有连坐的邻居（步骤 35 那次的 `ic`/`SR`/`searchSeq` 就是这一步没做才漏的）。
+* 探针（物理屏）：注入一条错过的提醒 → 首页横幅「错过 1 条提醒」出现 → 弹层 1 行 → 页脚两个
+  按钮在 → `missedGoTodos()` 切到待办页（`tabAfter=todos`，证明 `setTabTo` 生效）→
+  `missedDismiss()` 后 `MISSED=null`、横幅消失。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致
+  （卡片 2495 B、待办行 651 B 逐字未动）。
+
 ### 页签偏好 + 主题那一簇搬进 js/prefsflow.js（P14 S6 步骤 35）
 
 第七簇：页签偏好（排序/筛选/搜索词）+ 主题（R8）——`prefs` 盒子、`P()`、`PREF_KEYS`、

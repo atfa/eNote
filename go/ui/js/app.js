@@ -44,6 +44,9 @@ import SettingsSheetView from './views/settings.js'
 import { ST, statsNow, statCls } from './statsflow.js'
 /* 步骤 34：倒计时 / 提醒 / 常驻后台那一簇搬进 remindflow.js（循环依赖，同上）。 */
 /* 步骤 35：页签偏好 + 主题那一簇搬进 prefsflow.js（循环依赖，同上）。 */
+/* 步骤 36：错过的提醒那一簇搬进 js/missedflow.js（循环依赖，同上）。 */
+import { MISSED, loadMissed, missedSheet, missedDone, missedGoTodos, missedDismiss }
+         from './missedflow.js'
 import { prefs, P, prefQS, flattenPrefs, savePrefs, CUR, themeOf, applyTheme, setTheme }
          from './prefsflow.js'
 import { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, askNotify,
@@ -98,6 +101,9 @@ var searchSeq = 0, prefsLoaded = false;
 /* q 是 app.js 里的 var，会被重新赋值，别的模块拿到的是只读绑定（同 SRK 装盒那条教训），
    要清它就走这个 setter。shell.q / shell.has 是搜索框的显示状态，这几处赋值一直是连着的。 */
 function setQ(v){ q = syncBox(QB, v); shell.q = q; shell.has = !!q }
+/* tab 同上：`var tab = TAB.v` 会被 `tab = syncBox(TAB, …)` 重新赋值，导入方（missedflow.js）
+   只能读，切页签走这个 setter（P14 S6 步骤 36）。只写 tab 本身，页面切换仍走 setTab()。 */
+function setTabTo(v){ tab = syncBox(TAB, v) }
 
 var SRK = { v: '' };
 /* 步骤 13：首页搜索也走 apiTimeout —— fetch 没有超时会永久挂起（WebView 进后台
@@ -195,49 +201,9 @@ function reassign(box, v){
 /* 剪贴板暂存队列整簇（含 CLIP 盒子）搬进 js/clipflow.js（P14 S6 步骤 30）。 */
 /* emptyState() 也一起删：空态块现在是 components/empty-state.js 的 <empty-state> 组件，
    app.js 里最后一个调用方就是上面那个 folderRender。 */
-/* 错过的提醒（后台被冻结时到点的那些）：只在有内容时出现，点开看清单 */
-var MISSED = Vue.reactive({ v: null });   // 服务端只在启动时算一次，之后 refresh 覆盖 S 时要把它贴回去
-async function loadMissed(){
-  try{
-    var d = await api('/api/missed');
-    if(d && d.count){ MISSED.v = d; S.missed = d; render(); }
-  }catch(e){}
-}
-/* 错过的提醒面板的操作逻辑（用户反馈：只能看，没法处理）
-   三条路，每条都有明确后果：
-     点整行   → 跳到那条笔记看上下文
-     勾「完成」→ 真的把待办标完成，从这份清单里去掉
-     「这批我知道了」→ 待办一条不动，只是承认"我看过了"，横幅消失
-   横幅本身是"上次打开 app 之后到点的未完成待办"，服务端记的水位；点过「我知道了」
-   之后水位已推进，同一批不会再来烦你（下一批要等新的到点提醒）。 */
-function missedSheet(){
-  var m = MISSED.v || S.missed;
-  if(!m) return;
-  return pageSheetVue('missed', '错过的提醒');
-}
-function missedDone(ev, nid, tid, el){
-  ev.stopPropagation();
-  toggle(nid, tid, el);          // 复用待办页：划线 → 原位淡出 → 新位置高亮入场
-  setTimeout(function(){         // 动画跑完再把这条从清单里摘掉
-    if(!MISSED.v) return;
-    var n0 = (MISSED.v.items || []).length;
-    MISSED.v.items = (MISSED.v.items || []).filter(function(t){ return t.id !== tid });
-    MISSED.v.count = (MISSED.v.items || []).length;
-    if(S.missed) S.missed = MISSED.v;
-    if((MISSED.v.items || []).length === n0) return;
-    render();                 // 背后的横幅条数
-    if(MISSED.v.items.length) missedSheet(); else closeSheet();
-  }, 900);
-}
-/* 点清单里的一条：跳到笔记并展开那条待办 */
-function missedGoTodos(){ closeSheet(); tab = syncBox(TAB, 'todos'); setTab(true); }
-function missedDismiss(){
-  MISSED.v = null;
-  if(S) S.missed = null;
-  closeSheet();
-  render();
-  toast('好，这批不再提示');
-}
+/* 错过的提醒（后台被冻结时到点的那些）整簇搬进 js/missedflow.js（P14 S6 步骤 36）：
+   启动时拉一次 /api/missed → 首页横幅 → 清单弹层 → 完成 / 跳转 / 我知道了。
+   循环依赖（missedflow.js 反过来 import app.js）安全：那边只在函数体里读。 */
 /* 截图捕获与监控文件夹整簇搬进 js/shotflow.js（P14 S6 步骤 29）：扫描 → 横幅 → 多选 →
    导入 → 进度层 → 文件夹白名单，355 行自成一体的功能，这里剩下的只有把它们挂进
    HOST / HOST_KEYS 的几笔。循环依赖安全：shotflow.js 只在函数体里读 app.js 的东西。 */
@@ -1223,4 +1189,5 @@ window.__enote.buildReady = fetch('/build.json').then(function(r){ return r.json
 export { S, tab, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, setTab,
   refresh, api, paneDirty, statsNow, relTime, statCls,
   apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel,
-  prefs, savePrefs, searchNow, setQ, ST, REQ_TIMEOUT_MS, syncBox, STERR, dueMs, REMIND }
+  prefs, savePrefs, searchNow, setQ, setTabTo, ST, REQ_TIMEOUT_MS, syncBox, STERR,
+  dueMs, REMIND, toggle }

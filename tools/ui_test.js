@@ -2065,8 +2065,10 @@ if (SPLIT) {
   sig('错过的提醒面板：每行可完成 + 「这批我知道了」', missedOps);
 
   // 面板里的跳转必须用真存在的函数：goTab/goNote 不存在，点了没反应（用户反馈）
-  /* 步骤 17f：tab 的赋值走 syncBox 镜像，签名两种写法都认。 */
-  const missedJump = /function missedGoTodos\(\)\{\s*closeSheet\(\); tab = (?:syncBox\(TAB, )?'todos'\)?; setTab\(true\)/.test(src)
+  /* 步骤 17f：tab 的赋值走 syncBox 镜像，签名两种写法都认。
+     步骤 36：missedGoTodos 搬进 js/missedflow.js，tab 的写入走 app.js 的 setTabTo()
+     （ESM 的 import 绑定只读），签名第三种写法也认。 */
+  const missedJump = /function missedGoTodos\(\)\{\s*closeSheet\(\); (?:tab = (?:syncBox\(TAB, )?'todos'\)?|setTabTo\('todos'\)); setTab\(true\)/.test(src)
     && /@click\.prevent="H\.jump\(t\.nid\)"/.test(src) && !/function goTab\(/.test(src) && !/function goNote\(/.test(src);
   sig('错过的提醒面板：跳转用真存在的函数（setTab / jump）', missedJump);
 
