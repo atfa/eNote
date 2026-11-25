@@ -1,35 +1,32 @@
-P14 S6 步骤 19：全项目最后一处 innerHTML 字符串渲染换成响应式模板
+P14 S6 步骤 20：设置页六个输入框的值搬进状态（SFORM）
 
-P14 路线图 ①–⑥ 走完（⑥ Vant 见 §9.40）之后继续优化代码质量。扫下来剩下的最大一块
-字符串 HTML 是设置页「测试连接」的结果区：testLLM() 拼字符串 + esc() 写
-$('#llmOut').innerHTML —— 全项目最后一处 innerHTML= 赋值（其余命中全在注释里）。
-它与闸门㉓ 已经钉死的 v-html 是同一个面：字符串 HTML 绕过模板编译（闸门⑮）、绕过
-handler 扫描（闸门①），esc() 漏一个就是 XSS 面。
+步骤 19 之后继续。saveSettings() 是全站最后一处「把 DOM 当用户输入的真相源」：
+$('#sUrl').value.trim() 连读五个输入框，Vue 那一侧完全看不见正在打的东西。后果都写在
+旧注释里 —— settingsRefresh() 专门警告「重建会把输入框里正在打的字清掉」，夹具想改一个
+字段只能写 DOM，探针也读不到表单当前值。
 
 改法
-- app.js 加 var LLMTEST = Vue.reactive({ v: null })（整包赋值，所以宿主侧是 getter，
-  同 LOGDATA / DEBUGDATA），testLLM() 只写状态：先 {busy:true}，api 回来后整包写结果。
-- settings.js 的模板画三态：未测 = 空、连接中 = <span class="spin"> + 文本、
-  结果 = 一行结论 + <br> + 回复/错误原文。转义交给插值（textContent），esc() 不再需要。
-- 宿主接口加 get llmTest()，HOST_KEYS['sheet:settings'] 21 → 22 个 key
-  （闸门⑮ 的越界检查会红：模板里写 H.llmTest 而表里没有 → 运行时是 undefined）。
+- app.js 加 var SFORM = Vue.reactive({ v: null }) + formFill()（从 S.settings 灌初值，
+  打开设置页时调用，保存成功后用服务端回包重灌）+ formInput(k, v)（逐键写）。
+- settings.js 的六个输入框改成 :value.attr="f.xxx" @input="H.formInput('xxx', $event.target.value)"，
+  f 是 computed(() => H.SFORM || {…默认值})。宿主接口加 get SFORM() / formInput，
+  HOST_KEYS['sheet:settings'] 22 → 24 个 key。
+- 为什么不用 v-model：v-model 写的是 DOM property，序列化出来没有 value 属性，而 #sUrl 的
+  value 属性是 test.sh 钉住的契约（urlAttr=1，它同时保证「新建 input 的初值从属性来，
+  保存不会存空值」）。:value.attr + @input 是同样的双向效果、属性真的在 DOM 上。
+- 顺带修掉一条过时注释：settingsRefresh() 只重画不重建的真原因不是「丢正在打的字」
+  （值在 SFORM 里，重建不丢），是重建会打断 Android 输入法的组合中状态（拼音打一半被吞）。
+- 签名断言 id="sKey" :value.attr="s.apiKey || ''" 改成新绑定；闸门仍 122 项。
 
-闸门㉓ 扩一半
-- 原来只扫组件模板里的 v-html，现在同时扫 go/ui/js/**.js（剔注释后）里的
-  .innerHTML = / .outerHTML = 赋值，ok 行改成「v-html 归零，JS 里 innerHTML 赋值归零」。
-- 反向实验：往 app.js 塞一行 x.innerHTML='<b>hi</b>' → 立刻红并点名 app.js。闸门仍 122 项。
+设备验证（.test/p20form.js）：打开设置页 → 往 #sModel 写值并派发 input →
+__enote.vue.host.SFORM.model 立刻是 probe-model、value 属性跟着变 → saveSettings() 存进去
+（toast「已保存」、S.settings.model 回读一致）→ 关掉重开显示保存值 → 复原为 exec。
+DOM A/B（.test/p20dom.js，基线 = git stash 出步骤 19 的构建）：六个输入框的 outerHTML、
+#sUrl 的七项计算样式与盒子矩形逐字一致（91/63/32/32/30/30 B、计算样式 157 B、711x41@56,629）。
 
-设备 A/B（.test/p19llm.js 读 #llmOut 的 outerHTML，基线 = git stash 出 18e 的构建，
-比对器 .test/cmp_llm.js）
-- 连接中态与结果态逐字一致；未测态只差 v-if 的注释占位 <!---->（不产生元素，三套 DOM
-  等价工具的归一化也吃它）。
-- 结果行的 style 属性文本从 margin-top:var(--s2) 变成 margin-top: var(--s2);：旧版是
-  innerHTML 解析保留原文，Vue 写 el.style.cssText 后浏览器重序列化，计算样式相同
-  （步骤 16b 记过同一条）。大模型回复文本与耗时每次不同，比对器把这两处归一化成占位。
-
-数字：go/ui/js 里的 .innerHTML 赋值 2 → 0，esc() 的调用点随之减 2；宿主 key 132 → 133。
+数字：go/ui/js 里「从 DOM 读用户输入」的站点 5 → 0（设置页）；宿主 key 133 → 135。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、
-./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、
-todoRow 651 B、todoTx 454 B、进度层、设置页保活长说明 236 B 逐字未动）；设置页结果区一张
-VD 截图核对（.test/shot_19_llm.png）。
+./test.sh --vd **164 ok / 0 FAIL / PASS**（第一轮撞上既有的 OCR 抖动块，重跑绿）、
+三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、设置页保活长说明
+236 B、进度层逐字未动）。

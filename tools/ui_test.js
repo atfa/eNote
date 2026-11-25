@@ -1921,7 +1921,7 @@ if (SPLIT) {
   // API Key 不打码：设置页打开就能看到已保存的 key（用户明确说不在意明文，
   // 打码反而让人以为没存住、反复重填）
   const plainKey = /func maskedSettings\(\) Settings \{\n\treturn config\.get\(\)/.test(goweb)
-    && /id="sKey" :value\.attr="s\.apiKey \|\| ''"/.test(src)
+    && /id="sKey" :value\.attr="f\.apiKey" @input=/.test(src)
     && /class="fhint"/.test(src);
   sig('API Key 明文显示在设置里（不再打码）', plainKey);
 

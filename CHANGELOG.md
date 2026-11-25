@@ -1374,6 +1374,31 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 设置页六个输入框的值搬进状态（P14 S6 步骤 20）：`saveSettings()` 不再读 DOM
+
+`saveSettings()` 是全站最后一处「把 DOM 当用户输入的真相源」：`$('#sUrl').value.trim()`
+连读五个输入框，Vue 那一侧完全看不见正在打的东西。后果都写在旧注释里 ——
+`settingsRefresh()` 专门警告「重建会把输入框里正在打的字清掉」，夹具想改一个字段只能写
+DOM，探针也读不到表单当前值。现在 app.js 加 `SFORM = Vue.reactive({v:null})` +
+`formFill()`（打开设置页从 `S.settings` 灌初值，保存成功后用服务端回包重灌）+
+`formInput(k,v)`，六个输入框改成 `:value.attr="f.xxx" @input="H.formInput(...)"`。
+
+* 不用 `v-model`：它写的是 DOM property，序列化出来没有 `value` 属性，而 `#sUrl` 的 value
+  属性是 test.sh 钉住的契约（`urlAttr=1`，它同时保证「新建 input 的初值从属性来，保存不会
+  存空值」）。`:value.attr` + `@input` 是同样的双向效果、属性真的在 DOM 上。
+* 宿主接口加 `get SFORM()` / `formInput`，`HOST_KEYS['sheet:settings']` 22 → 24 个 key；
+  签名断言 `id="sKey" :value.attr="s.apiKey || ''"` 改成新绑定。闸门仍 122 项。
+* 顺带修掉一条过时注释：`settingsRefresh()` 只重画不重建的真原因不是「丢正在打的字」
+  （值在 SFORM 里，重建不丢），是重建会打断 Android 输入法的组合中状态。
+* 设备验证（`.test/p20form.js`）：往 `#sModel` 写值并派发 `input` → `SFORM.model` 立刻是
+  `probe-model`、`value` 属性跟着变 → 保存存进去（toast「已保存」、回读一致）→ 关掉重开
+  显示保存值 → 复原。DOM A/B（基线 = `git stash` 出步骤 19 的构建）：六个输入框的
+  outerHTML、`#sUrl` 的七项计算样式与盒子矩形逐字一致。
+* 数字：`go/ui/js` 里「从 DOM 读用户输入」的站点 **5 → 0**（设置页）；宿主 key 133 → 135。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**（第一轮撞上既有的 OCR 抖动块，重跑绿）、
+  三套 DOM 等价工具全部一致。
+
 ### 全项目最后一处 `innerHTML` 字符串渲染换成响应式模板（P14 S6 步骤 19）
 
 设置页「测试连接」的结果区是最后一处 `$('#…').innerHTML = 拼字符串 + esc()`：它和闸门㉓

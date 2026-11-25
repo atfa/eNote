@@ -45,6 +45,10 @@ export const SettingsSheetView = {
     return {
       H,
       s: computed(() => ({ ...H.S.settings })),
+      /* 步骤 20：六个输入框绑的是 SFORM（app.js 的表单盒子），不再是 s。
+         单向 :value.attr + @input 回写，不用 v-model —— 我们要的是 DOM 上真的那个
+         value 属性（test.sh 断言 #sUrl 有 value 属性），v-model 写的是 property。 */
+      f: computed(() => H.SFORM || { baseUrl:'', apiKey:'', model:'', timeoutS:90, maxTokens:2048, temperature:0.2 }),
       i: computed(() => ({ ...H.S.info })),
       // 提醒卡：副标题的插值切分必须与遗留拼接一一对应（三个文本节点）
       notifyGranted: computed(() => { nat.value; return H.notifyGranted() }),
@@ -106,12 +110,12 @@ export const SettingsSheetView = {
 <div class="card">
   <div class="row between" style="margin-top:var(--s0)"><div><b>启用 AI 解析</b><div style="font-size:var(--fs-xs);color:var(--dim)">关闭后只保存原文，不调用模型</div></div>
   <van-switch :class="aiSwCls" :model-value="s.useAI" @update:model-value="H.toggleAI"/></div>
-  <label>API Base URL（OpenAI 兼容）</label><input id="sUrl" :value.attr="s.baseUrl || ''" placeholder="https://your-server:8080/v1">
-  <label>API Key</label><input id="sKey" :value.attr="s.apiKey || ''" placeholder="sk-...">
+  <label>API Base URL（OpenAI 兼容）</label><input id="sUrl" :value.attr="f.baseUrl" @input="H.formInput('baseUrl', $event.target.value)" placeholder="https://your-server:8080/v1">
+  <label>API Key</label><input id="sKey" :value.attr="f.apiKey" @input="H.formInput('apiKey', $event.target.value)" placeholder="sk-...">
   <div class="fhint">明文存在本机 app 私有目录（别的 app 读不到），这里显示的就是已保存的 key，换 key 直接改这一栏</div>
-  <label>模型名</label><input id="sModel" :value.attr="s.model || ''">
-  <div class="grid2"><div><label>超时（秒）</label><input id="sTimeout" :value.attr="s.timeoutS || 90"></div><div><label>最大 tokens</label><input id="sMax" :value.attr="s.maxTokens || 2048"></div></div>
-  <label>温度 temperature</label><input id="sTemp" :value.attr="s.temperature == null ? '0.2' : s.temperature">
+  <label>模型名</label><input id="sModel" :value.attr="f.model" @input="H.formInput('model', $event.target.value)">
+  <div class="grid2"><div><label>超时（秒）</label><input id="sTimeout" :value.attr="f.timeoutS" @input="H.formInput('timeoutS', $event.target.value)"></div><div><label>最大 tokens</label><input id="sMax" :value.attr="f.maxTokens" @input="H.formInput('maxTokens', $event.target.value)"></div></div>
+  <label>温度 temperature</label><input id="sTemp" :value.attr="f.temperature" @input="H.formInput('temperature', $event.target.value)">
   <div class="acts"><button class="btn pri" @click="H.saveSettings()">保存</button><button class="btn" @click="H.testLLM()">测试连接</button></div>
   <div id="llmOut"><div class="body" v-if="llmBusy"><span class="spin"></span> 连接中…</div><div class="body" v-else-if="llmLine" style="margin-top:var(--s2)">{{ llmLine }}<br>{{ llmBody }}</div></div>
 </div>

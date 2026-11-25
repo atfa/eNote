@@ -1169,9 +1169,23 @@ async function statsNow(){
 /* 我的页最底部的运行信息卡。设置页的「运行状态」卡前三行相同、第四行是解析队列，
    所以只共用这三行，第四行各自写。 */
 function statCls(hot, label){ return 'stat'+(hot?' hot':'')+enterCls('s'+label) }
+/* 步骤 20：设置页六个输入框的值搬进状态（SFORM）。以前 saveSettings() 是
+   `$('#sUrl').value.trim()` —— DOM 是用户输入的真相源，Vue 那一侧看不见正在打的东西，
+   夹具要改一个字段只能写 DOM，settingsRefresh() 还得专门写注释警告「重建会把正在打的
+   字清掉」。现在输入写进 SFORM，DOM 是它的纯函数：重绘不再丢字，探针能读能写。
+   打开设置页时从 S.settings 灌初值；保存成功后用服务端回包重灌（服务端会规范化）。 */
+var SFORM = Vue.reactive({ v: null });
+function formFill(){
+  var s = S.settings || {};
+  SFORM.v = { baseUrl: s.baseUrl || '', apiKey: s.apiKey || '', model: s.model || '',
+    timeoutS: s.timeoutS || 90, maxTokens: s.maxTokens || 2048,
+    temperature: s.temperature == null ? 0.2 : s.temperature };
+}
+function formInput(k, v){ if(SFORM.v) SFORM.v[k] = v }
 function settingsSheet(){
   /* 步骤 11：只剩 Vue 一条路径（SettingsSheetView）。dataset.kind 是 CSS 钩子
      （css/views/settings.css 靠它定位设置页）；步骤 15 面板归 Vue 所有，钩子走状态。 */
+  formFill();
   pageSheetVue('settings', '设置', 'settings');
 }
 /* 只重绘设置页本身，并把滚动位置放回去（开关、权限回来后刷新用）*/
@@ -1179,7 +1193,8 @@ function settingsRefresh(){
   if(shell.sheet.kind !== 'settings' || !shell.sheet.on) return;
   var top = p.scrollTop;
   /* 不重建 DOM：computed 全依赖 tick，sheetPaint() bump 一次就整页重算。
-     重建会把输入框里正在打的字清掉（设置页是全站唯一有六个输入框的页面）。 */
+     步骤 20 起输入框的值在 SFORM 里，重建也不会丢正在打的字了；这里依旧只重画不重建，
+     因为重建会打断输入法的组合中状态（Android 上拼音打一半被吞）。 */
   sheetPaint();
   requestAnimationFrame(function(){ var q = $('#panel'); if(q) q.scrollTop = top });
 }
@@ -1367,12 +1382,16 @@ function jump(id){ tab='notes'; open[id]=true; setTab(true); refresh();
   setTimeout(function(){var el=document.getElementById('n'+id);if(el)el.scrollIntoView({behavior:'smooth',block:'center'})},250); }
 function toggleAI(){ var s=S.settings; s.useAI=!s.useAI; saveSettings(); }
 async function saveSettings(){
-  var s = {baseUrl:$('#sUrl').value.trim(), apiKey:$('#sKey').value.trim(),
-    model:$('#sModel').value.trim(), timeoutS:parseInt($('#sTimeout').value)||90,
-    maxTokens:parseInt($('#sMax').value)||2048, useAI:S.settings.useAI,
-    temperature:S.settings.temperature||0.2};
+  /* 步骤 20：六项全部来自 SFORM（输入框是它的纯函数），不再 $('#sUrl').value 读 DOM。
+     useAI 是开关，直接读 S.settings（van-switch 的那条线，见 18e）。 */
+  var f = SFORM.v || {};
+  var s = {baseUrl:String(f.baseUrl||'').trim(), apiKey:String(f.apiKey||'').trim(),
+    model:String(f.model||'').trim(), timeoutS:parseInt(f.timeoutS)||90,
+    maxTokens:parseInt(f.maxTokens)||2048, useAI:S.settings.useAI,
+    temperature:f.temperature===''?0.2:parseFloat(f.temperature)||0.2};
   var r = await api('/api/settings', s);
-  toast(r.ok?'已保存':'保存失败'); if(r.ok){S.settings=r.settings; render();}
+  toast(r.ok?'已保存':'保存失败');
+  if(r.ok){ S.settings=r.settings; formFill(); render(); }
 }
 /* 步骤 19：这是全项目最后一处「拼字符串 + esc() 写 innerHTML」。换成一个 {v:} 盒子，
    #llmOut 里的 DOM 由 settings.js 的模板画 —— 转义交给 Vue 的插值（textContent），
@@ -1664,6 +1683,8 @@ var HOST = setHost({
   addNote: addNote, pickImage: pickImage, addTodo: addTodo, clipText: clip,
   get logData(){ return LOGDATA.v }, get debugData(){ return DEBUGDATA.v },
   get llmTest(){ return LLMTEST.v },
+  /* 步骤 20：设置页表单（SFORM.v 整包赋值 + 逐键改，读的是 getter）与输入回写。 */
+  get SFORM(){ return SFORM.v }, formInput: formInput,
   get sheetArg(){ return SHEETARGB.v },
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
@@ -1709,11 +1730,12 @@ var HOST_KEYS = {
   'sheet:clip': ['clipDel', 'clipDelSel', 'clipError', 'clipItemCls', 'clipList', 'clipLoading',
     'clipMetaText', 'clipParse', 'clipParseText', 'clipPick', 'clipPrevText', 'clipSel',
     'clipSelAll', 'clipThumbText'],
-  /* sheet:settings 组件根 SettingsSheetView，22 个 key（步骤 19 加 llmTest） */
+  /* sheet:settings 组件根 SettingsSheetView，24 个 key（步骤 19 加 llmTest，
+     步骤 20 加 SFORM / formInput） */
   'sheet:settings': ['S', 'ST', 'askBattery', 'askExact', 'askNotify', 'batteryIgnoring',
-    'clearAllNotes', 'exactGranted', 'exportJSON', 'fmtSize', 'importJSON', 'keepAliveOn',
-    'llmTest', 'notifyGranted', 'remindPending', 'saveSettings', 'setTheme', 'showDebug',
-    'showLog', 'testLLM', 'toggleAI', 'toggleKeepAlive'],
+    'clearAllNotes', 'exactGranted', 'exportJSON', 'fmtSize', 'formInput', 'importJSON',
+    'keepAliveOn', 'llmTest', 'notifyGranted', 'remindPending', 'SFORM', 'saveSettings',
+    'setTheme', 'showDebug', 'showLog', 'testLLM', 'toggleAI', 'toggleKeepAlive'],
   /* sheet:sort     组件根 SortSheetView，5 个 key */
   'sheet:sort': ['P', 'closeSheet', 'resetPrefs', 'setPref', 'tab'],
   /* sheet:missed   组件根 MissedSheetView，10 个 key */

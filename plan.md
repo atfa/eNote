@@ -2903,3 +2903,32 @@ Vue 写 `el.style.cssText` 后浏览器重序列化，计算样式相同（步�
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
 三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。
+
+## 9.42 P14 S6：设置页六个输入框的值搬进状态（步骤 20）
+
+步骤 19 之后继续。`saveSettings()` 是全站最后一处「把 DOM 当用户输入的真相源」：
+`$('#sUrl').value.trim()` 连读五个输入框，Vue 那一侧完全看不见正在打的东西。后果都写在
+旧注释里——`settingsRefresh()` 专门警告「重建会把输入框里正在打的字清掉」，夹具想改一个
+字段只能写 DOM，探针也读不到表单当前值。
+
+**改法**：app.js 加 `var SFORM = Vue.reactive({ v: null })` + `formFill()`（从 `S.settings`
+灌初值，打开设置页时调用，保存成功后用服务端回包重灌）+ `formInput(k, v)`（逐键写）。
+`settings.js` 的六个输入框改成 `:value.attr="f.xxx" @input="H.formInput('xxx', $event.target.value)"`，
+`f` 是 `computed(() => H.SFORM || {…默认值})`。宿主接口加 `get SFORM()` / `formInput`，
+`HOST_KEYS['sheet:settings']` 22 → 24 个 key。
+
+**为什么不用 `v-model`**：`v-model` 写的是 DOM property，序列化出来没有 `value` 属性，而
+`#sUrl` 的 value 属性是 test.sh 钉住的契约（`urlAttr=1`，它同时保证「新建 input 的初值从
+属性来，保存不会存空值」）。`:value.attr` + `@input` 是同样的双向效果、属性真的在 DOM 上。
+
+**顺带修掉的**：`settingsRefresh()` 那条「重建会吞字」的注释过时了（值在 SFORM 里，重建不丢），
+注释改成真原因——重建会打断 Android 输入法的组合中状态（拼音打一半被吞）。
+
+设备验证（`.test/p20form.js`）：打开设置页 → 往 `#sModel` 写值并派发 `input` →
+`__enote.vue.host.SFORM.model` 立刻是 `probe-model`、`value` 属性跟着变 → `saveSettings()`
+存进去（toast「已保存」、`S.settings.model` 回读一致）→ 关掉重开显示保存值 → 复原为 `exec`。
+DOM A/B（`.test/p20dom.js`，基线 = `git stash` 出步骤 19 的构建）：六个输入框的 outerHTML、
+`#sUrl` 的七项计算样式与盒子矩形**逐字一致**（91/63/32/32/30/30 B、计算样式 157 B、`711x41@56,629`）。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**
+（第一轮撞上既有的 OCR 抖动块，重跑绿）、三套 DOM 等价工具全部一致。
