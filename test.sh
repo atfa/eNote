@@ -910,6 +910,13 @@ N0S=$(readtlog | wc -l)
     A.clipSheet();
     for(var si=0; si<40 && !d.sheet; si++){ await new Promise(function(r){ setTimeout(r,50) }) }
   }
+  /* 步骤 18b：van-toast 也是随开随建（Vant 的 toast 收起时节点整个消失）——
+     测缝契约同样是「getter 能拿到活的节点」，所以主动弹一条再读。
+     2.2s 自己收，不留下状态给后面的用例。 */
+  if(!d.toast && E.toast){
+    E.toast("测试缝");
+    for(var ti=0; ti<40 && !d.toast; ti++){ await new Promise(function(r){ setTimeout(r,50) }) }
+  }
   L("seam dom main="+(d.main?d.main.id+":"+d.main.tagName:"none")+" sheet="+(d.sheet?d.sheet.id+":"+d.sheet.tagName:"none")+" panel="+(d.panel?1:0)+" toast="+(d.toast?1:0)+" dlg="+(d.dlg?1:0));
   if(A.closeSheet) A.closeSheet();
   L("seam api="+(typeof E.api)+" markReady="+(typeof E.markReady));
@@ -1951,7 +1958,7 @@ js = r'''(async function(){
   var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
   var q=function(){ return qa("#sheet .clipitem") };
   var on=function(){ var n=0; q().forEach(function(x){ if(x.classList.contains("on")) n++ }); return n };
-  var toastTxt=function(){ var e=document.querySelector("#toast"); return (e&&e.classList.contains("on"))?(e.textContent||"").trim():"" };
+  var toastTxt=function(){ var e=document.querySelector("#toast"); return e?(e.textContent||"").trim():"" };  /* 步骤 18b：van-toast 收起时节点整个消失，没有 .on 类可看 */
   var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
   try{
     L("isvue="+(E.vue.isVueSheet("clip")?1:0));
@@ -2040,7 +2047,7 @@ js = r'''(async function(){
   var qa=function(s){return [].slice.call(document.querySelectorAll(s))};
   var q=function(){ return qa("#sheet .clipitem") };
   var on=function(){ var n=0; q().forEach(function(x){ if(x.classList.contains("on")) n++ }); return n };
-  var toastTxt=function(){ var e=document.querySelector("#toast"); return (e&&e.classList.contains("on"))?(e.textContent||"").trim():"" };
+  var toastTxt=function(){ var e=document.querySelector("#toast"); return e?(e.textContent||"").trim():"" };  /* 步骤 18b：van-toast 收起时节点整个消失，没有 .on 类可看 */
   var poll=async function(f,n,ms){ var i=0; while(i<(n||40)){ if(await f()) return i; await sleep(ms||200); i++; } return -1 };
   try{
     L("isvue="+(E.vue.isVueSheet("clip")?1:0));
@@ -2342,8 +2349,8 @@ js = r'''(async function(){
     // 目标状态与下面的断言同源：toast 文案里出现「已保存」。只轮询「toast 非空」会被上一条
     // 用例留下的 toast（切主题那句「主题：亮色」要挂 ~2s 才自己收）立刻满足，
     // 于是断言读到旧文案假红 —— 实测就是红在「点保存没得到「已保存」」。
-    var tToast=await poll(function(){ return (document.getElementById("toast").textContent||"").indexOf("已保存")>=0 },20,250);
-    L("tToast="+tToast); L("toast="+document.getElementById("toast").textContent.trim());
+    var tToast=await poll(function(){ var e=document.getElementById("toast"); return ((e&&e.textContent)||"").indexOf("已保存")>=0 },20,250);  /* 步骤 18b：van-toast 没弹时节点不存在，直接 .textContent 会抛 */
+    L("tToast="+tToast); L("toast="+(((document.getElementById("toast")||{}).textContent)||"").trim());
     /* 清空全部：只测到确认框，点取消（真机数据不能删）。 */
     var clearBtn=byText("#sheet .btn","清空全部");
     L("clearBtn="+(clearBtn?1:0));
@@ -3151,13 +3158,14 @@ NFT=$(readtlog | wc -l)
     if(!card){ L("done=1"); return }
     card.click();
     // 目标状态：预览 toast 弹出（openAttach 的 @click 真的绑上了）。
-    var tst=document.getElementById("toast");
-    // 目标状态与断言同源：toast 弹出且文案是预览那句（只轮询 on 类会被上一条用例的
+    // 步骤 18b：van-toast 随开随建，节点不能提前取（提前取到的是 null）。
+    var tst=function(){ return document.getElementById("toast") };
+    // 目标状态与断言同源：toast 弹出且文案是预览那句（只轮询「有节点」会被上一条用例的
     // toast 立刻满足，那条 toast 要挂 ~2s 才自己收）。
-    var tToast=await poll(function(){ return tst.classList.contains("on") && (tst.textContent||"").indexOf("预览即将上线")>=0 },30,200);
+    var tToast=await poll(function(){ var e=tst(); return !!e && (e.textContent||"").indexOf("预览即将上线")>=0 },30,200);
     L("tToast="+tToast);
-    L("toastOn="+tst.classList.contains("on"));
-    L("toast="+tst.textContent.replace(/\s+/g," ").trim());
+    L("toastOn="+(tst()?"true":"false"));
+    L("toast="+((tst()||{}).textContent||"").replace(/\s+/g," ").trim());
     // 4) 点「删除」→ askDel 确认框 → 确认 → 服务端真删了 → 行从 DOM 消失
     var del=card.querySelector(".arow .dg");
     L("delBtn="+(del?"found":"none"));

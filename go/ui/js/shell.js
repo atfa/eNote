@@ -190,12 +190,19 @@ export const DialogHost = {
 `
 }
 
-/* 轻提示：2.2s 自动收起的定时器在 app.js toast() 里（那是行为，不是视图）。 */
+/* 轻提示（步骤 18b）：外壳换成 Vant 的 van-toast。
+   行为依旧在 app.js toast() 里（2.2s 自动收起、重复调用续期）—— 这里 `:duration="0"`
+   让 Vant 不管自动收起，视图与行为的分工与 18a 之前一致（Vant 自己的定时器会在
+   message 变化时重启，语义相同，但定时器是行为不是视图，不搬过去）。
+   `id="toast"` 落在 van-toast 根节点上（Vant 不拦 attrs），test.sh 与 __enote.dom.toast 照旧。
+   像素变化（用户已批准）：去掉信息图标（那是我们自己的 sprite，Vant 的 icon  prop 走它自带的
+   图标字体）、圆角从 pill 收到 8px、阴影去掉、入场从「淡入 + 上推」换成 van-fade。 */
 export const ToastHost = {
   name: 'ToastHost',
   setup(){ return { s: shell } },
   template: `
-<div id="toast" :class="{on: s.toast.on}"><svg class="ic"><use href="#i-info"/></svg><span>{{ s.toast.msg }}</span></div>
+<van-toast id="toast" class="enote-toast" v-model:show="s.toast.on" :duration="0"
+           position="bottom" :message="s.toast.msg"></van-toast>
 `
 }
 

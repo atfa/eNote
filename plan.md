@@ -2667,3 +2667,44 @@ P14 路线图第⑥项（§9.27），全程唯一会改像素的一项。用户 
 
 纪律：没动的页面 DOM 必须逐字不变（三套 DOM 等价工具是机器保证）；动过的容器重建基线并逐屏截图；
 D5/D15 的类名冻结只对**被 Vant 取代的那片**解冻，其余照旧。
+
+**步骤 18b：`ToastHost` → `van-toast`（2026-11-25，全绿）**
+
+先量再动：Vant 的 toast 是 `van-popup van-toast van-toast--bottom van-toast--text`，尺寸/圆角/内距/
+位置全部走 `--van-toast-*` CSS 变量（`vant.css:1483` 起），所以旧 `#toast` 的每个值都能一一对上：
+
+| 旧 `#toast` | Vant 变量 | 实测值 |
+|---|---|---|
+| `background:var(--toast-bg)` | `--van-toast-background` | `rgb(19,26,36)` = `#131a24` |
+| `color:var(--toast-fg)` | `--van-toast-text-color` | `rgb(255,255,255)` |
+| `font-size:var(--fs-md)` | `--van-toast-font-size` | `14.04px`（13px × 系统字号） |
+| `border-radius:var(--r1)` | `--van-toast-radius` | `8px` |
+| `padding:var(--s2) var(--s4)` | `--van-toast-text-padding` | `8px 16px` |
+| `bottom:calc(var(--toast-bottom) + safe-area)` | `--van-toast-position-bottom-distance` | `96px + env(safe-area-inset-bottom)` |
+| `min-width:0` | `--van-toast-text-min-width` | `0`（Vant 默认 96px，会撑宽） |
+| `max-width:86vw` | `--van-toast-max-width` | `86vw` |
+
+映射表放在 `tokens.css` 的 `:root` 里（`--toast-*` 定义之后），注释写明「Vant 只认 `--van-*`，
+这张表是它和 D6 刻度之间唯一的桥」。`base.css` 删掉 `#toast{}` / `#toast .ic` / `#toast.on` 三条，
+只留 `.enote-toast{font-weight:500;box-shadow:…}`（Vant 没有阴影这个维度）。
+
+**行为留在 JS 里**：`app.js toast()` 的 2.2s 定时、200ms 串行队列、`S.toast.on/msg` 三个状态一个没动，
+模板换成 `<van-toast v-model:show :duration="0" position="bottom" :message>`。
+`:duration="0"` 是关键：Vant 默认 2000ms 自动关，会和 app.js 的 2200ms 定时器抢着关，谁后到谁赢。
+
+**DOM 形状变了（这是本次唯一的像素外变化）**：`<div id="toast" class="on">文案</div>` →
+`<div id="toast" class="van-popup … van-toast--text enote-toast"><div class="van-toast__text">文案</div></div>`，
+**没弹时节点整个不存在**（旧版是常驻 + 切 `.on`）。z-index 从 90 跳到 Vant 全局 2001。
+消费方只有 test.sh 四处：`toastTxt()` 两处（去掉 `.on` 判定，节点存在即弹出）、
+设置页保存轮询（加 null 保护）、附件页预览 toast（`tst()` 改成节点存在性）。
+测试缝那条（`__enote` 暴露面）顺手补了真弹一次 toast 再断言，否则 `toast` 这个键在不在都过。
+`window.__enote.toast` 加进测试缝（app.js），探针不必再手改 `S.toast`。
+
+闸门两处跟着改：⑩ 闲置 token 棘轮现在把 `vendor/*.css` 也当「用的人」扫（`--van-toast-*` 的消费方
+就是 vant.css，只扫自己人会把它报成闲置；Vant 自己的 2557 个定义只进 used 不进 defined）；
+⑮ 的自定义标签注册表检查放行 `van-*`（走 `app.use(Vant)`，不是 `app.component`，上面两条断言在守）。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
+三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。
+设备实测（探针读计算样式）：上表八项全部命中；后台屏截图（记一笔空文本保存）toast 位置、圆角、
+配色、阴影与旧版一致，仍在 tabbar 上方。

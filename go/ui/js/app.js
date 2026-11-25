@@ -1883,6 +1883,9 @@ Object.assign(window.__enote, {
   },
   probe: window.__enoteProbe || null,
   markReady: markReady,
+  /* 步骤 18b：轻提示的容器换成 van-toast 之后，静息态下 #toast 节点不存在（Vant 随开随建），
+     测试要能主动弹一条才测得到它 —— toast() 是模块内的，测试缝给它一个入口。 */
+  toast: toast,
   /* 步骤 11：D17 的遗留基准缝（VDIFF 用来对比字符串渲染器的 legacy 那组）与 afterPaint
      一起删了 —— 字符串渲染器整批删除之后，「与它逐字一致」这个命题没有对象了。
      clearSeen 留着：切 tab 强制重绘与「外部改数据后立刻刷新」那几个用例都靠它，

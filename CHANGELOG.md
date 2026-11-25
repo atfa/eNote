@@ -1374,7 +1374,33 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
-### Vant 4 进场（P14 S5 步骤 18a）：vendor + 注册，像素零变化
+### Toast 换成 `van-toast`（P14 S5 步骤 18b）：第一块 Vant 组件落地，八项计算样式逐项命中
+
+`ToastHost` 的模板从手写的 `<div id="toast" class="on">` 换成 `<van-toast v-model:show
+:duration="0" position="bottom" :message>`。选它打头阵是因为 Vant 的 toast 尺寸全部走
+`--van-toast-*` CSS 变量 —— 旧样式表里每一个值都能一一对上，是「用 Vant 换掉手搜 UI」风险最低的一块。
+
+映射表写进 `tokens.css`（`--toast-*` 定义之后）：背景/字色/字号/圆角/内距/底距/max-width/min-width
+八项全部指向 D6 的刻度，注释写明这张表是 Vant 和设计刻度之间唯一的桥。实测（探针读计算样式）：
+`rgb(19,26,36)`、`rgb(255,255,255)`、`14.04px`、`8px`、`8px 16px`、`96px + safe-area`、`z=2001`、
+字重 500 —— 八项全部命中。后台屏截图（记一笔空文本保存）位置、圆角、配色、阴影与旧版一致。
+
+`:duration="0"` 是关键：Vant 默认 2000ms 自动关，会和 app.js 的 2200ms 定时器抢着关，谁后到谁赢。
+**行为一行没改**：2.2s 定时、200ms 串行队列、`S.toast.on/msg` 全部留在 app.js。
+`base.css` 删掉 `#toast{}` / `#toast .ic` / `#toast.on` 三条，只留 `.enote-toast`（字重 + 阴影，
+Vant 没有阴影这个维度）。
+
+DOM 形状是本次唯一的像素外变化：没弹时节点整个不存在（旧版常驻 + 切 `.on`），文案多包一层
+`.van-toast__text`，z-index 90 → Vant 全局 2001。消费方只有 test.sh 四处（两处 `toastTxt()`、
+设置页保存轮询、附件页预览 toast），全部改成「节点存在即弹出」；测试缝那条顺手补了真弹一次 toast
+再断言（以前 `toast` 这个键在不在都能过），并把 `window.__enote.toast` 加进暴露面。
+闸门⑩（闲置 token 棘轮）现在把 `vendor/*.css` 也算消费方，否则新加的 `--van-toast-*` 会被自己
+报成闲置；闸门⑮ 的自定义标签注册表放行 `van-*`（走 `app.use(Vant)`，上面两条断言在守）。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
+三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。
+
+
 
 P14 路线图第⑥项开工（用户批准：「同意引入 vant，减少自己手搓 ui 的不确定性」）。
 开工前先量依赖，不查文档：vant 4.10.2 的 UMD 全局构建 245,846 B（gzip 80,005）+

@@ -1,11 +1,36 @@
-docs(ui): 宿主收窄的维护契约写进组件骨架 + 闸门⑮ 报收窄规模（P14 S4 步骤 17n）
+P14 S5 步骤 18b：ToastHost → van-toast，第一块 Vant 组件落地
 
-17m 之后新写一个 H.xxx 有两个地方要同步改，只写在模板里的人不知道第二处：闸门⑮ 会红，
-但报错只说「HOST_KEYS['view:notes'] 少了 xxx」。把契约写进 components.js 的骨架第 6 条，
-闸门⑮ 的 ok 行也报出规模（宿主按 app 收窄：19 个 app、表里共 158 个 key，三向核对过）。
+Vant 的 toast 尺寸全部走 --van-toast-* CSS 变量，旧 #toast 的每个值都能一一对上，
+是「用 Vant 换掉手搓 UI」风险最低的一块，所以拿它打头阵。
 
-顺带扫了一遍宿主对象的死 key：133 个 key 里组件不读、宿主内部不引用、app.js 其余部分 /
-shell.js / test.sh / .test 探针也都不提的，一个都没有 —— 这张表没有可删的赘肉。
+tokens.css：新增 Vant 映射表（--van-toast-background/-text-color/-font-size/-radius/
+-text-padding/-position-bottom-distance/-max-width/-text-min-width），全部指向 D6 刻度。
+注释写明这张表是 Vant 和设计刻度之间唯一的桥。
 
-验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、./test.sh --vd 164 项全绿
-PASS、三套 DOM 等价全部一致（只改注释与闸门文案，DOM 逐字未变）。
+base.css：删掉 #toast{} / #toast .ic / #toast.on 三条，只留 .enote-toast（字重 + 阴影，
+Vant 没有阴影这个维度）。
+
+shell.js：ToastHost 模板换成 <van-toast v-model:show :duration="0" position="bottom"
+:message>。:duration="0" 是关键 —— Vant 默认 2000ms 自动关，会和 app.js 的 2200ms
+定时器抢着关，谁后到谁赢。行为一行没改：2.2s 定时、200ms 串行队列、S.toast.on/msg
+全部留在 app.js。
+
+DOM 形状是本次唯一的像素外变化：没弹时节点整个不存在（旧版常驻 + 切 .on），文案多包
+一层 .van-toast__text，z-index 90 → Vant 全局 2001。消费方只有 test.sh 四处（两处
+toastTxt()、设置页保存轮询、附件页预览 toast），全部改成「节点存在即弹出」；测试缝
+那条顺手补了真弹一次 toast 再断言（以前 toast 这个键在不在都能过）。
+app.js：window.__enote.toast 进测试缝，探针不必再手改 S.toast。
+
+闸门⑩（闲置 token 棘轮）把 vendor/*.css 也算消费方，否则新加的 --van-toast-* 会被自己
+报成闲置（Vant 自己的 2557 个定义只进 used 不进 defined）；闸门⑮ 的自定义标签注册表
+放行 van-*（走 app.use(Vant)，不是 app.component，上面两条断言在守）。
+
+设备实测（探针读计算样式）：rgb(19,26,36)、rgb(255,255,255)、14.04px、8px 圆角、
+8px 16px 内距、96px + safe-area 底距、z=2001、字重 500 —— 八项全部命中。后台屏截图
+（记一笔空文本保存）位置、圆角、配色、阴影与旧版一致，仍在 tabbar 上方。
+
+验收：122 闸门、GO_TEST=1 ./build.sh、./install.sh、./test.sh --vd 164 ok / 0 FAIL /
+PASS、三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、
+设置页 236 B 逐字未动）。
+
+文档：plan.md §9.40 补步骤 18b（含旧值↔Vant 变量对照表与实测值）、CHANGELOG 新节。

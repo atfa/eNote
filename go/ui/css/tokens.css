@@ -73,6 +73,20 @@
      --clear-bottom 会把 toast 抬 8px、与最后一行内容的重叠从 ~23px 变 ~31px，还把
      浮层高度焊到内容 padding 上。 */
   --toast-bottom:96px;
+
+  /* ---- 步骤 18b：Vant 组件的设计系统映射 ----
+     vant.css 在 tokens.css 之前加载，两边都是 :root（特异性平手）→ 后写的我们赢。
+     这张表把 van-toast 拉回我们自己的设计刻度：底色 / 字色 / 字号 / 圆角 / 内距 / 底部
+     净空全指回自己的 token，暗色下 --toast-bg 换值它自动跟上。没映射的那部分
+     （van-fade 入场、行高、字重）就是 18b 的像素变化范围。 */
+  --van-toast-background:var(--toast-bg);
+  --van-toast-text-color:var(--toast-fg);
+  --van-toast-font-size:var(--fs-md);
+  --van-toast-radius:var(--r1);
+  --van-toast-max-width:86vw;
+  --van-toast-text-min-width:0;
+  --van-toast-text-padding:var(--s2) var(--s4);
+  --van-toast-position-bottom-distance:calc(var(--toast-bottom) + env(safe-area-inset-bottom));
   --hair:1px;
 
   /* ---- S2 新增：圆角刻度（三档 + 胶囊）---- */

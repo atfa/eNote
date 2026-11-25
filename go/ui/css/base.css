@@ -197,14 +197,11 @@ h2{font-size:var(--fs-lg);margin:0 0 var(--s1)}
 .kv span:first-child{color:var(--dim)}
 .kv span:last-child{text-align:right;word-break:break-all;color:var(--acc)}
 pre{background:var(--pre-bg);border:var(--hair) solid var(--line);border-radius:var(--r1);padding:var(--s2);font-size:var(--fs-xs);overflow:auto;max-height:260px;color:var(--pre-fg);white-space:pre-wrap;word-break:break-word}
-#toast{position:fixed;left:50%;bottom:calc(var(--toast-bottom) + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(6px);
-  display:flex;align-items:center;gap:var(--s2);
-  background:var(--toast-bg);color:var(--toast-fg);padding:var(--s2) var(--s4);border-radius:var(--r-pill);font-size:var(--fs-md);font-weight:500;
-  box-shadow:0 8px 28px rgba(12,22,40,.26);opacity:0;
-  transition:opacity var(--d2) var(--ease),transform var(--d2) var(--spring);
-  pointer-events:none;z-index:60;max-width:86vw}
-#toast .ic{width:15px;height:15px;flex:0 0 15px}
-#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+/* 步骤 18b：轻提示的容器交给 van-toast（尺寸 / 定位 / 配色见 tokens.css 的映射表）。
+   旧的 #toast 整块删除：position / transform / opacity / transition 都是 van-toast
+   自己的事，留着会和它的 van-fade 入场打架。这里只补设计系统里保留的两条：
+   字重与阴影（Vant 的 toast 无阴影）。 */
+.enote-toast{font-weight:500;box-shadow:0 8px 28px rgba(12,22,40,.26)}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);
   border-top-color:var(--acc);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}

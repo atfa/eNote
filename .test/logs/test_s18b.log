@@ -5,9 +5,9 @@
     launchable-activity: name='dev.xduo.enote.MainActivity'  label='' icon=''
 
 == install + start
-  apk sha256=beb1b5dcff5ac26f  head=4700d47  branch=main  build=4700d47f9107-dirty@2026-11-25T09:20:09Z
-  on background display 248
-  api: http://127.0.0.1:37895/
+  apk sha256=a798ffce4d737aea  head=aa3aac2  branch=main  build=aa3aac244eb9-dirty@2026-11-25T09:45:51Z
+  on background display 250
+  api: http://127.0.0.1:43521/
 
 == 跑前重置数据（确定基线）
   baseline: notes=0 todos=0 clip=0 theme=light base=yes ai=yes att=0 shots=0
@@ -16,25 +16,25 @@
   llm ok=1
 
 == selftest hook (store + web + llm + ocr)
-  store ok, web 200 in 10ms, llm ok in 4830ms, ocr ready=True
+  store ok, web 200 in 5ms, llm ok in 5276ms, ocr ready=True
 
 == share text -> note with a dated todo
-  title: 购物、取快递及周会测试 | 3 todos, first due 2026-11-25T20:00
+  title: 购物、取快递及周会测试提醒 | 3 todos, first due 2026-11-25T20:00
 
 == share image -> local ocr -> note
-  ocr 129 chars in 571ms, llm 6417ms, title: 设计评审与快递待办
+  ocr 129 chars in 539ms, llm 4557ms, title: 设计评审与快递取件提醒
 
 == share 现造的随机串图 → 本地 OCR 逐字读出（搜索断言只靠它）
-  图上画的随机串 ACFDY4RR；对照组 R6RHUTGY（图上没有，搜索必须 0 命中）
+  图上画的随机串 AU4UCJV4；对照组 LW6TR9R6（图上没有，搜索必须 0 命中）
 Warning: Activity not started, intent has been delivered to currently running top-most instance.
-  ok (canvas 现造 40147 字节的图，随机串已画进去)
-  ok (OCR 逐字读出随机串，26 字符 / 363ms)
+  ok (canvas 现造 39513 字节的图，随机串已画进去)
+  ok (OCR 逐字读出随机串，26 字符 / 324ms)
 
 == todo add / toggle / delete
   ok
 
 == reparse + llm connection test + export
-  llm test ok in 1301ms: 我是连接测试助手，旨在通过简短回答协助您进行连接测试。
+  llm test ok in 2243ms: 我是你的连接测试助手，旨在通过简短的回答协助你完成测试。
   export: 4 notes
 
 == settings round-trip (api key 明文返回、保存后不丢)
@@ -48,7 +48,7 @@ Warning: Activity not started, intent has been delivered to currently running to
   ok (ocr text is searchable, every page keeps its own conditions)
 
 == attachments: share a file, list it, delete it (R4)
-  listed 3 attachments (3 distinct files), 6 on disk, att-test.pdf
+  listed 3 attachments (3 distinct files), 7 on disk, att-test.pdf
   ok (pdf share, list counts match the disk, search by name, delete)
 
 == ui: 静态闸门（轮询指纹 / 内联 handler 存在性 / 调色板一致性 / hex·px 棘轮）
@@ -66,7 +66,7 @@ Warning: Activity not started, intent has been delivered to currently running to
   ok   .missedb 保持不存在
   ok   .missedtop 保持不存在
   ok   test.sh 依赖的 10 个 class 名全部还在
-  ok   CSS 拆分无新增层叠冲突（基线内 0 条，共 347 个选择器）；Vant 的三条全局规则已被 base.css 写回现状（真机 computed style 逐字节比对过）
+  ok   CSS 拆分无新增层叠冲突（基线内 0 条，共 345 个选择器）；Vant 的三条全局规则已被 base.css 写回现状（真机 computed style 逐字节比对过）
   ok   CSS 里 69 个 var() 全部能解析（含 JS 内联设的 2 个）
   ok   无幽灵 token（每个 var() 的名字都在 tokens.css 里有定义）
   ok   笔记正文 / 剪贴板文本可长按复制（未被 user-select:none 覆盖）
@@ -177,13 +177,12 @@ Warning: Activity not started, intent has been delivered to currently running to
 
 == P6.5 常驻后台（前台服务 + 标准电池优化）
   switch on, batteryIgnoring=True, 3 reminders armed
-Failed to write while dumping service activity: Broken pipe
 Failed to write while dumping service notification: Broken pipe
   ok (前台服务在跑，常驻通知已发布)
   ok (关掉开关后服务停止)
 
 == P6 剪贴板：无焦点被拒 → 拿到焦点后重试（从通知点进来的场景）
-  ok (被拒后重试成功，暂存 1 条：买咖啡 焦点重试 172128)
+  ok (被拒后重试成功，暂存 1 条：买咖啡 焦点重试 174711)
 
 == P6.6 删光剪贴板后首页横幅立刻消失（用户反馈：返回主页还提示有暂存）
 Warning: Activity not started, intent has been delivered to currently running top-most instance.
@@ -191,12 +190,12 @@ Warning: Activity not started, intent has been delivered to currently running to
 Warning: Activity not started, intent has been delivered to currently running top-most instance.
   ok 运行时导出表 69 key（与 app.js 逐项相等）+ 状态桥活着
 Warning: Activity not started, intent has been delivered to currently running top-most instance.
-  ok D17 测试缝：ready 兑现(0ms) build=4700d47f9107-dirty dom 齐 probe 全绿
+  ok D17 测试缝：ready 兑现(0ms) build=aa3aac244eb9-dirty dom 齐 probe 全绿
 Warning: Activity not started, intent has been delivered to currently running top-most instance.
   ok (删光前「剪贴板暂存1条复制的内容已留在这里，」→ 删光后「none」)
 
 == P8 补看错过的提醒（后台被冻结时唯一有意义的补救）
-  ok (错过 2 条，列出 2 条，最早一条 2026-11-20T18:00)
+  ok (错过 2 条，列出 2 条，最早一条 2026-11-21T15:00)
   ok (看过一次就不再重复提醒)
 
 == P8.5 错过的提醒面板：能勾完成、能跳笔记、能「我知道了」（用户反馈三条）
@@ -210,8 +209,8 @@ Warning: Activity not started, intent has been delivered to currently running to
 wrote /data/data/com.termux/files/home/eNote/.test/shot-t1.png 360x640
 wrote /data/data/com.termux/files/home/eNote/.test/shot-t2.png 360x640
   ok (扫描到 2 张新截图)
-  ok (暂存区 2 张 / 31263 字节)
-  ok (合并成 1 条笔记，2 个附件，标题 '截图 2 张 · 11-25 17:23')
+  ok (暂存区 2 张 / 31268 字节)
+  ok (合并成 1 条笔记，2 个附件，标题 '截图 2 张 · 11-25 17:49')
   ok (清理暂存后 4 个附件文件都还在盘上)
   ok (缩略图 /img 能取到字节)
   ok (各存一条：2 条笔记，每条 1 个附件)
@@ -277,14 +276,13 @@ Warning: Activity not started, intent has been delivered to currently running to
 
 == app alive
   FOREGROUND: yes
-      mCurrentFocus=Window{2b69d06 u0 dev.xduo.enote/dev.xduo.enote.MainActivity}
-      mFocusedApp=ActivityRecord{207647183 u0 dev.xduo.enote/.MainActivity t2882}
+      mCurrentFocus=Window{ce155ef u0 dev.xduo.enote/dev.xduo.enote.MainActivity}
+      mFocusedApp=ActivityRecord{61419835 u0 dev.xduo.enote/.MainActivity t2906}
   --- crashes ---
   (none)
   --- per-display focus ---
-    display 248: Window{fd0471d u0 com.sec.android.app.launcher/com.honeyspace.dexservice.SecondaryLauncher}
+    display 250: Window{bbbeb98 u0 com.sec.android.app.launcher/com.honeyspace.dexservice.SecondaryLauncher}
     display 6: null
-    display 0: Window{2b69d06 u0 dev.xduo.enote/dev.xduo.enote.MainActivity}   <-- target
+    display 0: Window{ce155ef u0 dev.xduo.enote/dev.xduo.enote.MainActivity}   <-- target
 
 PASS
-EXIT=0

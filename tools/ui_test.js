@@ -886,6 +886,15 @@ if (SPLIT) {
     for (const m of src.matchAll(/var\((--[\w-]+)/g)) used.add(m[1]);
     for (const m of src.matchAll(/setProperty\(\s*['"](--[\w-]+)/g)) used.add(m[1]);
   }
+  /* vendor 的 CSS 也算「用的人」：步骤 18b 起 tokens.css 里那张 Vant 映射表
+     （--van-toast-*）的消费方就是 vendor/vant.css —— 只扫自己人会把它报成闲置 token。
+     它只进 used，不进 defined：Vant 自己那 2557 个 --van-* 定义不算我们的刻度。 */
+  const vdir = path.join(uiDir, 'vendor');
+  for (const f of fs.readdirSync(vdir, { withFileTypes: true })) {
+    if (!/\.css$/.test(f.name)) continue;
+    const src = fs.readFileSync(path.join(vdir, f.name), 'utf8');
+    for (const m of src.matchAll(/var\((--[\w-]+)/g)) used.add(m[1]);
+  }
   const unused = [...defined].filter(n => !used.has(n));
   if (unused.length > UNUSED_BASELINE) {
     bad('新增定义了却没人用的 token（棘轮 ' + unused.length + ' > ' + UNUSED_BASELINE + '）', unused);
@@ -1009,6 +1018,8 @@ if (SPLIT) {
           const pascal = m[1].replace(/(^|-)(\w)/g, (_, __, c) => c.toUpperCase());
           // 只认视图自己的 components: 注册表：全局注册（app.component）这条路径本项目没用，
           // 留着 globalComps 当豁免就会漏掉「导出了但没注册」这一整类（实测 <strip-bar> 就是这么漏的）。
+          // 例外：van-* 走 app.use(Vant)（withHost 里一处，上面两条断言在守），不是 app.component。
+          if (m[1].indexOf('van-') === 0) continue;
           if (!names.has(pascal))
             wiring.push(f + '：模板用了 <' + m[1] + '> 但视图没在 components: 里注册');
         }
