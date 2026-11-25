@@ -1298,7 +1298,11 @@ if (SPLIT) {
           for (const m of t.matchAll(/(?:@|v-on:)(?:click|input|change|submit)="\s*(?:H\.)?([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
         ok('闸门⑮ Vue 模板 ' + tpls.length + ' 个编译通过；注册表 ' + views.length + ' 视图 + '
           + sheets.length + ' 弹层的 tick 管道已断（扫 ' + tickTpls + ' 个模板，无一处 :tick、无一个 tick prop）；模板 handler ' + names.size + ' 个全在导出表；'
-          + '视图里的 H.xxx ' + usedHost.size + ' 个全在 setHost；模板用 H 的 ' + hExposed
+          + '视图里的 H.xxx ' + usedHost.size + ' 个全在 setHost；'
+          + (hostKeys ? '宿主按 app 收窄：' + hostKeys.size + ' 个 app、表里共 '
+            + [...hostKeys.values()].reduce((a, v) => a + v.length, 0) + ' 个 key（三向核对过）'
+            : '宿主收窄表缺失')
+          + '；模板用 H 的 ' + hExposed
           + ' 个组件全在 setup() 返回里暴露了 H；live()/普通函数两个方向用法都对');
       }
     }

@@ -1,24 +1,11 @@
-refactor(ui): 宿主接口按 app 收窄（P14 S4 步骤 17m）
+docs(ui): 宿主收窄的维护契约写进组件骨架 + 闸门⑮ 报收窄规模（P14 S4 步骤 17n）
 
-setHost 那张表 132 个 key，每个 app 的组件树真正读到的只有 0–27 个，其中 93 个 key 全项目
-只有一个 app 用（clipParse 只有 clip 弹层读、reocr 只有笔记卡读）。全量下发的后果是拼错的
-key 撞上别的域的名字也能跑：笔记模板里写 H.clipParse() 静态检查过得去（「在 setHost 里」）、
-运行时也返回一个函数，只有画出来的东西不对。现在每个 app 只拿到自己那棵树读到的那些。
+17m 之后新写一个 H.xxx 有两个地方要同步改，只写在模板里的人不知道第二处：闸门⑮ 会红，
+但报错只说「HOST_KEYS['view:notes'] 少了 xxx」。把契约写进 components.js 的骨架第 6 条，
+闸门⑮ 的 ok 行也报出规模（宿主按 app 收窄：19 个 app、表里共 158 个 key，三向核对过）。
 
-- app.js 新增 HOST_KEYS 表（19 个 app：4 视图 + 10 弹层 + 5 外壳容器），由
-  .test/host_split.py --emit 从组件注册表算出来：每个 app 根沿 components: { A, B } 取传递
-  闭包，∪ 其中出现的 H.xxx。
-- vue.js 新增 narrowHost(keys)（逐 key 搬 property descriptor，不是 Object.assign：S / tab /
-  MISSED.v 这些是「会被整体赋值」的 var，宿主里是 getter，展开求值一次就永远读旧引用）+
-  setHostKeys(table) + hostFor(appId)；withHost(app, host) 多一个可选参数。
-- 三个挂载点改成 withHost(app, hostFor('view:' + tab)) / hostFor('sheet:' + name) /
-  shell.js 的 hostFor('shell:' + id)。组件模板与 setup 一行没改：局部名还叫 H，只是 inject
-  到的对象变窄 → DOM 逐字不变。
-- setHost(HOST) 仍是全量：测试缝 __enote.vue.host.X 要能读任意 key。
-- 闸门⑮ 新增三向核对（仍 122 项，反向验证 5 次）：表里的 key 必须真在宿主对象上；组件树里
-  读到的必须在表里；表里不许列这棵树没读的 key、不许有没挂载点的 app。挂载点只写
-  withHost(app)（全量）也算红。
+顺带扫了一遍宿主对象的死 key：133 个 key 里组件不读、宿主内部不引用、app.js 其余部分 /
+shell.js / test.sh / .test 探针也都不提的，一个都没有 —— 这张表没有可删的赘肉。
 
 验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、./test.sh --vd 164 项全绿
-PASS、dom_equiv3 / dom_equiv2 / dom_equiv 全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B
-逐字未变）。文档：plan.md §9.39、CHANGELOG。
+PASS、三套 DOM 等价全部一致（只改注释与闸门文案，DOM 逐字未变）。

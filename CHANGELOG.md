@@ -1391,6 +1391,8 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
   `setHost(HOST)` 仍是全量，测试缝 `__enote.vue.host.X` 照旧能读任意 key。
 - 闸门⑮ 新增三向核对（仍 122 项，反向验证 5 次）：表里的 key 必须真在宿主上；组件树读到的
   必须在表里；表里不许列没读的 key、不许有没挂载点的 app。挂载点只写 `withHost(app)`（全量）也算红。
+- `components.js` 的组件骨架加第 6 条：模板里新写一个 `H.xxx` 必须同时加进 `HOST_KEYS` 对应
+  那一行，闸门⑮ 的 ok 行现在报「宿主按 app 收窄：19 个 app、表里共 158 个 key（三向核对过）」。
 - 验收：122 静态检查、build、install Success、`./test.sh --vd` 164 项全绿 PASS、三套 DOM 等价
   全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B 逐字未变）。
 

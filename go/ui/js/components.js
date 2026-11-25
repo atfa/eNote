@@ -8,6 +8,9 @@
    4. 组件不接 tick prop（步骤 17l 删掉了这条管道）：状态是 reactive 的，computed 读到谁
       就订阅谁；父组件重渲染时 props 变了子组件才跟着重渲染 —— 这正是想要的语义。
    5. 事件用 @click 绑宿主方法，事件对象用 $event。
+   6. H 不是全量的（步骤 17m）：每个 app 只拿到它那棵组件树读得到的那些 key，表在 app.js
+      的 HOST_KEYS。模板里新写一个 H.xxx 必须同时把 xxx 加进对应 app 那一行，闸门⑮ 会红：
+      「HOST_KEYS['view:notes'] 少了 xxx（运行时是 undefined、那一片渲染成空）」。
 
    类名冻结（D15）：模板产出的 class 与迁移前逐字相同，
    tools/ui_test.js 的闸门 + 签名段 + test.sh 的 class 断言是硬验收
