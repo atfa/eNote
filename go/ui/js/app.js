@@ -438,8 +438,8 @@ window.shotsScanned = function(n){
 // ---- 截图暂存页：3 列网格 + 多选 ----
 /** 计数条的 HTML（loadShots 后的形态；shotSheet() 写壳时是「已选 0 张」纯文本） */
 /** VDIFF 的遗留侧：一次调用给出「加载完之后 .pbody 里应该长什么样」。
-   按钮的内联 style 要按 syncShotBtns(n) 的结果写（一张时只留「创建笔记」），
-   否则比出来的是「未同步」的 DOM，真机红。 */
+   按钮的内联 style 要按「一张时只留创建笔记」那条规则写（见 views/shots.js 的
+   one / goText / goStyle），否则比出来的是「未同步」的 DOM，真机红。 */
 function shotSheet(){
   // 步骤 11：只剩 Vue 一条路径（ShotsView），字符串渲染器与它的 pageSheet 分支一起删了
   SHOTS.loading = true; SHOTS.error = '';
@@ -472,19 +472,10 @@ function shotPick(id, el){
 function shotSelAll(on){
   SHOTS.list.forEach(function(x){ SHOTS.sel[x.id] = !!on });
 }
-/**
- * 只有一张的时候「合并成一条」和「各存一条」是同一件事，摆两个按钮只会让人犹豫
- * （用户反馈）—— 一张就只留「创建笔记」，两张以上才出现合并/各存/原样三个选择。
- */
-function syncShotBtns(n){
-  var go = $('#shotGo'), sp = $('#shotSplit'), rw = $('#shotRaw');
-  if(!go) return;
-  var one = n <= 1;
-  go.textContent = one ? '创建笔记' : '合并成一条笔记';
-  go.style.flex = one ? '1' : '1.6';
-  if(sp) sp.style.display = one ? 'none' : '';
-  if(rw) rw.style.display = one ? 'none' : '';
-}
+/* 步骤 22 删掉 syncShotBtns(n)：它是字符串渲染器时代「命令式改按钮」的那笔 ——
+   一张时只留「创建笔记」（用户反馈：一张时「合并」与「各存」是同一件事）。
+   这条规则现在住在 views/shots.js 的 one / goText / goStyle 三个 computed 里，
+   闸门⑩ 的「定义了没人用」半边扫出来的就是它：函数活着、0 个调用者。 */
 function shotPicked(){
   return SHOTS.list.filter(function(x){ return !!SHOTS.sel[x.id] });
 }

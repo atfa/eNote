@@ -1374,6 +1374,24 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 删掉字符串渲染器时代留下的死函数，闸门⑩ 加上「定义了没人调」半边（P14 S6 步骤 22）
+
+表单值全部进状态之后，回头扫一遍迁移留下的死代码。扫描脚本：`go/ui/js`（剔 vendor）里所有
+`function NAME(` 定义，引用侧 = 视图代码（剔注释）+ `test.sh` + `go/ui/index.html` +
+`go/web_test.go` + ui_test.js 自己；出现次数 ≤ 定义次数的就是死函数。全库 172 个函数定义，
+**只抓出一个：`syncShotBtns(n)`** —— 字符串渲染器时代命令式改截图弹层底部按钮的函数（一张
+时只留「创建笔记」），视图转 Vue 后调用者没了，规则搬进 `views/shots.js` 的 `one` /
+`goText` / `goStyle` 三个 computed，函数还活着。它为什么能藏住：两处注释提到它，而闸门
+⑧/⑮ 只看引用侧（用了没定义 / 模板 handler 存活性），都不看「定义了没人用」。
+
+* 闸门⑩ 扩半边：原来只查 CSS 自定义属性（`--x:` 定义了没人 `var()`，棘轮 11），现在同一套
+  逻辑搬到 JS 函数，棘轮 **0**（新函数必须有人调）。两条合成一条闸门——闸门总数钉在 122，
+  加一条就是改约定。反向测试：临时加一个 `function p22DeadProbe(){}`，闸门红并点名
+  `p22DeadProbe（go/ui/js/app.js）`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（纯删死代码，
+  DOM 一个字节没变）。
+
 ### 记一笔 / 添加待办两个弹层的表单值搬进状态（P14 S6 步骤 21）
 
 步骤 20 之后继续。剩下「把 DOM 当用户输入真相源」的地方只剩两个弹层：`addNote()` 读

@@ -78,7 +78,9 @@ export const ShotsView = {
       // test.sh 夹具与 CSS 的定位点，不能动）。
       sel: selCount,
       total: computed(() => H.shotList.length),
-      // syncShotBtns(n)：只有一张时「合并成一条」和「各存一条」是同一件事，只留一个按钮。
+      /* 只有一张时「合并成一条」和「各存一条」是同一件事，只留一个按钮（用户反馈）。
+         这条规则以前是 app.js 的 syncShotBtns(n) 命令式改 DOM，步骤 22 删了它，
+         规则住在这里：one / goText / goStyle 三个 computed。 */
       one: computed(() => selCount.value <= 1),
       goText: computed(() => selCount.value <= 1 ? '创建笔记' : '合并成一条笔记'),
       goStyle: computed(() => 'flex:' + (selCount.value <= 1 ? '1' : '1.6')),

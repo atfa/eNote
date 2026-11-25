@@ -904,11 +904,39 @@ if (SPLIT) {
     for (const m of src.matchAll(/var\((--[\w-]+)/g)) used.add(m[1]);
   }
   const unused = [...defined].filter(n => !used.has(n));
-  if (unused.length > UNUSED_BASELINE) {
-    bad('新增定义了却没人用的 token（棘轮 ' + unused.length + ' > ' + UNUSED_BASELINE + '）', unused);
-  } else {
-    ok('无新增闲置 token（' + unused.length + ' ≤ 基线 ' + UNUSED_BASELINE + '，均为 S5-S7 待接入的刻度）');
+
+  /* 步骤 22：同一套「定义了没人用」搬到 JS 函数，与 token 合成一条闸门（闸门总数
+     钉在 122，加一条就是改约定）。抓出来的第一个是 syncShotBtns(n)：字符串渲染器
+     时代命令式改按钮的函数，视图转 Vue 后调用者没了、函数还活着，闸门⑧/⑮ 全绿
+     （它们只看引用侧）。引用侧剔注释：注释里提一句不算调用者（app.js / shots.js
+     各有一处提到它，正是它藏住的原因）。基线 0：新函数必须有人调。 */
+  const DEAD_BASELINE = 0;
+  const jsDefs = new Map();
+  for (const [rel, src] of walkJs(uiDir)) {
+    for (const m of stripComments(src).matchAll(/(?:^|\n)\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g)) {
+      if (!jsDefs.has(m[1])) jsDefs.set(m[1], []);
+      jsDefs.get(m[1]).push(rel);
+    }
   }
+  /* 引用侧 = 视图代码（剔注释）+ 夹具与门禁（不剔：夹具的 JS 载荷在 shell 字符串里，
+     测试签名断言也真的算「有人关心这个函数」）。 */
+  const jsRefText = jsSources.map(([, s]) => stripComments(s)).join('\n')
+    + read('test.sh') + read('go/ui/index.html') + read('go/web_test.go')
+    + fs.readFileSync(__filename, 'utf8');
+  const dead = [];
+  for (const [name, where] of jsDefs) {
+    const hits = (jsRefText.match(new RegExp('\\b' + name.replace(/\$/g, '\\$') + '\\b', 'g')) || []).length;
+    if (hits <= where.length) dead.push(name + '（' + where.join(', ') + '）');
+  }
+
+  const probs = [];
+  if (unused.length > UNUSED_BASELINE)
+    probs.push('新增定义了却没人用的 token ' + unused.length + ' > ' + UNUSED_BASELINE + '：' + unused.join(' '));
+  if (dead.length > DEAD_BASELINE)
+    probs.push('定义了没人调的函数 ' + dead.length + ' > ' + DEAD_BASELINE + '：' + dead.join(' | '));
+  if (probs.length) bad('定义了却没人用（棘轮）', probs.join(' ; '));
+  else ok('无新增闲置 token（' + unused.length + ' ≤ ' + UNUSED_BASELINE + '）且无死函数（' +
+    jsDefs.size + ' 个函数定义，死函数 ' + dead.length + ' ≤ ' + DEAD_BASELINE + '）');
 }
 
 // ---------- 闸门⑮：Vue 模板编译 + tick 依赖 + 模板 handler 存活性（S3 步骤 5） ----------

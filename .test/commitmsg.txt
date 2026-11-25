@@ -1,38 +1,27 @@
-P14 S6 步骤 21：记一笔 / 添加待办两个弹层的表单值搬进状态（FORMS）
+P14 S6 步骤 22：删掉第一个死函数 syncShotBtns，闸门⑩ 加上「定义了没人调」的 JS 半边
 
-步骤 20 之后继续。剩下「把 DOM 当用户输入真相源」的地方只剩两个弹层：addNote() 读
-$('#addText').value，addTodo() 读 $('#tText')/#tDate/#tTime/#tPri 四个。
+表单值全部进状态之后，回头扫一遍迁移留下的死代码。
 
-改法
-- app.js 加 var FORMS = Vue.reactive({ v: { add: null, todo: null } }) + formSet(name, k, v)；
-  addSheet() 灌 {text:''}，addTodoSheet(nid) 灌 {text:'',date:'',time:'',pri:'normal'}
-  （两个弹层每次都是新建，不需要从服务端灌）；addNote() / addTodo() 只读 FORMS.v.add /
-  FORMS.v.todo。
-- 模板侧 textarea / 三个 input 用 :value="f.x" @input="H.formSet(...)"，select 用 @change。
-- 与设置页（步骤 20）的差别：这里用 :value（DOM property）而不是 :value.attr —— 这些元素
-  今天 DOM 上没有 value 属性，写 property 保持序列化不变；设置页那六个必须写属性
-  （test.sh 钉住 #sUrl 的 value 属性）。
-- 宿主接口加 get FORMS() / formSet，HOST_KEYS 的 sheet:add 2 → 4、sheet:addtodo 2 → 4。
+扫描口径
+- 定义侧：go/ui/js（剔 vendor）里所有 (async) function NAME( 定义，注释剔掉。
+- 引用侧：视图代码（剔注释）+ test.sh + go/ui/index.html + go/web_test.go + ui_test.js 自己
+  （夹具的 JS 载荷在 shell 字符串里，测试签名断言也真的算「有人关心这个函数」）。
+- 出现次数 ≤ 定义次数的就是死函数。全库 172 个函数定义，只抓出一个：syncShotBtns(n)。
 
-踩到的新坑（Vue 3.5 行为，记下来）
-- :value 在 Vue 3.5 里不只是写 property：patchProp 走 prop 路径之后会紧跟一次 patchAttr
-  （vendor/vue.global.js:12276：patchDOMProp(...) 之后 if (key === "value" || "checked" ||
-  "selected") patchAttr(...)），所以绑定之后 DOM 上真的多出 value=""（input/textarea）与
-  value="normal"（select）。浏览器自己不会这么干（探针实测
-  document.createElement("input").value="" 序列化无属性）。
-- 它是默认值、与 property 相同，行为不变，但 DOM 序列化变了，于是 .test/dom_equiv3.js 加一条
-  归一化：只剥 input/textarea/select 自己开标签上的 value，option 的 value 是有意义的。
+syncShotBtns(n) 是字符串渲染器时代命令式改截图弹层底部按钮的函数（一张时只留「创建笔记」，
+用户反馈：一张时「合并」与「各存」是同一件事）。视图转 Vue 后调用者没了，规则搬进
+views/shots.js 的 one / goText / goStyle 三个 computed，函数还活着。
 
-设备验证（.test/p21form.js / .test/p21verify.js）：记一笔输入 → FORMS.add.text 同步 →
-保存后笔记出现（标题「步骤 21 探针笔记」，AI 解析成功）；添加待办输入事项 + 2030-01-02 +
-03:04 + high → FORMS.todo 四项全对 → 卡片里出现「步骤 21 探针待办 … 03:04 … 重要」→
-删笔记级联删待办（探针数据自清理）。
-DOM A/B（.test/p21dom.js + .test/cmp_f21.js，基线 = git stash 出步骤 20 的构建）：五个元素的
-outerHTML、八项计算样式与盒子矩形、select 的 selectedIndex/value 共 17 项全部逐字一致。
+它为什么能藏住：两处注释提到它（app.js 的 VDIFF 注释、shots.js 的 computed 注释），而闸门
+⑧/⑮ 只看引用侧（用了没定义 / 模板 handler 存活性），都不看「定义了没人用」。
 
-数字：go/ui/js 里「从 DOM 读用户输入」的站点 4 → 0；宿主 key 135 → 137。
+闸门⑩ 扩半边
+- 原来只查 CSS 自定义属性（--x: 定义了没人 var()，棘轮 11），现在同一套逻辑搬到 JS 函数，
+  棘轮 0：新函数必须有人调。
+- 两条合成一条闸门：闸门总数钉在 122，加一条就是改约定。
+- 反向测试：临时加一个 function p22DeadProbe(){}，闸门红并点名
+  p22DeadProbe（go/ui/js/app.js）；删掉回到 122 全绿。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、
-./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、
-todoRow 651 B、todoTx 454 B、设置页保活长说明 236 B、进度层逐字未动）；记一笔弹层一张
-VD 截图核对（.test/shot_21_add.png）。
+./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（纯删死代码，DOM
+一个字节没变：卡片 2495 B、todoRow 651 B、todoTx 454 B、设置页保活长说明 236 B、进度层）。

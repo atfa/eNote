@@ -2967,3 +2967,23 @@ select 的 selectedIndex/value **17 项全部逐字一致**（按上面那条归
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
 三套 DOM 等价工具全部一致；记一笔弹层一张 VD 截图核对（`.test/shot_21_add.png`）。
+
+## 9.44 P14 S6：删掉第一个死函数，闸门⑩ 加上「定义了没人用」的 JS 半边（步骤 22）
+
+表单值全部进状态之后，回头扫一遍迁移留下的死代码。扫描脚本：`go/ui/js`（剔 vendor）里
+所有 `function NAME(` 定义，引用侧 = 视图代码（剔注释）+ `test.sh` + `go/ui/index.html` +
+`go/web_test.go` + ui_test.js 自己；出现次数 ≤ 定义次数的就是死函数。全库 172 个函数定义，
+**只抓出一个：`syncShotBtns(n)`** —— 字符串渲染器时代命令式改截图弹层底部按钮的函数
+（一张时只留「创建笔记」），步骤 17 视图转 Vue 后调用者没了，规则搬进 `views/shots.js` 的
+`one` / `goText` / `goStyle` 三个 computed，函数还活着。
+
+它为什么能藏住：两处注释提到它（app.js 的 VDIFF 注释、shots.js 的 computed 注释），
+闸门⑧/⑮ 只看引用侧（用了没定义 / 模板 handler 存活性），都不看「定义了没人用」。
+
+**闸门⑩ 扩半边**：原来只查 CSS 自定义属性（`--x:` 定义了没人 `var()`，棘轮 11），现在
+同一套逻辑搬到 JS 函数，棘轮 **0**（新函数必须有人调）。两条合成一条闸门——闸门总数
+钉在 122，加一条就是改约定。反向测试：临时加一个 `function p22DeadProbe(){}`，闸门红并
+点名 `p22DeadProbe（go/ui/js/app.js）`。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
+三套 DOM 等价工具全部一致（纯删死代码，DOM 一个字节没变）。
