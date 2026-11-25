@@ -1374,6 +1374,26 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 列表过滤/排序与待办分组搬进 js/listflow.js（P14 S6 步骤 45）
+
+第十七簇：**列表怎么筛、怎么排、怎么分组**——`todoRowCls`、`notesFiltered`、`groupTodos`、`tomorrow`、
+`rank`、`hit` 搬成 `go/ui/js/listflow.js`。**app.js 838 → 799 行**（模块 60 行）。
+
+* 这一簇是**纯读**：`S` / `q` / `SR` / `P` 一个都不写，清单 (c) 条（写导入绑定要装盒子）一次都没触发；
+  逐字 diff 0 处改写（第二次纯搬家）。这也是「先挑纯读的簇」这条排序的依据。
+* `tomorrow()` 只有 `groupTodos()` 用（HOST 里没有它），搬成模块私有；其余五个名字 app.js 挂进 HOST，
+  `views/notes.js` 与 `views/todos.js` 通过 `H.xxx` 调它们。
+* 闸门㉒ 抓到的是插入位置：新 import 被塞进 noteflow 那条两行 import 的中间（Python 列表里它是一条
+  含换行的元素，`L[k+1:k+1]` 落在两半之间）——挪到整条之后即绿。
+* 探针（`.test/probe_list.js` + `.test/probe_grp.js`，真路径：`setPref` 改排序/筛选、`#q` 输入、
+  `#qClear` 清除、`/api/todo` 造数据）：排序标题 `标题0|标题1|标题2`（`localeCompare(…,'zh')`）、
+  排序最早/最新各自对、筛图片 `应=0 卡片=0`、**本地过滤**（把 `fetch` 打补丁让 `/api/search` 失败 →
+  `SR.notes` 空 → 走本地 `hit()` → 画空态，撤补丁清除后回 8 张卡）、7 条待办分组
+  `已逾期·1|今天·3|明天·1|本周·1|无日期·1`、按优先级 `今天高|今天中|今天低`（`rank()`）、按到期升序、
+  `loads=1`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 笔记/待办操作簇搬进 js/noteflow.js（P14 S6 步骤 44）
 
 第十六簇：**对一条笔记/待办能做的事**——`expand`、`toggle`、`keyOf`、`todoEnterCls`、`clearEnter`、

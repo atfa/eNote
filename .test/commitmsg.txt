@@ -1,27 +1,22 @@
-P14 S6 步骤 44：笔记/待办操作簇搬进 js/noteflow.js（app.js 880 → 838）
+P14 S6 步骤 45：列表过滤/排序与待办分组搬进 js/listflow.js（app.js 838 → 799）
 
-第十六簇：对一条笔记/待办能做的事——expand、toggle、keyOf、todoEnterCls、clearEnter、enterCls、
-clearSeen、delTodo、reparse、delNote、reocr、toggleAI 搬成 go/ui/js/noteflow.js。
-app.js 880 → 838 行（模块 70 行）。
+第十七簇：列表怎么筛、怎么排、怎么分组——todoRowCls、notesFiltered、groupTodos、tomorrow、rank、hit
+搬成 go/ui/js/listflow.js。app.js 838 → 799 行（模块 60 行）。
 
-- 清单 (c) 条（写导入绑定）：这一簇写 app.js 的 var 只有一处——动画锁 animLock（toggle 写、refresh 读），
-  装成盒子 ANIMLOCK，app.js 的 refresh() 读 ANIMLOCK.v。钉这条契约的闸门正则两种写法都认。
-- seen 与 justDone 是只有本簇读写的表（enterCls/clearSeen 用 seen，toggle/todoEnterCls/clearEnter 用
-  justDone），整张表跟着搬成模块私有，app.js 连 var 都不留——比装盒子干净：跨模块的可变共享直接没有了。
-  闸门那条「var seen = {} 必须声明过」查的是全部 UI 文件拼接后的 src，声明搬家照样绿。
-- open / expAnim / busy 留在 app.js（render / syncExpand / HOST 都读），簇里只做属性写
-  （open[id]=…、expAnim[id]=1、busy[id]=1），写导入对象的属性合法。
-- toggleAI 顺手搬进这一簇，它调的 saveSettings 在 settingsflow.js（步骤 42 搬过去的），于是 app.js 里
-  那条「app.js 的函数调 settingsflow 的函数」也消掉了：现在只剩 noteflow.js → settingsflow.js 一条边。
-- 清单 (g) 条：整段（450-493 + 495-497）与 git show HEAD:go/ui/js/app.js 逐字 diff，除声明的 5 处改写
-  （animLock → ANIMLOCK.v 四处、var justDone = {}, animLock = 0; 拆成两条）外全部一致。
-- 闸门㉒ 立刻抓到 app.js 少导出 expAnim / busy（noteflow 要 import）——补上；其余 122 项全绿。
+- 这一簇是纯读：S / q / SR / P 一个都不写，清单 (c) 条（写导入绑定要装盒子）一次都没触发——这是它比
+  前几簇干净的地方，也是「先挑纯读的簇」这条排序的依据。逐字 diff 0 处改写（第二次纯搬家，上次是步骤 42）。
+- tomorrow() 只有 groupTodos() 用（HOST 里没有它），搬成模块私有；其余五个名字 app.js 挂进 HOST，
+  views/notes.js 的 H.notesFiltered() 与 views/todos.js 的 H.groupTodos() / H.todoRowCls() / H.hit()
+  / H.rank() 调的就是它们。
+- 闸门㉒ 抓到的是插入位置：新 import 语句被塞进 noteflow 那条两行 import 的中间（Python 列表里它是
+  一条含换行的元素，L[k+1:k+1] 落在两半之间）——挪到整条之后即绿。122 项其余全绿。
 
-探针（物理屏 .test/probe_note.js + .test/probe_ai.js，真 DOM：待办行 .cb、笔记卡「展开详情」「删除」、
-设置页 AI 开关）：建待办 todos=1 → 勾选瞬间 justdone=yes cb.on=yes → 1.8s 后 done=1 划线=yes（动画窗口内
-refresh() 被 ANIMLOCK 挡住不重绘）→ delTodo 1→0 → expand 后按钮变「收起」→ reparse toast
-"AI 重新解析中…" → reocr toast "正在识别图片…" → delNote 对话框 title="删除" 确认后 notes 8→7 →
-toggleAI useAI true→false（toast="已保存"、开关类名 van-switch sw）→true → end loads=1。
+探针（物理屏 .test/probe_list.js + .test/probe_grp.js，真路径：setPref 改排序/筛选、#q 输入触发
+v-model + searchInput、#qClear 清除、/api/todo 造数据）：
+排序标题 顺序=标题0|标题1|标题2（localeCompare 'zh'）→ 排序最早 → 排序最新 att-d|标题6|标题5 →
+筛图片 应=0 卡片=0 → 筛全部 8 → 本地过滤 hit 卡片=0 空态=true（fetch 打补丁让 /api/search 失败 →
+SR.notes 空 → 退回本地 hit()）→ 清词后 8 → 建 7 条待办 分组=已逾期·1|今天·3|明天·1|本周·1|无日期·1 →
+按优先级 今天高|今天中|今天低（rank()）→ 按到期升序 → 清理后 待办行=0 loads=1。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

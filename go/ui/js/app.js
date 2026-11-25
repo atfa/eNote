@@ -60,6 +60,8 @@ import { setTab, moveInd, tabPick, brandGo, fabAct } from './tabflow.js'
 /* 步骤 44：笔记/待办的操作那一簇搬进 js/noteflow.js（循环依赖，同上）。 */
 import { expand, toggle, todoEnterCls, clearEnter, enterCls, clearSeen, delTodo,
          reparse, delNote, reocr, toggleAI, ANIMLOCK } from './noteflow.js'
+/* 步骤 45：列表过滤/排序与待办分组搬进 js/listflow.js（纯读，无盒子）。 */
+import { todoRowCls, notesFiltered, groupTodos, rank, hit } from './listflow.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
 import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
@@ -224,50 +226,9 @@ window.openClip = openClip;
 window.openNote = openNote; window.notifyResult = notifyResult;
 window.openTodo = openTodo;
 
-/* .todo 的类名串：done / pri-high / 入场动画。Vue 模板用 :class 算出来的必须和这里一致。 */
-function todoRowCls(n, t){
-  return (t.done?' done':'')+(t.priority==='high'?' pri-high':'')+todoEnterCls(n,t);
-}
-
-function notesFiltered(){
-  if(SR.notes) return SR.notes; // 服务端结果（已排序）
-  var p = P(), a = S.notes.filter(function(n){
-    if(p.src==='image' && !/image$/.test(n.source||'')) return false;
-    if(p.src==='text' && /image$/.test(n.source||'')) return false;
-    if(p.status!=='all' && n.status!==p.status) return false;
-    return hit([n.title, n.content, (n.tags||[]).join(' '),
-                (n.todos||[]).map(function(t){return t.text}).join(' ')].join(' '));
-  });
-  var s = p.sort||'new';
-  a.sort(function(x,y){
-    if(s==='title') return (x.title||'').localeCompare(y.title||'', 'zh');
-    if(s==='old') return (x.createdAt||'').localeCompare(y.createdAt||'');
-    return (y.createdAt||'').localeCompare(x.createdAt||'');
-  });
-  return a;
-}
-function groupTodos(){
-  var g = {'已逾期':[],'今天':[],'明天':[],'本周':[],'以后':[],'无日期':[],'已完成':[]};
-  var t = new Date(), p = n=>String(n).padStart(2,'0');
-  var today = now().slice(0,10);
-  var weekEnd = new Date(t.getTime()+6*864e5);
-  var weekEndS = weekEnd.getFullYear()+'-'+p(weekEnd.getMonth()+1)+'-'+p(weekEnd.getDate());
-  S.notes.forEach(function(n){(n.todos||[]).forEach(function(x){
-    var o = {t:x, n:n};
-    if(x.done) g['已完成'].push(o);
-    else if(!x.due) g['无日期'].push(o);
-    else if(x.due < now()) g['已逾期'].push(o);
-    else if(x.due.slice(0,10)===today) g['今天'].push(o);
-    else if(x.due.slice(0,10)===tomorrow()) g['明天'].push(o);
-    else if(x.due.slice(0,10)<=weekEndS) g['本周'].push(o);
-    else g['以后'].push(o);
-  })});
-  return g;
-}
-function tomorrow(){var d=new Date(Date.now()+864e5),p=n=>String(n).padStart(2,'0');
-  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
-function rank(t){ return ({high:3,normal:2,low:1})[t.priority||'normal'] }
-function hit(s){ if(!q) return true; return (s||'').toLowerCase().indexOf(q.toLowerCase())>=0 }
+/* 笔记列表的过滤/排序（notesFiltered / hit / rank）、待办分组（groupTodos / tomorrow）
+   与 .todo 的类名串（todoRowCls）搬进 js/listflow.js（P14 S6 步骤 45）：这一簇纯读，
+   S / q / SR / P 一个都不写，所以没有盒子。 */
 /* 数据卡 / 运行状态卡（步骤 10）：整块（含按钮）交给叶子函数，两条路径共用。
    这两块的文本是「3 / 2」这种三段拼接：模板里写成一个插值就只产生一个文本节点，
    VDIFF 的序列化器逐节点 trim 后拼出来是「3/2」，与遗留的「3 / 2」对不上。

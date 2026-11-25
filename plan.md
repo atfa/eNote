@@ -3671,3 +3671,44 @@ end         notes=7 todos=0 loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.67 P14 S6：列表过滤/排序与待办分组搬进 js/listflow.js（步骤 45）
+
+第十七簇：**列表怎么筛、怎么排、怎么分组**——`todoRowCls`、`notesFiltered`、`groupTodos`、
+`tomorrow`、`rank`、`hit` 搬成 `go/ui/js/listflow.js`。**app.js 838 → 799 行**（模块 60 行）。
+
+* 这一簇是**纯读**：`S` / `q` / `SR` / `P` 一个都不写，所以清单 (c) 条（写导入绑定要装盒子）
+  一次都没触发——这是它比前几簇干净的地方，也是「先挑纯读的簇」这条排序的依据。
+  逐字 diff 0 处改写（第二次纯搬家，上一次是步骤 42）。
+* `tomorrow()` 只有 `groupTodos()` 用（HOST 里没有它），搬成模块私有；其余五个名字
+  app.js 挂进 HOST，`views/notes.js` 的 `H.notesFiltered()` 与 `views/todos.js` 的
+  `H.groupTodos()` / `H.todoRowCls()` / `H.hit()` / `H.rank()` 调的就是它们。
+* 闸门㉒ 抓到的是插入位置：新 import 语句被塞进了 noteflow 那条两行 import 的中间
+  （Python 列表里它是一条含换行的元素，`L[k+1:k+1]` 落在两半之间）——挪到整条之后即绿。
+  122 项其余全绿，没有需要教行锚的门（这一簇没有签名钉着它的函数体）。
+
+探针（物理屏，`.test/probe_list.js` + `.test/probe_grp.js`，走真路径：`setPref` 改排序/筛选、
+`#q` 输入触发 v-model + `searchInput`、`#qClear` 清除、`/api/todo` 造数据）：
+
+```
+base        notes=8 顺序=att-d|标题6|标题5
+排序标题    顺序=标题0|标题1|标题2          ← localeCompare(…, 'zh')
+排序最早    顺序=标题0|标题1|标题2          ← createdAt 升序
+排序最新    顺序=att-d|标题6|标题5
+筛图片      应=0 卡片=0                     ← p.src==='image'
+筛全部      卡片=8
+本地过滤    hit 卡片=0 空态=true            ← fetch 打补丁让服务端搜索失败 → 退回本地 hit()
+清词后      卡片=8
+建 7 条待办 分组=已逾期·1|今天·3|明天·1|本周·1|无日期·1   ← groupTodos 七个桶
+默认顺序    逾期项|今天低|今天高|今天中|…
+按优先级    今天高|今天中|今天低             ← rank()
+按到期      今天低|今天高|今天中             ← due 升序
+清理后      待办行=0  loads=1
+```
+
+「本地过滤」那行是 `hit()` 的真路径：把 `fetch` 打补丁让 `/api/search` 失败，
+`notesFiltered()` 的第一优先级输入 `SR.notes` 为空 → 走本地 `hit()` 过滤 → 画空态；
+把补丁撤掉点 `#qClear` 又回到 8 张卡。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
