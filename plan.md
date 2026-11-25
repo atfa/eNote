@@ -3085,3 +3085,26 @@ Java、JS 路由名），所以闸门⑩ 不需要第五个方向。
 
 验收：122 闸门、`./test.sh --vd` **164 ok / 0 FAIL / PASS**（`test.sh` 只引用
 `.test/ocr-rand.png`、`ocr-test.png`、`shot-t*`，删掉的文件没人用）。
+
+## 9.49 P14 S6：两个没人 animation 的 @keyframes，闸门⑩ 加第五个方向（步骤 27）
+
+「定义了没人用」这一族收口：CSS 里 `@keyframes` 的名字，减去所有 CSS/JS/HTML/`test.sh`
+里 `animation…<名字>` 的引用。**19 个关键帧里 2 个没人用**：
+
+- `cbpop`（base.css）——勾选完成原来是「弹一下」的动画，后来改成 `.cb.on .ic` 的 transform
+  过渡，关键帧就没人引用了；
+- `fabin`（components.css）——底部主按钮的入场动画，后来定成「切页不做整页动画」，同样只剩定义。
+
+**闸门⑩ 现在是五向**：闲置 token（棘轮 11）+ 死函数（0）+ 死 class（0）+ 死图标（0）+
+死动画（0），仍是一条 ok 行、总数 122。
+
+反向测试连踩两个坑，都值得记下来：
+1. CSS 必须先整段剔 `/* */` 注释再扫——注释里写的「删掉 @keyframes cbpop」会被当成定义
+   （步骤 24 已经为 class 踩过一次，这次是同一个 `stripComments` 只处理行首 `/*` 的坑）。
+2. 引用侧的正则不许跨过 `}`：写成 `animation[^;]*\bp27dead\b` 时，前一条规则的 `animation`
+   会一路吞过换行和大括号，把后面任意一个关键帧名算成「用过了」，临时加的
+   `@keyframes p27dead` 因此没被抓到。改成 `animation[^;{}]*\b<名字>\b` 才点名成功。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL /
+PASS**（第一次跑撞到老熟的可复现块「截图扫描没有收到新图」，重跑即过）、三套 DOM 等价工具
+全部一致（关键帧没人引用，DOM 与计算样式不变）。

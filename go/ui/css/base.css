@@ -99,7 +99,8 @@ a{text-decoration:underline}
   transition:opacity var(--d1) var(--ease),transform var(--d2) var(--spring)}
 .cb.on:before{background:var(--grad);border-color:transparent;box-shadow:0 2px 8px var(--acc-s)}
 .cb.on .ic{opacity:1;transform:scale(1)}
-@keyframes cbpop{0%{transform:scale(1)}45%{transform:scale(1.34)}100%{transform:scale(1)}}
+/* 步骤 27 删掉 @keyframes cbpop：勾选完成原来是弹一下的动画，改成 .cb.on .ic 的
+   transform 过渡之后这个关键帧没人引用了。 */
 .tx{flex:1;font-size:var(--fs-base)}
 /* 勾选完成动画（R10）：划线 → 原位淡出 → 新位置高亮入场 */
 .ttx{position:relative;display:inline-block;max-width:100%}

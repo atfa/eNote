@@ -198,7 +198,8 @@
 .tabbar .fab:active{transform:scale(.93)}
 .tabbar .fab:active .fico{transform:rotate(90deg)}
 .tabbar .fab.hide{visibility:hidden}
-@keyframes fabin{from{transform:translateY(16px) scale(.9);opacity:0}to{transform:none;opacity:1}}
+/* 步骤 27 删掉 @keyframes fabin：底部主按钮的入场动画，后来定成「切页不做整页动画」，
+   关键帧就没人引用了。 */
 
 /* 切页不再用整页浮现动画：干净利落，避免每次切换闪烁 */
 

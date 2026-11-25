@@ -982,6 +982,21 @@ if (SPLIT) {
   if (deadIcons.length > ICON_BASELINE)
     probs0.push('精灵图里没人用的图标 ' + deadIcons.length + ' > ' + ICON_BASELINE + '：' + deadIcons.join(' '));
 
+  /* 步骤 27：同一族里最后一类——@keyframes 定义了没人 animation。抓出 2 个（cbpop 勾选完成
+     的弹一下、fabin 主按钮入场），都是动画方案换掉之后留下的。CSS 要先整段剔注释，
+     否则注释里写的「删掉 @keyframes cbpop」会被当成定义。 */
+  const KF_BASELINE = 0;
+  const cssAll = files.filter(p => p.endsWith('.css'))
+    .map(p => fs.readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')).join('\n');
+  const kfNames = [...cssAll.matchAll(/@keyframes\s+([\w-]+)/g)].map(m => m[1]);
+  const kfRef = cssAll + jsSources.map(([, s]) => s).join('\n')
+    + read('go/ui/index.html') + read('test.sh');
+  /* 匹配窗口不许跨过 }：写成 animation[^;]* 的话，前一条规则的 animation 会一路吞过
+     换行和大括号，把后面任意一个关键帧名算成「用过了」（反向测试就是这么漏掉的）。 */
+  const deadKf = kfNames.filter(k => !new RegExp('animation[^;{}]*\\b' + k + '\\b').test(kfRef));
+  if (deadKf.length > KF_BASELINE)
+    probs0.push('定义了没人用的动画 ' + deadKf.length + ' > ' + KF_BASELINE + '：' + deadKf.join(' '));
+
   const probs = probs0;
   if (unused.length > UNUSED_BASELINE)
     probs.push('新增定义了却没人用的 token ' + unused.length + ' > ' + UNUSED_BASELINE + '：' + unused.join(' '));
@@ -991,7 +1006,8 @@ if (SPLIT) {
   else ok('无新增闲置 token（' + unused.length + ' ≤ ' + UNUSED_BASELINE + '）、无死函数（' +
     jsDefs.size + ' 个定义，死函数 ' + dead.length + ' ≤ ' + DEAD_BASELINE + '）、无死 class（' +
     cssClassDefs.size + ' 个 class 定义，死 class ' + deadCls.length + ' ≤ ' + CSS_CLASS_BASELINE +
-    '）、无死图标（' + iconIds.length + ' 个 symbol，死图标 ' + deadIcons.length + ' ≤ ' + ICON_BASELINE + '）');
+    '）、无死图标（' + iconIds.length + ' 个 symbol，死图标 ' + deadIcons.length + ' ≤ ' + ICON_BASELINE +
+    '）、无死动画（' + kfNames.length + ' 个 keyframes，死动画 ' + deadKf.length + ' ≤ ' + KF_BASELINE + '）');
 }
 
 // ---------- 闸门⑮：Vue 模板编译 + tick 依赖 + 模板 handler 存活性（S3 步骤 5） ----------

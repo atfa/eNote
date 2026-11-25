@@ -1374,6 +1374,23 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 两个没人 animation 的 @keyframes，闸门⑩ 加第五个方向（P14 S6 步骤 27）
+
+「定义了没人用」这一族收口：CSS 里 `@keyframes` 的名字，减去所有 CSS/JS/HTML/`test.sh` 里
+`animation…<名字>` 的引用。**19 个关键帧里 2 个没人用**：`cbpop`（base.css，勾选完成原来是
+「弹一下」，后来改成 `.cb.on .ic` 的 transform 过渡）、`fabin`（components.css，底部主按钮
+入场动画，后来定成「切页不做整页动画」）。
+
+* 闸门⑩ 现在是五向：闲置 token（棘轮 11）+ 死函数（0）+ 死 class（0）+ 死图标（0）+ 死动画（0），
+  仍是一条 ok 行、总数 122。
+* 反向测试连踩两个坑：① CSS 要先整段剔 `/* */` 注释再扫（注释里写的「删掉 @keyframes cbpop」
+  会被当成定义，同一个 `stripComments` 只处理行首 `/*` 的坑）；② 引用侧正则不许跨过 `}`：
+  `animation[^;]*\b<名>` 会让前一条规则的 `animation` 一路吞过换行和大括号，把后面任意一个
+  关键帧名算成「用过了」；改成 `animation[^;{}]*\b<名>\b` 才点名成功。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**（第一次跑撞到老熟的可复现块「截图扫描没有
+  收到新图」，重跑即过）、三套 DOM 等价工具全部一致（关键帧没人引用，DOM 与计算样式不变）。
+
 ### `.test/` 大扫除，提交信息引用关系反向查一遗（P14 S6 步骤 26）
 
 `.test/` 里堆了 59 个未跟踪文件（3.5 MB）。先算引用：`git log --format="%s%n%b" |
