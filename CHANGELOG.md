@@ -1374,6 +1374,26 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### `.test/` 大扫除，提交信息引用关系反向查一遗（P14 S6 步骤 26）
+
+`.test/` 里堆了 59 个未跟踪文件（3.5 MB）。先算引用：`git log --format="%s%n%b" |
+grep -o '\.test/[^ ]*'` 拿到全部提交信息引用过的路径，与未跟踪清单求交集 —— **交集为空**，
+这 59 个文件没有一个被提交信息点名。
+
+* 删可再生的副本与备份：`app.bak` `comp.bak` `idx.bak`（改文件前的手工备份）、`chk.mjs`
+  （`node --check` 的副本）、`vant.css`/`vant.min.js`（`go/ui/vendor/` 的拷贝，445 KB）、
+  `screen.png`、`shot_ascii.txt`、`shotc.log`、`dlgjs.json`。
+* 删 6 张没被点名的 VD 截图（`shot_dlg*.png`、`shot_toast*.png`、`shot_mine.png`，3.4 MB）；
+  像素证据的结论都写在提交信息里，图本身不进仓库。
+* 留下 43 个小的（共 119 KB）：18a–18e 的探针载荷 `p18*.js`、A/B 证据 `dlg_*.txt` /
+  `style_*.txt` / `sw_*.txt` / `sc_*.txt` / `sh_*.txt` / `all_18d*.txt`、`probevd.sh`、
+  `logs/test_s18a.log`，以及本轮新加的 `scan_{css,icons,go_dead}.js`。
+* `.gitignore` 加 `.test/*.bak` 与 `.test/chk.mjs`，以后调试不再把工作区弄脏。
+* Go 侧顺手扫了同一族：`go/*.go` 210 个函数（含方法），**0 个没人调**（引用侧含 `_test.go`、
+  Java、JS 路由名），所以闸门⑩ 不需要第五个方向。
+* 验收：`ui_test.js` **122 项全绿**、`./test.sh --vd` **164 项 ok / 0 FAIL / PASS**（`test.sh`
+  只引用 `.test/ocr-rand.png`、`ocr-test.png`、`shot-t*`，删掉的文件没人用）。
+
 ### 图标精灵图里 20 个没人用的图标，闸门⑩ 加第四个方向（P14 S6 步骤 25）
 
 「定义了没人用」这一族还剩最后一处：`index.html` 的图标精灵图。扫描口径要注意用法有两种

@@ -1,0 +1,1 @@
+(async function(){var A=window.__enoteActions;var s=function(ms){return new Promise(function(r){setTimeout(r,ms)})};await A.showLog();console.log("PROBESHOT 卡片弹层="+(document.getElementById("sheet")?document.getElementById("sheet").className:"无"));await s(20000);console.log("PROBESHOT 结束");})()

@@ -1,22 +1,22 @@
-P14 S6 步骤 25：图标精灵图里 20 个没人用的图标，闸门⑩ 加第四个方向
+P14 S6 步骤 26：.test/ 大扫除，提交信息引用关系反向查一遍
 
-「定义了没人用」这一族还剩最后一处：index.html 的图标精灵图。
+.test/ 里堆了 59 个未跟踪文件（3.5 MB），全项目扫一遍引用关系再决定去留：
+git log --format="%s%n%b" | grep -o '\.test/[^ ]*' 拿到全部提交信息引用过的路径，和未跟踪清单
+求交集 —— 交集为空，这 59 个文件没有一个被提交信息点名。
 
-扫描口径要注意用法有两种
-- 模板里写死 href="#i-x"；
-- 数据里写 icon: 'x'（模板拼 '#i-' + name）。
-两种都算引用：只按 #i-x 找会误报 61 个，加上裸名这条才是真的 20 个：
-i-key i-shield i-link i-chevr i-filter i-send i-copy i-eye i-star i-wifi i-lock i-play
-i-history i-idcard i-phone i-mail i-globe i-list i-share i-power
-全是历次改图标时留下的旧图（比如 i-chevr 被 i-chev 的旋转顶掉、i-copy/i-eye 是剪贴板页改版前的）。
-删掉 20 个 symbol，精灵图 71 → 51，index.html 少 2,972 字节。
+处理
+- 删可再生的副本与备份：.test/app.bak、comp.bak、idx.bak（改文件前的手工备份）、chk.mjs
+  （node --check 的副本）、vant.css/vant.min.js（go/ui/vendor/ 的拷贝，445 KB）、screen.png、
+  shot_ascii.txt、shotc.log、dlgjs.json。
+- 删 6 张没被点名的 VD 截图（shot_dlg*.png、shot_toast*.png、shot_mine.png，3.4 MB）；像素证据
+  的结论都写在提交信息里，图本身不进仓库。
+- 留下 43 个小的（共 119 KB）：18a–18e 的探针载荷 p18*.js、A/B 证据 dlg_*.txt / style_*.txt /
+  sw_*.txt / sc_*.txt / sh_*.txt / all_18d*.txt、probevd.sh、logs/test_s18a.log，以及本轮新加的
+  scan_{css,icons,go_dead}.js。
+- .gitignore 加 .test/*.bak 与 .test/chk.mjs，以后调试不再把工作区弄脏。
 
-闸门⑩ 现在是四向
-- 闲置 token（棘轮 11）+ 死函数（0）+ 死 class（0）+ 死图标（0），仍是一条 ok 行、总数 122。
-- 反向测试踩到正则太窄：临时加的 <symbol id="i-p25dead"> 没被抓到，因为 id 字符类写的是
-  i-[a-z-]+，数字被挡在外面 → 改成 i-[a-z0-9-]+，再测就点名它了。
+Go 侧顺手扫了同一族：go/*.go 210 个函数（含方法），0 个没人调（引用侧含 _test.go、Java、JS
+路由名），所以闸门⑩ 不需要第五个方向。
 
-验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、
-./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、
-todoRow 651 B、todoTx 454 B、设置页保活长说明 236 B、进度层逐字未动）——图标是 <use> 引用，
-删掉的 20 个没人引用，DOM 与计算样式不变。
+验收：ui_test.js **122 项全绿**、./test.sh --vd **164 ok / 0 FAIL / PASS**（test.sh 只引用
+.test/ocr-rand.png、ocr-test.png、shot-t*，删掉的文件没人用）。

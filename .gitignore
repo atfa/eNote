@@ -16,3 +16,8 @@ go/ui/build.json
 # test.sh 的 VDIFF 后继夹具：每次跑套件现造（make_test_png.py 掺随机噪点带），是运行时产物不是源码。
 .test/vds-*.png
 .test/ocr-rand.png
+
+# 探针/门禁的临时备份与语法检查副本（cp x.js .test/chk.mjs && node --check），
+# 都是每次调试现造的，不是证据。
+.test/*.bak
+.test/chk.mjs
