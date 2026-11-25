@@ -13,7 +13,7 @@
       value=""，遗留字符串里没有这个属性 → VDIFF 在 input 那一字节就红。输入框本来也不需要
       受控：输入节点是静态的，重画不会重建它，用户输的字自然留着（真机验过）。
 
-   读模块状态一律 live()：folderSel 是普通模块变量，folderSelAll / folderPickShots 整体替换
+   读模块状态一律 computed()：folderSel 是普通模块变量，folderSelAll / folderPickShots 整体替换
    它，computed 不依赖 tick 就永远缓存 → 勾选点了没反应。
    模板里用原始值 + {{ }}，不要再 esc（见 views/shots.js 顶部第 2 条）。
    <empty-state> 不收 :tick（步骤 7 的透传漂移）。
@@ -38,9 +38,9 @@ export const FolderRow = {
   setup(props){
     return {
       H,
-      cls: live(() => 'frow' + (H.folderSel[props.f.path] ? ' on' : '') + (props.f.missing ? ' gone' : '')),
-      label: live(() => H.folderLabel(props.f.path)),
-      meta: live(() => props.f.missing ? '已不存在' : (props.f.count || 0) + ' 张')
+      cls: computed(() => 'frow' + (H.folderSel[props.f.path] ? ' on' : '') + (props.f.missing ? ' gone' : '')),
+      label: computed(() => H.folderLabel(props.f.path)),
+      meta: computed(() => props.f.missing ? '已不存在' : (props.f.count || 0) + ' 张')
     }
   },
   template: `
@@ -69,30 +69,30 @@ export const FoldersView = {
   components: { EmptyState, FolderRow, Ico },
   setup(){
     const tick = computed(() => V.tick);
-    const rows = live(() => sortRows(H.folderAll, H.folderSel));
-    const q = live(() => String(H.folderQ || '').toLowerCase());
+    const rows = computed(() => sortRows(H.folderAll, H.folderSel));
+    const q = computed(() => String(H.folderQ || '').toLowerCase());
     return {
       H,
       tick,
       rows,
-      shown: live(() => {
+      shown: computed(() => {
         const t = q.value;
         return t ? rows.value.filter(function(f){ return String(f.path).toLowerCase().indexOf(t) >= 0 })
                  : rows.value;
       }),
       // 计数与 folderCountLabel() 一致：missing 的行既不进「共 M 个」也不进「已选 N 个」
       // 步骤 16b：原来是整条字符串 v-html，现在结构在模板里（#folderCount 是 test.sh 的断言点）
-      sel: live(() => {
+      sel: computed(() => {
         let n = 0;
         H.folderAll.forEach(function(f){ if (!f.missing && H.folderSel[f.path]) n++ });
         return n;
       }),
-      total: live(() => {
+      total: computed(() => {
         let total = 0;
         H.folderAll.forEach(function(f){ if (!f.missing) total++ });
         return total;
       }),
-      saveText: live(() => {
+      saveText: computed(() => {
         let n = 0;
         H.folderAll.forEach(function(f){ if (!f.missing && H.folderSel[f.path]) n++ });
         return n ? '开始监控这 ' + n + ' 个' : '开始监控';

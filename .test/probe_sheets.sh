@@ -16,6 +16,9 @@ JS='(async function(){
     closeSheet();
     await new Promise(function(r){ setTimeout(r, 500) });
   }
+  // 第一步就要显式定 tab：探针跑在「热」app 上，上一轮 / test.sh 停在哪个 tab
+  // 就会污染 sort_notes（步骤 17c 之后症状是「排序页·笔记」画出附件页的排序项）。
+  __enote.state.tab = "notes"; await render();
   await dump("sort_notes", function(){ return sortSheet() });
   out.prefs_notes = prefsNow();
   __enote.state.tab = "todos"; await render();

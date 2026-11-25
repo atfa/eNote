@@ -2367,3 +2367,19 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
 - 验收：`node tools/ui_test.js` 122 检查全绿；`GO_TEST=1 ./build.sh`；`./install.sh` Success；
   `./test.sh --vd` **166 项全绿**；`.test/dom_equiv3.js`（13 项）/ `dom_equiv2.js` / `dom_equiv.js`
   三套 DOM 等价全部一致（prod 模式下）。
+### 9.29 步骤 17c：真响应式第 2 片 —— 文件夹页（2026-11-25）
+
+- `folderSel/folderAll/folderQ` → `var FOLD = Vue.reactive({sel:{},all:[],q:''})`；
+  `views/folders.js` 的 8 个 `live()` 换成裸 `computed()`；`loadFolders()` 返回
+  `Promise.resolve()`，`folderPick`/`folderSelAll`/`folderPickShots`/`folderFilter` 的
+  `sheetPaint()` 全删（它们只改 FOLD）。
+- 改名踩到的坑：正则把 `setHost` / `__enote.state` 里的 **getter 名**也改了
+  （`get FOLD.all(){…}` 是语法错误），闸门 ⑮ 直接报「folderSel folderAll 不在 setHost」——
+  闸门先于真机抓到，这是它该有的样子。对外名字（`folderSel`/`folderAll`/`folderQ`）必须原样保留。
+- 真机证明：注入 2 个目录 → 2 行画出来；点一行 → `.frow.on` 0→1、页脚「0 个已选」→「1 个已选」，
+  `tick 7→7` 没动。
+- 顺手修了 DOM 等价探针的一个老脆弱点：`probe_sheets.sh` 的第一个用例（排序页·笔记）不设置 tab，
+  跑在热 app 上会继承上一轮停在的 tab（本轮症状是「排序页·笔记」画出附件页的排序项）。
+  现在第一步显式 `__enote.state.tab = "notes"; await render()`。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项、`.test/dom_equiv3.js` 13 项全绿。
+

@@ -343,14 +343,16 @@ function missedDismiss(){
 var SHOTFLAGS = null;    // {enabled, granted, folders:n, watermark}  便宜的状态，每次 refresh 都行
 var shotSel = {};        // 暂存区里被勾选的截图 id
 var shotList = [];       // /api/shots/list 的结果（sheet 用）
-var folderSel = {};      // 文件夹选择里勾中的路径
-var folderAll = [];      // MediaStore 枚举出来的所有目录
+/* 步骤 17c：文件夹页的三份状态收进一个 reactive 对象（同 17b 的 CLIP）。
+   勾中集合是「整体替换 + 逐键改」两种写法都有，所以整对象 reactive，逐键改也能被追踪。 */
+var FOLD = Vue.reactive({ sel: {}, all: [], q: '' });
+// 文件夹选择里勾中的路径 / MediaStore 枚举出来的所有目录
 var shotTimer = 0, shotStartAt = 0;
 /* 步骤 8：Vue 路径的加载态。今天 #shotGrid 的「加载中…」与「加载失败」是 innerHTML 直写，
    组件拿不到这个信息，所以提升成状态位（契约：shotSheet() 置 loading，loadShots() 收尾）。
    遗留路径不读它们，步骤 11 随遗留 DOM 写入一起消失。 */
 var shotLoading = false, shotError = '';
-var folderQ = '';        // 搜索框的当前值（Vue 路径靠它做响应式过滤）
+// 搜索框的当前值（在 FOLD.q）
 /* 导入进度层的状态（契约 (c)）：必须是 reactive，因为 shotOvlSub 是 Java 侧回调写的
    全局函数，状态放组件里 Java 写不到；组件（views/shots.js 的 ShotProgress）是纯渲染器。
    what 存 esc 过的串：今天写的是 sub.textContent = esc(txt)，DOM 文本里就是字面 &amp;，
@@ -579,23 +581,23 @@ async function shotIgnoreSel(){
 /** VDIFF 的遗留侧：加载完之后 .pbody 应该长什么样（一次给出最终 DOM） */
 function folderSheet(){
   // 步骤 11：只剩 Vue 一条路径（FoldersView）。确定按钮放底部固定条里的契约搬进了模板
-  folderQ = '';
+  FOLD.q = '';
   pageSheetVue('folders', '选择监控文件夹');
   loadFolders();
 }
 function loadFolders(){
   var raw = '[]';
   try{ raw = (window.Android && Android.shotFolders) ? Android.shotFolders() : '[]' }catch(e){}
-  try{ folderAll = JSON.parse(raw) || [] }catch(e){ folderAll = [] }
+  try{ FOLD.all = JSON.parse(raw) || [] }catch(e){ FOLD.all = [] }
   var want = {};
   ((SHOTFLAGS && SHOTFLAGS.list) || []).forEach(function(p){ want[p] = 1 });
-  folderSel = {};
-  folderAll.forEach(function(f){
+  FOLD.sel = {};
+  FOLD.all.forEach(function(f){
     // 首次：默认勾上名字像截图目录的；已经有配置的按配置来
-    if(Object.keys(want).length) folderSel[f.path] = !!want[f.path];
-    else folderSel[f.path] = !!f.shot;
+    if(Object.keys(want).length) FOLD.sel[f.path] = !!want[f.path];
+    else FOLD.sel[f.path] = !!f.shot;
   });
-  return sheetPaint();
+  return Promise.resolve();   /* 步骤 17c：FOLD 是 reactive，Vue 自己重画 */
 }
 /* folderRender() 与 folderCountLabel() 随步骤 16d 删除：它们是选文件夹页的字符串渲染器，
    步骤 8 起页面归 views/folders.js（FOLDER 的 Vue 组件），这两个函数只剩「调得到就抛」的
@@ -609,25 +611,22 @@ function folderLabel(path){
   return map[last] || last;
 }
 function folderPick(path){
-  folderSel[path] = !folderSel[path];
+  FOLD.sel[path] = !FOLD.sel[path];
   // v-for 带 :key，勾选只是移动已有节点，滚动位置天然不动（遗留路径那套「记住 scrollTop
   // 再放回」随字符串渲染器一起删了）
-  return sheetPaint();     // 重排 + 刷新计数：选中的浮到最上面
+  /* 步骤 17c：FOLD.sel 是 reactive，重排与计数由 Vue 自己算，sheetPaint() 摘掉。 */
 }
 function folderSelAll(on){
-  folderAll.forEach(function(f){ if(!f.missing) folderSel[f.path] = !!on });
-  return sheetPaint();
+  FOLD.all.forEach(function(f){ if(!f.missing) FOLD.sel[f.path] = !!on });
 }
 function folderPickShots(){
-  folderAll.forEach(function(f){ folderSel[f.path] = !!f.shot && !f.missing });
-  return sheetPaint();
+  FOLD.all.forEach(function(f){ FOLD.sel[f.path] = !!f.shot && !f.missing });
 }
 function folderFilter(t){
-  folderQ = String(t || '');
-  return sheetPaint();     // computed 里过滤，节点直接不渲染
+  FOLD.q = String(t || '');   /* 步骤 17c：过滤在 computed 里，节点直接不渲染 */
 }
 function folderSave(){
-  var want = folderAll.filter(function(f){ return folderSel[f.path] && !f.missing })
+  var want = FOLD.all.filter(function(f){ return FOLD.sel[f.path] && !f.missing })
     .map(function(f){ return f.path });
   if(!want.length) return toast('至少选一个文件夹');
   if(!(window.Android && Android.setShotFolders)) return toast('只在 app 内可用');
@@ -1573,12 +1572,12 @@ var HOST = setHost({
   openAttach: openAttach, delAttach: delAttach, filesNow: filesNow,
   /* 步骤 8 加：ShotsView / FoldersView / ShotProgress 的宿主接口。漏一个的症状同步骤 6：
      Vue 渲染抛错 → 静默回退字符串渲染器，闸门⑮ 静态扇模板里的 H.xxx 钉住它。
-     shotList / shotSel / folderAll / folderSel / SHOTPROG 会被整体赋值，必须走 getter
+     shotList / shotSel / FOLD.all / FOLD.sel / SHOTPROG 会被整体赋值，必须走 getter
      （同 FA / q 的教训：传值的话 Vue 拿的是装配时那份快照）。 */
   get shotList(){ return shotList }, get shotSel(){ return shotSel },
   get shotLoading(){ return shotLoading }, get shotError(){ return shotError },
-  get folderAll(){ return folderAll }, get folderSel(){ return folderSel },
-  get folderQ(){ return folderQ }, get SHOTPROG(){ return SHOTPROG },
+  get folderAll(){ return FOLD.all }, get folderSel(){ return FOLD.sel },
+  get folderQ(){ return FOLD.q }, get SHOTPROG(){ return SHOTPROG },
   fmtClock: fmtClock, folderLabel: folderLabel,
   shotPick: shotPick, shotSelAll: shotSelAll, shotIgnoreSel: shotIgnoreSel,
   doImportShots: doImportShots,
@@ -1633,7 +1632,7 @@ window.__enote.vue = { app:null, views:VUE_VIEWS, apps:apps,
                           sheets 就是 sheetApps，夹具用它确认 mount/unmount 真的发生了。 */
                        sheets:sheetApps, VUE_SHEETS:VUE_SHEETS,
                        isVueSheet:function(name){ return !!VUE_SHEETS[name] },
-                       /* 夹具注入 folderAll/folderSel 后要重画一次。名字留着 folderPaint
+                       /* 夹具注入 FOLD.all/FOLD.sel 后要重画一次。名字留着 folderPaint
                           是 test.sh 夹具与签名断言写死的契约；四个弹层现在共用 sheetPaint()。 */
                        folderPaint:function(){ return sheetPaint() },
                        /* 进度层夹具用：直接驱动一次进度层（不跑真导入也能验 DOM） */
@@ -1736,13 +1735,13 @@ window.__enote.state = {
   get open(){ return open }, set open(v){ open = v },
   get shotSel(){ return shotSel }, set shotSel(v){ shotSel = v },
   get shotList(){ return shotList }, set shotList(v){ shotList = v },
-  /* 步骤 8 加：文件夹页夹具要整体注入 folderAll / folderSel（Android.shotFolders() 在
-     真机上是设备目录，夹具不能依赖它），folderQ 是搜索框的当前值。闭合集 17 → 20 名，
+  /* 步骤 8 加：文件夹页夹具要整体注入 FOLD.all / FOLD.sel（Android.shotFolders() 在
+     真机上是设备目录，夹具不能依赖它），FOLD.q 是搜索框的当前值。闭合集 17 → 20 名，
      闸门③与 web_test 的名单同步。没 setter 就是 D21 那个坑：赋值只写 window，
      模块变量一动不动，夹具注入完全空跑。 */
-  get folderAll(){ return folderAll }, set folderAll(v){ folderAll = v },
-  get folderSel(){ return folderSel }, set folderSel(v){ folderSel = v },
-  get folderQ(){ return folderQ }, set folderQ(v){ folderQ = v },
+  get folderAll(){ return FOLD.all }, set folderAll(v){ FOLD.all = v },
+  get folderSel(){ return FOLD.sel }, set folderSel(v){ FOLD.sel = v },
+  get folderQ(){ return FOLD.q }, set folderQ(v){ FOLD.q = v },
   /* 步骤 9 加：剪贴板页夹具与交互用例要读 CLIP.list / CLIP.sel（闭合集 20 → 22 名，
      app.js / go/web_test.go / tools/ui_test.js 三处名单同步）。 */
   get clipList(){ return CLIP.list }, set clipList(v){ CLIP.list = v },

@@ -1,34 +1,23 @@
-P14 S4 步骤 17b：真响应式第 1 片 —— clip 页摘掉 V.tick
+P14 S4 步骤 17c：真响应式第 2 片 —— 文件夹页摘掉 V.tick
 
-状态：clipSel/clipList/clipLoading/clipError 四个模块变量收进
-CLIP = Vue.reactive({sel,list,loading,error})。对外的两个面
-（setHost 的 getter、__enote.state 的 getter/setter）名字不变，
-组件与测试都不用改。loadClips() 里的 sheetPaint() 删掉（返回
-Promise.resolve()），clipPick/clipSelAll 的 sheetPaint() 也删掉：
-它们只改 CLIP，Vue 自己会重画。
+状态：folderSel/folderAll/folderQ 收进 FOLD = Vue.reactive({sel,all,q})。
+勾中集合既有整体替换也有逐键改，所以整对象 reactive。对外的三个名字
+（setHost 与 __enote.state 上的 folderSel/folderAll/folderQ）原样保留。
 
-组件：views/clip.js 的 12 个 live() 全换成裸 computed()；
-ClipCount（clip 页脚）从 components/leaf.js 搬进 views/clip.js
-——通用组件库不该认识页内状态；ClipItem 的 tick prop 删掉。
+组件：views/folders.js 的 8 个 live() 换成裸 computed()；
+loadFolders() 返回 Promise.resolve()，folderPick / folderSelAll /
+folderPickShots / folderFilter 的 sheetPaint() 全删 —— 它们只改 FOLD。
 
-闸门 ⑮ 改白名单制：REACTIVE_FILES 里的文件必须裸 computed（不许 live()），
-其余文件仍必须 live() 包 computed。迁移期两种写法各自的约束都留着，
-迁完的文件不会悄悄退回 tick 驱动。
+改名坑：正则把 setHost / __enote.state 里的 getter 名也改了
+（get FOLD.all(){…} 是语法错误），闸门 ⑮ 先于真机报红
+「folderSel folderAll 不在 setHost」。闸门本来就是干这个的。
 
-三个诊断缝：__enoteAppLoads（app.js 求值次数）、__enoteVtick()、
-mountSheet 记 __enoteSheet={name,app}（app._instance.scope.active 是
-「响应式更新能不能到达这个弹层」的唯一判据）。
+真机证明：注入 2 个目录 → 2 行画出来；点一行 → .frow.on 0→1、
+页脚「0 个已选」→「1 个已选」，tick 7→7 没动。
 
-坑①：夹具要写 window.__enote.state.*（带 setter 的状态桥）。导出表
-__enoteActions 上的 clipList/clipSel 是快照数据属性，赋值只落在 window 上，
-模块里的 CLIP 一动不动 —— 症状是「赋值读回来是对的、界面永远不动」，
-本轮在这里烧了十几轮探针。
-坑②：dev 构建渲染 <!--v-if--> 注释节点（prod 是 <!---->），DOM 等价工具的
-归一化只删后者，所以跑 .test/dom_equiv*.js 前必须 rm enote/.vuedev。
-
-真机证明（.test/probe_react.sh）：注入 2 条 → 列表画出来；点 #clipitem-a2
-→ .clipitem.on 1→2、页脚「1 条已选」→「2 条已选」，全程 V.tick 9→9 没动。
+顺手修 DOM 等价探针的老脆弱点：probe_sheets.sh 第一个用例（排序页·笔记）
+不设置 tab，跑在热 app 上会继承上一轮停在的 tab（本轮症状是「排序页·笔记」
+画出附件页的排序项）。现在第一步显式 __enote.state.tab = "notes"。
 
 验收：node tools/ui_test.js 122 检查全绿；GO_TEST=1 ./build.sh；
-./install.sh Success；./test.sh --vd 166 项全绿；
-.test/dom_equiv3.js 13 项 + dom_equiv2.js + dom_equiv.js 全部一致。
+./install.sh Success；./test.sh --vd 166 项全绿；.test/dom_equiv3.js 13 项一致。

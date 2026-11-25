@@ -1374,6 +1374,19 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 真响应式第 2 片（P14 S4 步骤 17c）：文件夹页摘掉 `V.tick`
+
+- `folderSel/folderAll/folderQ` 收进 `FOLD = Vue.reactive({sel,all,q})`；`views/folders.js` 的
+  8 个 `live()` 换成裸 `computed()`；`loadFolders()`/`folderPick`/`folderSelAll`/
+  `folderPickShots`/`folderFilter` 里的 `sheetPaint()` 删掉。真机：注入 2 个目录 → 2 行画出来，
+  点一行 → `.frow.on` 0→1、页脚「0 个已选」→「1 个已选」，`tick 7→7` 没动。
+- 改名坑：正则把 `setHost`/`__enote.state` 的 getter **名**也改了（`get FOLD.all(){…}` 是语法错误），
+  闸门 ⑮ 先于真机报红。对外名字必须原样保留。
+- 修掉 DOM 等价探针的老脆弱点：`probe_sheets.sh` 第一个用例不设置 tab，热 app 上会继承上一轮
+  停在的 tab（症状是「排序页·笔记」画出附件页的排序项）；现在第一步显式定 tab。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项、`.test/dom_equiv3.js` 13 项全绿。
+
+
 ### 真响应式第 1 片（P14 S4 步骤 17b）：clip 页摘掉 `V.tick`
 
 - clip 页的四个模块变量收进 `CLIP = Vue.reactive({sel,list,loading,error})`；`views/clip.js` 的
