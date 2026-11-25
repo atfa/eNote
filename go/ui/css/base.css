@@ -19,6 +19,17 @@ body{padding-bottom:calc(var(--clear-bottom) + env(safe-area-inset-bottom));over
 /* 页面内容左右留白：卡片不贴屏幕边（顶栏/底栏是通栏条，不归它们管）*/
 main#view{padding:0 var(--s3) var(--clear-bottom)}
 a{color:var(--acc)}
+/* 步骤 18a：vendored vant.css 带三条全局规则 —— `a{text-decoration:none}`、
+   `input,button,textarea{color:inherit;font:inherit}`、`ol,ul{margin:0;padding:0;list-style:none}`。
+   它比我们的 CSS 先加载，平手时后写的赢，所以这里显式写回引入 Vant 前的现状：
+   18a 是「只注册组件、像素零变化」，像素改动全部留到 18b 之后逐组件发生。
+   真机 computed style 对比（基线 vs 装了 Vant）的 9 处差异全来自这条 `font:inherit`：
+   #fab / .btn / .tabbar .tab / 首个 button 的 font-family 从 Arial 变成继承、line-height 从
+   normal 变成 px。全站无 `<ol>`/`<ul>`，那条对本站无影响。
+   特异性：都是元素选择器，我们后加载所以赢；写了 font-family 的选择器（如 .search input）
+   特异性更高，照旧用自己的。 */
+button,input,textarea{font-family:Arial;line-height:normal}
+a{text-decoration:underline}
 .sec{margin:var(--s3) var(--s0) var(--s2);font-size:var(--fs-sm);font-weight:700;color:var(--dim);letter-spacing:1px;
   display:flex;align-items:center;gap:var(--s2)}
 .sec:after{content:"";flex:1;height:1px;background:var(--line)}

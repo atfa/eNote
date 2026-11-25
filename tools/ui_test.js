@@ -777,8 +777,24 @@ if (SPLIT) {
       }
     }
   }
-  if (flips.length) bad('CSS 拆分造成层叠顺序翻转', flips.slice(0, 6).join('；'));
-  else ok('CSS 拆分无新增层叠冲突（基线内 ' + CASCADE_BASELINE.size + ' 条，共 ' + bySelector.size + ' 个选择器）');
+  /* 层叠顺序的同一类问题，步骤 18a：vendored vant.css 带三条全局规则
+     （a{text-decoration:none}、input,button,textarea{color:inherit;font:inherit}、
+     ol,ul{margin:0;padding:0;list-style:none}），它在我们的 CSS 之前加载，平手时后写的赢。
+     base.css 里那两条「写回现状」是 18a 像素零变化的前提（真机 computed style 逐字节比对：
+     4 页 + 设置弹层、20 个选择器 × 13 个属性），删掉它们 = 顶栏/底栏/fab/搜索框的字形与行高静默变。 */
+  const baseCss = fs.readFileSync(path.join(uiDir, 'css/base.css'), 'utf8');
+  const html = fs.readFileSync(path.join(uiDir, 'index.html'), 'utf8');
+  const van = [];
+  if (!/^button,input,textarea\{font-family:Arial;line-height:normal\}/m.test(baseCss))
+    van.push('base.css 缺 button,input,textarea{font-family:Arial;line-height:normal}');
+  if (!/^a\{text-decoration:underline\}/m.test(baseCss))
+    van.push('base.css 缺 a{text-decoration:underline}');
+  if (html.indexOf('/vendor/vant.css') < 0 || html.indexOf('/vendor/vant.css') > html.indexOf('/css/tokens.css'))
+    van.push('index.html 的 /vendor/vant.css 必须在我们的 CSS 之前');
+  if (van.length) bad('Vant 全局样式中和失效（像素会变）', van.join(' | '));
+  else if (flips.length) bad('CSS 拆分造成层叠顺序翻转', flips.slice(0, 6).join('；'));
+  else ok('CSS 拆分无新增层叠冲突（基线内 ' + CASCADE_BASELINE.size + ' 条，共 ' + bySelector.size
+    + ' 个选择器）；Vant 的三条全局规则已被 base.css 写回现状（真机 computed style 逐字节比对过）');
 }
 
 // ---------- 闸门⑧ CSS 变量必须能解析 ----------
@@ -1047,6 +1063,11 @@ if (SPLIT) {
         else if (!mm[0].includes("hostFor('shell:' + id)"))
           wiring.push("shell.js 的 mount 没按 shell:<容器 id> 收窄宿主（步骤 17m）");
       }
+      /* 步骤 18a：Vant 的注册在 withHost 里一处，三个挂载点全过它。 */
+      if (!/app\.use\(Vant\)/.test(vueSrc))
+        wiring.push('vue.js 的 withHost 没 app.use(Vant)（van-* 组件全部解析不到）');
+      if (!/window\.vant/.test(vueSrc))
+        wiring.push('vue.js 没取 window.vant（Vant 的 UMD 全局名是小写 vant）');
       /* 步骤 17m：宿主按 app 收窄。app.js 的 HOST_KEYS 逐 app 列出那棵组件树读到的 key，
          三个方向都查（都反向验证过）：
            a) 表里的 key 必须真在 setHost 的宿主对象上 —— 拼错的 key 运行时是 undefined；

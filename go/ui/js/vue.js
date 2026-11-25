@@ -72,8 +72,15 @@ export function hostFor(appId){
   return keys ? narrowHost(keys) : H;
 }
 
+/* Vant 的全局名是小写 `vant`（UMD 写死的，见 vendor/VENDOR.md）。 */
+const Vant = (typeof window !== 'undefined' && window.vant) || null;
 export function withHost(app, host){
   app.provide(HOST_KEY, host === undefined ? H : host);
+  /* 步骤 18a：把 Vant 的 van-* 组件注册到每个 app 上（UMD 全局构建取的就是上面这个全局 Vue）。
+     本步只注册不渲染：一个 van-* 标签都没用，DOM 与像素逐字不变（真机 computed style
+     逐字节比对：4 页 + 设置弹层、20 个选择器 × 13 个属性，差异 0 处）。
+     没加载到（node 沙箱里跑静态闸门、vendor 文件缺失）就不装 —— app.use(undefined) 会炸。 */
+  if (Vant) app.use(Vant);
   return app;
 }
 

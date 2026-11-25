@@ -39,6 +39,49 @@ curl -s -o go/ui/vendor/vue.global.js       https://unpkg.com/vue@<版本>/dist/
 sha256sum go/ui/vendor/vue.global*.js   # 输出抄进上面两张表
 ```
 
+
+# vendored：Vant 4（组件库）
+
+P14 S5 引入（用户批准：减少手搓 UI 的不确定性）。**只 vendor 全局构建的两个整文件**，
+与 Vue 一样零构建链：`vant.min.js` 是 UMD，取全局 `Vue`（就是上面那份 vendored Vue），
+`app.use(vant)` 之后 `van-popup` / `van-toast` / `van-dialog` 这些标签直接可用。
+
+## 组件与样式（页面默认加载）
+
+| | |
+|---|---|
+| 文件 | `vant.min.js` |
+| 版本 | 4.10.2 |
+| 来源 | https://unpkg.com/vant@4.10.2/lib/vant.min.js |
+| 许可 | MIT（Copyright (c) 2016-present Youzan） |
+| 大小 | 245,846 字节（gzip 9 -9 后 80,005） |
+| sha256 | `96bfc28a2855699d78b709b185f2e1c35ed68eefe17d8e3f98c4d5d9d43b8f82` |
+
+| | |
+|---|---|
+| 文件 | `vant.css` |
+| 版本 | 4.10.2（同一个包里的 `lib/index.css`，改名以便与 js 同版本号对齐） |
+| 来源 | https://unpkg.com/vant@4.10.2/lib/index.css |
+| 许可 | MIT（同上） |
+| 大小 | 199,570 字节（gzip 9 -9 后 52,773） |
+| sha256 | `e636877ff4af7aa30336252bc9ab25afd91beb1f621436d234e239d9de90382a` |
+
+### 引入前实测的三件事（不是查文档，是把包下下来扫）
+
+| 项 | 实测结果 |
+|---|---|
+| 语言基线 | `?.` 2 次命中都是 `? .5 :` 三元（**假阳性**，与 Vue 那次的结论同源）；`??` 0、`Proxy` 0、`BigInt` 0、`Object.fromEntries` 0、`queueMicrotask` 0；有箭头函数 1619 与 `class` 4（ES2015）→ **在下面的 ES2020 基线内，`MIN_API=26` 不用抬** |
+| CSS 现代特性 | `:is(` `:where(` `:has(` `@supports` `aspect-ratio` `backdrop-filter` 全部 **0**；`gap:` 2、`env(safe-area` 3 |
+| 全局选择器 | 非 `.van-*` 的只有 `:root`/`:host`（2557 个 `--van-*` 变量，与我们的 `--sheet-h` 等命名空间不撞）、`html{-webkit-tap-highlight-color:transparent}`（`tokens.css` 的 `*{}` 已覆盖）、`a{text-decoration:none}`（全站 2 个 `<a href="#">`，我们的 `.ttx small a` 特异性更高）。**加载顺序：vant.css 在我们的 CSS 之前**，平手时我们的赢 |
+
+z-index：Vant 从 2001 起自增（`useGlobalZIndex`），我们的尺度是 `--z-index:55 / --z-topbar:60 /
+--z-tabbar:70 / --z-toast:90`。所以**同一层交互不能混用**：弹层换成 `van-popup` 之后，
+toast 也必须换成 `van-toast`（后创建的 z-index 更大，天然在上面），否则自研 toast 会掉到
+Vant 遮罩下面。
+
+升级：两条 curl + 改上面两张表的 sha256/大小/版本，然后 `GO_TEST=1 ./build.sh`
+（`TestVendorHashMatchesDoc` 会逐文件核对，Vant 的 JS 查 `4.10.2` 版本串、CSS 查 `--van-` 前缀）。
+
 ## 为什么 vendor 而不是 npm
 
 本项目**全程在 Android 手机的 Termux 里构建**：没有 PC、没有 Gradle、没有 npm、没有 bundler

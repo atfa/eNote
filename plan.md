@@ -2620,3 +2620,50 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
 
 验收：122 静态检查、`GO_TEST=1 ./build.sh`、`./install.sh` Success、`./test.sh --vd`
 **164 项全绿 PASS**、三套 DOM 等价全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B 逐字未变）。
+
+## 9.40 P14 S5：引入 Vant 4（用户批准：减少手搓 UI 的不确定性）
+
+P14 路线图第⑥项（§9.27），全程唯一会改像素的一项。用户 2026-11-25 批准：
+「同意引入 vant，减少自己手搓 ui 的不确定性」。
+
+### 引入前实测的依赖事实（把包下下来扫，不是查文档）
+
+| 项 | 实测 |
+|---|---|
+| 版本 | vant 4.10.2（npm latest），UMD 全局构建 `lib/vant.min.js` 245,846 B（gzip 80,005）+ `lib/index.css` 199,570 B（gzip 52,773） |
+| 装配 | UMD 取全局 `Vue`（就是 vendored 那份），全局名小写 `vant`，根导出有 `install` → `app.use(vant)` 注册 ~70 个 `van-*` 组件；真机验证：`<van-button>` 渲染出 `<button class="van-button van-button--primary">` |
+| 语言基线 | `?.` 2 次命中都是 `? .5 :` 三元（假阳性）；`??` `Proxy` `BigInt` `Object.fromEntries` `queueMicrotask` 全 0；有箭头函数 1619、`class` 4（ES2015）→ **在 VENDOR.md 的 ES2020 基线内，`MIN_API=26` 不用抬** |
+| CSS 现代特性 | `:is(` `:where(` `:has(` `@supports` `aspect-ratio` `backdrop-filter` 全 0；`gap:` 2、`env(safe-area` 3 |
+| 全局选择器 | 非 `.van-*` 的只有 `:root`/`:host`（2557 个 `--van-*` 变量，与我们的 `--sheet-h` 等不撞名）、`html{-webkit-tap-highlight-color:transparent}`（tokens.css 的 `*{}` 已覆盖）、`a{text-decoration:none}`、`input,button,textarea{color:inherit;font:inherit}`、`ol,ul{margin:0;padding:0;list-style:none}` |
+| z-index | Vant 从 2001 自增（`useGlobalZIndex`），我们是 55/60/70/90 → **同一层交互不能混用**：弹层换成 `van-popup` 后 toast 也必须换，否则自研 toast 掉到 Vant 遮罩下面 |
+| 体积 | base.apk 341 KB → 不变（Vant 进 `libenote.so`：7,773,768 → 8,223,208 B，+449 KB 原始 / ~130 KB 压缩） |
+
+### 步骤 18a：vendor + 注册，像素零变化
+
+- `go/ui/vendor/vant.min.js` + `vant.css`（整文件 vendor，VENDOR.md 记 sha256/来源/许可/大小）；
+  `go/web_test.go` 的 `TestVendorHashMatchesDoc` 版本串检查按文件分流（Vue 查 `vue v3.5.46`、
+  vant.min.js 查 `4.10.2` 与 `van-popup`/`van-toast`、vant.css 查 `--van-` 与 `.van-popup`），
+  并新增两条 index.html 装配断言：`vant.min.js` 在 `<script type=module>` 之前、
+  `vant.css` 在我们的 CSS 之前。
+- `index.html`：`<link href="/vendor/vant.css">` 放在 `tokens.css` **之前**（平手时我们的设计系统赢），
+  `<script src="/vendor/vant.min.js">` 放在 Vue 之后、module 之前。
+- `vue.js`：`withHost()` 里 `if (Vant) app.use(Vant)`（一处覆盖 19 个 app；node 沙箱里没 window.vant 就跳过）。
+- **中和 Vant 的三条全局规则**：`base.css` 显式写回现状 `button,input,textarea{font-family:Arial;line-height:normal}`
+  与 `a{text-decoration:underline}`。这不是洁癖 —— 真机 computed style 对比（基线 vs 装 Vant）实测
+  **9 处差异**，全来自 Vant 的 `font:inherit`：`#fab`/`.btn`/`.tabbar .tab`/首个 `button` 的
+  font-family 从 Arial 变继承、line-height 从 normal 变 px。中和后重测：**4 页 + 设置弹层、
+  20 个选择器 × 13 个属性，逐字节相同**（`.test/p18all.js` + `.test/all_base.txt`/`all_vant.txt`）。
+- 闸门：⑦ 的 ok 行加「Vant 的三条全局规则已被 base.css 写回现状」，⑮ 加 `app.use(Vant)`/`window.vant`
+  两条装配断言（仍 122 项，两条都反向验证过）。
+
+### 后续步骤（每步单独提交、单独全套验收）
+
+| 步 | 内容 | 像素影响 |
+|---|---|---|
+| 18b | `ToastHost` → `van-toast` | toast 样式/时长/位置 |
+| 18c | `DialogHost` → `van-dialog` | 确认框 |
+| 18d | `SheetHost` → `van-popup` | 弹层外壳（`.sheet`/`.panel`/`.grip`）；`#sheetBody` 内容不动 → dom_equiv3 仍逐字比 |
+| 18e | 设置页开关 → `van-switch`、骨架屏 → `van-skeleton`、提醒时间 → `van-picker` | 局部 |
+
+纪律：没动的页面 DOM 必须逐字不变（三套 DOM 等价工具是机器保证）；动过的容器重建基线并逐屏截图；
+D5/D15 的类名冻结只对**被 Vant 取代的那片**解冻，其余照旧。

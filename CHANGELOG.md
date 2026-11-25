@@ -1374,6 +1374,36 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Vant 4 进场（P14 S5 步骤 18a）：vendor + 注册，像素零变化
+
+P14 路线图第⑥项开工（用户批准：「同意引入 vant，减少自己手搓 ui 的不确定性」）。
+开工前先量依赖，不查文档：vant 4.10.2 的 UMD 全局构建 245,846 B（gzip 80,005）+
+`index.css` 199,570 B（gzip 52,773）；取全局 `Vue`（就是 vendored 那份），全局名小写 `vant`，
+根导出有 `install` → `app.use(vant)` 注册 ~70 个 `van-*` 组件（真机验证：`<van-button>`
+渲染出 `<button class="van-button van-button--primary">`）；语言基线在 ES2020 内
+（`?.` 的 2 次命中是 `? .5 :` 三元假阳性，`??` `Proxy` `BigInt` `Object.fromEntries`
+`queueMicrotask` 全 0）→ **`MIN_API=26` 不用抬**；CSS 无 `:is/:where/:has/@supports/
+backdrop-filter`；z-index 从 2001 自增，与我们的 55/60/70/90 不混用（弹层换 `van-popup` 时
+toast 必须同步换）。
+
+- `go/ui/vendor/vant.min.js` + `vant.css`（整文件 vendor，`VENDOR.md` 记 sha256 / 来源 / MIT /
+  体积 / 上面那张实测表）；`go/web_test.go` 的版本串检查按文件分流，并新增两条装配顺序断言：
+  `vant.min.js` 在 `<script type=module>` 前、`vant.css` 在我们的 CSS 前（平手时设计系统赢）。
+- `vue.js` 的 `withHost()` 里 `if (Vant) app.use(Vant)` —— 一处覆盖 19 个 app；node 沙箱里
+  没 `window.vant` 就跳过（静态闸门要能跑）。本步**一个 `van-*` 标签都没用**。
+- 关键坑：Vant 的 CSS 带三条全局规则 `a{text-decoration:none}`、
+  `input,button,textarea{color:inherit;font:inherit}`、`ol,ul{margin:0;padding:0;list-style:none}`。
+  真机 computed style 对比实测 **9 处差异**，全来自那条 `font:inherit`：`#fab`/`.btn`/
+  `.tabbar .tab`/首个 `button` 的 font-family 从 Arial 变继承、line-height 从 normal 变 px。
+  `base.css` 显式写回现状后重测：**4 页 + 设置弹层、20 个选择器 × 13 个属性逐字节相同**
+  （`.test/p18all.js`，基线/新版快照 `.test/all_base.txt` / `all_vant.txt`）。
+  全站无 `<ol>`/`<ul>`，那条对本站无影响。
+- 闸门：⑦ 加「Vant 三条全局规则已被 base.css 写回现状」（含加载顺序），⑮ 加
+  `app.use(Vant)` / `window.vant` 两条装配断言（仍 **122** 项，两条都反向验证过）。
+- 体积：base.apk 341 KB 不变，Vant 进 `libenote.so`：7,773,768 → 8,223,208 B（+449 KB 原始）。
+- 验收：122 静态检查、`GO_TEST=1 ./build.sh`、`./install.sh` Success、`./test.sh --vd` 全绿 PASS、
+  三套 DOM 等价全部一致（本步 DOM 逐字未变）。
+
 ### 宿主接口按 app 收窄（P14 S4 步骤 17m）：每个 app 只拿到自己那棵树读的 key
 
 `setHost` 那张表 132 个 key，每个 app 的组件树真正读到的只有 0–27 个，其中 93 个 key 全项目

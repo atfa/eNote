@@ -7,6 +7,10 @@
 <title>懒得记</title>
   <!-- 样式从 go/ui.html 的 <style>（原 8-579 行）拆出：S1a 拆成 4 个文件，S2 把视图层拆成 views/*.css。
        加载顺序 = 层叠顺序，顺序不能重排（tools/ui_test.js 闸门⑦ 拦跨文件属性冲突）。 -->
+  <!-- 步骤 18a：Vant 4 的全量样式，**必须在我们的 CSS 之前** —— 它带两条全局规则
+       （html{-webkit-tap-highlight-color} 与 a{text-decoration:none}），平手时我们的设计系统要赢。
+       vendor 目录不参与 ui_test.js 的裸 hex/裸 px 检查（第三方代码不是我们的设计系统）。 -->
+  <link rel="stylesheet" href="/vendor/vant.css">
   <link rel="stylesheet" href="/css/tokens.css">
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/components.css">
@@ -237,6 +241,10 @@
       document.write('<script src="' + (dev ? '/vendor/vue.global.js' : '/vendor/vue.global.prod.js') + '"><\/script>');
     })();
   </script>
+  <!-- 步骤 18a：Vant 的 UMD 全局构建，取全局 Vue（上面刚写进来的那一个），所以必须在它之后、
+       <script type=module> 之前。js/vue.js 里 app.use(window.vant) 把 van-* 组件注册到 19 个 app 上；
+       本步只注册不渲染，DOM 与像素逐字不变（见 plan.md §9.40）。 -->
+  <script src="/vendor/vant.min.js"></script>
   <script type="module" src="/js/app.js"></script>
 
 </body>

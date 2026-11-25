@@ -201,6 +201,14 @@ func TestIndexServedFromDirectory(t *testing.T) {
 		strings.Index(body, "__VUE_DEV__") > strings.Index(body, `type="module" src="/js/app.js"`) {
 		t.Errorf("index.html 缺 Vue 构建选择器（?vue=dev → /vendor/vue.global.js，必须在 module 之前），见 README §5.2")
 	}
+	// 步骤 18a：Vant 也是零构建链的全局构建（UMD 取全局 Vue），所以它同样必须在 module 之前；
+	// CSS 要在我们的 CSS 之前 —— 平手时我们的赢（vant.css 里有 html{tap-highlight} 与 a{text-decoration}）。
+	if i, j := strings.Index(body, "/vendor/vant.min.js"), strings.Index(body, `type="module" src="/js/app.js"`); i < 0 || j < 0 || i > j {
+		t.Errorf("index.html 里 vendored Vant 必须在 <script type=module> 之前（i=%d j=%d）", i, j)
+	}
+	if i, j := strings.Index(body, "/vendor/vant.css"), strings.Index(body, "/css/tokens.css"); i < 0 || j < 0 || i > j {
+		t.Errorf("index.html 里 /vendor/vant.css 必须在我们的 CSS 之前（i=%d j=%d）：平手时我们的设计系统要赢", i, j)
+	}
 	// 组件 setup() 里就要读宿主接口，所以 setHost 必须早于首次 refresh()。
 	if i, j := strings.Index(appjs, "setHost({"), strings.Index(appjs, "\nrefresh();"); i < 0 || j < 0 || i > j {
 		t.Errorf("setHost() 必须早于首次 refresh()（i=%d j=%d）：render() 会 mount Vue 视图，组件 setup() 立刻要读宿主接口", i, j)
@@ -361,8 +369,24 @@ func TestVendorHashMatchesDoc(t *testing.T) {
 		seen[name] = string(raw)
 	}
 	for name, body := range seen {
-		if !strings.Contains(body, "vue v3.5.46") {
-			t.Errorf("%s 里找不到版本号字符串，检查是不是下成了 runtime-only 构建", name)
+		// 版本串检查按文件分流：Vue 的两个构建必须写着 "vue v3.5.46"（runtime-only 构建里没这句），
+		// Vant 的 JS 里写着 4.10.2，CSS 里没有版本串，查它的变量前缀。
+		switch {
+		case strings.HasPrefix(name, "vue.global"):
+			if !strings.Contains(body, "vue v3.5.46") {
+				t.Errorf("%s 里找不到版本号字符串，检查是不是下成了 runtime-only 构建", name)
+			}
+		case name == "vant.min.js":
+			if !strings.Contains(body, "4.10.2") {
+				t.Errorf("vant.min.js 里找不到版本串 4.10.2（与 VENDOR.md 对不上？）")
+			}
+			if !strings.Contains(body, "van-popup") || !strings.Contains(body, "van-toast") {
+				t.Errorf("vant.min.js 里找不到 van-popup / van-toast（下成子集构建了？）")
+			}
+		case name == "vant.css":
+			if !strings.Contains(body, "--van-") || !strings.Contains(body, ".van-popup") {
+				t.Errorf("vant.css 里找不到 --van-* 变量或 .van-popup（不是 Vant 4 的全量样式？）")
+			}
 		}
 	}
 	// 两个构建的分工就是这套调试基建的全部理由：devtools hook 只在 dev 版里
