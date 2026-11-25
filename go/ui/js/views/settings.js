@@ -4,8 +4,8 @@
    <kv-row> / <ocr-ready>；采集卡与用法卡是纯静态文本，直接写在模板里（v-html 已清零）。
 
    前面几步踩过、写在这里省得再踩的坑：
-   1) 读模块状态一律 computed()：S / ST / remindPending 是普通模块变量，refresh() 整体替换，
-      computed 不依赖 tick 就永远缓存 → 从系统设置页回来后开关状态是旧的。
+   1) 读模块状态一律 computed()：S 是 reactive 的、ST 是 {v:} 容器，refresh() 整包赋值
+      就让读它们的 computed 失效 → 从系统设置页回来后开关状态是新的。
    2) 模板里用原始值 + {{ }}，不要再 esc（Vue 插值是 textContent）。
    3) 一个元素里只放一个 {{ }}（两个插值 = 两个文本节点，VDIFF 序列化器 trim 后拼会丢空格）；
       需要「3 / 2」那种三段拼接时写 {{ a }} / {{ b }}，中间那个「 / 」不是纯空白，不会被吃掉。
@@ -42,7 +42,6 @@ export const SettingsSheetView = {
     const nat = computed(() => V.tick.v);
     return {
       H,
-      tick: computed(() => V.tick),
       s: computed(() => ({ ...H.S.settings })),
       i: computed(() => ({ ...H.S.info })),
       // 提醒卡：副标题的插值切分必须与遗留拼接一一对应（三个文本节点）

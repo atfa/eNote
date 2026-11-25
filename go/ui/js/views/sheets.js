@@ -12,18 +12,18 @@
      子节点）；CSS 里唯一受影响的选择器 `.sheet .panel>h2` 已补上 `#sheetBody>h2`。
 
    前面几步踩过、写在这里省得再踩的坑：
-   1) 读模块状态一律 computed()（见 js/vue.js）：MISSED / LOGDATA 是普通模块变量，computed
-      不依赖 tick 就永远缓存 → 数据换了视图不动。
+   1) 读模块状态一律 computed()（见 js/vue.js）：MISSED / LOGDATA 是 {v:} 容器，整包赋值
+      就让读它们的 computed 失效 → 数据换了视图跟着动。
    2) 模板里用原始值 + {{ }}，不要再 esc（Vue 插值是 textContent，再 esc 会双重转义）。
    3) 元素之间的纯空白节点会被 Vue 的 whitespace:'condense' 删掉；元素与文本之间的那个
       空格会保留成一个空格。原来字符串里 `ic('camera')+'选图片…'` 直接写 `/>选图片…`。
    4) 模板里用 H.xxx 的组件必须把 H 返回出去（闸门⑮ 强制），漏了是「点了没反应」。
-   5) `<cd-chip>` 声明了 tick prop，必须收 `:tick="tick"`；`<empty-state>` 没声明，禁止收
-      （收了会透传成 DOM 属性，与迁移前的 DOM 漂移）。
+   5) 组件不接 tick prop（步骤 17l 删掉了这条管道）：以前「声明了必须收、没声明禁止收」
+      的双向规则（收了会透传成 DOM 属性，与迁移前的 DOM 漂移）整类消失。
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, Ico, CdChip } */
-import { V, Vue } from '../vue.js'
+import { Vue } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico, CdChip } from '../components/leaf.js'
 
@@ -40,7 +40,6 @@ export const SortSheetView = {
     const H = inject('H');
     return {
       H,
-      tick: computed(() => V.tick),
       groups: computed(function(){
         var p = H.P(), tab = H.tab;
         // 选项是 [值, 图标名, 文案]：图标是 <ico>，文案是 {{ }}（步骤 16d 之前是
@@ -90,7 +89,6 @@ export const MissedSheetView = {
     const H = inject('H');
     return {
       H,
-      tick: computed(() => V.tick),
       items: computed(() => {
         var m = H.MISSED || H.S.missed;
         return (m && m.items) || [];
@@ -100,7 +98,7 @@ export const MissedSheetView = {
   template: `
 <empty-state v-if="!items.length" icon="check-circle" title="这批处理完了" sub="到点的待办会照常提醒"/>
 <div class="list card" v-else>
-  <div class="todo msrow" v-for="t in items" :key="t.id" @click="H.closeSheet();H.jump(t.nid)"><div class="cb" @click="H.missedDone($event,t.nid,t.id,$event.currentTarget)"><ico n="check"/></div><div class="tx"><span class="ttx">{{ t.text }}<small><span class="due over"><ico n="calendar"/>{{ H.fmtTime(t.due) }}</span><cd-chip :tick="tick" :t="t"/><a href="#" @click.prevent="H.jump(t.nid)">{{ t.ntitle || '查看笔记' }}</a></small></span></div></div>
+  <div class="todo msrow" v-for="t in items" :key="t.id" @click="H.closeSheet();H.jump(t.nid)"><div class="cb" @click="H.missedDone($event,t.nid,t.id,$event.currentTarget)"><ico n="check"/></div><div class="tx"><span class="ttx">{{ t.text }}<small><span class="due over"><ico n="calendar"/>{{ H.fmtTime(t.due) }}</span><cd-chip :t="t"/><a href="#" @click.prevent="H.jump(t.nid)">{{ t.ntitle || '查看笔记' }}</a></small></span></div></div>
 </div>
 <div class="pfoot"><div class="count">点整行看笔记上下文<br>勾 ✓ 直接完成</div><button class="btn" @click="H.missedGoTodos()">去待办页</button><button class="btn pri" @click="H.missedDismiss()"><ico n="check"/>这批我知道了</button></div>
 `
@@ -111,7 +109,7 @@ export const MissedSheetView = {
 export const AddSheetView = {
   name: 'AddSheetView',
   components: { Ico },
-  setup(){ const H = inject('H'); return { H, tick: computed(() => V.tick) } },
+  setup(){ const H = inject('H'); return { H } },
   template: `
 <h2>记一笔</h2><label>文字</label><textarea id="addText" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea><div class="acts"><button class="btn pri" @click="H.addNote()">保存并解析</button><button class="btn" @click="H.pickImage()"><ico n="camera"/>选图片（本机 OCR）</button></div>
 `
@@ -125,7 +123,6 @@ export const AddTodoSheetView = {
     const H = inject('H');
     return {
       H,
-      tick: computed(() => V.tick),
       nid: H.sheetArg
     }
   },
@@ -142,7 +139,6 @@ export const LogSheetView = {
     const H = inject('H');
     return {
       H,
-      tick: computed(() => V.tick),
       r: computed(() => H.logData || {})
     }
   },
@@ -159,7 +155,6 @@ export const DebugSheetView = {
     const H = inject('H');
     return {
       H,
-      tick: computed(() => V.tick),
       calls: computed(() => (H.debugData && H.debugData.calls) ? H.debugData.calls.slice(0, 10) : [])
     }
   },

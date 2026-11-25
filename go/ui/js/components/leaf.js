@@ -59,7 +59,7 @@ export const StatusChip = {
 export const NoteMeta = {
   name: 'NoteMeta',
   components: { Ico, SrcChip, StatusChip },
-  props: ['tick', 'n'],
+  props: ['n'],
   setup(){ const H = inject('H'); return { H } },
   template: `
 <src-chip :n="n"/><status-chip :n="n"/>
@@ -71,7 +71,7 @@ export const NoteMeta = {
 export const NoteHits = {
   name: 'NoteHits',
   components: { Ico },
-  props: ['tick', 'n'],
+  props: ['n'],
   setup(props){
     const H = inject('H');
     const where = computed(() => (H.SR.where && H.SR.where[props.n.id]) || [])
@@ -85,7 +85,7 @@ export const NoteHits = {
 export const NoteAttach = {
   name: 'NoteAttach',
   components: { Ico },
-  props: ['tick', 'n'],
+  props: ['n'],
   template: `
 <span class="hit" v-if="n.attachments && n.attachments.length > 1"><ico n="clip"/>{{ n.attachments.length }} 个附件</span>`
 }
@@ -95,7 +95,7 @@ export const NoteAttach = {
 export const NoteFacts = {
   name: 'NoteFacts',
   components: { Ico },
-  props: ['tick', 'n'],
+  props: ['n'],
   setup(props){
     const f = computed(() => props.n.facts || [])
     return { f }
@@ -112,7 +112,7 @@ export const NoteFacts = {
 export const CdChip = {
   name: 'CdChip',
   components: { Ico },
-  props: ['tick', 't'],
+  props: ['t'],
   setup(props){
     const H = inject('H');
     return { H,
@@ -128,7 +128,7 @@ export const CdChip = {
 export const RemindBtns = {
   name: 'RemindBtns',
   components: { Ico },
-  props: ['tick', 'n', 't'],
+  props: ['n', 't'],
   setup(){ const H = inject('H'); return { H } },
   template: `
 <template v-if="t.due && !t.done">{{ ' ' }}<span class="remind" title="写入系统日历" @click="H.toCalendar(n.id, t.id, $event)"><ico n="calendar"/></span>{{ ' ' }}<span class="remind" title="设为闹钟" @click="H.toAlarm(n.id, t.id, $event)"><ico n="alarm"/></span></template>`
@@ -138,7 +138,7 @@ export const RemindBtns = {
 export const TodoDue = {
   name: 'TodoDue',
   components: { Ico, CdChip, RemindBtns },
-  props: ['tick', 'n', 't'],
+  props: ['n', 't'],
   setup(props){
     const H = inject('H');
     return { H,
@@ -150,14 +150,14 @@ export const TodoDue = {
       }) }
   },
   template: `
-<template v-if="t.due"><span :class="cls"><ico n="calendar"/>{{ due }}</span><cd-chip :t="t" :tick="tick"/><remind-btns :n="n" :t="t" :tick="tick"/></template>`
+<template v-if="t.due"><span :class="cls"><ico n="calendar"/>{{ due }}</span><cd-chip :t="t"/><remind-btns :n="n" :t="t"/></template>`
 }
 
 /* 待办行的优先级 / 来源标签（原 extra 数组，join 用的那个空格在消费方） */
 export const TodoPriChips = {
   name: 'TodoPriChips',
   components: { Ico },
-  props: ['tick', 't', 'compact'],
+  props: ['t', 'compact'],
   template: `
 <span class="chip err" v-if="t.priority==='high'"><ico n="bolt"/>重要</span>
 <span class="chip" v-else-if="t.priority==='low'"><ico n="chevup"/>低</span>
@@ -168,7 +168,7 @@ export const TodoPriChips = {
 export const TodoTx = {
   name: 'TodoTx',
   components: { Ico, CdChip, RemindBtns },
-  props: ['tick', 't', 'n'],
+  props: ['t', 'n'],
   setup(props){
     const H = inject('H');
     return { H,
@@ -176,7 +176,7 @@ export const TodoTx = {
       over: computed(() => props.t.due < H.now() && !props.t.done) }
   },
   template: `
-<span class="ttx">{{ t.text }}<small><template v-if="t.due"><span class="due" :class="{over: over}"><ico n="calendar"/>{{ due }}</span>{{ ' ' }}<cd-chip :t="t" :tick="tick"/><remind-btns :n="n" :t="t" :tick="tick"/></template><a href="#" @click.prevent="H.jump(n.id)">{{ n.title || '查看笔记' }}</a></small></span>`
+<span class="ttx">{{ t.text }}<small><template v-if="t.due"><span class="due" :class="{over: over}"><ico n="calendar"/>{{ due }}</span>{{ ' ' }}<cd-chip :t="t"/><remind-btns :n="n" :t="t"/></template><a href="#" @click.prevent="H.jump(n.id)">{{ n.title || '查看笔记' }}</a></small></span>`
 }
 
 /* 笔记卡里的紧凑待办行（原字符串版第三个参数 compact=true：没有删除按钮）。
@@ -185,7 +185,7 @@ export const TodoTx = {
 export const TodoRowCompact = {
   name: 'TodoRowCompact',
   components: { Ico, TodoDue, TodoPriChips },
-  props: ['tick', 't', 'n'],
+  props: ['t', 'n'],
   setup(props){
     const H = inject('H');
     return { H, cls: computed(() => H.todoRowCls(props.n, props.t)) }
@@ -193,7 +193,7 @@ export const TodoRowCompact = {
   template: `
 <div class="todo" :class="cls" :id="'t'+n.id+'_'+t.id">
   <div class="cb" :class="{on:t.done}" @click="H.toggle(n.id, t.id, $event.currentTarget)"><ico n="check"/></div>
-  <div class="tx"><span class="ttx">{{ t.text }}</span><small><todo-due :t="t" :n="n" :tick="tick"/>{{ ' ' }}<todo-pri-chips :t="t" :compact="true" :tick="tick"/></small></div>
+  <div class="tx"><span class="ttx">{{ t.text }}</span><small><todo-due :t="t" :n="n"/>{{ ' ' }}<todo-pri-chips :t="t" :compact="true"/></small></div>
 </div>`
 }
 

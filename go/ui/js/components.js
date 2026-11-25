@@ -5,8 +5,8 @@
    2. 叶子片段（图标、chip、meta、关键信息、卡片里的紧凑待办行）是 components/leaf.js 里的
       真组件（步骤 16）：结构在模板里看得见、事件走 @click，不再经 v-html 插字符串；
    3. 组件不持有数据，只通过宿主接口 H 读模块状态；
-   4. 每个组件收一个 tick prop：render() 每次递增它，父组件把 tick 传下来 → 子组件重渲染。
-      今天的语义就是「每次 render() 全量重绘」，tick 是它的一比一翻译（见 vue.js 顶部说明）。
+   4. 组件不接 tick prop（步骤 17l 删掉了这条管道）：状态是 reactive 的，computed 读到谁
+      就订阅谁；父组件重渲染时 props 变了子组件才跟着重渲染 —— 这正是想要的语义。
    5. 事件用 @click 绑宿主方法，事件对象用 $event。
 
    类名冻结（D15）：模板产出的 class 与迁移前逐字相同，
@@ -31,7 +31,6 @@ export { EmptyState, Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowComp
 
 export const StripBar = {
   name: 'StripBar',
-  props: ['tick'],
   setup(){
     const H = inject('H');
     /* 返回容器本身是陷阱：S.info 是原地改键的 reactive 对象，computed 每次返回同一个
@@ -50,7 +49,6 @@ export const StripBar = {
 
 export const MissedBanner = {
   name: 'MissedBanner',
-  props: ['tick'],
   setup(){
     const H = inject('H');
     const m = computed(() => H.MISSED)
@@ -74,7 +72,6 @@ export const MissedBanner = {
 /* 截图横幅的四种状态（有截图 / 未开启 / 缺权限 / 没选目录），判定顺序与遗留 shotBanner() 一致 */
 export const ShotBanner = {
   name: 'ShotBanner',
-  props: ['tick'],
   setup(){
     const H = inject('H');
     const kind = computed(() => {
@@ -110,7 +107,6 @@ export const ShotBanner = {
 
 export const ClipBanner = {
   name: 'ClipBanner',
-  props: ['tick'],
   setup(){
     const H = inject('H');
     const n = computed(() => (H.S.info && H.S.info.clip) || 0)
@@ -130,7 +126,7 @@ export const ClipBanner = {
 export const NoteCard = {
   name: 'NoteCard',
   components: { Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact },
-  props: ['tick', 'n', 'k'],
+  props: ['n', 'k'],
   setup(props){
     const H = inject('H');
     const exp = computed(() => !!H.open[props.n.id])
@@ -150,14 +146,14 @@ export const NoteCard = {
   template: `
 <div class="card" :class="ec" :id="'n'+n.id" :style="'--i:'+idx">
   <div class="row between"><p class="t">{{ n.title || '未命名笔记' }}</p></div>
-  <div class="meta"><note-meta :n="n" :tick="tick"/></div>
-  <div class="hits" v-if="hits"><note-hits :n="n" :tick="tick"/></div>
-  <div class="hits" v-if="attach"><note-attach :n="n" :tick="tick"/></div>
+  <div class="meta"><note-meta :n="n"/></div>
+  <div class="hits" v-if="hits"><note-hits :n="n"/></div>
+  <div class="hits" v-if="attach"><note-attach :n="n"/></div>
   <img class="thumb" v-if="n.imagePath" :src="'/img?id='+n.id">
-  <note-facts :n="n" :tick="tick"/>
+  <note-facts :n="n"/>
   <div class="body" :class="{clamp: !exp}" v-text="body"></div>
   <div class="errbox" v-if="n.error" v-text="n.error"></div>
-  <div style="margin-top:var(--s2)" v-if="todos.length"><todo-row-compact v-for="t in todos" :key="t.id" :t="t" :n="n" :tick="tick"/></div>
+  <div style="margin-top:var(--s2)" v-if="todos.length"><todo-row-compact v-for="t in todos" :key="t.id" :t="t" :n="n"/></div>
   <div class="acts">
     <button class="btn sm gh exp" @click="H.expand(n.id)"><ico :n="exp?'chevup':'chev'"/>{{ exp?'收起':'展开详情' }}</button>
     <button class="btn sm" v-if="n.status==='done'||n.status==='raw'" @click="H.reparse(n.id)"><ico n="refresh"/>重新解析</button>

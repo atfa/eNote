@@ -13,15 +13,14 @@
       value=""，遗留字符串里没有这个属性 → VDIFF 在 input 那一字节就红。输入框本来也不需要
       受控：输入节点是静态的，重画不会重建它，用户输的字自然留着（真机验过）。
 
-   读模块状态一律 computed()：folderSel 是普通模块变量，folderSelAll / folderPickShots 整体替换
-   它，computed 不依赖 tick 就永远缓存 → 勾选点了没反应。
+   读模块状态一律 computed()：folderSel 自步骤 17e 起是 reactive 的，folderSelAll /
+   folderPickShots 整包赋值都让读它的 computed 失效 → 勾选立刻有反应。
    模板里用原始值 + {{ }}，不要再 esc（见 views/shots.js 顶部第 2 条）。
-   <empty-state> 不收 :tick（步骤 7 的透传漂移）。
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, FolderRow, Ico } */
 
-import { V, Vue } from '../vue.js'
+import { Vue } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico } from '../components/leaf.js'
 
@@ -34,7 +33,7 @@ const { computed, inject } = Vue
 export const FolderRow = {
   name: 'FolderRow',
   components: { Ico },
-  props: ['tick', 'f'],
+  props: ['f'],
   setup(props){
     const H = inject('H');
     return {
@@ -70,12 +69,10 @@ export const FoldersView = {
   components: { EmptyState, FolderRow, Ico },
   setup(){
     const H = inject('H');
-    const tick = computed(() => V.tick);
     const rows = computed(() => sortRows(H.folderAll, H.folderSel));
     const q = computed(() => String(H.folderQ || '').toLowerCase());
     return {
       H,
-      tick,
       rows,
       shown: computed(() => {
         const t = q.value;
@@ -110,7 +107,7 @@ export const FoldersView = {
 <div style="margin:var(--s2) 0 var(--s1)"><input id="folderQ" class="fin" placeholder="搜索文件夹" @input="H.folderFilter($event.target.value)"></div>
 <div id="folderList" class="clipload">
   <empty-state v-if="!rows.length" icon="folder" title="读不到文件夹" sub="需要先允许读取照片（我的 → 截图捕获 → 去授权）"/>
-  <folder-row v-for="f in shown" :key="f.path" :f="f" :tick="tick"/>
+  <folder-row v-for="f in shown" :key="f.path" :f="f"/>
 </div>
 <div class="pfoot">
   <div class="count" id="folderCount"><b>{{ sel }}</b> 个已选 · 共 {{ total }} 个</div>

@@ -3,8 +3,8 @@
    同一份叶子函数，VDIFF 才逐字比得过。
 
    三个坑，都是前面几步踩过、写在这里省得再踩：
-   1) 读模块状态一律 computed()（见 js/vue.js）：shotList / shotSel 是普通模块变量，
-      shotSelAll 整体替换它，computed 不依赖 tick 就永远缓存 → 勾选点了没反应。
+   1) 读模块状态一律 computed()（见 js/vue.js）：shotList / shotSel 自步骤 17e 起是 reactive
+      的，shotSelAll 整包赋值让读它们的 computed 失效 → 勾选立刻有反应。
    2) 模板里用原始值 + {{ }}，不要再 esc：遗留路径是 innerHTML 拼 esc(x)，DOM 文本 =
       解码后的原值；Vue 的 {{ }} 是 textContent，传原值才等价（传 esc(x) 会双重转义）。
       唯一例外是进度层的 what：今天写的是 sub.textContent = esc(what)，DOM 文本里就是
@@ -12,13 +12,13 @@
    3) 一个元素里只放一个 {{ }}：两个插值 = 两个文本节点，VDIFF 的序列化器会 trim 每个
       文本节点再拼，「X · 已用 」+「0s」拼成「X · 已用0s」，空格丢了就比不过。
 
-   <empty-state> 不收 :tick：EmptyState 的 props 只有 icon/title/sub，多传的 :tick 会
-   透传成根元素属性（步骤 7 的真机漂移：<div class="empty" tick="27">）。
+   步骤 17l 之前这里还有一条「<empty-state> 不许收 :tick」（多传的 :tick 会透传成根元素
+   属性，步骤 7 的真机漂移：<div class="empty" tick="27">）；tick prop 管道整条删掉后没了。
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, ShotItem, Ico, ShotProgress } */
 
-import { V, Vue } from '../vue.js'
+import { Vue } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico } from '../components/leaf.js'
 
@@ -32,7 +32,7 @@ const { computed, inject } = Vue
 export const ShotItem = {
   name: 'ShotItem',
   components: { Ico },
-  props: ['tick', 'x'],
+  props: ['x'],
   setup(props){
     const H = inject('H');
     return {
@@ -60,7 +60,6 @@ export const ShotsView = {
   components: { EmptyState, ShotItem, Ico },
   setup(){
     const H = inject('H');
-    const tick = computed(() => V.tick);
     const items = computed(() => H.shotList);
     const selCount = computed(() => H.shotList.filter(function(x){ return !!H.shotSel[x.id] }).length);
     return {
@@ -69,7 +68,7 @@ export const ShotsView = {
       // 「Cannot read properties of undefined (reading 'shotSelAll')」 —— 症状是按钮点了没反应。
       // 实测：全选 就是这么静默死掉的（步骤 8，被「截图页交互」用例抓到）。
       H,
-      tick, items,
+      items,
       loading: computed(() => H.shotLoading),
       err: computed(() => H.shotError),
       // 三态判定顺序与 loadShots() 一致：加载中 → 加载失败 → 空 → 网格。
@@ -98,7 +97,7 @@ export const ShotsView = {
   <div class="empty" v-else-if="err">加载失败</div>
   <empty-state v-else-if="!items.length" icon="image" title="没有待整理的截图" sub="新截图出现时会先在这里排队"/>
   <div class="shotgrid" v-else>
-    <shot-item v-for="(x,k) in items" :key="x.id" :x="x" :tick="tick"/>
+    <shot-item v-for="(x,k) in items" :key="x.id" :x="x"/>
   </div>
 </div>
 <!-- 内联 display:block 是有意的（闸门⑲ 钉住）：这两个弹层的计数独占一行、按钮整行排在下面。

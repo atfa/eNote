@@ -1374,6 +1374,27 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### tick prop 管道整条删除（P14 S4 步骤 17l）：组件不再收 :tick
+
+17h 删掉 `live()` 之后，`tick` prop 只剩管道没有读者：29 处 `:tick="tick"`、21 个组件声明
+`props: ['tick', …]`、13 处 setup 返回 `tick: computed(() => V.tick)`，全项目没有任何一处读
+`props.tick`。这次全删：模板少一个绑定、组件少一个 prop，「响应式」不再看起来依赖一个手动纪元号。
+
+- 状态是 reactive 的，computed 读到谁就订阅谁；父组件重渲染时 props 变了子组件才跟着重渲染，
+  这就是 Vue 的默认语义，不需要额外信号。
+- 保留 `V.tick` 与 `sheetPaint()`/`vuePaint()` 的 bump：settings.js 的 `nat` 还要它 ——
+  通知权限 / 常驻后台 / 电池优化是 Android 桥的「拉」式只读接口，只能靠纪元号失效。
+- 顺手删掉宿主对象里的 `V: V`（`H.V` 全项目无人读）。这一步踩过一次：脚本把 app.js 的
+  `V` 从 import 里摘了，宿主对象里还写着 `V: V` → 整模块 ReferenceError、页面白屏，
+  静态闸门全绿，真机跑测试才抓到。
+- 闸门⑮ 的 tick 规则反转（组件声明 tick prop 红、模板出现 `:tick` 红，两条都反向验证）；
+  闸门①c 从「视图文件必须引用 tick」改成「必须出现 `computed()`」；新增「用 V 却没 import
+  它」检查（反向验证：加一行 `const zz = V.tick;` 立刻红）。
+- 注释与 test.sh 措辞同步：「computed 不依赖 tick 就永远缓存」→「读的是 reactive 容器，
+  整包赋值即失效」；11 处「tick 链断了」→「响应式链断了」。
+- 验收：122 静态检查、build、install Success、`./test.sh --vd` 164 项全绿 PASS、
+  三套 DOM 等价全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B 逐字未变）。
+
 ### 宿主接口 H 改走 provide/inject（P14 S4 步骤 17k）：组件不再 import 模块级 H
 
 - 13 个组件文件都 `import { H } from './vue.js'`，而 `H` 是 vue.js 里的**模块级 `let`**，

@@ -346,18 +346,19 @@ if (table instanceof Set) {
   }
 }
 
-// ---------- 闸门①c 组件必须真的会重绘（V.tick 拉模型的前提）----------
-// 组件不持有数据、直接读模块状态（S/SR/P()/open），靠 V.tick 这个响应式计数触发重算。
-// 渲染 effect 只跟踪响应式依赖：组件的渲染路径没读到 V.tick 的话，点了删除 → render()
-// → tick++ → 视图一动不动，而且不报错。这条是上面那套拉模型的存在前提，必须静态钉住。
+// ---------- 闸门①c 组件必须真的会重绘（响应式读状态的前提）----------
+// 组件不持有数据、直接读模块状态（S/SR/P()/open）。步骤 17e 起这些容器是 reactive 的，
+// 读它们的 computed() 就是重绘触发源；步骤 17l 删掉了 tick prop 管道，视图里连 tick
+// 这个字都不该再出现。渲染路径没读到任何响应式依赖的话，点了删除 → 数据换了 → 视图
+// 一动不动，而且不报错。这条是响应式渲染的存在前提，必须静态钉住。
 const viewFiles = jsSources.filter(([f]) => /(^|\/)views\/[\w-]+\.js$/.test(f));
 if (viewFiles.length) {
-  const noTick = viewFiles.filter(([, s]) => !/\bV\.tick\b|\btick\b/.test(s)).map(([f]) => f);
+  const noTick = viewFiles.filter(([, s]) => !/computed\s*\(/.test(s)).map(([f]) => f);
   if (noTick.length) {
-    bad('Vue 视图文件里没有任何 tick 引用：' + noTick.join(', '),
-      '组件读的是非响应式的模块状态，渲染期不读 V.tick 就永远不重算（点了没反应，且不报错）');
+    bad('Vue 视图文件里没有一个 computed()：' + noTick.join(', '),
+      '模块状态只有经 computed() 读才会被追踪，直接读 = 渲染期不订阅（点了没反应，且不报错）');
   } else {
-    ok('Vue 视图 ' + viewFiles.length + ' 个，渲染路径都引用了 tick（重绘有触发源）');
+    ok('Vue 视图 ' + viewFiles.length + ' 个，渲染路径都走 computed()（重绘有触发源）');
   }
 }
 
@@ -1018,6 +1019,18 @@ if (SPLIT) {
             wiring.push(rel + "：setup 用了 H 但没 inject('H')（模块级 H 已删，这是 ReferenceError）");
         }
       }
+      /* 步骤 17l 的教训：脚本删 tick 管道时把 V 从 app.js 的 import 里摘了，而宿主对象里
+         还写着 `V: V` —— 整模块 ReferenceError、页面白屏，静态闸门全绿，真机才拓到。
+         反向实验：删掉 app.js import 里的 V，闸门必红。 */
+      for (const [f, src0] of jsSources) {
+        const rel = path.relative(root, f);
+        if (/vue\.js$/.test(f)) continue;
+        const code = stripComments(src0);
+        const importsV = /import\s*\{[^}]*\bV\b[^}]*\}\s*from\s*['"][^'"]*vue\.js/.test(code);
+        const usesV = /(?<![\w.$'"])V\s*[.,]/.test(code) || /[{,]\s*V\s*[,}]/.test(code);
+        if (usesV && !importsV)
+          wiring.push(rel + "：代码里用 V 却没从 vue.js import 它（模块加载就 ReferenceError，整页白屏）");
+      }
       const vueSrc = fs.readFileSync(path.join(uiDir, 'js/vue.js'), 'utf8');
       for (const fn of ['mountView', 'mountSheet']) {
         const m = new RegExp('export function ' + fn + '[\\s\\S]*?app\\.mount').exec(vueSrc);
@@ -1039,10 +1052,10 @@ if (SPLIT) {
       if (!reg) tickErrs.push('app.js 里找不到 var VUE_VIEWS = {…} 注册表');
       if (!sreg) tickErrs.push('app.js 里找不到 var VUE_SHEETS = {…} 注册表（步骤 8 起弹层也要登记）');
       const mounted = views.concat(sheets);
-      // 组件 → 是否声明 tick prop。规则是双向的：声明了 tick 的必须收 :tick="tick"
-      // （props 不变 → 子组件不重渲染），没声明的禁止收（Vue 当透传属性落到根元素上：
-      // 真机实测 <empty-state> 收 :tick 时 Vue 路径是 <div class="empty" tick="27">，
-      // 遗留路径是 <div class="empty">，VDIFF 比属性，空态一比就红）。
+      // 组件 → 是否声明 tick prop。步骤 17l 把整条 tick prop 管道删了（17h 之后没人读它）：
+      // 现在两边都禁止 —— 组件不得声明 tick，模板不得传 :tick（多传的 prop 会透传成根元素
+      // 属性：真机实测 <empty-state> 收 :tick 时 Vue 路径是 <div class="empty" tick="27">，
+      // 遗留路径是 <div class="empty">，VDIFF 比属性，空态一比就红 —— 就是当年这条双向规则）。
       const tickProp = new Map();
       for (const f of viewFiles) {
         const src = fs.readFileSync(f, 'utf8');
@@ -1052,6 +1065,7 @@ if (SPLIT) {
           const arr = /props:\s*\[([^\]]*)\]/.exec(chunk);
           const obj = /props:\s*\{([\s\S]{0,400}?)\n\s{2}\}/.exec(chunk);
           const has = (arr && /\btick\b/.test(arr[1])) || (obj && /^\s*tick\s*:/m.test(obj[1]));
+          if (has) tickErrs.push(path.basename(f) + '：' + d[1] + ' 又声明了 tick prop（步骤 17l 已删这条管道）');
           tickProp.set(d[1], !!has);
         }
       }
@@ -1076,21 +1090,18 @@ if (SPLIT) {
           }
         }
       }
-      // 一个模板里的嵌套组件标签逐个查 tick 契约（双向：声明了 tick 的必须收，没声明的禁止收）。
+      // 一个模板里的嵌套组件标签逐个查 tick 契约（步骤 17l：任何组件都不再接 :tick）。
       // 扫的是文件里的**全部**模板。上一版用非全局正则，每个视图文件只看第一个模板：
       // files.js 查的是 AttachCard，FilesView 整段没查；todos.js 同理（TodoRow 挡住
-      // TodosView），所以步骤 6 的 <empty-state> 缺 :tick 一直没人管。反向实验：删掉
-      // attach-card 的 :tick="tick" 闸门仍绿。
+      // TodosView），所以步骤 6 的 <empty-state> 缺 :tick 一直没人管。
       function scanTick(src, label) {
         for (const tpl of src.matchAll(/template: `([\s\S]*?)`\n/g)) {
           tickTpls++;
-          for (const m of tpl[1].matchAll(/<([a-z][\w-]*-[\w-]+)\b([^>]*)>/g)) {
+          for (const m of tpl[1].matchAll(/<([a-z][\w-]*-?[\w-]*)\b([^>]*)>/g)) {
+            if (!/:tick=/.test(m[2])) continue;
             const pascal = m[1].replace(/(^|-)(\w)/g, (_, __, c) => c.toUpperCase());
-            if (!tickProp.has(pascal)) continue;   // 扫不到定义的组件由上面的注册检查报
-            if (tickProp.get(pascal) && !/:tick="tick"/.test(m[2]))
-              tickErrs.push(label + '：<' + m[1] + '> 声明了 tick prop 却没收 :tick="tick"（props 不变 → 子组件不重渲染）');
-            if (!tickProp.get(pascal) && /:tick=/.test(m[2]))
-              tickErrs.push(label + '：<' + m[1] + '> 没有 tick prop 却收 :tick（透传成 DOM 属性 → 与遗留渲染漂移）');
+            tickErrs.push(label + '：<' + m[1] + '> 还收 :tick（步骤 17l 删了 tick prop 管道；'
+              + (tickProp.has(pascal) ? '组件没声明它 → 透传成 DOM 属性，与遗留渲染漂移' : '组件不接它') + '）');
           }
         }
       }
@@ -1100,7 +1111,6 @@ if (SPLIT) {
         if (!f) { tickErrs.push(v.tab + '：注册表里的 ' + v.comp + ' 在 js/ 下找不到定义'); continue }
         mountedFiles.add(f);
         const src = fs.readFileSync(f, 'utf8');
-        if (!/V\.tick/.test(src)) tickErrs.push(v.tab + '：视图没读 V.tick（render() 后视图不会动，静默失效）');
         scanTick(src, v.tab);
       }
       // 扫描范围扩到 js/ 下全部模板（含 components.js）：组件模板里也会嵌套别的组件，
@@ -1131,7 +1141,7 @@ if (SPLIT) {
         for (const m of src.matchAll(/export const (\w+)\s*=\s*\{([\s\S]*?)\n\};/g)) {
           const tpl = /template:\s*`([\s\S]*)`/.exec(m[2]);
           if (!tpl || !/\bH\./.test(tpl[1])) continue;
-          if (/return\s*\{[\s\S]*?[^.\w]H,/.test(m[2])) hExposed++;
+          if (/return\s*\{[\s\S]*?[^.\w]H\s*[,}]/.test(m[2])) hExposed++;
           else noH.push(path.relative(root, f) + '：' + m[1]
             + ' 的模板用了 H.xxx，但 setup() 没返回 H（点击时抛 undefined → 按钮点了没反应）');
         }
@@ -1206,8 +1216,7 @@ if (SPLIT) {
         for (const [, t] of tpls)
           for (const m of t.matchAll(/(?:@|v-on:)(?:click|input|change|submit)="\s*(?:H\.)?([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
         ok('闸门⑮ Vue 模板 ' + tpls.length + ' 个编译通过；注册表 ' + views.length + ' 视图 + '
-          + sheets.length + ' 弹层的 tick 链完整（扫 ' + tickTpls + ' 个模板，组件 tick prop '
-          + [...tickProp.values()].filter(Boolean).length + ' 个）；模板 handler ' + names.size + ' 个全在导出表；'
+          + sheets.length + ' 弹层的 tick 管道已断（扫 ' + tickTpls + ' 个模板，无一处 :tick、无一个 tick prop）；模板 handler ' + names.size + ' 个全在导出表；'
           + '视图里的 H.xxx ' + usedHost.size + ' 个全在 setHost；模板用 H 的 ' + hExposed
           + ' 个组件全在 setup() 返回里暴露了 H；live()/普通函数两个方向用法都对');
       }

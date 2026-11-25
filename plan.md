@@ -2553,3 +2553,41 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
 - 验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、`./test.sh --vd`
   **166 项全绿 PASS**（第一次跑撞到一个 OCR 环境抖动：随机串 `FVWADDRT` 被读成
   `FWADDRT`，与本次改动无关，重跑即过）、三套 DOM 等价全部一致。
+
+### 9.38 步骤 17l：删掉 tick prop 管道（b5 之后的收尾）
+
+17h 删了 `live()` 之后，`tick` prop 就只剩管道没有读者：29 处 `:tick="tick"`、21 个组件
+声明 `props: ['tick', …]`、13 处 setup 返回里的 `tick: computed(() => V.tick)` —— 全链路
+没有任何一处读 `props.tick`。它现在的唯一作用是让每个组件多一个 prop、让每个模板多一个
+绑定，并且让「响应式」看起来仍然依赖一个手动纪元号。
+
+删完之后：状态是 reactive 的，computed 读到谁就订阅谁；父组件重渲染时 props 变了子组件
+才跟着重渲染 —— 这正是 Vue 的默认语义，不需要额外的信号。
+
+改动（脚本 `.test/drop_tick.py --apply`，11 文件 56 增 74 删）：
+- 模板：29 处 ` :tick="tick"` 全删。
+- props：`props: ['tick', X]` → `props: [X]`；`props: ['tick']` 整行删（组件变成无 props）。
+- setup：`tick: computed(() => V.tick)` 与 `const tick = computed(() => V.tick)` 全删，
+  return 对象里的 `tick` 条目一并删。
+- import：文件里不再读 `V.tick` 的，从 `../vue.js` 的 import 里摘掉 `V`（8 个文件）。
+  **app.js 的宿主对象里还写着 `V: V`** —— 摘掉 import 之后整模块 ReferenceError、页面白屏，
+  静态闸门全绿，是真机跑测试才抓到的（见下面的闸门补强）。`H.V` 全项目无人读，删掉这一项。
+- 保留：`V.tick` 本身、`sheetPaint()`/`vuePaint()` 的 bump、`window.__enoteVtick`、
+  settings.js 的 `const nat = computed(() => V.tick.v)`（通知权限/常驻后台/电池优化是
+  Android 桥的「拉」式只读接口，只能靠纪元号失效）。
+- 注释同步：components.js 骨架第 4 条、views/notes.js 骨架第 1–2 条、todos/files/folders/
+  shots/stats/sheets/settings 各段「computed 不依赖 tick 就永远缓存」的老说法改成
+  「读的是 reactive 容器，整包赋值即失效」；test.sh 里 11 处「tick 链断了」改「响应式链断了」。
+
+闸门（仍是 122 项，改规则不加项）：
+- ⑮ 的 tick 规则**反转**：以前是双向契约（声明了必须收、没声明禁止收），现在两边都禁止 ——
+  组件声明 `tick` prop 红、模板出现 `:tick` 红。两条都反向验证（加回 `<strip-bar :tick="tick">`
+  与给 StripBar 加 `props: ['tick']` 各红一次）。
+- ①c「视图文件必须引用 tick」失去对象，改成「视图文件必须出现 `computed()`」——
+  同一个前提的现代写法：模块状态只有经 computed() 读才会被渲染 effect 追踪。
+- 新增一条（17l 自己踩的坑）：代码里用 `V`（`V.` 属性访问或 `{ V }` 速记）却没从 vue.js
+  import 它 → 红。反向验证：给 leaf.js 加一行 `const zz = V.tick;` 立刻红。
+
+验收：122 静态检查、`GO_TEST=1 ./build.sh`、`./install.sh` Success、`./test.sh --vd`
+**164 项全绿 PASS**、三套 DOM 等价（dom_equiv3 / dom_equiv2 / dom_equiv）全部一致
+（卡片 2495 B、todoRow 651 B、todoTx 454 B 逐字未变）。

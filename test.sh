@@ -1608,12 +1608,12 @@ assert val("done") == "1", "jseval 没跑完"
 assert val("n1_go") == "创建笔记", "一张时主按钮文案该是「创建笔记」, got %r" % val("n1_go")
 assert val("n1_split") == "none", "一张时不该出现「各存一条」"
 assert val("n1_raw") == "none", "一张时不该出现「原样存」"
-# 步骤 8：勾选之后 DOM 真的变了 = tick 链没断。shotPick 只改模块变量 + bump tick，
+# 步骤 8：勾选之后 DOM 真的变了 = 响应式链没断。shotPick 只改 reactive 状态，
 # 任何一环没接上（忘了 sheetPaint / 组件没用 live()）都是「点了没反应」，
 # 而签名测试与静态闸门全绿。
 assert val("isvue") == "1", "截图页没走 Vue 路径（isVueSheet(shots) 为假）"
 assert val("mounted") == "1", "截图页的 Vue 应用没挂载（__enote.vue.sheets.shots 为空）"
-assert val("n2_on") == "1", "勾选之后 .shotitem.on 没变（tick 链断了）"
+assert val("n2_on") == "1", "勾选之后 .shotitem.on 没变（响应式链断了）"
 assert re.match(r"^1 张已选 · 共 \d+ 张$", val("n2_foot")), "勾选后计数条没实时更新: %r" % val("n2_foot")
 print("  ok (一张只有「创建笔记」，勾选后文案不变；Vue 挂载、勾选与计数实时生效)")
 PYONE
@@ -1846,7 +1846,7 @@ assert "1" not in (d.get("fbtnClip") or "1,1,1").split(","), \
   "260px 面板下底部按钮文字被裁（scrollWidth > clientWidth，实际 %s）：按钮不许缩到比自己的文字还窄" % d.get("fbtnClip")
 assert d.get("fbtnWrap") == "wrap", \
   "底部按钮行没允许换行（flex-wrap=%r）：挤不下时只能裁字" % d.get("fbtnWrap")
-assert int(d.get("on1", -1)) == n - 1, "点一条应取消那一条（on1=%s n=%s）：tick 链断了" % (d.get("on1"), n)
+assert int(d.get("on1", -1)) == n - 1, "点一条应取消那一条（on1=%s n=%s）：响应式链断了" % (d.get("on1"), n)
 assert d.get("foot1") == "%s条已选·共%s条" % (n - 1, n), "点一条后计数没动（实际 %r）" % d.get("foot1")
 assert d.get("pri1") == ("一键解析%s条" % (n - 1) if n - 1 > 1 else "一键解析"), \
   "选 %s 条时主按钮文案不对（实际 %r）：n>1 才带数字" % (n - 1, d.get("pri1"))
@@ -2419,7 +2419,7 @@ asroot_global "rm -f '$DATA/enote/.devmode'"
 step "截图页交互在 Vue 路径上真的生效（勾选/全选/实时计数/按钮收敛）"
 # 上面的夹具只证明「画出来一样」，不证明「点了会动」：computed 读普通模块变量（没响应式
 # 依赖）时签名与 DOM 夹具全绿而界面纹丝不动（步骤 6 的 ClipBanner 就踩过）。浮层页多一层
-# 风险：tick 链是 sheetPaint 手动 bump 的，忘了 bump 就是「点了没反应」。
+# 风险：弹层状态换了 DOM 不跟上就是「点了没反应」，这一用例钉住它。
 NIT=$(readtlog | wc -l)
 "$PY" - > "$TMPDIR/js_shots_int.json" <<'PYIT'
 import json
@@ -2542,7 +2542,7 @@ assert n >= 2, "截图页没卡片（n=%s）：夹具没到位，这一遍是空
 # 稳定 id 定位（步骤 14）：找不到 shotitem-<id> 就是模板的 :id 断了，本用例在点空气。
 assert d.get("item0") == "found", \
   "稳定 id shotitem-<id> 找不到那一张（id0=%s）：模板的 :id 断了，本用例在点空气" % d.get("id0")
-assert d.get("on1") != d.get("on0"), "点一张卡片后勾选数没变（%s → %s）：tick 链断了" % (d.get("on0"), d.get("on1"))
+assert d.get("on1") != d.get("on0"), "点一张卡片后勾选数没变（%s → %s）：响应式链断了" % (d.get("on0"), d.get("on1"))
 assert d.get("foot1") != d.get("foot0"), "点一张卡片后计数文案没变（%s → %s）" % (d.get("foot0"), d.get("foot1"))
 assert d.get("on2") == d.get("n"), "全选后应全部勾中（on2=%s n=%s）" % (d.get("on2"), d.get("n"))
 assert d.get("on3") == "0", "全不选后应一个不剩（on3=%s）" % d.get("on3")
@@ -2568,7 +2568,7 @@ asroot_global "rm -f '$DATA/enote/.devmode'"
 VDSIDS=$(api_get shots/list | "$PY" -c 'import json,sys; print(json.dumps([x["id"] for x in json.load(sys.stdin).get("shots") or []]))')
 [ "$VDSIDS" != "[]" ] && api_post shots/remove "{\"ids\": $VDSIDS}" >/dev/null
 
-step "Notes 交互在 Vue 路径上真的生效（tick 链断则点了没反应）"
+step "Notes 交互在 Vue 路径上真的生效（响应式链断了就是点了没反应）"
 # 上面的夹具只证明「画出来一样」，不证明「点了会动」。Vue 迁移最阴的失效是：computed 读的是
 # 普通模块变量（S / open / MISSED），没有响应式依赖 → 永远缓存 → 界面纹丝不动，
 # 而签名 84 项和 DOM 夹具都是绿的。Austin 在真机首跑就踩到（ClipBanner 的 computed），
@@ -2591,13 +2591,13 @@ NIN=$(readtlog | wc -l)
   __enote.state.tab="notes";
   await render();
   L("cards="+cards());
-  // 1) 展开详情：open 是模块状态，computed 不依赖 tick 就永远缓存
+  // 1) 展开详情：open 是 reactive 的容器，computed 读到它就订阅它
   var before=qa(P+" .body.clamp").length;
   var eb=q(P+" .exp");
   L("expBtn="+(eb?eb.textContent.trim():"none"));
   if(eb){ eb.click();
     // 固定 400ms 换成轮询，目标状态：展开后带 .clamp 的行数真的变少（open 是模块状态，
-    // computed 不依赖 tick 就永远缓存 —— 本用例的主题）。
+    // computed 读的是 reactive 容器（步骤 17e 起）—— 本用例的主题）。
     var tExp=await poll(function(){ return qa(P+" .body.clamp").length<before },30,200);
     L("tExp="+tExp); }
   L("clampBefore="+before);
@@ -2649,7 +2649,7 @@ NIN=$(readtlog | wc -l)
   L("clip="+String(!!q(P+" .clipbanner")));
   L("order="+((h.indexOf("missed")>=0 && h.indexOf("missed")<h.indexOf("clipbanner"))?"ok":"bad"));
   __enote.state.MISSED=null; __enote.state.S.info.clip=0; await render();
-  // 4) 删除：delNote → 对话框确认 → 卡片数必须掉（tick 链 + 对话框两条链一起测）
+  // 4) 删除：delNote → 对话框确认 → 卡片数必须掉（响应式链 + 对话框两条链一起测）
   var n0=cards(), id=(__enote.state.S.notes[0]||{}).id;
   // 走 __enote.actions 而不是裸全局 delNote：闸门② 的闭集只给 10 个函数，
   // 多一个裸全局就要改一次闸门，而桥就在边上，没理由扩它。
@@ -2684,7 +2684,7 @@ n = int(d["cards"])
 assert n > 0, "Notes 页没卡片，本步断言会是空跑"
 # 展开：clamp 类必须少一个，按钮文案必须翻成「收起」
 assert int(d["clampAfter"]) < int(d["clampBefore"]), \
-  "点「展开详情」后正文仍是收起态（clamp %s→%s）：tick 链断了，Vue 没重渲染" % (
+  "点「展开详情」后正文仍是收起态（clamp %s→%s）：响应式链断了，Vue 没重渲染" % (
     d["clampBefore"], d["clampAfter"])
 assert d["expAfter"] == "收起", "展开后按钮文案该是「收起」, got %r" % d["expAfter"]
 assert d["empty"] == "true", "笔记清空后没出空态块（.empty）：Vue 的 v-if 分支没生效"
@@ -2723,7 +2723,7 @@ print("  ok (展开/空态/三横幅/删除四条交互在 Vue 路径上都真�
 asroot_global "rm -f '$DATA/enote/.devmode'"
 
 step "Todos 交互在 Vue 路径上真的生效（勾选 → done 翻转 → 再点回来）"
-# Notes 那条 NINT 只覆盖笔记页；todos 转 Vue 后如果没人点它，「tick 链断了 → 点了没反应」
+# Notes 那条 NINT 只覆盖笔记页；todos 转 Vue 后如果没人点它，「响应式链断了 → 点了没反应」
 # 这一整类失效在待办页是空的（P12 同款）。这条把三件事钉在真机上：
 #   1) Vue 路径是活的（__enote.vue.isVue('todos') 且视图真挂载了）—— 只看 DOM 结构上
 #      区分不了渲染路径（Vue 的产出按设计就和字符串渲染器逐字一致），这条是补的正向断言；
@@ -2943,7 +2943,7 @@ assert d.get("tid") == "ok", "造不出待办夹具数据，本步断言会是�
 assert d.get("row") == "found", "待办页找不到夹具项对应的行（.ttx 文本对不上）"
 # JS 的 String(true) 是小写 "true"，不是 Python 的 "True"
 assert d.get("done1") == "true", \
-  "点 .cb 后服务端 done 没翻转（%s→%s）：tick 链断了，Vue 没重渲染或点击没提交" % (
+  "点 .cb 后服务端 done 没翻转（%s→%s）：响应式链断了，Vue 没重渲染或点击没提交" % (
     d.get("done0"), d.get("done1"))
 assert d.get("moved") == "gone" and int(d["rows1"]) == int(d["rows0"]) - 1, \
   "勾选后行没从「未完成」列表消失（rows %s→%s，%s）：动画/重绘没跟上" % (
@@ -3216,7 +3216,7 @@ assert d.get("toastOn") == "true" and "预览即将上线" in d.get("toast", "")
 assert d.get("delBtn") == "found", "卡片里没有删除按钮（.arow .dg）"
 assert d.get("dlg") == "true", "点删除没弹确认框：delAttach 没绑上"
 assert d.get("apiLeft") == "0", "确认后服务端还有 %s 条夹具附件：删除没提交" % d.get("apiLeft")
-assert d.get("gone") == "gone", "删除后卡片还在页面上：tick 链断了，Vue 没重渲染"
+assert d.get("gone") == "gone", "删除后卡片还在页面上：响应式链断了，Vue 没重渲染"
 assert int(d["cards2"]) == int(d["cardsBefore"]) - 1, \
   "删除后卡片数 %s→%s：没少一张" % (d.get("cardsBefore"), d.get("cards2"))
 print("  ok (预览 toast / 删除确认 / strip 计数在 Vue 路径上真生效，%s 张卡)" % d.get("cards"))

@@ -3,8 +3,8 @@
    两条渲染路径共用同一批叶子函数，VDIFF 才逐字比得过。
 
    前面几步踩过、写在这里省得再踩的坑：
-   1) 读模块状态一律 computed()：ST / SHOTFLAGS 是普通模块变量，statsNow() / shotFlags()
-      整体替换它们，computed 不依赖 tick 就永远缓存 → 数字永远停在首屏那份。
+   1) 读模块状态一律 computed()：ST / SHOTFLAGS 是 {v:} 容器，statsNow() / shotFlags()
+      整包赋值 → 读它们的 computed 失效重算，数字不会停在首屏那份。
    2) 模板里用原始值 + {{ }}，不要再 esc（Vue 的插值是 textContent，传 esc(x) 会双重转义）。
    3) 一个元素里只放一个 {{ }}：两个插值 = 两个文本节点，VDIFF 的序列化器会 trim 每个
       文本节点再拼，「#」+「tag」+「 · 」+「3」拼出来丢空格就红 —— 常见标签那条就是
@@ -22,7 +22,7 @@
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { StatsStat, StatsChart, StatsLi, StatsHero, StatsNotesCard, StatsRunCard, Ico } */
-import { V, Vue } from '../vue.js'
+import { Vue } from '../vue.js'
 import { Ico } from '../components/leaf.js'
 import { StatsHero, StatsNotesCard, StatsRunCard } from '../components/blocks.js'
 
@@ -38,7 +38,7 @@ const { computed, inject } = Vue
 export const StatsStat = {
   name: 'StatsStat',
   components: { Ico },
-  props: ['tick', 'i', 'v', 'label', 'icon', 'hot'],
+  props: ['i', 'v', 'label', 'icon', 'hot'],
   setup(props){
     const H = inject('H');
     return { H, cls: computed(() => H.statCls(props.hot, props.label)) }
@@ -55,7 +55,7 @@ export const StatsStat = {
    cssText 归一，所以这里只要求「语义相同」。 */
 export const StatsChart = {
   name: 'StatsChart',
-  props: ['tick', 'days'],
+  props: ['days'],
   setup(props){
     const H = inject('H');
     return {
@@ -110,10 +110,8 @@ export const StatsView = {
   components: { StatsStat, StatsChart, StatsLi, StatsHero, StatsNotesCard, StatsRunCard },
   setup(){
     const H = inject('H');
-    const tick = computed(() => V.tick);
     return {
       H,
-      tick,
       i: computed(() => ({ ...H.S.info })),
       st: computed(() => H.ST),
       stErr: computed(() => H.stErr),
@@ -152,10 +150,10 @@ export const StatsView = {
 </template>
 <template v-else>
 <div class="statgrid">
-  <stats-stat v-for="t in tiles" :key="t.label" :tick="tick" :i="t.i" :v="t.v" :label="t.label" :icon="t.icon" :hot="t.hot"/>
+  <stats-stat v-for="t in tiles" :key="t.label" :i="t.i" :v="t.v" :label="t.label" :icon="t.icon" :hot="t.hot"/>
 </div>
 <div class="card"><h2>近 7 天</h2>
-  <stats-chart :tick="tick" :days="st.days"/>
+  <stats-chart :days="st.days"/>
   <div class="legend"><span><i style="background:var(--acc)"></i>新增笔记</span><span><i style="background:var(--acc2)"></i>完成待办</span></div>
 </div>
 <div class="card"><stats-notes-card :st="st"/></div>

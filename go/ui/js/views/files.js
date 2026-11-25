@@ -2,22 +2,22 @@
    附件图标块与元信息行是 components/leaf.js 里的真组件（FileStrip / AttachGlyph /
    AttachMeta），按钮图标是 <ico>；本文件 v-html 已清零。
 
-   读模块状态一律 computed()（见 js/vue.js）：FA 是普通模块变量，filesNow() 每次整体替换它，
-   computed 不依赖 tick 就永远缓存 → 附件页永远停在首屏那份数据。
+   读模块状态一律 computed()（见 js/vue.js）：FA 自步骤 17e 起是 reactive 的，filesNow()
+   每次整包赋值都让读它的 computed 失效 → 附件页不会停在首屏那份数据。
    FA / q 走 setHost 的 getter（不是快照）：装配时传值的话，后面换掉的 FA 视图看不见。
 
    三态的判定顺序和遗留 renderFiles() 逐字一致：骨架屏（FA.loaded=false）优先于空态，
    空态优先于网格 —— 首屏时 items 是空数组，把空态排在前面会先闪一下「还没有附件」。
 
-   <empty-state> 不收 :tick：EmptyState（Tony owner）的 props 只有 icon/title/sub，多传的
-   :tick 会透传成根元素属性，真机实测 Vue 路径 <div class="empty" tick="27">、遗留路径
-   <div class="empty"> —— 空态的 VDIFF 一比就红。空态文案的响应性已由 emptyTitle: computed(...)
-   覆盖，tick 对它没意义。
+   步骤 17l 之前这里还有一条「<empty-state> 不许收 :tick」：EmptyState（Tony owner）的 props
+   只有 icon/title/sub，多传的 :tick 会透传成根元素属性，真机实测 Vue 路径
+   <div class="empty" tick="27">、遗留路径 <div class="empty"> —— 空态的 VDIFF 一比就红。
+   tick prop 管道整条删掉之后，这类透传漂移整类没了。
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, AttachCard, Ico, AttachGlyph, AttachMeta, FileStrip } */
 
-import { V, Vue } from '../vue.js'
+import { Vue } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico, AttachGlyph, AttachMeta, FileStrip } from '../components/leaf.js'
 
@@ -26,7 +26,7 @@ const { computed, inject } = Vue
 export const AttachCard = {
   name: 'AttachCard',
   components: { Ico, AttachGlyph, AttachMeta },
-  props: ['tick', 'a', 'k'],
+  props: ['a', 'k'],
   setup(props){
     const H = inject('H');
     return {
@@ -58,12 +58,11 @@ export const FilesView = {
   components: { EmptyState, AttachCard, FileStrip },
   setup(){
     const H = inject('H');
-    const tick = computed(() => V.tick);
     /* 同 FileStrip：返回容器本身的话，原地改键不会让 computed 值变化 → 不重渲染。 */
     const FA = computed(() => ({ ...H.FA }));
     const items = computed(() => H.FA.items);
     return {
-      tick, FA, items, H,
+      FA, items, H,
       // 空态文案分两种：搜索中 vs 真的一个附件都没有（和遗留 renderFiles 一致）
       emptyTitle: computed(() => H.q ? '没有匹配的附件' : '还没有附件')
     }
@@ -79,7 +78,7 @@ export const FilesView = {
 <empty-state v-else-if="!items.length" icon="clip"
              :title="emptyTitle" sub="分享图片 / PDF，或点右下角「添加附件」"/>
 <div class="agrid" v-else>
-  <attach-card v-for="(a,k) in items" :key="a.id" :a="a" :k="k" :tick="tick"/>
+  <attach-card v-for="(a,k) in items" :key="a.id" :a="a" :k="k"/>
 </div>`
 };
 

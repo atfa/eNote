@@ -18,7 +18,7 @@ window.addEventListener('unhandledrejection', function(e){
 var S = Vue.reactive({notes:[], settings:{}, info:{}});
 /* S3（D14）：Vue 装配层与视图注册表。混合期（步骤 5-10）里已迁移的 tab 走 Vue，
    其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
-import { V, Vue, nextTick, setHost, mountView, mountSheet, unmountSheet, unmountAllSheets, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
+import { Vue, nextTick, setHost, mountView, mountSheet, unmountSheet, unmountAllSheets, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
 /* 外壳（步骤 15）：顶栏 / 底栏+fab / 弹层宿主 / 对话框 / toast 的组件与它们读的 reactive 状态表。
    shell.js 只依赖 vue.js，不反向读 app.js 的状态（事件走下面的 setHost），所以没有循环导入。 */
 import { shell, mountShell } from './shell.js'
@@ -1569,7 +1569,6 @@ window.addEventListener('resize', moveInd);
    这些是会被整体赋值的 var）。必须在首次 refresh() 之前装好：render() 会 mount Vue 视图，
    组件 setup() 里就要读 H。 */
 var HOST = setHost({
-  V: V,
   /* 步骤 17f：tab 是字符串，读原变量追踪不到（整包赋值换的是引用），必须读盒子。 */
   get S(){ return S }, get SR(){ return SR }, get tab(){ return TAB.v },
   get open(){ return open }, get MISSED(){ return MISSED.v }, get SHOTFLAGS(){ return SHOTFLAGS.v },

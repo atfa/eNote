@@ -1,25 +1,24 @@
-P14 S4 步骤 17k：宿主接口 H 改走 provide/inject（组件不再 import 模块级 H）
+refactor(ui): 删掉 tick prop 管道（P14 S4 步骤 17l）
 
-13 个组件文件都 import { H } from './vue.js'，而 H 是 vue.js 里的模块级 let，由 app.js
-在模块初始化期 setHost({...}) 赋值。组件对「谁先跑、谁赋值」一无所知，只能赌挂载时它已经
-装好了（旧注释里就是这么写的）。这份隐式依赖还堵死了拆 god-object 的路：123 个 H.xxx 想按
-用途拆成细粒度 provider，组件就得逐个改 import。
+17h 删了 live() 之后 tick prop 只剩管道没有读者：29 处 :tick="tick"、21 个组件声明
+props: ['tick', …]、13 处 setup 返回 tick: computed(() => V.tick)，全项目没有一处读
+props.tick。全删：状态是 reactive 的，computed 读到谁就订阅谁；父组件重渲染时 props
+变了子组件才跟着重渲染 —— 这就是 Vue 的默认语义，不需要额外的信号。
 
-- vue.js 加 HOST_KEY + withHost(app)（app.provide('H', H)），三个挂载点各调一次：
-  mountView / mountSheet / shell.js 的 mount（外壳树含 <teleport> 里的进度层）。
-- 组件里 const H = inject('H') 写在 setup 体首行，模板一行不改（模板里的 H.xxx 读的仍是
-  setup 返回的那个 H）。共 47 处 setup，13 个文件的 import 行去掉 H、解构行加 inject。
-- 改造是脚本做的（.test/to_inject.py）：先把注释与字符串内容掩码成空格，再配对括号找
-  setup 体，只对引用了 H 的 setup 注入（单行体插一行内，多行体按原缩进换行）。掩码这步
-  是必须的：setup( 在注释里也出现（「setup() 返回里暴露 H」），不掩码会把注释当代码配对
-  括号，直接 unbalanced。
-- 闸门⑮ 扩 3 条（三条都反向验证过会红）：a) 组件文件不许再 import { … H … }；
-  b) setup 里出现 H 就必须 inject('H')（漏了是 ReferenceError，整模块不执行 = 白屏）；
-  c) 三个挂载点必须 withHost(app)（漏了 inject 拿到 undefined，模板里 H.xxx 全炸）。
-- 收益：依赖摆到明面上 —— 装配哪个 app 的人负责提供宿主一目了然；测试可以 provide 一个
-  假宿主只挂单个组件；后续拆 H 只动三个挂载点，组件模板不动。
-- 验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、./test.sh --vd
-  166 项全绿 PASS（test_s17m.log；首跑撞到一个 OCR 环境抖动：随机串 FVWADDRT 被读成
-  FWADDRT，与本次改动无关，重跑即过）、三套 DOM 等价全部一致（dom_equiv3 含进度层整张卡 /
-  dom_equiv2 / dom_equiv card 2495 B、todoRow 651 B、todoTx 454 B）。
-- 文档：plan.md §9.37、CHANGELOG.md 新节。
+- 模板 29 处 :tick 全删；props 里的 'tick' 全删（只剩 tick 的组件连 props 行一起删）；
+  setup 里的 tick: computed(() => V.tick) 与 const tick = computed(...) 全删。
+- 不再读 V.tick 的文件从 vue.js 的 import 里摘掉 V（8 个文件），宿主对象里的 V: V 一并
+  删掉（H.V 全项目无人读）。这里踩过一次：app.js 摘了 import 却留着 V: V → 整模块
+  ReferenceError、页面白屏，静态闸门全绿，真机跑测试才抓到。
+- 保留 V.tick 与 sheetPaint()/vuePaint() 的 bump：settings.js 的 nat 还要它（通知权限/
+  常驻后台/电池优化是 Android 桥的「拉」式只读接口）。
+- 闸门⑮ 的 tick 规则反转：组件声明 tick prop 红、模板出现 :tick 红（两条都反向验证）；
+  闸门①c 从「视图必须引用 tick」改成「视图必须出现 computed()」；新增「代码用 V 却没
+  import 它」检查（反向验证：leaf.js 加一行 const zz = V.tick; 立刻红）。仍是 122 项。
+- 注释与 test.sh 措辞同步：「computed 不依赖 tick 就永远缓存」→「读的是 reactive 容器，
+  整包赋值即失效」；11 处「tick 链断了」→「响应式链断了」。
+- 新增 .test/drop_tick.py（机械变换脚本，dry-run 默认、--apply 落盘）。
+
+验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、./test.sh --vd 164 项
+全绿 PASS、dom_equiv3 / dom_equiv2 / dom_equiv 全部一致（卡片 2495 B、todoRow 651 B、
+todoTx 454 B 逐字未变）。文档：plan.md §9.38、CHANGELOG。

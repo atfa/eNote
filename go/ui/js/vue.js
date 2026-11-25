@@ -19,7 +19,10 @@ export const Vue = window.Vue;
    'nextTick'」），整份 app.js 不执行 —— 静态闸门全绿，真机整页空白。 */
 export const nextTick = Vue.nextTick;
 
-/* 每次 render() 递增一次。组件的 computed 读它 → 整棵子树重算。 */
+/* 「原生状态可能变了」的纪元号：只有 Android 桥那种「拉」式只读接口读它
+   （notifyGranted / keepAliveOn / batteryIgnoring，见 views/settings.js 的 nat）。
+   步骤 17h 之后数据本身是 reactive 的，普通状态不需要它；步骤 17l 删掉了 tick prop
+   管道，组件不再收 :tick，这里只剩这个纪元号。 */
 export const V = Vue.reactive({ tick: 0 });
 
 /* 宿主接口：app.js 在装配时注入（状态 getter + 渲染叶子 + 事件方法）。
