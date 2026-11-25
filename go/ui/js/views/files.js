@@ -17,17 +17,18 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, AttachCard, Ico, AttachGlyph, AttachMeta, FileStrip } */
 
-import { V, H, Vue,  } from '../vue.js'
+import { V, Vue } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico, AttachGlyph, AttachMeta, FileStrip } from '../components/leaf.js'
 
-const { computed } = Vue
+const { computed, inject } = Vue
 
 export const AttachCard = {
   name: 'AttachCard',
   components: { Ico, AttachGlyph, AttachMeta },
   props: ['tick', 'a', 'k'],
   setup(props){
+    const H = inject('H');
     return {
       H,
       // cls 里已经带 'acard'，所以模板只写 :class，不再叠静态 class="acard"
@@ -56,6 +57,7 @@ export const FilesView = {
   name: 'FilesView',
   components: { EmptyState, AttachCard, FileStrip },
   setup(){
+    const H = inject('H');
     const tick = computed(() => V.tick);
     /* 同 FileStrip：返回容器本身的话，原地改键不会让 computed 值变化 → 不重渲染。 */
     const FA = computed(() => ({ ...H.FA }));

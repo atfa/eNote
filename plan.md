@@ -2529,3 +2529,27 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
 - 验收：122 静态检查、build/install、`./test.sh --vd` **166 项全绿 PASS**、三套 DOM 等价
   全部一致、真机探针 `ovl=1 reg=0` → `afterClose=1 sheet=0` → `gone=0`
   （渲染出来、不在 sheet 表里、活过弹层关闭、关掉后零残留）。
+
+### 9.37 步骤 17k：宿主接口 H 改走 provide/inject（组件不再 import 模块级 H）（2026-11-25）
+
+- 动机：13 个组件文件都 `import { H } from './vue.js'`，而 `H` 是 vue.js 里的**模块级 `let`**，
+  由 app.js 在模块初始化期 `setHost({...})` 赋值。组件对此一无所知，只能赌「我 mount 的时候
+  它已经装好了」。这份隐式依赖还堵死了拆 god-object 的路：123 个 `H.xxx` 想按用途拆成
+  细粒度 provider，组件就得逐个改 import。
+- 做法：`vue.js` 加 `HOST_KEY` + `withHost(app)`（`app.provide('H', H)`），三个挂载点
+  （`mountView` / `mountSheet` / shell.js 的 `mount`）各调一次；组件里
+  `const H = inject('H')` 写在 setup 体首行，模板一行不改（模板里的 `H.xxx` 读的仍是
+  setup 返回的那个 `H`）。共 47 处 setup 改造，13 个文件的 import 行去掉 `H`、
+  解构行加 `inject`。
+- 收益：依赖摆到明面上 —— 装配哪个 app 的人负责提供宿主一目了然；测试可以 `provide`
+  一个假宿主只挂单个组件；后续拆 H 只动三个挂载点。
+- 改造是脚本做的（`.test/to_inject.py`）：先做一遍注释/字符串掩码，再配对括号找 setup 体，
+  只对**引用了 H** 的 setup 注入（单行体插 `const H = inject('H');`，多行体按原缩进换行）。
+  掩码这步是必须的：`setup(` 在注释里也出现（「setup() 返回里暴露 H」），不掩码会把注释
+  当代码配对括号，直接 unbalanced。
+- 闸门⑮ 扩 3 条：a) 组件文件不许再 `import { … H … }`；b) setup 里出现 `H` 就必须
+  `inject('H')`（漏了是 ReferenceError，整模块不执行 = 白屏）；c) 三个挂载点必须
+  `withHost(app)`（漏了 inject 拿到 undefined，模板里 `H.xxx` 全炸）。三条都反向验证过。
+- 验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、`./test.sh --vd`
+  **166 项全绿 PASS**（第一次跑撞到一个 OCR 环境抖动：随机串 `FVWADDRT` 被读成
+  `FWADDRT`，与本次改动无关，重跑即过）、三套 DOM 等价全部一致。

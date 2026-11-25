@@ -1374,6 +1374,25 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 宿主接口 H 改走 provide/inject（P14 S4 步骤 17k）：组件不再 import 模块级 H
+
+- 13 个组件文件都 `import { H } from './vue.js'`，而 `H` 是 vue.js 里的**模块级 `let`**，
+  由 app.js 在模块初始化期 `setHost({...})` 赋值：组件对此一无所知，只能赌「我 mount 的
+  时候它已经装好了」。这份隐式依赖还堵死了拆 god-object 的路（123 个 `H.xxx`）。
+- `vue.js` 加 `HOST_KEY` + `withHost(app)`（`app.provide('H', H)`），三个挂载点
+  （`mountView` / `mountSheet` / shell.js 的 `mount`）各调一次；组件里 `const H = inject('H')`
+  写在 setup 体首行，模板一行不改。共 47 处 setup，13 个文件的 import 行去掉 `H`、
+  解构行加 `inject`（脚本改的：`.test/to_inject.py`，先掩码注释/字符串再配对括号）。
+- 收益：依赖摆到明面上 —— 装配哪个 app 的人负责提供宿主一目了然；测试可以 provide 一个
+  假宿主只挂单个组件；后续拆 H 只动三个挂载点。
+- 闸门⑮ 扩 3 条（都反向验证过）：组件文件不许再 import `H`；setup 里出现 `H` 就必须
+  `inject('H')`（漏了是 ReferenceError，整模块不执行 = 白屏）；三个挂载点必须
+  `withHost(app)`（漏了 inject 拿到 undefined，模板里 `H.xxx` 全炸）。
+- 验收：122 静态检查、build/install、`./test.sh --vd` **166 项全绿 PASS**（首跑撞到一个
+  OCR 环境抖动：随机串 `FVWADDRT` 被读成 `FWADDRT`，与本次改动无关，重跑即过）、
+  三套 DOM 等价全部一致。
+
+
 ### 进度层搬进外壳树的 `<Teleport>`（P14 S4 步骤 17j）：删掉第四个 app 与 `['progress']` 例外名单
 
 - 截图导入进度层是页面上最后一个「命令式挂出来的 Vue app」：`shotOverlay(true,…)` 里

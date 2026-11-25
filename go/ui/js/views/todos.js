@@ -13,11 +13,11 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，本文件第一个组件是 TodoRow，
    所以全量名单写在下面这行注释里（运行时各组件注册自己用到的那些）。
    components: { StripBar, EmptyState, TodoRow, Ico, TodoTx } */
-import { V, H, Vue,  } from '../vue.js'
+import { V, Vue } from '../vue.js'
 import { StripBar, EmptyState } from '../components.js'
 import { Ico, TodoTx } from '../components/leaf.js'
 
-const { computed } = Vue
+const { computed, inject } = Vue
 
 const GROUP_ICONS = { '已逾期':'warn-tri', '今天':'fire', '明天':'calendar',
   '本周':'calendar-check', '以后':'seed', '无日期':'pin', '已完成':'check-circle' };
@@ -27,6 +27,7 @@ export const TodoRow = {
   components: { Ico, TodoTx },
   props: ['tick', 't', 'n'],
   setup(props){
+    const H = inject('H');
     // computed() 自己读 V.tick，父组件 tick 一变就重算；:tick="tick" 同时保证子组件重渲染
     return {
       H,
@@ -45,6 +46,7 @@ export const TodosView = {
   name: 'TodosView',
   components: { StripBar, EmptyState, TodoRow, Ico },
   setup(){
+    const H = inject('H');
     const tick = computed(() => V.tick);
     // 分组 + 筛选 + 排序：逐字照抄 app.js 的 renderTodos，包括「搜索态优先用 SR.todoIds」
     const groups = computed(() => {

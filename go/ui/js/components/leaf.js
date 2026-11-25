@@ -20,8 +20,8 @@
    components: { Ico, SrcChip, StatusChip, CdChip, RemindBtns, TodoDue, TodoPriChips,
                  NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoTx, TodoRowCompact,
                  KvRow, OcrReady, FileStrip, AttachGlyph, AttachMeta } */
-import { H, Vue,  } from '../vue.js'
-const { computed } = Vue
+import { Vue } from '../vue.js'
+const { computed, inject } = Vue
 
 /* 图标：sprite 引用。cls 不传时 class="ic"，传 's' 时 class="ic s"，与 ic(n, cls) 一致。 */
 export const Ico = {
@@ -60,7 +60,7 @@ export const NoteMeta = {
   name: 'NoteMeta',
   components: { Ico, SrcChip, StatusChip },
   props: ['tick', 'n'],
-  setup(){ return { H } },
+  setup(){ const H = inject('H'); return { H } },
   template: `
 <src-chip :n="n"/><status-chip :n="n"/>
 <span><ico n="clock" cls="s"/> {{ H.fmtTime(n.createdAt) }}</span>
@@ -73,6 +73,7 @@ export const NoteHits = {
   components: { Ico },
   props: ['tick', 'n'],
   setup(props){
+    const H = inject('H');
     const where = computed(() => (H.SR.where && H.SR.where[props.n.id]) || [])
     return { H, where }
   },
@@ -113,6 +114,7 @@ export const CdChip = {
   components: { Ico },
   props: ['tick', 't'],
   setup(props){
+    const H = inject('H');
     return { H,
       show: computed(() => !!props.t.due && !props.t.done),
       cls: computed(() => H.cdCls(props.t.due)),
@@ -127,7 +129,7 @@ export const RemindBtns = {
   name: 'RemindBtns',
   components: { Ico },
   props: ['tick', 'n', 't'],
-  setup(){ return { H } },
+  setup(){ const H = inject('H'); return { H } },
   template: `
 <template v-if="t.due && !t.done">{{ ' ' }}<span class="remind" title="写入系统日历" @click="H.toCalendar(n.id, t.id, $event)"><ico n="calendar"/></span>{{ ' ' }}<span class="remind" title="设为闹钟" @click="H.toAlarm(n.id, t.id, $event)"><ico n="alarm"/></span></template>`
 }
@@ -138,6 +140,7 @@ export const TodoDue = {
   components: { Ico, CdChip, RemindBtns },
   props: ['tick', 'n', 't'],
   setup(props){
+    const H = inject('H');
     return { H,
       due: computed(() => H.fmtTime(props.t.due)),
       cls: computed(() => {
@@ -167,6 +170,7 @@ export const TodoTx = {
   components: { Ico, CdChip, RemindBtns },
   props: ['tick', 't', 'n'],
   setup(props){
+    const H = inject('H');
     return { H,
       due: computed(() => H.fmtTime(props.t.due)),
       over: computed(() => props.t.due < H.now() && !props.t.done) }
@@ -183,6 +187,7 @@ export const TodoRowCompact = {
   components: { Ico, TodoDue, TodoPriChips },
   props: ['tick', 't', 'n'],
   setup(props){
+    const H = inject('H');
     return { H, cls: computed(() => H.todoRowCls(props.n, props.t)) }
   },
   template: `
@@ -222,6 +227,7 @@ export const OcrReady = {
 export const FileStrip = {
   name: 'FileStrip',
   setup(){
+    const H = inject('H');
     /* 返回容器本身是陷阱：reassign(FA, …) 原地改键，computed 每次返回同一个 proxy，
        Vue 判定「值没变」就不重渲染（症状：附件页顶部条永远停在旧数字）。返回快照。 */
     return { H, FA: computed(() => ({ total: H.FA.total, bytes: H.FA.bytes, missing: H.FA.missing })) }
@@ -236,6 +242,7 @@ export const AttachGlyph = {
   components: { Ico },
   props: ['a'],
   setup(props){
+    const H = inject('H');
     return { n: computed(() => H.attachGlyphName(props.a)) }
   },
   template: `<div class="aglyph"><ico :n="n" cls="xl"/></div>`
@@ -245,7 +252,7 @@ export const AttachGlyph = {
 export const AttachMeta = {
   name: 'AttachMeta',
   props: ['a'],
-  setup(){ return { H } },
+  setup(){ const H = inject('H'); return { H } },
   template: `<div class="ameta">{{ a.kind }} · {{ H.fmtSize(a.size) }} · {{ H.fmtTime(a.createdAt) }}</div>`
 }
 

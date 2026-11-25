@@ -12,8 +12,8 @@
    这行注释里；运行时每个组件仍各自注册自己模板里用到的那些。
    components: { Ico, KvRow, OcrReady, StatsHero, StatsNotesCard, StatsRunCard,
                  SettingsDataCard, SettingsRunCard, SettingsOcrCard } */
-import { H, Vue,  } from '../vue.js'
-const { computed } = Vue
+import { Vue } from '../vue.js'
+const { computed, inject } = Vue
 import { Ico, KvRow, OcrReady } from './leaf.js'
 
 /* 我的页顶部整块：logo + 四格统计（.hero 这个壳也在组件里，消费方只写一个标签）。
@@ -22,7 +22,7 @@ export const StatsHero = {
   name: 'StatsHero',
   components: { Ico },
   props: ['i', 'st'],
-  setup(){ return { H, } },
+  setup(){ const H = inject('H'); return { H, } },
   template: `
 <div class="hero"><div class="hrow"><div class="hlogo"><img src="/icon.png" alt=""></div><div><h1>懒得记</h1><div class="hver">{{ i.go || '' }} · 本机离线 OCR · BYOK</div></div></div>
 <div class="hstats"><template v-if="st"><span><ico n="note"/>{{ st.notes.total }} 条笔记</span><span><ico n="check-square"/>{{ st.todos.total }} 条待办</span><span><ico n="clip"/>{{ st.attach.count || 0 }} 个附件</span><span><ico n="db"/>{{ H.fmtSize(st.bytes) }}</span></template><span v-else>正在统计本地数据…</span></div></div>`
@@ -53,6 +53,7 @@ export const SettingsDataCard = {
   name: 'SettingsDataCard',
   components: { KvRow },
   setup(){
+    const H = inject('H');
     return {
       H,
       st: computed(() => H.ST),
@@ -68,7 +69,7 @@ export const SettingsRunCard = {
   name: 'SettingsRunCard',
   components: { KvRow },
   props: ['i'],
-  setup(){ return { H, } },
+  setup(){ const H = inject('H'); return { H, } },
   template: `
 <kv-row k="Go 服务">{{ i.server || '' }}</kv-row><kv-row k="Go / 运行时长">{{ (i.go || '') + ' / ' + (i.uptimeS || 0) + 's' }}</kv-row><kv-row k="时区">{{ i.tz || '' }}</kv-row><kv-row k="解析队列">{{ (i.queue || 0) }} 条待处理</kv-row><div class="acts"><button class="btn gh" @click="H.showLog()">查看日志</button><button class="btn gh" @click="H.showDebug()">AI 调用记录</button></div>`
 };
@@ -78,7 +79,7 @@ export const SettingsOcrCard = {
   name: 'SettingsOcrCard',
   components: { KvRow, OcrReady },
   props: ['i'],
-  setup(){ return { H, } },
+  setup(){ const H = inject('H'); return { H, } },
   template: `
 <kv-row k="引擎状态"><ocr-ready :ready="i.ocrReady"/></kv-row><kv-row k="引擎信息">{{ H.S.ocrInfo || 'vivo 离线 OCR' }}</kv-row><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">图片只在本机识别成文字，只有识别出的文字（和原文）会发给模型。单条笔记可在笔记卡片上「↻ 重新识别图片」。</div>`
 };

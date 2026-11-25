@@ -26,11 +26,11 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { Ico, ShotProgress } */
 
-import { H, Vue } from './vue.js'
+import { Vue, withHost } from './vue.js'
 import { Ico } from './components/leaf.js'
 import { ShotProgress } from './views/shots.js'
 
-const { reactive, createApp } = Vue
+const { reactive, createApp, inject } = Vue
 
 /* 外壳状态：app.js 是唯一写入方，组件只读。
    初值 = 迁移前 index.html 静态标记渲染出来的样子，首屏不闪。 */
@@ -65,6 +65,7 @@ function mount(id, def){
   const app = createApp(def);
   app.config.productionTip = false;
   app.config.devtools = false;
+  withHost(app);   // 步骤 17k：外壳树（含 <teleport> 里的进度层）的 H 都从这里 inject
   app.mount(el);
   return app;
 }
@@ -74,7 +75,7 @@ function mount(id, def){
    与在静态 HTML 里等价：sprite 不在本组件的子树里也能解析。 */
 export const TopBar = {
   name: 'TopBar',
-  setup(){ return { H, s: shell } },
+  setup(){ const H = inject('H'); return { H, s: shell } },
   template: `
 <button class="iconbtn" id="brandBtn" aria-label="我的" @click="H.brandGo()"><img class="brand" src="/icon.png" alt=""><span class="dot" :class="{bad: s.dot==='bad'}" id="dot"></span></button>
 <div class="search" id="searchBox" :class="{has: s.has}">
@@ -92,7 +93,7 @@ export const TopBar = {
 export const TabBar = {
   name: 'TabBar',
   components: { Ico },
-  setup(){ return { H, s: shell } },
+  setup(){ const H = inject('H'); return { H, s: shell } },
   template: `
 <span class="ind" id="ind" :style="{width: s.ind.w+'px', transform: 'translateX(' + s.ind.x + 'px)'}"></span>
 <button class="tab" :class="{on: s.tab==='notes'}" data-tab="notes" @click="H.tabPick('notes')"><span class="ti"><svg class="ic"><use href="#i-note"/></svg></span><em>笔记</em></button>
@@ -115,6 +116,7 @@ export const SheetHost = {
   name: 'SheetHost',
   components: { ShotProgress },
   setup(){
+    const H = inject('H');
     /* 步骤 17i：开合动画走 JS 钩子（:css="false"），不用 Vue 的 CSS 模式。原因：CSS 模式下
        Vue 用 requestAnimationFrame 推进 leave 的状态机，页面不可见时 rAF 被挂起，leave 永不
        落地 —— 真机验收（test.sh 的剪贴板 raw 用例，虚显 + 屏关）拓到：弹层关不掉，sheet 的
@@ -173,7 +175,7 @@ export const SheetHost = {
    按钮顺序 No 在左 Yes 在右，与迁移前一致；noCancel 用 v-show（迁移前是 style.display）。 */
 export const DialogHost = {
   name: 'DialogHost',
-  setup(){ return { H, s: shell } },
+  setup(){ const H = inject('H'); return { H, s: shell } },
   template: `
 <div class="dlg" id="dlg" :class="{on: s.dlg.on}" @click.self="H.dlgCancel()">
   <div class="dbox">

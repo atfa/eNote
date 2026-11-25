@@ -21,11 +21,11 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, FolderRow, Ico } */
 
-import { V, H, Vue,  } from '../vue.js'
+import { V, Vue } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico } from '../components/leaf.js'
 
-const { computed } = Vue
+const { computed, inject } = Vue
 
 /* 一行文件夹。遗留字符串：
    <div class="frow on gone" data-path="…" onclick="folderPick('…')"><div class="fcb">ic('check')
@@ -36,6 +36,7 @@ export const FolderRow = {
   components: { Ico },
   props: ['tick', 'f'],
   setup(props){
+    const H = inject('H');
     return {
       H,
       cls: computed(() => 'frow' + (H.folderSel[props.f.path] ? ' on' : '') + (props.f.missing ? ' gone' : '')),
@@ -68,6 +69,7 @@ export const FoldersView = {
   name: 'FoldersView',
   components: { EmptyState, FolderRow, Ico },
   setup(){
+    const H = inject('H');
     const tick = computed(() => V.tick);
     const rows = computed(() => sortRows(H.folderAll, H.folderSel));
     const q = computed(() => String(H.folderQ || '').toLowerCase());

@@ -21,11 +21,11 @@
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, ClipItem, Ico, ClipCount } */
-import { H, Vue } from '../vue.js'
+import { Vue } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico } from '../components/leaf.js'
 
-const { computed } = Vue
+const { computed, inject } = Vue
 
 /* 一条暂存。遗留字符串：
    <div class="clipitem on" onclick="clipPick('id',this)"><div class="clicb">ic('check')</div>
@@ -40,6 +40,7 @@ export const ClipItem = {
   components: { Ico },
   props: ['x'],
   setup(props){
+    const H = inject('H');
     // cls 读的是 CLIP.sel（响应式），勾选一条只重画这一条
     return {
       H,
@@ -70,6 +71,7 @@ export const ClipItem = {
 export const ClipCount = {
   name: 'ClipCount',
   setup(){
+    const H = inject('H');
     return {
       sel: computed(() => { var n = 0; H.clipList.forEach(function(c){ if(H.clipSel[c.id]) n++ }); return n }),
       total: computed(() => H.clipList.length)
@@ -86,6 +88,7 @@ export const ClipSheetView = {
   name: 'ClipSheetView',
   components: { EmptyState, ClipItem, ClipCount },
   setup(){
+    const H = inject('H');
     const items = computed(() => H.clipList);
     const selCount = computed(() => H.clipList.filter(function(c){ return !!H.clipSel[c.id] }).length);
     return {

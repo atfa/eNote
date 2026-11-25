@@ -18,11 +18,11 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, ShotItem, Ico, ShotProgress } */
 
-import { V, H, Vue,  } from '../vue.js'
+import { V, Vue } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico } from '../components/leaf.js'
 
-const { computed } = Vue
+const { computed, inject } = Vue
 
 /* 一张截图的格子。遗留字符串：
    <div class="shotitem on" onclick="shotPick('id',this)"><img src="/shotimg?id=…" alt=""
@@ -34,6 +34,7 @@ export const ShotItem = {
   components: { Ico },
   props: ['tick', 'x'],
   setup(props){
+    const H = inject('H');
     return {
       H,
       cls: computed(() => 'shotitem' + (H.shotSel[props.x.id] ? ' on' : '')),
@@ -58,6 +59,7 @@ export const ShotsView = {
   name: 'ShotsView',
   components: { EmptyState, ShotItem, Ico },
   setup(){
+    const H = inject('H');
     const tick = computed(() => V.tick);
     const items = computed(() => H.shotList);
     const selCount = computed(() => H.shotList.filter(function(x){ return !!H.shotSel[x.id] }).length);
@@ -124,6 +126,7 @@ export const ShotProgress = {
   // 这个缝上：静态全绿，真机上渲染出一个 <ico> 裸元素（Vue 只 warn 不报错）。闸门㉔ 钉住它。
   components: { Ico },
   setup(){
+    const H = inject('H');
     return {
       H,
       /* 返回容器本身是陷阱：SHOTPROG 是逐键改的（secs 每秒 +1），computed 每次返回同一个

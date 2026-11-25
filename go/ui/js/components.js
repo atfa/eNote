@@ -17,8 +17,8 @@
    它只用得到 <ico>，所以全量名单写在下面这行注释里（运行时各组件注册自己用到的那些）。
    components: { Ico, EmptyState, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact } */
 
-import { H, Vue,  } from './vue.js'
-const { computed } = Vue
+import { Vue } from './vue.js'
+const { computed, inject } = Vue
 // 基础组件 <empty-state> 归 Tony（owner 见文件头注释），在这里统一注册。
 import { EmptyState } from './components/empty-state.js'
 /* 步骤 16：叶子片段（图标 / chip / meta / 关键信息 / 紧凑待办行）从 app.js 的 HTML 字符串
@@ -33,6 +33,7 @@ export const StripBar = {
   name: 'StripBar',
   props: ['tick'],
   setup(){
+    const H = inject('H');
     /* 返回容器本身是陷阱：S.info 是原地改键的 reactive 对象，computed 每次返回同一个
        proxy，Vue 判定「值没变」就不重渲染。返回快照。 */
     return { H, i: computed(() => ({ ...H.S.info })) }
@@ -51,6 +52,7 @@ export const MissedBanner = {
   name: 'MissedBanner',
   props: ['tick'],
   setup(){
+    const H = inject('H');
     const m = computed(() => H.MISSED)
     const more = computed(() => m.value && m.value.count > (m.value.items || []).length)
     const sub = computed(() => {
@@ -74,6 +76,7 @@ export const ShotBanner = {
   name: 'ShotBanner',
   props: ['tick'],
   setup(){
+    const H = inject('H');
     const kind = computed(() => {
       const n = (H.S.info && H.S.info.shot) || 0
       if (n > 0) return 'found'
@@ -109,6 +112,7 @@ export const ClipBanner = {
   name: 'ClipBanner',
   props: ['tick'],
   setup(){
+    const H = inject('H');
     const n = computed(() => (H.S.info && H.S.info.clip) || 0)
     const hint = computed(() => !n.value && H.clipHint())
     return { H, n, hint }
@@ -128,6 +132,7 @@ export const NoteCard = {
   components: { Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact },
   props: ['tick', 'n', 'k'],
   setup(props){
+    const H = inject('H');
     const exp = computed(() => !!H.open[props.n.id])
     // 外层 .hits / .facts 只在有内容时存在（原来是 v-if="H.whereHTML(n)"），
     // 判空条件跟着搬进来，渲染函数与组件里的 v-if 用同一个表达式。

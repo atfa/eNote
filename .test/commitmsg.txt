@@ -1,28 +1,25 @@
-P14 S4 步骤 17j：进度层搬进外壳树的 <Teleport>（删掉第四个 app 与 ['progress'] 例外名单）
+P14 S4 步骤 17k：宿主接口 H 改走 provide/inject（组件不再 import 模块级 H）
 
-截图导入进度层是页面上最后一个「命令式挂出来的 Vue app」：shotOverlay(true,…) 里
-createApp(ShotProgress).mount(#shotOvlRoot)，shotOverlay(false) 里 unmount()。它存在的
-唯一理由是「要活过 closeSheet()」（shotsImported 之后 AI 解析还在跑，而 closeSheet 会把
-.panel 的内容整块换掉），靠的是物理位置：不在 .panel 里。代价是一整圈特例。
+13 个组件文件都 import { H } from './vue.js'，而 H 是 vue.js 里的模块级 let，由 app.js
+在模块初始化期 setHost({...}) 赋值。组件对「谁先跑、谁赋值」一无所知，只能赌挂载时它已经
+装好了（旧注释里就是这么写的）。这份隐式依赖还堵死了拆 god-object 的路：123 个 H.xxx 想按
+用途拆成细粒度 provider，组件就得逐个改 import。
 
-- SheetHost 模板尾部加 <teleport to="#shotOvlRoot"><shot-progress/></teleport>：进度层
-  从此是外壳树的普通子组件，弹层开合与它无关，开关只剩 SHOTPROG.on 上的 v-if。
-  DOM 落点与层叠零变化（dom_equiv3 的「进度层整张卡」逐字一致）。
-- 连带删掉：unmountAllSheets 的 keep 参数（三处调用点变成 unmountAllSheets()）、
-  VUE_SHEETS.progress（go/web_test.go 的注册表断言同步）、shotOverlay 里的
-  mount/unmount、ShotProgress 的 props:['tick']（17g 之后没人传这个 prop）。
-- 闸门⑮ 立刻抓到真问题：它每个文件只取第一处 components: 当整份文件的名单，shell.js 的
-  第一处是 TabBar 的 { Ico }，于是 <shot-progress> 判为未注册（prod 构建下未注册组件只
-  warn，症状是整块 DOM 直接没）。按项目惯例在文件头补 components: { Ico, ShotProgress }。
-- 闸门⑱ 扩 4 条：teleport 在位、SheetHost 自己声明 ShotProgress、unmountAllSheets 不许再带
-  例外名单、progress 不许回到 VUE_SHEETS。反向验证：删掉 teleport 立刻红。
-- test.sh：ovlMounted / ovlUnmounted 从查 __enote.vue.sheets.progress 改成查 DOM
-  （#shotOvlRoot .ovl 的有无），新增 ovlReg == 0（进度层进了 sheet 注册表就意味着
-  closeSheet 的 unmountAllSheets() 会把它拆掉）。.test/probe_sheets.sh 也不再自己
-  createApp，直接置 SHOTPROG.on 走真路径。
-- 验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、
-  ./test.sh --vd 166 项全绿 PASS（test_s17l.log）、三套 DOM 等价全部一致
-  （dom_equiv3 含进度层整张卡 / dom_equiv2 / dom_equiv todoTx 454 B）、真机探针
-  ovl=1 reg=0 → afterClose=1 sheet=0 → gone=0（渲染出来、不在 sheet 表里、活过弹层
-  关闭、关掉后零残留）。
-- 文档：plan.md §9.36、CHANGELOG.md 新节。
+- vue.js 加 HOST_KEY + withHost(app)（app.provide('H', H)），三个挂载点各调一次：
+  mountView / mountSheet / shell.js 的 mount（外壳树含 <teleport> 里的进度层）。
+- 组件里 const H = inject('H') 写在 setup 体首行，模板一行不改（模板里的 H.xxx 读的仍是
+  setup 返回的那个 H）。共 47 处 setup，13 个文件的 import 行去掉 H、解构行加 inject。
+- 改造是脚本做的（.test/to_inject.py）：先把注释与字符串内容掩码成空格，再配对括号找
+  setup 体，只对引用了 H 的 setup 注入（单行体插一行内，多行体按原缩进换行）。掩码这步
+  是必须的：setup( 在注释里也出现（「setup() 返回里暴露 H」），不掩码会把注释当代码配对
+  括号，直接 unbalanced。
+- 闸门⑮ 扩 3 条（三条都反向验证过会红）：a) 组件文件不许再 import { … H … }；
+  b) setup 里出现 H 就必须 inject('H')（漏了是 ReferenceError，整模块不执行 = 白屏）；
+  c) 三个挂载点必须 withHost(app)（漏了 inject 拿到 undefined，模板里 H.xxx 全炸）。
+- 收益：依赖摆到明面上 —— 装配哪个 app 的人负责提供宿主一目了然；测试可以 provide 一个
+  假宿主只挂单个组件；后续拆 H 只动三个挂载点，组件模板不动。
+- 验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、./test.sh --vd
+  166 项全绿 PASS（test_s17m.log；首跑撞到一个 OCR 环境抖动：随机串 FVWADDRT 被读成
+  FWADDRT，与本次改动无关，重跑即过）、三套 DOM 等价全部一致（dom_equiv3 含进度层整张卡 /
+  dom_equiv2 / dom_equiv card 2495 B、todoRow 651 B、todoTx 454 B）。
+- 文档：plan.md §9.37、CHANGELOG.md 新节。

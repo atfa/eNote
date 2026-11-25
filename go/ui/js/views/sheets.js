@@ -23,11 +23,11 @@
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, Ico, CdChip } */
-import { V, H, Vue,  } from '../vue.js'
+import { V, Vue } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico, CdChip } from '../components/leaf.js'
 
-const { computed } = Vue
+const { computed, inject } = Vue
 
 /* 排序与筛选：三到四组分段按钮，组由当前 tab 决定。按钮是「图标 + 文字」，图标走 <ico>、
    文字走 {{ }}（步骤 16c 时这两样是一整串 HTML 走 v-html，16d 翻成真模板）。
@@ -37,6 +37,7 @@ export const SortSheetView = {
   name: 'SortSheetView',
   components: { Ico },
   setup(){
+    const H = inject('H');
     return {
       H,
       tick: computed(() => V.tick),
@@ -86,6 +87,7 @@ export const MissedSheetView = {
   name: 'MissedSheetView',
   components: { EmptyState, Ico, CdChip },
   setup(){
+    const H = inject('H');
     return {
       H,
       tick: computed(() => V.tick),
@@ -109,7 +111,7 @@ export const MissedSheetView = {
 export const AddSheetView = {
   name: 'AddSheetView',
   components: { Ico },
-  setup(){ return { H, tick: computed(() => V.tick) } },
+  setup(){ const H = inject('H'); return { H, tick: computed(() => V.tick) } },
   template: `
 <h2>记一笔</h2><label>文字</label><textarea id="addText" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea><div class="acts"><button class="btn pri" @click="H.addNote()">保存并解析</button><button class="btn" @click="H.pickImage()"><ico n="camera"/>选图片（本机 OCR）</button></div>
 `
@@ -120,6 +122,7 @@ export const AddSheetView = {
 export const AddTodoSheetView = {
   name: 'AddTodoSheetView',
   setup(){
+    const H = inject('H');
     return {
       H,
       tick: computed(() => V.tick),
@@ -136,6 +139,7 @@ export const AddTodoSheetView = {
 export const LogSheetView = {
   name: 'LogSheetView',
   setup(){
+    const H = inject('H');
     return {
       H,
       tick: computed(() => V.tick),
@@ -152,6 +156,7 @@ export const LogSheetView = {
 export const DebugSheetView = {
   name: 'DebugSheetView',
   setup(){
+    const H = inject('H');
     return {
       H,
       tick: computed(() => V.tick),

@@ -3,7 +3,8 @@
    混合期 = Vue 视图与遗留字符串渲染器共存：render() 仍是唯一绘制入口，已迁移的 tab 走这里，
    未迁移的 tab 走 app.js 里的老函数。步骤 11 删掉遗留路径。
 
-   组件不持有数据：数据在 app.js 的模块状态里，组件通过宿主接口 H 读。
+   组件不持有数据：数据在 app.js 的模块状态里，组件通过宿主接口 H 读（步骤 17k：
+   H 由 withHost(app) 提供，组件里 inject('H') 拿，不再 import）。
    步骤 17e–17h 之后这些模块状态本身是 Vue.reactive 的（CLIP / FOLD / SHOTS / SHOTPROG / S /
    prefs / SR / FA 原地改键，MISSED / ST / SHOTFLAGS / LOGDATA / DEBUGDATA 是 {v:} 容器），
    所以组件里写裸 computed 就建立依赖 —— 谁读了谁重画，没有「每次 render 全量重绘」这回事。
@@ -22,11 +23,25 @@ export const nextTick = Vue.nextTick;
 export const V = Vue.reactive({ tick: 0 });
 
 /* 宿主接口：app.js 在装配时注入（状态 getter + 渲染叶子 + 事件方法）。
-   组件在 mount 时才 setup()，那时 H 已经装好，所以直接返回 H 给模板用是安全的。 */
+   步骤 17k 之后组件不再 import 它，而是 inject('H')（见下面 withHost）；
+   这里留一个模块级变量是因为 setHost 要在 app.js 的模块初始化期就拿到它（测试缝
+   __enote.vue.host 也指同一个对象），而三个挂载点都在那之后才跑。 */
 export let H = null;
 /* 返回 h：app.js 要把同一个对象再挂到 __enote.vue 上给测试用（步骤 7），
    而闸门⑮ 的 setHostKeys() 认的是 `setHost({` 这个字面量，不能改成 `var HOST = {…}; setHost(HOST)`。 */
 export function setHost(h){ H = h; return h }
+
+/* 步骤 17k：宿主接口由 app.provide 注入，组件里写 const H = inject('H')。
+   为什么要从 import 换成 inject：import 是「组件在编译期绑死 app.js 那张表」，
+   而 H 是 vue.js 里的一个模块级 let —— 谁先跑、谁赋值，组件管不着，只能赌挂载时
+   它已经装好了。inject 把这份依赖摆到明面上：装配哪个 app 的人负责提供宿主，
+   一目了然；测试可以 provide 一个假宿主只挂单个组件；将来拆 god-object（123 个
+   H.xxx）也是在这三个挂载点上逐个换成细粒度 provider，组件模板一行不用改。 */
+export const HOST_KEY = 'H';
+export function withHost(app){
+  app.provide(HOST_KEY, H);
+  return app;
+}
 
 export const apps = {};
 
@@ -44,6 +59,7 @@ export function mountView(tab, pane, def){
   app.config.productionTip = false;
   app.config.devtools = false;
   app.config.errorHandler = vueErrHandler;
+  withHost(app);
   app.mount(pane);
   apps[tab] = app;
   return app;
@@ -64,6 +80,7 @@ export function mountSheet(name, el, def){
   app.config.productionTip = false;
   app.config.devtools = false;
   app.config.errorHandler = vueErrHandler;
+  withHost(app);
   app.mount(el);
   sheetApps[name] = app;
   /* 验收缝（步骤 17b）：真机探针要查「这个弹层的 app 实例还活着吗」——

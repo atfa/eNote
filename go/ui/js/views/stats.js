@@ -22,11 +22,11 @@
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { StatsStat, StatsChart, StatsLi, StatsHero, StatsNotesCard, StatsRunCard, Ico } */
-import { V, H, Vue,  } from '../vue.js'
+import { V, Vue } from '../vue.js'
 import { Ico } from '../components/leaf.js'
 import { StatsHero, StatsNotesCard, StatsRunCard } from '../components/blocks.js'
 
-const { computed } = Vue
+const { computed, inject } = Vue
 
 /* 一个数字格子。遗留字符串：
    <div class="stat hot enter" style="--i:3"><div class="si">ic('alert')</div><b>2</b>
@@ -40,6 +40,7 @@ export const StatsStat = {
   components: { Ico },
   props: ['tick', 'i', 'v', 'label', 'icon', 'hot'],
   setup(props){
+    const H = inject('H');
     return { H, cls: computed(() => H.statCls(props.hot, props.label)) }
   },
   template: `
@@ -56,6 +57,7 @@ export const StatsChart = {
   name: 'StatsChart',
   props: ['tick', 'days'],
   setup(props){
+    const H = inject('H');
     return {
       H,
       cols: computed(function(){
@@ -92,7 +94,7 @@ export const StatsLi = {
   props: ['icon', 'title', 'sub'],
   emits: ['go'],
   // 末尾逗号不是风格：闸门⑮ 认的是 setup() 返回里的 `H,`，写成 return { H } 它认不出。
-  setup(){ return { H, } },
+  setup(){ const H = inject('H'); return { H, } },
   template: `
   <div class="li" @click="$emit('go')">
     <span class="lico"><ico :n="icon"/></span>
@@ -107,6 +109,7 @@ export const StatsView = {
   // 写成 'stats-stat': StatsStat 会被它当成没注册（Vue 两种都认，闸门只认一种）。
   components: { StatsStat, StatsChart, StatsLi, StatsHero, StatsNotesCard, StatsRunCard },
   setup(){
+    const H = inject('H');
     const tick = computed(() => V.tick);
     return {
       H,

@@ -24,16 +24,17 @@
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard } */
-import { V, H, Vue } from '../vue.js'
+import { V, Vue } from '../vue.js'
 import { Ico, KvRow } from '../components/leaf.js'
 import { SettingsDataCard, SettingsRunCard, SettingsOcrCard } from '../components/blocks.js'
 
-const { computed } = Vue
+const { computed, inject } = Vue
 
 export const SettingsSheetView = {
   name: 'SettingsSheetView',
   components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard },
   setup(){
+    const H = inject('H');
     /* 通知权限 / 常驻后台 / 电池优化这三样是 Android 桥的「拉」式接口，本身不可观察。
        V.tick 现在是「原生状态可能变了」的纪元号：onAppResume / notifyResult 里的
        settingsRefresh() bump 一次，下面这几个 computed 显式读它才会重算。

@@ -996,6 +996,36 @@ if (SPLIT) {
             wiring.push(f + '：模板用了 <' + m[1] + '> 但视图没在 components: 里注册');
         }
       }
+      /* 步骤 17k：宿主接口 H 走 provide/inject。三条契约：
+         a) 组件文件不许再 import { H } from vue.js —— 那是「编译期绑死 app.js 那张表」，
+            而 H 是 vue.js 里的模块级 let，组件管不到它何时被 setHost 赋值；
+         b) setup 里出现 H 就必须先 inject('H') —— 漏了是 ReferenceError，整模块不执行
+            （页面白屏，静态闸门以前全看不见）；
+         c) 三个挂载点（mountView / mountSheet / shell.js 的 mount）必须 withHost(app) ——
+            漏了 inject 拿到 undefined，模板里 H.xxx 全炸。 */
+      for (const f of viewFiles) {
+        const rel = path.relative(root, f);
+        const code = stripComments(fs.readFileSync(f, 'utf8'));
+        if (/\bimport\s*\{[^}]*\bH\b[^}]*\}\s*from/.test(code))
+          wiring.push(rel + "：还 import 着 H（步骤 17k：组件里 inject('H')，宿主由 withHost(app) 提供）");
+        for (const chunk of code.split(/\n(?=export const )/)) {
+          const si = chunk.indexOf('setup(');
+          if (si < 0) continue;
+          let seg = chunk.slice(si);
+          const ti = seg.search(/\n\s*template:/);
+          if (ti > 0) seg = seg.slice(0, ti);
+          if (/\bH\b/.test(seg) && !/inject\(\s*'H'\s*\)/.test(seg))
+            wiring.push(rel + "：setup 用了 H 但没 inject('H')（模块级 H 已删，这是 ReferenceError）");
+        }
+      }
+      const vueSrc = fs.readFileSync(path.join(uiDir, 'js/vue.js'), 'utf8');
+      for (const fn of ['mountView', 'mountSheet']) {
+        const m = new RegExp('export function ' + fn + '[\\s\\S]*?app\\.mount').exec(vueSrc);
+        if (!m || !/withHost\(app\)/.test(m[0]))
+          wiring.push('vue.js ' + fn + " 没 withHost(app)（组件 inject('H') 会拿到 undefined）");
+      }
+      if (!/withHost\(app\)/.test(fs.readFileSync(path.join(uiDir, 'js/shell.js'), 'utf8')))
+        wiring.push("shell.js 的 mount 没 withHost(app)（外壳树与 <teleport> 里的进度层拿不到宿主）");
       if (wiring.length) bad('闸门⑮ Vue 装配缺失', wiring.join(' | '));
       // 注册表：app.js 的 var VUE_VIEWS = { notes: NotesView } 是唯一开关
       const reg = /var VUE_VIEWS = \{([^}]*)\}/.exec(appSrc);

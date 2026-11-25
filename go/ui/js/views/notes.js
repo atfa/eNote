@@ -13,15 +13,16 @@
       真组件（步骤 16），不再走 v-html。
    4. 事件用 @click="H.xxx(...)"，函数名必须 ⊆ 导出表（闸门①(a)）。 */
 
-import { V, H, Vue,  } from '../vue.js'
+import { V, Vue } from '../vue.js'
 import { StripBar, MissedBanner, ShotBanner, ClipBanner, EmptyState, NoteCard } from '../components.js'
 
-const { computed } = Vue
+const { computed, inject } = Vue
 
 export const NotesView = {
   name: 'NotesView',
   components: { StripBar, MissedBanner, ShotBanner, ClipBanner, EmptyState, NoteCard },
   setup(){
+    const H = inject('H');
     const tick = computed(() => V.tick);
     const list = computed(() => H.notesFiltered());
     /* 两种空态与遗留 renderNotes() 一致：一条笔记都没有 vs 有笔记但被筛没了 */
