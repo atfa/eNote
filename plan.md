@@ -2464,3 +2464,38 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
   `settingsRefresh()` 在 `onAppResume` / `notifyResult` 里 bump 一次。
 - 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿、三套 DOM 等价全部一致。
 
+
+### 9.35 步骤 17i：`<Transition>` 接管弹层开合（删掉 `.closing` + `setTimeout(110)` + `sheetGen` 收场守卫）（2026-11-25）
+
+- 动机：`closeSheet()` 里那套「加 `.closing` 类 → `setTimeout(110)` 拆 app → `sheetGen` 号防
+  迟到的回调把新弹层拆掉」是手写的动画状态机，三处（CSS 类、定时器、序号守卫）必须同步，
+  少一处就是「弹层空白且点了没反应」这种查起来很贵的症状。
+- 做法：`SheetHost` 的根节点 `.sheet` 改成 `v-if="s.sheet.on"`（`class="sheet on"` 写死，
+  不再 `:class="{on:…}"` —— 元素只在开着时存在，绑上去等于 leave 第一帧就把 `display:flex` 抹掉），
+  外面套 `<transition>`，`@after-leave="H.sheetLeft"` 里 `unmountAllSheets(['progress'])`。
+  `closeSheet()` 从此只有一句 `shell.sheet.on = false`；`shell.sheet.closing` 与
+  `sheetGen` 的收场侧守卫一起删（`sheetGen` 只剩「开」这一侧要防：连点两下、开 A 立刻改开 B
+  时迟到的 `nextTick` 回调会把上一个弹层的组件挂进新面板）。
+- **CSS 模式的 `<Transition>` 在真机上会卡死**（这一条是验收逼出来的，不是设计时想到的）：
+  Vue 的 CSS 过渡用 `requestAnimationFrame` 推进状态机，页面不可见时 rAF 被挂起 → leave
+  永不落地 → 弹层关不掉、`@after-leave` 不调用、sheet 的 app 也不拆（泄漏）。
+  `test.sh` 的剪贴板 raw 用例（虚拟屏 + 物理屏关）稳定复现：`DBG close` 之后 30 秒没有
+  `DBG sheetLeft`，`CPRAW mounted=1`。改成 **JS 钩子模式**（`:css="false"` +
+  `@enter` / `@leave` / `@leave-cancelled`），`shLeave` 自己加 leave 类、用 `setTimeout` 收尾
+  （后台页的 `setTimeout` 会被节流到 1 秒，但它会跑），时长仍从 CSS 读
+  （`getComputedStyle(el).transitionDuration`，样式表依旧是唯一时长来源）。
+  `:css="false"` 时 Vue 不给类记账，所以 leave 被取消（关掉立刻重开）要自己抹类。
+- CSS：leave 类加在根元素上，所以面板那条是后代选择器
+  `.sheet.sh-leave-active .panel{animation:down …}`（特异度 0,2,1 压过 base.css 的
+  `.sheet .panel{animation:up}`）；遮罩自己加一条 `transition:opacity var(--d1)`。
+  可见差别只有一条：遮罩现在跟着淡出 110ms，以前是瞬间消失。`prefers-reduced-motion`
+  把动画时长归零 → `leaveMs()` 读到 0 → 20ms 后收尾，动效开关照旧生效。
+- 测试侧适配（`#sheet` 从常驻节点变成随开合创建/销毁）：D17 测缝载荷先开一个弹层再读
+  `__enote.dom.sheet` / `panel`（契约是「getter 能拿到活的节点」），读完关掉；
+  1047 行的 `!q("#sheet").classList.contains("on")` 改成 null 安全的 `!q("#sheet.on")`。
+- 闸门⑱ 扩了 5 条：`:css="false"`、`@leave="shLeave"`、`setTimeout(done`、
+  配对的 `shLeaveCancel`、CSS 选择器必须是 `.sheet.sh-leave-active .panel`。
+  反向验证：把 `:css="false"` 删掉，闸门立刻红。
+- 验收：122 静态检查、build/install、`./test.sh --vd` **166 项全绿 PASS**、三套 DOM 等价
+  全部一致（dom_equiv3 / dom_equiv2 / dom_equiv 454 B todoTx）、真机 leave 中段探针
+  `op=0.07 panelAnim=down panelDur=0.11s`（遮罩淡出 + 面板下滑，与迁移前一致）。

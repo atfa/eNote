@@ -1,7 +1,7 @@
 # 更新日志
 
 版本按开发阶段（Pn）记录，全部在手机上完成。界面改动都经过后台屏截图核对 +
-`tools/ui_test.js`（119 项 UI 结构契约，S3 步骤 11 起吸收了原 `ui_sig_test.js` 的 84 项签名）
+`tools/ui_test.js`（122 项 UI 结构契约，S3 步骤 11 起吸收了原 `ui_sig_test.js` 的 84 项签名）
 + `go test ./...`。
 
 ## 0.1（当前）
@@ -1373,6 +1373,27 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
   `VUE_SHEETS` 11 条；闸门 **119** 项。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
+
+### 弹层开合交给 `<Transition>`（P14 S4 步骤 17i）：删掉 `.closing` + `setTimeout(110)` + 收场序号守卫
+
+- `closeSheet()` 从此只有一句 `shell.sheet.on = false`。以前是「加 `.closing` 类 → `setTimeout(110)`
+  拆 app → `sheetGen` 号防迟到的回调把新弹层拆掉」三处必须同步的手写动画状态机。
+  `SheetHost` 根节点改成 `v-if`（`class="sheet on"` 写死），`@after-leave` 里
+  `unmountAllSheets(['progress'])`；`shell.sheet.closing` 删除，`sheetGen` 只剩「开」这一侧要防。
+- **CSS 模式的 `<Transition>` 在真机上会卡死**：Vue 用 `requestAnimationFrame` 推进 CSS 过渡的状态机，
+  页面不可见时 rAF 被挂起 → leave 永不落地 → 弹层关不掉、`@after-leave` 不调用、sheet 的 app 泄漏。
+  `test.sh` 的剪贴板 raw 用例（虚拟屏 + 物理屏关）稳定复现。改成 **JS 钩子模式**（`:css="false"` +
+  `@enter`/`@leave`/`@leave-cancelled`），`shLeave` 自己加类、用定时器收尾（后台页的 `setTimeout`
+  被节流到 1s，但它会跑），时长仍从 CSS 读（`getComputedStyle().transitionDuration`）。
+- CSS：leave 类加在根元素上，面板那条改成后代选择器 `.sheet.sh-leave-active .panel`；
+  遮罩加一条 `transition:opacity var(--d1)`。可见差别只有一条：遮罩跟着淡出 110ms（以前瞬间消失）。
+  `prefers-reduced-motion` 把时长归零 → 20ms 后收尾，动效开关照旧。
+- `#sheet` 从常驻节点变成随开合创建/销毁：D17 测缝载荷先开一个弹层再读 `__enote.dom.sheet`，
+  1047 行改成 null 安全的 `!q("#sheet.on")`。闸门⑱ 扩 5 条（`:css="false"`、`@leave="shLeave"`、
+  `setTimeout(done`、`shLeaveCancel`、CSS 选择器形状），删掉 `:css="false"` 反向验证会红。
+- 验收：122 静态检查、build/install、`./test.sh --vd` **166 项全绿 PASS**、三套 DOM 等价全部一致、
+  leave 中段探针 `op=0.07 panelAnim=down panelDur=0.11s`（遮罩淡出 + 面板下滑，与迁移前一致）。
+
 
 ### 删掉 `live()`（P14 S4 步骤 17h）：tick 降级为「原生状态纪元号」
 

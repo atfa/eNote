@@ -902,7 +902,16 @@ N0S=$(readtlog | wc -l)
   L("seam buildready="+br);
   L("seam build="+(E.build&&E.build.sha||"none")+" builtAt="+(E.build&&E.build.builtAt||"none"));
   var d=E.dom||{};
+  /* 步骤 17i：#sheet / #panel 现在随弹层开合创建/销毁（<Transition> 的 v-if），
+     静息态下这两个节点不存在。测缝的契约是「getter 能拿到活的节点」，所以先开一个
+     弹层再读，读完关掉（不留下状态给后面的用例）。 */
+  var A=window.__enoteActions||{};
+  if(!d.sheet && A.clipSheet){
+    A.clipSheet();
+    for(var si=0; si<40 && !d.sheet; si++){ await new Promise(function(r){ setTimeout(r,50) }) }
+  }
   L("seam dom main="+(d.main?d.main.id+":"+d.main.tagName:"none")+" sheet="+(d.sheet?d.sheet.id+":"+d.sheet.tagName:"none")+" panel="+(d.panel?1:0)+" toast="+(d.toast?1:0)+" dlg="+(d.dlg?1:0));
+  if(A.closeSheet) A.closeSheet();
   L("seam api="+(typeof E.api)+" markReady="+(typeof E.markReady));
   var pr=E.probe||{};
   L("seam probeok="+(typeof pr.ok==="boolean"?String(pr.ok):"none")+" missing="+(pr.missing&&pr.missing.length?pr.missing.join("|"):"none")+" moduleError="+(pr.moduleError?String(pr.moduleError).replace(/\s+/g,"_"):"none"));
@@ -1035,7 +1044,7 @@ N0C=$(readtlog | wc -l)
   // 固定 500ms 换成轮询，目标状态必须和下面的断言同源：笔记详情打开了 **且** 面板的 on 类
   // 真的从 DOM 上摘掉。只轮询 open 状态会抢跑 —— 状态先变、Vue 的 patch 在下一拍，
   // 于是 sheet=true 假红（实测第一次跑就红在「跳笔记之后面板没关掉」）。
-  var tJump=await poll(function(){ return Object.keys(__enote.state.open).length>n0 && !q("#sheet").classList.contains("on") },30,200);
+  var tJump=await poll(function(){ return Object.keys(__enote.state.open).length>n0 && !q("#sheet.on") },30,200);
   L("tJump="+tJump); L("jumped="+(Object.keys(__enote.state.open).length>n0?1:0)+" nid="+nid);
   L("sheet="+(q("#sheet")?q("#sheet").classList.contains("on"):false));
   await missedSheet();

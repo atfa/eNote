@@ -1,0 +1,92 @@
+
+== build (go unit tests + apk)
+    package: name='dev.xduo.enote' versionCode='1' versionName='0.1' platformBuildVersionName='13' platformBuildVersionCode='33' compileSdkVersion='33' compileSdkVersionCodename='13'
+    application-label:'懒得记'
+    launchable-activity: name='dev.xduo.enote.MainActivity'  label='' icon=''
+
+== install + start
+  apk sha256=2188274a2380757c  head=88f3eee  branch=main  build=88f3eee8e056-dirty@2026-11-25T06:01:13Z
+  on background display 236
+  api: http://127.0.0.1:33863/
+
+== 跑前重置数据（确定基线）
+  baseline: notes=0 todos=0 clip=0 theme=light base=yes ai=yes att=0 shots=0
+
+== AI 是否可用（没配好 key 就跳过依赖大模型的用例）
+  llm ok=1
+
+== selftest hook (store + web + llm + ocr)
+  store ok, web 200 in 12ms, llm ok in 5363ms, ocr ready=True
+
+== share text -> note with a dated todo
+  title: 购物、取件及周会测试安排 | 3 todos, first due 2026-11-25T20:00
+
+== share image -> local ocr -> note
+  ocr 129 chars in 474ms, llm 4676ms, title: 设计评审与快递待办
+
+== share 现造的随机串图 → 本地 OCR 逐字读出（搜索断言只靠它）
+  图上画的随机串 UYGYV4YG；对照组 U9NHTV7A（图上没有，搜索必须 0 命中）
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+  ok (canvas 现造 39251 字节的图，随机串已画进去)
+  最近一条图片笔记：status=done ocrMs=166 ocrText='取快递 UYGW4YG\n图片文字搜索断言用唯一随机串'
+--- go log ---
+  2026-11-25 14:01:38.305 llm: ok 78 chars in 2045ms (finish=stop)
+  2026-11-25 14:01:38.454 enqueue 1795586498452683pf29 kind=text source=manual-text len=49 ocrMs=0 status=queued
+  2026-11-25 14:01:38.458 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 14:01:42.501 llm: ok 338 chars in 4045ms (finish=stop)
+  2026-11-25 14:01:42.504 note 1795586498452683pf29 parsed: title="产品组评审会安排" todos=1 in 4045ms
+  2026-11-25 14:01:43.830 llm: ok 553 chars in 5363ms (finish=stop)
+  2026-11-25 14:01:45.053 enqueue 179558650505304598ft kind=text source=share-text len=77 ocrMs=0 status=queued
+  2026-11-25 14:01:46.306 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 14:01:46.306 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 14:01:48.644 llm: ok 523 chars in 3589ms (finish=stop)
+  2026-11-25 14:01:48.646 note 179558650505304598ft parsed: title="购物、取件及周会测试安排" todos=3 in 3589ms
+  2026-11-25 14:01:50.726 enqueue 1795586510726242adgf kind=image source=share-image len=261 ocrMs=474 status=queued
+  2026-11-25 14:01:51.992 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 14:01:51.993 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 14:01:55.404 llm: ok 867 chars in 4676ms (finish=stop)
+  2026-11-25 14:01:55.405 note 1795586510726242adgf parsed: title="设计评审与快递待办" todos=2 in 4676ms
+  2026-11-25 14:01:57.766 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 14:01:57.766 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 14:01:57.914 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 14:01:57.914 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 14:01:58.554 enqueue 1795586518552527tu6n kind=image source=share-image len=60 ocrMs=166 status=queued
+  2026-11-25 14:01:59.814 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-25 14:01:59.814 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-25 14:02:01.545 llm: ok 298 chars in 2988ms (finish=stop)
+  2026-11-25 14:02:01.546 note 1795586518552527tu6n parsed: title="取快递 UYGW4YG" todos=1 in 2988ms
+--- app log ---
+  1795586517.763 window focus: true → 补读剪贴板
+  1795586517.766 clip 重复，未暂存 17 字（text, label=hook）：原样导入 1795585897 b
+  1795586517.916 clip 重复，未暂存 17 字（text, label=hook）：原样导入 1795585897 b
+  1795586517.996 web: page finished http://127.0.0.1:33863/
+  1795586518.371 share: handle action=android.intent.action.SEND type=image/* text=null
+  1795586518.527 window focus: false
+  1795586519.116 web console: SELFCHECK OK
+  1795586519.815 clip 重复，未暂存 17 字（text, label=hook）：原样导入 1795585897 b
+  1795586519.838 shots: scan -> 0
+  1795586519.843 window focus: true
+  FOREGROUND: yes
+      mCurrentFocus=Window{e637af8 u0 dev.xduo.enote/dev.xduo.enote.MainActivity}
+      mFocusedApp=ActivityRecord{202368764 u0 dev.xduo.enote/.MainActivity t2777}
+  --- crashes ---
+  11-23 14:23:36.966 21595 21595 F DEBUG   : Cmdline: /system/bin/app_process -Djava.class.path=/data/app/~~hR_7Zau5WQ6s1UfEDU2z-wAA/dev.xduo.enote-AFOV7xT3J6XW79QnjFgMsQ==/base.apk /dev/null com.k2fsa.soloist.nativebridge.Main main 127.0.0.1 44299 jseval
+  11-23 14:23:36.966 21595 21595 F DEBUG   : pid: 21584, tid: 21584, name: main  >>> /system/bin/app_process <<<
+  11-23 14:23:36.966 21595 21595 F DEBUG   : uid: 0
+  11-23 14:23:36.966 21595 21595 F DEBUG   : tagged_addr_ctrl: 0000000000000001 (PR_TAGGED_ADDR_ENABLE)
+  11-23 14:23:36.966 21595 21595 F DEBUG   : esr: 0000000092000006 (Data Abort Exception 0x24)
+  11-23 14:23:36.966 21595 21595 F DEBUG   : signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------
+  11-23 14:23:36.966 21595 21595 F DEBUG   : Abort message: 'No pending exception expected: java.lang.ClassNotFoundException: com.k2fsa.soloist.nativebridge.Main
+  11-23 14:23:36.966 21595 21595 F DEBUG   : (Throwable with empty stack trace)'
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x0  0000000000000000  x1  0000000000005450  x2  0000000000000006  x3  0000007fcd99b1c0
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x4  6f646277641f666d  x5  6f646277641f666d  x6  6f646277641f666d  x7  7f7f7f7f7f7f7f7f
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x8  00000000000000f0  x9  d48185b7f0a02322  x10 000000ff00000020  x11 000000000012800c
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x12 0000007619b54020  x13 000000007fffffff  x14 000000000b77303e  x15 000013d2fa13da9b
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x16 000000760fb8a120  x17 000000760fb72380  x18 00000076196b4000  x19 0000000000005450
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x20 0000000000005450  x21 00000000ffffffff  x22 0000000000000002  x23 b400007463d94010
+  11-23 14:23:36.966 21595 21595 F DEBUG   :     x24 00000073432d6000  x25 0000000000fffff9  x26 000000005a000000  x27 0000007fcd99b600
+  --- per-display focus ---
+    display 236: Window{7922f20 u0 com.sec.android.app.launcher/com.honeyspace.dexservice.SecondaryLauncher}
+    display 6: null
+    display 0: Window{e637af8 u0 dev.xduo.enote/dev.xduo.enote.MainActivity}   <-- target
+ERROR: OCR 没能在现造的图里读出 UYGYV4YG（图上画的就是它：读不出就是本地 OCR 路径坏了）

@@ -1863,10 +1863,27 @@ if (SPLIT) {
     if (pv.indexOf("unmountSheet('") >= 0) leaks.push('pageSheetVue 里又写了硬编码的 unmountSheet 名单');
   }
   const cs = bodyOf('function closeSheet(');
+  const sl = bodyOf('function sheetLeft(');
   if (!cs) leaks.push('找不到 closeSheet（闸门⑱ 在假绿）');
   else {
-    if (!/unmountAllSheets\(\['progress'\]\)/.test(cs)) leaks.push('closeSheet 没全量拆 sheet（进度层要列为例外）');
-    if (cs.indexOf("unmountSheet('") >= 0) leaks.push('closeSheet 里又写了硬编码的 unmountSheet 名单（新增 sheet 会静默泄漏）');
+    /* 步骤 17i：拆 app 从 closeSheet 搬进了 <transition @after-leave> 的 sheetLeft，
+       所以这条契约现在跨两个函数：closeSheet 只负责起 leave，sheetLeft 负责拆。 */
+    if (!sl) leaks.push('找不到 sheetLeft（<transition @after-leave> 的回调，闸门⑱ 在假绿）');
+    else if (!/unmountAllSheets\(\['progress'\]\)/.test(sl)) leaks.push('sheetLeft 没全量拆 sheet（进度层要列为例外）');
+    if (sl && /unmountSheet\('/.test(sl)) leaks.push('sheetLeft 里又写了硬编码的 unmountSheet 名单（新增 sheet 会静默泄漏）');
+    if (/unmountSheet\('/.test(cs)) leaks.push('closeSheet 里又写了硬编码的 unmountSheet 名单（新增 sheet 会静默泄漏）');
+    const sh = read('go/ui/js/shell.js');
+    if (!/<transition[^>]*@after-leave="H\.sheetLeft"/.test(sh)) leaks.push('SheetHost 的 <transition> 没接 @after-leave=H.sheetLeft（拆不掉 sheet）');
+    if (/shell\.sheet\.closing/.test(appSrc)) leaks.push('closeSheet 还在用 .closing + setTimeout（17i 已交给 <transition>）');
+    /* 步骤 17i：leave 必须是 JS 钩子模式。CSS 模式下 Vue 用 requestAnimationFrame 推进
+       状态机，页面不可见时 rAF 挂起 → leave 永不落地 → 弹层关不掉、sheet 的 app 也不拆。
+       真机验收（test.sh 剪贴板 raw 用例，虚显 + 屏关）拓到过：改回 CSS 模式就复现。 */
+    if (!/<transition[^>]*:css="false"/.test(sh)) leaks.push('SheetHost 的 <transition> 不是 JS 钩子模式（:css="false"）：CSS 模式的 leave 靠 rAF 推进，页面不可见时永不落地');
+    if (!/<transition[^>]*@leave="shLeave"/.test(sh)) leaks.push('SheetHost 的 <transition> 没接 @leave=shLeave');
+    if (!/setTimeout\(done/.test(sh)) leaks.push('shLeave 没用定时器收尾（见 SheetHost 注释：rAF 在不可见页面被挂起）');
+    if (!/shLeaveCancel/.test(sh)) leaks.push('shLeave 没有配对的 leave-cancelled 抹类（:css="false" 时 Vue 不记账，关掉立刻重开会残留 leave 类）');
+    const ccs = read('go/ui/css/components.css');
+    if (!/\.sheet\.sh-leave-active \.panel\{animation:down/.test(ccs)) leaks.push('components.css 的收场动画选择器不是 .sheet.sh-leave-active .panel（leave 类加在根元素上）');
   }
   if (leaks.length) bad('sheet 生命周期被破坏', leaks.join('；'));
   else ok('闸门⑱ 开/关弹层都全量拆 sheet，进度层是例外');

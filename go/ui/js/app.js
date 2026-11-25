@@ -989,9 +989,12 @@ var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView, mine: St
 var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, progress: ShotProgress, clip: ClipSheetView,
   settings: SettingsSheetView, sort: SortSheetView, missed: MissedSheetView, add: AddSheetView,
   addtodo: AddTodoSheetView, log: LogSheetView, debug: DebugSheetView };
-/* 弹层开启序号（步骤 8）。closeSheet 的收起动画是 110ms，期间重开同一个弹层时迟到的
-   回调会把刚 mountSheet 出来的新实例卸掉：DOM 还在 .panel 里但 app 已死，弹层空白且
-   点了没反应。三个开启入口 bump，回调发现序号变了就直接放弃。 */
+/* 弹层开启序号（步骤 8）。两个开启入口（pageSheetVue / sheetVue）都是「先改 shell.sheet 状态，
+   再 nextTick 往 #sheetBody 里挂 app」；连点两下、开 A 立刻改开 B 时，迟到的 nextTick 回调会
+   把上一个弹层的组件挂进新面板里：DOM 在 .panel 里但 app 已死，弹层空白且点了没反应。
+   入口 bump，回调发现序号变了就直接放弃。
+   步骤 17i：closeSheet 不再参与 —— 收场交给 <Transition>，leave 被取消时 Vue 不会调
+   after-leave，所以上面这条只剩「开」这一侧要防。 */
 var sheetGen = 0;
 /* DOM 测量类的副作用：必须在 DOM 落地之后跑（遗留路径是同步 innerHTML，Vue 路径是 nextTick 之后） */
 function afterPaint(){
@@ -1191,7 +1194,6 @@ window.onAppResume = function(){
    两者都返回 nextTick 的 Promise（D13：调用方 await 完才能断到新 DOM），并在挂载后把
    面板滚回顶部。步骤 16c：字符串内容那条路（pageSheet / sheet + mode:'html'）删掉了，
    六个字符串弹层全成了组件，内联 onclick 也一起没了（app.js 里从 21 处降到 0）。 */
-var sheetGen = 0;
 function pageSheetVue(name, title, kind){
   sheetGen++;
   var gen = sheetGen;
@@ -1205,7 +1207,6 @@ function pageSheetVue(name, title, kind){
   shell.sheet.full = false;
   shell.sheet.title = title;
   shell.sheet.on = true;
-  shell.sheet.closing = false;
   return nextTick(function(){
     if(gen !== sheetGen) return;
     var el = $('#sheetBody');
@@ -1227,7 +1228,6 @@ function sheetVue(name, full){
   shell.sheet.full = !!full;
   shell.sheet.title = '';
   shell.sheet.on = true;
-  shell.sheet.closing = false;
   return nextTick(function(){
     if(gen !== sheetGen) return;
     var el = $('#sheetBody');
@@ -1394,20 +1394,19 @@ async function showDebug(){
 function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
 function closeSheet(){
   if(!shell.sheet.on) return;
-  shell.sheet.closing = true;
-  var gen = sheetGen;
-  setTimeout(function(){
-    /* 期间又开过一个弹层（快速连点：关掉立刻重开）→ 这个回调是迟到的，什么都不动。
-       不能写成「先关 on 再判断 on」：那个判断永远为真，而关掉已经把新开的弹层收掉了。
-       progress 不在这里收：shotsImported 会先 closeSheet 再等
-       AI 解析完，进度层必须活过弹层。 */
-    if(gen !== sheetGen) return;
-    shell.sheet.on = false;
-    shell.sheet.closing = false;
-    /* 步骤 13：以前这里手写四个名字（shots/folders/clip/settings），新增 sheet 忘了加
-       就是静默泄漏。名单现在只有一份：sheetApps 这张表。progress 是例外（见上）。 */
-    unmountAllSheets(['progress']);
-  }, 110);
+  /* 步骤 17i：收摊交给 SheetHost 里的 <Transition>：on=false 触发 leave 动画，动画真的
+     跑完才 @after-leave → sheetLeft() 拆 app。以前是 setTimeout(110) + sheetGen 号防
+     「关掉立刻重开」时迟到的回调把新弹层拆掉；Vue 在 leave 被取消时根本不会调
+     after-leave，那个守卫整个没用了。
+     progress 不在这里收：shotsImported 会先 closeSheet 再等 AI 解析完，
+     进度层必须活过弹层（sheetLeft 里列为例外）。 */
+  shell.sheet.on = false;
+}
+/** <transition @after-leave>：面板的收场动画真结束了才拆 sheet 的 app */
+function sheetLeft(){
+  /* 步骤 13：以前这里手写四个名字（shots/folders/clip/settings），新增 sheet 忘了加
+     就是静默泄漏。名单现在只有一份：sheetApps 这张表。progress 是例外（见上）。 */
+  unmountAllSheets(['progress']);
 }
 
 /* ---------- 自绘对话框（代替原生 confirm/alert）----------
@@ -1594,7 +1593,7 @@ var HOST = setHost({
      @click="H.xxx(...)"，走的就是这张表（闸门⑮ 逐个查名字在不在）。 */
   brandGo: brandGo, tabPick: tabPick, fabAct: fabAct,
   searchInput: searchInput, searchClear: searchClear,
-  closeSheet: closeSheet, sortSheet: sortSheet,
+  closeSheet: closeSheet, sortSheet: sortSheet, sheetLeft: sheetLeft,
   dlgOk: function(){ closeDlg(true) }, dlgCancel: function(){ closeDlg(false) },
   hit: hit, rank: rank,
   toggle: toggle, jump: jump, render: render,
@@ -1726,7 +1725,7 @@ setTimeout(selfCheck, 1200);
 window.__enoteActions = {
   addNote, addTodo, addTodoSheet, api, askBattery, askExact,
   askNotify, askShotPerm, clearAllNotes, clipDel, clipDelSel, clipParse,
-  clipPick, clipSelAll, clipSheet, closeSheet, delAttach, delNote,
+  clipPick, clipSelAll, clipSheet, closeSheet, delAttach, delNote, sheetLeft,
   delTodo, doImportShots, expand, exportJSON, folderFilter, folderPick, folderPickShots,
   folderSave, folderSelAll, folderSheet, importClip, importJSON, jump,
   missedDismiss, missedDone, missedGoTodos, missedSheet, openAttach, pickImage,
