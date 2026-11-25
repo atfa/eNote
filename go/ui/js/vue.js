@@ -38,11 +38,42 @@ export function setHost(h){ H = h; return h }
    为什么要从 import 换成 inject：import 是「组件在编译期绑死 app.js 那张表」，
    而 H 是 vue.js 里的一个模块级 let —— 谁先跑、谁赋值，组件管不着，只能赌挂载时
    它已经装好了。inject 把这份依赖摆到明面上：装配哪个 app 的人负责提供宿主，
-   一目了然；测试可以 provide 一个假宿主只挂单个组件；将来拆 god-object（123 个
-   H.xxx）也是在这三个挂载点上逐个换成细粒度 provider，组件模板一行不用改。 */
+   一目了然；测试可以 provide 一个假宿主只挂单个组件；步骤 17m 就是在这三个挂载点上把
+   132 个 key 的 god-object 按 app 收窄的（见下面 narrowHost），组件模板一行没改。 */
 export const HOST_KEY = 'H';
-export function withHost(app){
-  app.provide(HOST_KEY, H);
+
+/* 步骤 17m：宿主按 app 收窄。全量宿主 132 个 key，而每个 app 那一棵组件树真正读到的
+   只有 1–28 个（93 个 key 全项目只有一个 app 用）。以前每个 app 都拿到全量，于是
+   笔记模板里写 H.clipParse 也能跑起来（拼错了也是「别的域有这个名字」），运行时没人
+   拦得住。现在每个 app 只拿到自己那棵树读到的那些：越界就是 undefined，闸门⑮ 静态双向
+   核对（表里的 key 必须真在宿主上、树里读到的必须在表里）。
+
+   getter 必须原样搬：S / tab / MISSED.v 这些是「会被整体赋值」的 var，宿主里写的是
+   get S(){ return S }；用 Object.assign / 展开会把 getter 求值一次，之后永远读旧引用
+   （同 SHOTS.list / FA 的教训）。 */
+export function narrowHost(keys){
+  var o = {};
+  for (var i = 0; i < keys.length; i++){
+    var k = keys[i], d = Object.getOwnPropertyDescriptor(H, k);
+    /* 表里写了宿主上没有的名字：留一个 undefined 占位，闸门⑮ 负责报红；
+       运行时症状是「那一片渲染成空」而不是整模块 ReferenceError。 */
+    if (d) Object.defineProperty(o, k, d); else o[k] = undefined;
+  }
+  return o;
+}
+
+/* app id → 这棵组件树要读的 key。表在 app.js（那里才知道每个 app 挂的是哪个组件），
+   由 setHostKeys 交进来。表没装（单组件测试）或表里没这个 app → 退回全量宿主，
+   闸门⑮ 会红，运行时不炸。 */
+var HOST_KEYS = null;
+export function setHostKeys(t){ HOST_KEYS = t; return t }
+export function hostFor(appId){
+  var keys = HOST_KEYS && HOST_KEYS[appId];
+  return keys ? narrowHost(keys) : H;
+}
+
+export function withHost(app, host){
+  app.provide(HOST_KEY, host === undefined ? H : host);
   return app;
 }
 
@@ -62,7 +93,7 @@ export function mountView(tab, pane, def){
   app.config.productionTip = false;
   app.config.devtools = false;
   app.config.errorHandler = vueErrHandler;
-  withHost(app);
+  withHost(app, hostFor('view:' + tab));   // 步骤 17m：只给这棵树读得到的宿主
   app.mount(pane);
   apps[tab] = app;
   return app;
@@ -83,7 +114,7 @@ export function mountSheet(name, el, def){
   app.config.productionTip = false;
   app.config.devtools = false;
   app.config.errorHandler = vueErrHandler;
-  withHost(app);
+  withHost(app, hostFor('sheet:' + name));   // 步骤 17m：同上
   app.mount(el);
   sheetApps[name] = app;
   /* 验收缝（步骤 17b）：真机探针要查「这个弹层的 app 实例还活着吗」——

@@ -1,24 +1,24 @@
-refactor(ui): 删掉 tick prop 管道（P14 S4 步骤 17l）
+refactor(ui): 宿主接口按 app 收窄（P14 S4 步骤 17m）
 
-17h 删了 live() 之后 tick prop 只剩管道没有读者：29 处 :tick="tick"、21 个组件声明
-props: ['tick', …]、13 处 setup 返回 tick: computed(() => V.tick)，全项目没有一处读
-props.tick。全删：状态是 reactive 的，computed 读到谁就订阅谁；父组件重渲染时 props
-变了子组件才跟着重渲染 —— 这就是 Vue 的默认语义，不需要额外的信号。
+setHost 那张表 132 个 key，每个 app 的组件树真正读到的只有 0–27 个，其中 93 个 key 全项目
+只有一个 app 用（clipParse 只有 clip 弹层读、reocr 只有笔记卡读）。全量下发的后果是拼错的
+key 撞上别的域的名字也能跑：笔记模板里写 H.clipParse() 静态检查过得去（「在 setHost 里」）、
+运行时也返回一个函数，只有画出来的东西不对。现在每个 app 只拿到自己那棵树读到的那些。
 
-- 模板 29 处 :tick 全删；props 里的 'tick' 全删（只剩 tick 的组件连 props 行一起删）；
-  setup 里的 tick: computed(() => V.tick) 与 const tick = computed(...) 全删。
-- 不再读 V.tick 的文件从 vue.js 的 import 里摘掉 V（8 个文件），宿主对象里的 V: V 一并
-  删掉（H.V 全项目无人读）。这里踩过一次：app.js 摘了 import 却留着 V: V → 整模块
-  ReferenceError、页面白屏，静态闸门全绿，真机跑测试才抓到。
-- 保留 V.tick 与 sheetPaint()/vuePaint() 的 bump：settings.js 的 nat 还要它（通知权限/
-  常驻后台/电池优化是 Android 桥的「拉」式只读接口）。
-- 闸门⑮ 的 tick 规则反转：组件声明 tick prop 红、模板出现 :tick 红（两条都反向验证）；
-  闸门①c 从「视图必须引用 tick」改成「视图必须出现 computed()」；新增「代码用 V 却没
-  import 它」检查（反向验证：leaf.js 加一行 const zz = V.tick; 立刻红）。仍是 122 项。
-- 注释与 test.sh 措辞同步：「computed 不依赖 tick 就永远缓存」→「读的是 reactive 容器，
-  整包赋值即失效」；11 处「tick 链断了」→「响应式链断了」。
-- 新增 .test/drop_tick.py（机械变换脚本，dry-run 默认、--apply 落盘）。
+- app.js 新增 HOST_KEYS 表（19 个 app：4 视图 + 10 弹层 + 5 外壳容器），由
+  .test/host_split.py --emit 从组件注册表算出来：每个 app 根沿 components: { A, B } 取传递
+  闭包，∪ 其中出现的 H.xxx。
+- vue.js 新增 narrowHost(keys)（逐 key 搬 property descriptor，不是 Object.assign：S / tab /
+  MISSED.v 这些是「会被整体赋值」的 var，宿主里是 getter，展开求值一次就永远读旧引用）+
+  setHostKeys(table) + hostFor(appId)；withHost(app, host) 多一个可选参数。
+- 三个挂载点改成 withHost(app, hostFor('view:' + tab)) / hostFor('sheet:' + name) /
+  shell.js 的 hostFor('shell:' + id)。组件模板与 setup 一行没改：局部名还叫 H，只是 inject
+  到的对象变窄 → DOM 逐字不变。
+- setHost(HOST) 仍是全量：测试缝 __enote.vue.host.X 要能读任意 key。
+- 闸门⑮ 新增三向核对（仍 122 项，反向验证 5 次）：表里的 key 必须真在宿主对象上；组件树里
+  读到的必须在表里；表里不许列这棵树没读的 key、不许有没挂载点的 app。挂载点只写
+  withHost(app)（全量）也算红。
 
-验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、./test.sh --vd 164 项
-全绿 PASS、dom_equiv3 / dom_equiv2 / dom_equiv 全部一致（卡片 2495 B、todoRow 651 B、
-todoTx 454 B 逐字未变）。文档：plan.md §9.38、CHANGELOG。
+验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、./test.sh --vd 164 项全绿
+PASS、dom_equiv3 / dom_equiv2 / dom_equiv 全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B
+逐字未变）。文档：plan.md §9.39、CHANGELOG。

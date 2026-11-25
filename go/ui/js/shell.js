@@ -26,7 +26,7 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { Ico, ShotProgress } */
 
-import { Vue, withHost } from './vue.js'
+import { Vue, withHost, hostFor } from './vue.js'
 import { Ico } from './components/leaf.js'
 import { ShotProgress } from './views/shots.js'
 
@@ -65,7 +65,7 @@ function mount(id, def){
   const app = createApp(def);
   app.config.productionTip = false;
   app.config.devtools = false;
-  withHost(app);   // 步骤 17k：外壳树（含 <teleport> 里的进度层）的 H 都从这里 inject
+  withHost(app, hostFor('shell:' + id));   // 步骤 17k 提供、17m 收窄：外壳树（含 <teleport> 里的进度层）的 H 都从这里 inject
   app.mount(el);
   return app;
 }

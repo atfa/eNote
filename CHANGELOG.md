@@ -1374,6 +1374,26 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 宿主接口按 app 收窄（P14 S4 步骤 17m）：每个 app 只拿到自己那棵树读的 key
+
+`setHost` 那张表 132 个 key，每个 app 的组件树真正读到的只有 0–27 个，其中 93 个 key 全项目
+只有**一个** app 用。全量下发的后果是拼错的 key 撞上别的域的名字也能跑：笔记模板里写
+`H.clipParse()` 静态检查过得去（「在 setHost 里」），运行时也返回一个函数，只有画出来的不对。
+
+- `app.js` 新增 `HOST_KEYS` 表（19 个 app：4 视图 + 10 弹层 + 5 外壳），由
+  `.test/host_split.py --emit` 从组件注册表算出来：每个 app 根沿 `components: { A, B }` 取传递
+  闭包，∪ 其中出现的 `H.xxx`。
+- `vue.js` 新增 `narrowHost(keys)`（逐 key 搬 property descriptor，不是 `Object.assign`：
+  `S` / `tab` / `MISSED.v` 是「会被整体赋值」的 var，宿主里是 getter，展开求值一次就永远读旧
+  引用）+ `setHostKeys()` + `hostFor(appId)`；`withHost(app, host)` 多一个可选参数，三个挂载点
+  改成 `withHost(app, hostFor('view:' + tab))` 等。
+- 组件模板与 setup 一行没改：局部名还叫 `H`，只是 inject 到的对象变窄 → DOM 逐字不变。
+  `setHost(HOST)` 仍是全量，测试缝 `__enote.vue.host.X` 照旧能读任意 key。
+- 闸门⑮ 新增三向核对（仍 122 项，反向验证 5 次）：表里的 key 必须真在宿主上；组件树读到的
+  必须在表里；表里不许列没读的 key、不许有没挂载点的 app。挂载点只写 `withHost(app)`（全量）也算红。
+- 验收：122 静态检查、build、install Success、`./test.sh --vd` 164 项全绿 PASS、三套 DOM 等价
+  全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B 逐字未变）。
+
 ### tick prop 管道整条删除（P14 S4 步骤 17l）：组件不再收 :tick
 
 17h 删掉 `live()` 之后，`tick` prop 只剩管道没有读者：29 处 `:tick="tick"`、21 个组件声明

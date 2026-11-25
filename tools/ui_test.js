@@ -1032,13 +1032,94 @@ if (SPLIT) {
           wiring.push(rel + "：代码里用 V 却没从 vue.js import 它（模块加载就 ReferenceError，整页白屏）");
       }
       const vueSrc = fs.readFileSync(path.join(uiDir, 'js/vue.js'), 'utf8');
-      for (const fn of ['mountView', 'mountSheet']) {
+      const shellSrc = fs.readFileSync(path.join(uiDir, 'js/shell.js'), 'utf8');
+      for (const [fn, id] of [['mountView', "'view:' + tab"], ['mountSheet', "'sheet:' + name"]]) {
         const m = new RegExp('export function ' + fn + '[\\s\\S]*?app\\.mount').exec(vueSrc);
-        if (!m || !/withHost\(app\)/.test(m[0]))
-          wiring.push('vue.js ' + fn + " 没 withHost(app)（组件 inject('H') 会拿到 undefined）");
+        if (!m || !/withHost\(app[,)]/.test(m[0]))
+          wiring.push('vue.js ' + fn + " 没 withHost(app, …)（组件 inject('H') 会拿到 undefined）");
+        else if (!m[0].includes('hostFor(' + id + ')'))
+          wiring.push('vue.js ' + fn + ' 的宿主没按 ' + id + ' 收窄（步骤 17m：每个 app 只拿自己那棵树的 key）');
       }
-      if (!/withHost\(app\)/.test(fs.readFileSync(path.join(uiDir, 'js/shell.js'), 'utf8')))
-        wiring.push("shell.js 的 mount 没 withHost(app)（外壳树与 <teleport> 里的进度层拿不到宿主）");
+      {
+        const mm = /function mount\(id, def\)[\s\S]*?app\.mount/.exec(shellSrc);
+        if (!mm || !/withHost\(app[,)]/.test(mm[0]))
+          wiring.push("shell.js 的 mount 没 withHost(app, …)（外壳树与 <teleport> 里的进度层拿不到宿主）");
+        else if (!mm[0].includes("hostFor('shell:' + id)"))
+          wiring.push("shell.js 的 mount 没按 shell:<容器 id> 收窄宿主（步骤 17m）");
+      }
+      /* 步骤 17m：宿主按 app 收窄。app.js 的 HOST_KEYS 逐 app 列出那棵组件树读到的 key，
+         三个方向都查（都反向验证过）：
+           a) 表里的 key 必须真在 setHost 的宿主对象上 —— 拼错的 key 运行时是 undefined；
+           b) 组件树里读到的 H.xxx 必须在表里 —— 漏一个就是那一片渲染成空；
+           c) 表里不许列这棵树没读的 key，表里也不许有没挂载点的 app —— 表是依赖清单，
+              白列 = 清单在骗人。
+         组件树 = 从 app 根出发沿 components: { A, B } 的传递闭包（与闸门㉔ 同源）。 */
+      function parseHostKeys(src) {
+        const i = src.indexOf('var HOST_KEYS = {');
+        if (i < 0) return null;
+        let d = 0, j = src.indexOf('{', i), k = j;
+        for (; k < src.length; k++) {
+          if (src[k] === '{') d++;
+          else if (src[k] === '}') { d--; if (!d) break }
+        }
+        const body = src.slice(j + 1, k).replace(/\/\*[\s\S]*?\*\//g, '');
+        const out = new Map();
+        for (const m of body.matchAll(/'([\w:]+)':\s*\[([^\]]*)\]/g))
+          out.set(m[1], m[2].split(',').map(s => s.trim().replace(/^'|'$/g, '')).filter(Boolean));
+        return out;
+      }
+      const hostKeys = parseHostKeys(appSrc);
+      if (!hostKeys) wiring.push('app.js 没有 var HOST_KEYS = {（步骤 17m：宿主收窄表）');
+      else {
+        const compKids = new Map(), compKeys = new Map();
+        for (const [f, src0] of jsSources) {
+          if (/vue\.js$/.test(f)) continue;
+          for (const chunk of src0.split(/\n(?=export const )/)) {
+            const m = /^export const (\w+)/.exec(chunk);
+            if (!m) continue;
+            const code = stripComments(chunk);
+            const cm = /components:\s*\{([^}]*)\}/.exec(code);
+            compKids.set(m[1], cm ? cm[1].split(/[,\s]+/)
+              .map(s => s.replace(/[^A-Za-z0-9_$]/g, '')).filter(s => /^[A-Z]/.test(s)) : []);
+            compKeys.set(m[1], new Set([...code.matchAll(/\bH\.(\w+)/g)].map(x => x[1])));
+          }
+        }
+        const roots = new Map();
+        const vm = /var VUE_VIEWS = \{([^}]*)\}/.exec(appSrc);
+        const sm = /var VUE_SHEETS = \{([\s\S]*?)\};/.exec(appSrc);
+        for (const grp of [vm, sm]) if (grp) for (const e of grp[1].split(',')) {
+          const p = e.split(':');
+          if (p.length === 2) roots.set((grp === vm ? 'view:' : 'sheet:') + p[0].trim(), p[1].trim());
+        }
+        for (const m of shellSrc.matchAll(/mount\('(\w+)',\s*(\w+)\)/g)) roots.set('shell:' + m[1], m[2]);
+        for (const [appId, r] of roots) {
+          const seen = new Set(), stack = [r];
+          while (stack.length) {
+            const n = stack.pop();
+            if (seen.has(n)) continue;
+            seen.add(n);
+            for (const c of (compKids.get(n) || [])) stack.push(c);
+          }
+          const need = new Set();
+          for (const n of seen) for (const k of (compKeys.get(n) || [])) need.add(k);
+          const declared = hostKeys.get(appId);
+          if (!declared) {
+            wiring.push(`HOST_KEYS 表里没有 ${appId}（这个 app 拿到全量宿主，收窄失效）`);
+            continue;
+          }
+          const D = new Set(declared);
+          const miss = [...need].filter(k => !D.has(k));
+          if (miss.length)
+            wiring.push(`HOST_KEYS['${appId}'] 少了 ${miss.join(', ')}（${r} 那棵树读它，运行时是 undefined、那一片渲染成空）`);
+          const extra = [...D].filter(k => !need.has(k));
+          if (extra.length)
+            wiring.push(`HOST_KEYS['${appId}'] 列了 ${r} 那棵树没读的 ${extra.join(', ')}`);
+          for (const k of D) if (!host.has(k))
+            wiring.push(`HOST_KEYS['${appId}'] 的 ${k} 不在 setHost 宿主对象上（narrowHost 只能给 undefined）`);
+        }
+        for (const appId of hostKeys.keys())
+          if (!roots.has(appId)) wiring.push(`HOST_KEYS 表里的 ${appId} 没有对应挂载点（表在骗人）`);
+      }
       if (wiring.length) bad('闸门⑮ Vue 装配缺失', wiring.join(' | '));
       // 注册表：app.js 的 var VUE_VIEWS = { notes: NotesView } 是唯一开关
       const reg = /var VUE_VIEWS = \{([^}]*)\}/.exec(appSrc);

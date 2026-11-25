@@ -18,7 +18,7 @@ window.addEventListener('unhandledrejection', function(e){
 var S = Vue.reactive({notes:[], settings:{}, info:{}});
 /* S3（D14）：Vue 装配层与视图注册表。混合期（步骤 5-10）里已迁移的 tab 走 Vue，
    其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
-import { Vue, nextTick, setHost, mountView, mountSheet, unmountSheet, unmountAllSheets, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
+import { Vue, nextTick, setHost, setHostKeys, mountView, mountSheet, unmountSheet, unmountAllSheets, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
 /* 外壳（步骤 15）：顶栏 / 底栏+fab / 弹层宿主 / 对话框 / toast 的组件与它们读的 reactive 状态表。
    shell.js 只依赖 vue.js，不反向读 app.js 的状态（事件走下面的 setHost），所以没有循环导入。 */
 import { shell, mountShell } from './shell.js'
@@ -1650,6 +1650,71 @@ var HOST = setHost({
   settingsSheet: settingsSheet, scanShotsNow: scanShotsNow, rescanShots: rescanShots,
   clearShots: clearShots
 });
+
+/* 步骤 17m：每个 app 的宿主接口只给「这棵组件树真正读到的那些 key」。
+   全量宿主 132 个 key，每个 app 只读 0–27 个，其中 93 个 key 全项目只有一个 app 用。
+   以前每个 app 都拿到全量，笔记模板里写 H.clipParse 也能跑（拼错了也撞上别的域的名字），
+   运行时没人拦得住；现在越界就是 undefined。
+   这张表由 .test/host_split.py --emit 从组件注册表算出来（每个 app 根的组件闭包 ∪ 其中
+   出现的 H.xxx），闸门⑮ 独立复核三个方向：表里的 key 必须真在宿主上、树里读到的必须在
+   表里、表里不许列这棵树没读的 key。app id 就是挂载点的名字：view:<tab> / sheet:<name> /
+   shell:<容器 id>（shell.js 的 mount(id, def)）。 */
+var HOST_KEYS = {
+  /* view:notes     组件根 NotesView，27 个 key */
+  'view:notes': ['MISSED', 'S', 'SHOTFLAGS', 'SR', 'addTodoSheet', 'cdCls', 'cdText', 'clipHint',
+    'clipSheet', 'delNote', 'enterCls', 'expand', 'fmtTime', 'importClip', 'missedSheet',
+    'notesFiltered', 'now', 'open', 'reocr', 'reparse', 'searchNow', 'shotGo', 'srErr', 'toAlarm',
+    'toCalendar', 'todoRowCls', 'toggle'],
+  /* view:todos     组件根 TodosView，16 个 key */
+  'view:todos': ['P', 'S', 'SR', 'cdCls', 'cdText', 'enterCls', 'fmtTime', 'groupTodos', 'hit',
+    'jump', 'now', 'rank', 'toAlarm', 'toCalendar', 'todoRowCls', 'toggle'],
+  /* view:files     组件根 FilesView，10 个 key */
+  'view:files': ['FA', 'attachCardCls', 'attachGlyphName', 'delAttach', 'filesNow', 'fmtSize',
+    'fmtTime', 'jump', 'openAttach', 'q'],
+  /* view:mine      组件根 StatsView，18 个 key */
+  'view:mine': ['S', 'SHOTFLAGS', 'ST', 'clearAllNotes', 'clearShots', 'exportJSON', 'fmtSize',
+    'folderSheet', 'importJSON', 'rescanShots', 'scanShotsNow', 'settingsSheet', 'shotSheet',
+    'showDebug', 'showLog', 'stErr', 'statCls', 'statsNow'],
+  /* sheet:shots    组件根 ShotsView，9 个 key */
+  'sheet:shots': ['doImportShots', 'fmtClock', 'shotError', 'shotIgnoreSel', 'shotList',
+    'shotLoading', 'shotPick', 'shotSel', 'shotSelAll'],
+  /* sheet:folders  组件根 FoldersView，9 个 key */
+  'sheet:folders': ['folderAll', 'folderFilter', 'folderLabel', 'folderPick', 'folderPickShots',
+    'folderQ', 'folderSave', 'folderSel', 'folderSelAll'],
+  /* sheet:clip     组件根 ClipSheetView，14 个 key */
+  'sheet:clip': ['clipDel', 'clipDelSel', 'clipError', 'clipItemCls', 'clipList', 'clipLoading',
+    'clipMetaText', 'clipParse', 'clipParseText', 'clipPick', 'clipPrevText', 'clipSel',
+    'clipSelAll', 'clipThumbText'],
+  /* sheet:settings 组件根 SettingsSheetView，21 个 key */
+  'sheet:settings': ['S', 'ST', 'askBattery', 'askExact', 'askNotify', 'batteryIgnoring',
+    'clearAllNotes', 'exactGranted', 'exportJSON', 'fmtSize', 'importJSON', 'keepAliveOn',
+    'notifyGranted', 'remindPending', 'saveSettings', 'setTheme', 'showDebug', 'showLog',
+    'testLLM', 'toggleAI', 'toggleKeepAlive'],
+  /* sheet:sort     组件根 SortSheetView，5 个 key */
+  'sheet:sort': ['P', 'closeSheet', 'resetPrefs', 'setPref', 'tab'],
+  /* sheet:missed   组件根 MissedSheetView，10 个 key */
+  'sheet:missed': ['MISSED', 'S', 'cdCls', 'cdText', 'closeSheet', 'fmtTime', 'jump',
+    'missedDismiss', 'missedDone', 'missedGoTodos'],
+  /* sheet:add      组件根 AddSheetView，2 个 key */
+  'sheet:add': ['addNote', 'pickImage'],
+  /* sheet:addtodo  组件根 AddTodoSheetView，2 个 key */
+  'sheet:addtodo': ['addTodo', 'sheetArg'],
+  /* sheet:log      组件根 LogSheetView，1 个 key */
+  'sheet:log': ['logData'],
+  /* sheet:debug    组件根 DebugSheetView，2 个 key */
+  'sheet:debug': ['clipText', 'debugData'],
+  /* shell:topbar   组件根 TopBar，5 个 key */
+  'shell:topbar': ['brandGo', 'importClip', 'searchClear', 'searchInput', 'sortSheet'],
+  /* shell:tabbar   组件根 TabBar，2 个 key */
+  'shell:tabbar': ['fabAct', 'tabPick'],
+  /* shell:sheetRoot 组件根 SheetHost，3 个 key */
+  'shell:sheetRoot': ['SHOTPROG', 'closeSheet', 'sheetLeft'],
+  /* shell:dlgRoot  组件根 DialogHost，2 个 key */
+  'shell:dlgRoot': ['dlgCancel', 'dlgOk'],
+  /* shell:toastRoot 组件根 ToastHost，0 个 key */
+  'shell:toastRoot': []
+};
+setHostKeys(HOST_KEYS);
 
 /* Vue 路径的观测缝（步骤 6 加，步骤 5 就没写过）。
    它是给测试用的，不是生产门禁：render() 走哪条路径只看 VUE_VIEWS[tab]，没这个缝时

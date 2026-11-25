@@ -2591,3 +2591,32 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
 验收：122 静态检查、`GO_TEST=1 ./build.sh`、`./install.sh` Success、`./test.sh --vd`
 **164 项全绿 PASS**、三套 DOM 等价（dom_equiv3 / dom_equiv2 / dom_equiv）全部一致
 （卡片 2495 B、todoRow 651 B、todoTx 454 B 逐字未变）。
+
+### 9.39 步骤 17m：宿主接口按 app 收窄（HOST_KEYS 表）
+
+17k 把 `import { H }` 换成 `inject('H')` 之后，剩下的问题是**每个 app 都拿到全量宿主**：
+`setHost` 那张表 132 个 key，而每个 app 的组件树真正读到的只有 0–27 个，其中 **93 个 key
+全项目只有一个 app 用**（`clipParse` 只有 clip 弹层读、`reocr` 只有笔记卡读）。全量下发的
+后果是拼错的 key 撞上别的域的名字也能跑：笔记模板里写 `H.clipParse()` 静态检查过得去
+（「在 setHost 里」）、运行时也返回一个函数，只有画出来的东西不对。
+
+现在每个 app 只拿到自己那棵树读到的那些：
+
+- `app.js` 新增 `var HOST_KEYS = { 'view:notes': [...], 'sheet:clip': [...], 'shell:topbar': [...], … }`
+  （19 个 app：4 视图 + 10 弹层 + 5 外壳），由 `.test/host_split.py --emit` 从组件注册表算出来：
+  每个 app 根沿 `components: { A, B }` 取传递闭包，∪ 其中出现的 `H.xxx`。
+- `vue.js` 新增 `narrowHost(keys)`（**逐 key 搬 property descriptor**，不是 `Object.assign`：
+  `S` / `tab` / `MISSED.v` 这些是「会被整体赋值」的 var，宿主里是 getter，展开求值一次就永远
+  读旧引用 —— 与 SHOTS.list / FA 那条教训同源）+ `setHostKeys(table)` + `hostFor(appId)`；
+  `withHost(app, host)` 多一个可选参数，三个挂载点改成 `withHost(app, hostFor('view:' + tab))` /
+  `hostFor('sheet:' + name)` / shell.js 的 `hostFor('shell:' + id)`。
+- 组件模板与 setup **一行没改**：局部名还叫 `H`，只是它 inject 到的对象变窄了 → DOM 逐字不变。
+- `setHost(HOST)` 仍是全量：测试缝 `__enote.vue.host.X` 要能读任意 key。
+
+闸门⑮ 新增三向核对（仍 122 项，反向验证 5 次）：表里的 key 必须真在宿主对象上（拼错 → 红）；
+组件树里读到的必须在表里（漏一个 = 运行时 undefined、那一片渲染成空 → 红）；表里不许列这棵树
+没读的 key、不许有没挂载点的 app（清单在骗人 → 红）。挂载点必须调用 `withHost(app, hostFor(...))`，
+只写 `withHost(app)`（全量）也算红。
+
+验收：122 静态检查、`GO_TEST=1 ./build.sh`、`./install.sh` Success、`./test.sh --vd`
+**164 项全绿 PASS**、三套 DOM 等价全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B 逐字未变）。
