@@ -2095,10 +2095,10 @@ if (SPLIT) {
   const appSrc = read('go/ui/js/app.js');
   const filesSrc = read('go/ui/js/views/files.js');
   const statsSrc = read('go/ui/js/views/stats.js');
-  /* 步骤 31：附件页那一簇搬进了 js/filesflow.js，函数体不在 app.js 里了。
-     闸门跟着搬家：按顺序在几个源里找函数头，找到哪个算哪个 —— 找不到就是
-     函数签名改了（下面那句 bad 的措辞不变，闸门不许自己假绿）。 */
-  const srcs = [appSrc, read('go/ui/js/filesflow.js')];
+  /* 步骤 31 / 33：附件页那一簇搬进了 js/filesflow.js、我的页统计搬进了 js/statsflow.js，
+     函数体不在 app.js 里了。闸门跟着搬家：按顺序在几个源里找函数头，找到哪个算哪个 ——
+     找不到就是函数签名改了（下面那句 bad 的措辞不变，闸门不许自己假绿）。 */
+  const srcs = [appSrc, read('go/ui/js/filesflow.js'), read('go/ui/js/statsflow.js')];
   const body = (head) => {
     for (const src of srcs) {
       const i = src.indexOf(head);

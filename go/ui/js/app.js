@@ -40,6 +40,8 @@ import SettingsSheetView from './views/settings.js'
 /* 步骤 30：剪贴板暂存那一簇搬进 clipflow.js（循环依赖，同上，只在函数体里读）。 */
 /* 步骤 31：附件页那一簇搬进 filesflow.js（循环依赖，同上）。 */
 /* 步骤 32：设置页那一簇搬进 settingsflow.js（循环依赖，同上）。 */
+/* 步骤 33：我的页统计那一簇搬进 statsflow.js（循环依赖，同上）。 */
+import { ST, statsNow, statCls } from './statsflow.js'
 import { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
          clearAllNotes, sortSheet, setPref, resetPrefs } from './settingsflow.js'
 import { FA, fmtSize, filesNow, attachCardCls, attachGlyphName, openAttach, delAttach,
@@ -627,20 +629,8 @@ function paintStatus(){
 }
 /* 附件页（R4）整簇搬进 js/filesflow.js（P14 S6 步骤 31）：FA 盒子、抢占判定、大小/图标
    格式化、打开与删除、系统文件选择。这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
-/* ---------- 我的页（R5）：本地数据摘要 + 近 7 天活动 ----------
-   数字全部来自 /api/stats（服务端从同一份 store 现算，不会和列表页对不上）。 */
-/* 步骤 13：stBusy 以前没有超时 —— 一次永不返回的 /api/stats 把我的页永久钉在骨架屏
-   （`if(stBusy) return` 之后再也没有第二次机会）。现在请求带超时，stBusy 带时间戳，
-   超过 REQ_TIMEOUT_MS + 宽限期就允许新的请求进入；失败记 stErr，骨架屏上给「重试」按钮。 */
-var ST = Vue.reactive({ v: null }), stBusy = false, stSince = 0, stErr = STERR.v;
-async function statsNow(){
-  if(stBusy && (Date.now() - stSince) < REQ_TIMEOUT_MS + 2000) return;
-  stBusy = true; stSince = Date.now();
-  try{ ST.v = await apiTimeout('/api/stats'); stErr = syncBox(STERR, '') }
-  catch(e){ ST.v = null; stErr = syncBox(STERR, errText(e)) }
-  stBusy = false;
-  if(tab==='mine') render();
-}
+/* 我的页（R5）统计那一簇（ST 盒子、stBusy 超时、statsNow、statCls）搬进
+   js/statsflow.js（P14 S6 步骤 33）。这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
 /* ---------- 步骤 10：我的页 / 设置页的叶子片段 ----------
    这些片段函数是 Vue 模板的渲染帮手（经 setHost 暴露给组件）；步骤 11 删掉遗留字符串
    渲染器之后它们只剩一个调用者，留着是因为模板里拼 HTML 的写法与它们逐字一致；Vue 侧经 setHost
@@ -649,7 +639,6 @@ async function statsNow(){
    卡壳（<div class="card">）由两条路径各自写，内容逐字共用。 */
 /* 我的页最底部的运行信息卡。设置页的「运行状态」卡前三行相同、第四行是解析队列，
    所以只共用这三行，第四行各自写。 */
-function statCls(hot, label){ return 'stat'+(hot?' hot':'')+enterCls('s'+label) }
 /* 设置页那一簇（SFORM / 表单 / 设置弹层 / 导出导入 / 清空 / 排序偏好）搬进
    js/settingsflow.js（P14 S6 步骤 32）。这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
 /* 从系统设置页回来后重新读一次权限/保活状态；顺便重画，让「剪贴板刚有更新」提示立刻出现 */
@@ -1395,6 +1384,6 @@ window.__enote.buildReady = fetch('/build.json').then(function(r){ return r.json
    `tab` 是 `var tab = TAB.v` 且会被 `tab = syncBox(TAB, …)` 重新赋值：ES module 的导入是
    活绑定，重新赋值那边看得见，这一点是这次搬迁最容易踩空的地方。 */
 export { S, tab, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, setTab,
-  refresh, api, paneDirty, statsNow, relTime,
+  refresh, api, paneDirty, statsNow, relTime, statCls,
   apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel,
-  prefs, savePrefs, searchNow, setQ, ST }
+  prefs, savePrefs, searchNow, setQ, ST, REQ_TIMEOUT_MS, syncBox, STERR }

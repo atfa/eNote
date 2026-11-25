@@ -1374,6 +1374,25 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 我的页统计那一簇搬进 js/statsflow.js（P14 S6 步骤 33）
+
+第五簇：我的页（R5）统计——`ST` 盒子、`stBusy`/`stSince` 超时兜底、`stErr`、`statsNow`、
+`statCls`，搬成 `go/ui/js/statsflow.js`，**app.js 1400 → 1390 行**（模块 31 行）。
+
+* **新坑：模块顶层跑在 app.js 求值之前。** 原来那句是
+  `var ST = Vue.reactive({ v: null }), stBusy = false, stSince = 0, stErr = STERR.v;`。
+  `STERR` 是 app.js 的 `var`，而 statsflow.js 被 app.js import，它的顶层先执行 —— 那时
+  `var STERR` 还是 `undefined`，读它的 `.v` 直接 `TypeError: Cannot read properties of
+  undefined (reading 'v')`，整份脚本不执行、页面空白。初值改成字面量 `stErr = ''`
+  （`STERR` 的初值本来就是 `''`，语义逐字不变）。「模块顶层只碰 vue.js 与自己新建的盒子」
+  这条契约现在有了第二个实例。
+* 闸门⑰ 的函数体查找源列表加上 `statsflow.js`（步骤 31 已经教过一次：闸门要跟着代码搬家）。
+  app.js 的导出表加了 `statCls REQ_TIMEOUT_MS syncBox STERR`，`ST`/`statsNow` 改成从
+  statsflow.js 再导出，settingsflow.js / shotflow.js 的 import 一行没动。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致
+  （我的页 hero 469 B 逐字未动）。
+
 ### 设置页那一簇搬进 js/settingsflow.js，顺手修掉一个每次调用必抛的 bug（P14 S6 步骤 32）
 
 第四簇：设置页 / 排序偏好——`SFORM` 表单状态、`formFill`/`formInput`、`settingsSheet`/
