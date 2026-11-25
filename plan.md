@@ -3580,3 +3580,46 @@ end         sheet=none loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.65 P14 S6：页签切换 / 底部 fab 那一簇搬进 js/tabflow.js（步骤 43）
+
+第十五簇：**页签与 fab**——`setTab`、`moveInd`（页签指示条测量）、`FABS`（四个页签的按钮表）、
+`tabPick`、`brandGo`、`fabAct`，连涟漪监听（`pointerdown` → `.rip`）与 `resize → moveInd` 一起
+搬成 `go/ui/js/tabflow.js`。**app.js 948 → 880 行**（模块 94 行）。
+
+* 清单 (c) 条（写导入绑定）在这一簇一次出现四处：`tab = syncBox(TAB, …)` 三处走
+  `setTabTo(…)`，`q = syncBox(QB, P().q || ''); shell.q = q; shell.has = !!q;` 三行整体就是
+  `setQ(P().q || '')`（逐字等价，`setQ` 的定义就是这三句）。
+* `lastTab`（上一个页签）只有 `setTab` 读写，跟着搬成模块私有；`tabScroll` 是 app.js 的 var，
+  簇里只做**属性写**（`tabScroll[lastTab] = window.scrollY`），写导入对象的属性合法，
+  所以直接 import，不需要盒子（同 `S` 的用法）。
+* 模块顶层只有 `FABS` 这张表（函数引用不调用）与两个 `addEventListener`，不读 app.js 的绑定 ✓。
+  `window.addEventListener('resize', moveInd)` 必须跟着搬：它读的 `moveInd` 现在是模块内的
+  函数声明（提升，安全），留在 app.js 就得把 moveInd 再导出一次，白绕一圈。
+* 搬完 app.js 里 `pickFile` 与 `FABS` 两个 import 变成死的（`FABS` 只在注释里出现），删掉——
+  闸门⑩ 只扫函数定义，import 侧的死引用它看不见。
+* 清单 (g) 条：整段（511-582 + 585）与 `git show HEAD:go/ui/js/app.js` 逐字 diff，
+  除上述 4 处改写外全部一致。
+
+探针（物理屏，`.test/probe_tab.js`，点的是真 DOM：底栏四个页签、顶栏 brand、`#fab`，
+外加派发 `pointerdown` 与 `resize`）：
+
+```
+base      tab=notes body=notes on=notes fab="记一笔" ph="搜索笔记与待办" ind=yes cards=8
+切待办    tab=todos body=todos on=todos fab="记待办" ph="搜索待办" ind=yes
+同页签    再点一次不重建（tabPick 的早退分支）
+切附件    tab=files fab="加附件" ph="搜索附件"
+切我的    tab=mine 统计=8笔记0待办0未完成0已逾期1附件0     ← setTab 里的 statsNow()
+brandGo   tab=mine                                        ← 顶栏 brand
+涟漪      rip=yes                                         ← pointerdown 监听搬过去后照常
+resize    ind=yes
+fab       sheet="van-popup van-popup--bottom sheet on"   ← fabAct → addSheet
+end       tab=notes loads=1
+```
+
+`body=notes` 是 `document.body.dataset.tab`（顶栏显隐的 CSS 钩子）、`on=` 是底栏
+`.tab.on`（moveInd 量的就是它）、`ind=` 是指示条的 DOM——三个都是「shell 那张表写对了」的
+可观测面，四个页签全对。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

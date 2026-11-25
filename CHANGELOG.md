@@ -1374,6 +1374,28 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 页签切换 / 底部 fab 那一簇搬进 js/tabflow.js（P14 S6 步骤 43）
+
+第十五簇：**页签与 fab**——`setTab`、`moveInd`（页签指示条测量）、`FABS`、`tabPick`、`brandGo`、
+`fabAct`，连涟漪监听（`pointerdown` → `.rip`）与 `resize → moveInd` 一起搬成 `go/ui/js/tabflow.js`。
+**app.js 948 → 880 行**（模块 94 行）。
+
+* 清单 (c) 条（写导入绑定）这一簇一次出现四处：`tab = syncBox(TAB, …)` 三处走 `setTabTo(…)`；
+  `q = syncBox(QB, P().q || ''); shell.q = q; shell.has = !!q;` 三行整体就是 `setQ(P().q || '')`
+  （逐字等价，`setQ` 的定义就是这三句）。
+* `lastTab` 只有 `setTab` 读写，跟着搬成模块私有；`tabScroll` 簇里只做**属性写**
+  （`tabScroll[lastTab] = window.scrollY`），写导入对象的属性合法，直接 import 不用盒子。
+* `window.addEventListener('resize', moveInd)` 必须跟着搬：它读的 `moveInd` 现在是模块内的函数声明
+  （提升，安全），留在 app.js 就得把 moveInd 再导出一次，白绕一圈。
+* 搬完 app.js 里 `pickFile` 与 `FABS` 两个 import 变成死的（`FABS` 只在注释里出现），删掉——闸门⑩
+  只扫函数定义，import 侧的死引用它看不见。
+* 探针（`.test/probe_tab.js`，点真 DOM：底栏四个页签、顶栏 brand、`#fab`，外加派发 `pointerdown`
+  与 `resize`）：四个页签的 `tab=` / `body=`（`body[data-tab]` 是顶栏显隐的 CSS 钩子）/ `on=`
+  （`.tab.on`，moveInd 量的就是它）/ `fab=` 文案 / `ph=` 占位符全对，切我的页统计出来了
+  （`setTab` 里的 `statsNow()`），涟漪 `rip=yes`，`#fab` 弹出记一笔，`loads=1`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 运行日志簇搬进 js/logflow.js，设置页保存搬回 js/settingsflow.js（P14 S6 步骤 42）
 
 第十四簇：**运行日志 / AI 调用记录 / AI 连通测试**——`LLMTEST`、`testLLM`、`LOGDATA`、`DEBUGDATA`、
