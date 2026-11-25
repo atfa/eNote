@@ -1,27 +1,25 @@
-P14 S6 步骤 53：响应式盒子层搬进 js/statebox.js（app.js 585 → 570）
+P14 S6 步骤 54：app.js 的过期指针注释收成一张模块索引表（570 → 479）
 
-第二十五簇：S / syncBox / 七个盒子（TAB QB OPENB REMIND STERR SRERR SHEETARGB）连 reassign 一起搬成
-go/ui/js/statebox.js。app.js 585 → 570 行（模块 43 行，21 行逐字搬、0 处改写）。
+步骤 29-53 每搬走一簇就在 app.js 留一行「X 搬进 js/y.js（步骤 N）」，25 步之后 570 行里有 309 行是注释，
+其中 73 个块（124 行）纯粹是历史指针——它们描述的代码早就不在这个文件里了。这一步把它们收成文件头的
+一张分工表。app.js 570 → 479 行（删 73 个注释块 / 124 行，加 35 行索引块；注释行 309 → 219）。
 
-- 零循环依赖：statebox.js 只 import { Vue } from './vue.js'，不读 app.js 任何东西——目前分层最干净的一层。
-- 为什么盒子能搬、setQ / setQRaw / setTabTo 不能搬：盒子是对象，跨模块只有属性写（syncBox 写的是 box.v），
-  import 进来直接改属性就够；那三个 setter 写的是 app.js 的 tab / q 两个 var（整包重新赋值），必须留在声明处。
-  判据一句话：属性写能搬，整包赋值不能搬。
-- 「盒子必须早于第一次读它」这条硬要求（踩过：盒子放文件中部，var tab = TAB.v 在第 32 行，var 提升让 TAB
-  那一刻是 undefined → 整份 app.js 抛 TypeError、页面全白）现在由 ESM 的求值顺序保证：import 先于 app.js
-  的函数体跑完。教训原文搬进 statebox.js 文件头。
-- app.js 导出表一行没动：S（13 个模块 import）、syncBox（4 个）、reassign（3 个）、REMIND / STERR / SRERR /
-  SHEETARGB 全部变成再导出，那边一个字没改。闸门/测试也一行没改：闸门⑮ 的 exportTableKeys(appSrc) 只看
-  app.js 的导出表（没变），go/web_test.go 钉的 setHost({ 在 \nrefresh(); 之前、window.__enote.state = { 都在 app.js。
-- 踩坑（清单 (b) 第四次）：python 里 L[17]=[...] 写成列表赋值，下一行 l.strip() 抛 AttributeError——脚本先写
-  模块文件、后写 app.js，崩在中间正好保住 app.js 原样。
-
-探针（物理屏 .test/probe_box.js）：就绪 loads=1 卡片=8 → S 同一份对象：host.S===state.S=true → 点待办页签之后：
-host.tab=todos state.tab=todos 可见面板=todos → 盒子 QB：searchInput 之后 host.q="笔记" 清除按钮在=true →
-盒子 OPENB：open 里这条的展开位=true → 盒子 SHEETARGB / remindPending / stErr / srErr 四个 getter 都读得到 →
-reassign 不换引用：state.S===旧引用=true host.S===旧引用=true notes 被换成=0 → refresh 之后数据回来 notes=8 →
-end loads=1。搜索框 value="" 而 host.q="笔记" 是 searchInput 的既有语义（只写 q、不动 shell.q，步骤 41 记过），
-不是回归。
+- 索引表说三件事：app.js 只剩哪四样（盒子层 / window 桥 / Vue 宿主接口 H + HOST_KEYS / 导出表）、27 个模块各管什么
+  （零依赖 → 只依赖 shell.js → 渲染链 → 数据与偏好 → 功能簇 → 启动自检）、三条搬动规矩：
+  ① 模块顶层不许读 app.js（步骤 40 踩过：模块顶层 var SHEETARG = SHEETARGB.v → 求值期 undefined → 整份 app.js
+  抛 TypeError、页面全白），只在函数体里读，循环依赖才安全；② 写 app.js 的 var 走那边开出来的 setter
+  （setTabTo / setQ / setQRaw / setApiFail / setReadyResolve），判据一句话「属性写能搬，整包赋值不能搬」；
+  ③ 整包赋值的对象一律进盒子，组件读 getter。
+- 删掉的每一行都在 .test/removed_cmts_54.txt / .test/removed_cmts_54b.txt 存了一份，原文也都在
+  git show HEAD~1:go/ui/js/app.js 与 plan.md 各步骤小节里。有价值的教训（17b 的 CLIP 三态、整包赋值要 reassign、
+  盒子声明顺序硬要求）在对应模块的文件头里都有同一份，删的不重复。
+- 闸门一行没改：闸门⑩/⑪ 的死代码扫描本来就剔注释；全项目只有两处锚点匹配注释文本
+  （VUE_SHEETS = {[^}]*progress: 读的是代码、行首是 /* 那条扫 .sh 脚本），都不受影响。122 项一次通过。
+- 探针（物理屏 .test/probe_cmt.js）：就绪 loads=1 卡片=14 → 切待办页 可见面板=todos → 切我的页 hero 在=true →
+  设置弹层：sheet 节点=在 标题="设置" → 搜索：host.q="笔记" 卡片=7 srErr="" → 清空之后 卡片=14 →
+  end loads=1 状态点=dot。注释改动最怕「删注释手滑删了代码行」，所以走四条主路径 + loads=1，全程无
+  JS-STACK / JS-REJECT。踩坑：探针里写单引号选择器（'.pane[data-tab=todos] .todo'）→ probe.sh 直接不输出；
+  「我的」页签的 data-tab 是 mine 不是 me。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

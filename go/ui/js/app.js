@@ -4,6 +4,39 @@
 // window.__enoteActions 导出表 + Object.assign(window, …)（见文件末尾 D12）。
 // 转 module 与导出表、tools/ui_test.js 闸门① 同批落地，中间态不能存在：
 // 少了任何一环，70 个 handler 会全部静默失效（P12 那一类「点了没反应」）。
+/* ---------- P14 S6：app.js 与 27 个模块的分工表（步骤 29-53 的收口）----------
+   app.js 现在只剩四样东西：响应式盒子层（S / 七个盒子 / setQ / setQRaw / setTabTo）、
+   Java 侧与测试侧的 window 桥、Vue 宿主接口（setHost 的 H 与 HOST_KEYS 白名单）、
+   文件末尾的 ES module 导出表。功能簇全在下面的模块里，每个模块的文件头写着它为什么这么切。
+
+   三条搬动规矩（踩过的坑都在这里）：
+   ① 模块顶层不许读 app.js —— 模块求值早于 app.js 的函数体，那时读到的就是 undefined
+      （步骤 40：模块顶层写 `var SHEETARG = SHEETARGB.v` → 整份 app.js 抛 TypeError、页面全白）。
+      只在函数体里读，循环依赖（模块反过来 import app.js）就是安全的。
+   ② 要写 app.js 的 var，走那边开出来的 setter：setTabTo / setQ / setQRaw / setApiFail /
+      setReadyResolve。判据一句话：属性写能搬，整包赋值不能搬。
+   ③ 整包赋值的对象一律进盒子（Vue.reactive({v:…})），组件读 getter；传值的话 Vue 拿到的是
+      装配时那份快照，症状正是「数据换了界面不动」。
+
+   零依赖（不碰 app.js，最该先读的样板）：
+     js/statebox.js    S + 七个盒子 + syncBox + reassign
+     js/vue.js         Vue 全局、nextTick、setHost/setHostKeys、视图与弹层挂载、paint
+     js/shell.js       外壳组件（顶栏 / 底栏+fab / 弹层宿主 / 进度层 / 对话框 / toast）与 shell 状态表
+     js/domutil.js     $ / esc / ic / clip
+     js/timeflow.js    now / fmtTime / relTime
+   只依赖 shell.js 的：js/netflow.js（toast 宿主接线 + api / apiTimeout / errText / REQ_TIMEOUT_MS + API_FAIL 测试缝）
+   渲染链：js/panes.js（常驻面板 + VUE_VIEWS / VUE_SHEETS 两张注册表）→ js/renderflow.js
+     （render / afterPaint / markReady / syncExpand / strip / paintStatus）→ js/pollflow.js
+     （状态指纹 SIG / SIG_SKIP / stateSig + 安静轮询 refresh）
+   数据与偏好：js/prefsflow.js（页签偏好 + 主题）、js/statsflow.js（我的页统计）、
+     js/listflow.js（列表过滤排序与待办分组，纯读无盒子）、js/searchflow.js（服务端搜索 SR / SRK）
+   功能簇：js/filesflow.js（附件页）、js/clipflow.js（剪贴板暂存）、js/shotflow.js（截图捕获与
+     监控文件夹）、js/missedflow.js（错过的提醒）、js/remindflow.js（到期倒计时 + 自研提醒 +
+     常驻后台）、js/noteflow.js（笔记/待办操作 + 入场动画 seen / ANIMLOCK）、js/openflow.js
+     （打开笔记/待办 + 系统日历/闹钟）、js/sheetflow.js（弹层开合与返回键路由）、js/dlgflow.js
+     （自绘对话框）、js/addflow.js（记一笔 / 添加待办表单）、js/settingsflow.js（设置页 + 排序偏好）、
+     js/logflow.js（运行日志 / AI 调用记录 / 连通测试）、js/tabflow.js（页签切换 + 底部 fab）
+   启动自检：js/selfcheck.js（自己排 1200ms 后的定时器，app.js 只 import 它）*/
 /* 诊断缝（步骤 17b）：app.js 被求值几次？两次的话模块状态有两份（CLIP / S / MISSED.v 各一份），
    组件读的那份和测试缝写的那份不是同一个对象，症状是「赋值成功而界面不动」。 */
 window.__enoteAppLoads = (window.__enoteAppLoads || 0) + 1;
@@ -15,62 +48,27 @@ window.addEventListener('unhandledrejection', function(e){
   var r = e.reason;
   console.log('JS-REJECT ' + (r && r.stack ? String(r.stack).split('\n').slice(0,6).join(' | ') : String(r)));
 });
-/* S（整份 /api/state 的镜像）搬进 js/statebox.js（P14 S6 步骤 53）。 */
-/* S3（D14）：Vue 装配层与视图注册表。混合期（步骤 5-10）里已迁移的 tab 走 Vue，
-   其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
 import { Vue, nextTick, setHost, setHostKeys, mountView, mountSheet, unmountSheet, unmountAllSheets, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
 /* 外壳（步骤 15）：顶栏 / 底栏+fab / 弹层宿主 / 对话框 / toast 的组件与它们读的 reactive 状态表。
    shell.js 只依赖 vue.js，不反向读 app.js 的状态（事件走下面的 setHost），所以没有循环导入。 */
 import { shell, mountShell } from './shell.js'
-/* 步骤 8：截图暂存页（进度层步骤 17j 搬进了 shell.js 的 <teleport>） */
-/* 步骤 9：剪贴板暂存页 */
-/* 步骤 10：我的页（统计）+ 设置页 */
-/* 步骤 16c：最后六个「字符串弹层」—— 排序筛选 / 错过的提醒 / 记一笔 / 添加待办 /
-   运行日志 / AI 调用记录。它们以前是 app.js 里拼 HTML 字符串 + 内联 onclick。 */
-/* 步骤 29：截图捕获那一簇（含监控文件夹）搬进 shotflow.js；这里是循环依赖（shotflow.js
-   反过来 import app.js 的 S / tab / toast / closeSheet …），只在函数体里读，安全。 */
-/* 步骤 30：剪贴板暂存那一簇搬进 clipflow.js（循环依赖，同上，只在函数体里读）。 */
-/* 步骤 31：附件页那一簇搬进 filesflow.js（循环依赖，同上）。 */
-/* 步骤 32：设置页那一簇搬进 settingsflow.js（循环依赖，同上）。 */
-/* 步骤 33：我的页统计那一簇搬进 statsflow.js（循环依赖，同上）。 */
 import { ST, statsNow, statCls } from './statsflow.js'
-/* 步骤 34：倒计时 / 提醒 / 常驻后台那一簇搬进 remindflow.js（循环依赖，同上）。 */
-/* 步骤 35：页签偏好 + 主题那一簇搬进 prefsflow.js（循环依赖，同上）。 */
-/* 步骤 36：错过的提醒那一簇搬进 js/missedflow.js（循环依赖，同上）。 */
 import { MISSED, loadMissed, missedSheet, missedDone, missedGoTodos, missedDismiss }
          from './missedflow.js'
-/* 步骤 37：打开笔记 / 待办 + 系统日历 / 闹钟那一簇搬进 js/openflow.js（循环依赖，同上）。 */
-/* 步骤 38：弹层开合（pageSheetVue / sheetVue / closeSheet / sheetLeft）搬进 js/sheetflow.js
-   （循环依赖，同上：本模块顶层不碰 app.js，只在函数体里读 $ 与 VUE_SHEETS）。 */
-/* 步骤 39：自绘对话框那一簇搬进 js/dlgflow.js（循环依赖，同上）。 */
-/* 步骤 40：「记一笔」/「添加待办」那一簇搬进 js/addflow.js（循环依赖，同上）。 */
-/* 步骤 41：服务端搜索那一簇搬进 js/searchflow.js（循环依赖，同上）。 */
-/* 步骤 42：运行日志 / AI 调用记录那一簇搬进 js/logflow.js（循环依赖，同上）。 */
 import { LLMTEST, testLLM, LOGDATA, DEBUGDATA, showLog, showDebug } from './logflow.js'
-/* 步骤 43：页签切换 / 底部 fab 那一簇搬进 js/tabflow.js（循环依赖，同上）。 */
 import { setTab, moveInd, tabPick, brandGo, fabAct } from './tabflow.js'
-/* 步骤 44：笔记/待办的操作那一簇搬进 js/noteflow.js（循环依赖，同上）。 */
 import { expand, toggle, todoEnterCls, clearEnter, enterCls, clearSeen, delTodo,
          reparse, delNote, reocr, toggleAI, ANIMLOCK } from './noteflow.js'
-/* 步骤 45：列表过滤/排序与待办分组搬进 js/listflow.js（纯读，无盒子）。 */
 import { todoRowCls, notesFiltered, groupTodos, rank, hit } from './listflow.js'
-/* 步骤 46：时间格式化那一簇搬进 js/timeflow.js（零 import 的纯函数模块）。 */
 import { now, fmtTime, relTime } from './timeflow.js'
-/* 步骤 47：toast 与请求层搬进 js/netflow.js（只依赖 js/shell.js，零循环依赖）。 */
 import { toast, api, apiTimeout, errText, REQ_TIMEOUT_MS, setApiFail, apiFail } from './netflow.js'
-/* 步骤 48：$ / esc / ic 搬进 js/domutil.js（零依赖小工具）。 */
 import { $, clip, esc, ic } from './domutil.js'
-/* 步骤 50：常驻面板与两张 Vue 注册表搬进 js/panes.js（视图组件的 import 跟着搬过去）。 */
 import { panes, paneBuilt, paneDirty, tabScroll, paneFor, invalidatePanes,
          showPane, VUE_VIEWS, VUE_SHEETS } from './panes.js'
-/* 步骤 51：渲染核心搬进 js/renderflow.js（app.js 再导出 render / paintStatus / strip）。 */
 import { render, afterPaint, markReady, syncExpand, strip, paintStatus,
          setReadyResolve, hasFirstPainted } from './renderflow.js'
-/* 步骤 52：安静轮询（SIG / SIG_SKIP / stateSig / refresh）搬进 js/pollflow.js。 */
 import { refresh } from './pollflow.js'
-/* 步骤 53：响应式盒子层（S / syncBox / 七个盒子 / reassign）搬进 js/statebox.js。 */
 import { S, syncBox, TAB, QB, OPENB, REMIND, STERR, SRERR, SHEETARGB, reassign } from './statebox.js'
-/* 步骤 49：启动自检搬进 js/selfcheck.js（它自己排 1200ms 后的定时器）。 */
 import './selfcheck.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
 import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
@@ -97,18 +95,9 @@ import { SHOTFLAGS, SHOTS, FOLD, SHOTPROG, shotFlags, shotGo, shotSetup, askShot
    reassign 一起搬进 js/statebox.js（P14 S6 步骤 53）：盒子先于本文件求值，
    「盒子必须早于第一次读它」那条硬要求由 ESM 的 import 顺序保证。 */
 var tab = TAB.v, open = OPENB.v, busy = {};
-/* seen（已出现过的卡片 id）只有入场动画那一簇读写，跟着它搬进 js/noteflow.js（步骤 44）。 */
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
 
 var q = QB.v;
-/* 页签偏好（排序/筛选/搜索词）那一簇搬进 js/prefsflow.js（P14 S6 步骤 35）。
-   这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
-/* ic()（图标字符串生成器）搬进 js/domutil.js（P14 S6 步骤 48）。 */
-/* ---------- 服务端搜索（R3）----------
-   列表数据一律来自 /api/search；请求失败时退回本地过滤，断网也能看。 */
-/* prefsLoaded（首帧偏好只应用一次的闩）跟着轮询簇搬进 js/pollflow.js（P14 S6 步骤 52）。 */
-/* SR（服务端搜索结果）与 searchSeq（首页搜索序号）搬进 js/searchflow.js（步骤 41）。
-   上次搜索结果的指纹 SRK 也在那边。 */
 /* q 是 app.js 里的 var，会被重新赋值，别的模块拿到的是只读绑定（同 SRK 装盒那条教训），
    要清它就走这个 setter。shell.q / shell.has 是搜索框的显示状态，这几处赋值一直是连着的。 */
 function setQ(v){ q = syncBox(QB, v); shell.q = q; shell.has = !!q }
@@ -120,47 +109,13 @@ function setQRaw(v){ q = syncBox(QB, v) }
    只能读，切页签走这个 setter（P14 S6 步骤 36）。只写 tab 本身，页面切换仍走 setTab()。 */
 function setTabTo(v){ tab = syncBox(TAB, v) }
 
-/* SRK（上次搜索结果的指纹）与 searchNow 搬进 js/searchflow.js（步骤 41）；
-   附件页那边共用 SRK，从 app.js 拿（app.js 再导出）。 */
 
-/* 主题（R8）那一簇（themeOf / applyTheme / setTheme）搬进 js/prefsflow.js（P14 S6 步骤 35）。 */
 
-/* $ 与 esc 搬进 js/domutil.js（P14 S6 步骤 48）：零依赖的小工具，谁用谁直接 import。 */
-/* toast（步骤 15）与请求层 api / apiTimeout / errText / REQ_TIMEOUT_MS（步骤 13、14）搬进
-   js/netflow.js（P14 S6 步骤 47）：那边只 import js/shell.js，零循环依赖。
-   测试缝 API_FAIL 留在那边，app.js 的 __enote.test.failApi 调 setApiFail() 写它。 */
-/* 本地时间 now()（服务端 due 字段的线格式）与「今天 09:05」fmtTime() 搬进
-   js/timeflow.js（P14 S6 步骤 46）：两个纯函数，没有跨模块依赖。 */
-/* 到期倒计时（R11）+ 自研到期提醒（R13-E）+ 常驻后台（P6.5）整簇搬进 js/remindflow.js
-   （P14 S6 步骤 34）。这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
 /** 通知点按后打开对应笔记（Java 侧调用）*/
-// ---- 剪贴板暂存（R7/P6）：横幅 + 批量勾选 + 一键解析 ----
 /* 步骤 9 转 Vue：CLIP.list 是 /api/clip/list 的结果，CLIP.loading / CLIP.error 是加载三态。
    三个都会被整体赋值，进 setHost 必须走 getter（同 SHOTS.list / FA 的教训：传值的话
    Vue 拿的是装配时那份快照，症状是「数据变了界面不动」）。 */
-/* 步骤 17b：这四个从「普通模块变量 + V.tick 大锤」换成一个 reactive 对象。
-   之前 computed 看不见它们（不是响应式的），所以每个读它们的 computed 都得包 live()、
-   每次状态变了都得 sheetPaint() bump 一下才重画 —— 那是全量重绘，不是响应式。
-   现在赋值即触发，views/clip.js 的 computed 不再依赖 tick（clipPick 也不再 sheetPaint）。
-   整体赋值的地方（loadClips / clipParse / 夹具 setter）写的是属性，别把对象换掉：
-   换掉就丢掉 reactive 的代理，症状正是「数据变了界面不动」。 */
-/* 步骤 17e：整包赋值的响应式写法。`X = {...}` 对 reactive 对象是换引用，Vue 追踪不到
-   （症状：数据换了界面不动）。reassign 在同一个 proxy 上先删键再写键，读侧一个字不用改。 */
-/* reassign（逐键换内容不换引用）搬进 js/statebox.js（P14 S6 步骤 53）。 */
 
-/* 剪贴板暂存队列整簇（含 CLIP 盒子）搬进 js/clipflow.js（P14 S6 步骤 30）。 */
-/* emptyState() 也一起删：空态块现在是 components/empty-state.js 的 <empty-state> 组件，
-   app.js 里最后一个调用方就是上面那个 folderRender。 */
-/* 错过的提醒（后台被冻结时到点的那些）整簇搬进 js/missedflow.js（P14 S6 步骤 36）：
-   启动时拉一次 /api/missed → 首页横幅 → 清单弹层 → 完成 / 跳转 / 我知道了。
-   循环依赖（missedflow.js 反过来 import app.js）安全：那边只在函数体里读。 */
-/* 截图捕获与监控文件夹整簇搬进 js/shotflow.js（P14 S6 步骤 29）：扫描 → 横幅 → 多选 →
-   导入 → 进度层 → 文件夹白名单，355 行自成一体的功能，这里剩下的只有把它们挂进
-   HOST / HOST_KEYS 的几笔。循环依赖安全：shotflow.js 只在函数体里读 app.js 的东西。 */
-/* 剪贴板暂存（P7）：顶栏 📋 → 暂存队列 → 勾选 → 存笔记 / 一键解析。整簇搬进
-   js/clipflow.js（P14 S6 步骤 30），这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
-/* 相对时间「3 天前」relTime() 搬进 js/timeflow.js（P14 S6 步骤 46）：纯函数，
-   只给 js/clipflow.js 的剪贴板计数条用，不进 HOST。 */
 window.openClip = openClip;
 /* 打开一条笔记 / 一条待办（通知点进来定位到那条待办）+ 把到期时间交给系统日历 /
    闹钟那一簇搬进 js/openflow.js（P14 S6 步骤 37）。下面两行是 Java 侧通知的入口桥，
@@ -168,51 +123,12 @@ window.openClip = openClip;
 window.openNote = openNote; window.notifyResult = notifyResult;
 window.openTodo = openTodo;
 
-/* 笔记列表的过滤/排序（notesFiltered / hit / rank）、待办分组（groupTodos / tomorrow）
-   与 .todo 的类名串（todoRowCls）搬进 js/listflow.js（P14 S6 步骤 45）：这一簇纯读，
-   S / q / SR / P 一个都不写，所以没有盒子。 */
-/* 数据卡 / 运行状态卡（步骤 10）：整块（含按钮）交给叶子函数，两条路径共用。
-   这两块的文本是「3 / 2」这种三段拼接：模板里写成一个插值就只产生一个文本节点，
-   VDIFF 的序列化器逐节点 trim 后拼出来是「3/2」，与遗留的「3 / 2」对不上。
-   结构必须逐字一致，所以整块共用而不是拄进模板。 */
-/* ---------- 步骤 10：设置页的纯展示块 ----------
-   这三块没有 handler，整块交给叶子函数，Vue 侧 v-html 同一份字符串 —— 长段说明文字
-   拄进模板的话，模板里多一个换行就少一个空格，VDIFF 比文本节点时很难查。 */
-/* 常驻后台那段长说明（无 handler）；电池优化那一段带两个按钮，留在模板里 */
-/* 每个 tab 一个常驻面板（R14）与两张 Vue 注册表（VUE_VIEWS / VUE_SHEETS）搬进
-   js/panes.js（P14 S6 步骤 50）：这里剩下的只有 render() 里那几笔调用。 */
-/* 渲染核心（render / afterPaint / syncExpand / strip / paintStatus / markReady）搬进
-   js/renderflow.js（P14 S6 步骤 51）：这里剩下的只有调用它们的地方。 */
-/* 附件页（R4）整簇搬进 js/filesflow.js（P14 S6 步骤 31）：FA 盒子、抢占判定、大小/图标
-   格式化、打开与删除、系统文件选择。这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
-/* 我的页（R5）统计那一簇（ST 盒子、stBusy 超时、statsNow、statCls）搬进
-   js/statsflow.js（P14 S6 步骤 33）。这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
-/* ---------- 步骤 10：我的页 / 设置页的叶子片段 ----------
-   这些片段函数是 Vue 模板的渲染帮手（经 setHost 暴露给组件）；步骤 11 删掉遗留字符串
-   渲染器之后它们只剩一个调用者，留着是因为模板里拼 HTML 的写法与它们逐字一致；Vue 侧经 setHost
-   的 H.xxx 调用。hero 整块是静态结构 + 三处动态值，留在叶子函数里比模板抄一遍少一处漂移面。 */
-/* 笔记状态卡（纯展示，无 handler）：整块交给叶子函数，Vue 侧 v-html 同一份字符串。
-   卡壳（<div class="card">）由两条路径各自写，内容逐字共用。 */
-/* 我的页最底部的运行信息卡。设置页的「运行状态」卡前三行相同、第四行是解析队列，
-   所以只共用这三行，第四行各自写。 */
-/* 设置页那一簇（SFORM / 表单 / 设置弹层 / 导出导入 / 清空 / 排序偏好）搬进
-   js/settingsflow.js（P14 S6 步骤 32）。这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
 /* 从系统设置页回来后重新读一次权限/保活状态；顺便重画，让「剪贴板刚有更新」提示立刻出现 */
 window.onAppResume = function(){
   shotFlags();
   settingsRefresh();
   if (S && S.notes) render();
 };
-/* 导出 JSON / 导入 JSON / 清空全部笔记 / 排序浮层 / 偏好读写搬进 js/settingsflow.js
-   （P14 S6 步骤 32）。 */
-/* ---------- 轮询：只在数据真的变了才重绘 ----------
-   SIG / drawn / SIG_SKIP / stateSig / refresh 连 prefsLoaded 一起搬进 js/pollflow.js
-   （P14 S6 步骤 52）：这里剩下的只有 setInterval 那一行与 __enoteActions 里的 refresh。 */
-/* 设置页保存（saveSettings）跟着 toggleAI 搬进 js/settingsflow.js / js/noteflow.js：
-   它读的是 settingsflow 的 SFORM，formFill 也在那边（步骤 42 / 44）。 */
-/* 运行日志 / AI 调用记录 / AI 连通测试那一簇（LLMTEST / testLLM / LOGDATA / DEBUGDATA /
-   showLog / showDebug）搬进 js/logflow.js（P14 S6 步骤 42，循环依赖，同上）。 */
-/* clip()（截断字符串加省略号，HOST 的 clipText）搬进 js/domutil.js（P14 S6 步骤 48）。 */
 
 /* 步骤 39：自绘对话框那一簇（dialog / closeDlg / askDel）搬进 js/dlgflow.js（循环依赖，
    同上：本模块顶层不碰 app.js，只在函数体里读 tab，写 tab 走 setTabTo）。
@@ -224,11 +140,6 @@ window.uiBack = function(){ return uiBackKey() };
 /* 「记一笔」与「添加待办」那一簇（FORMS / formSet / addSheet / addNote / pickImage /
    addTodoSheet / addTodo）搬进 js/addflow.js（P14 S6 步骤 40，循环依赖，同上）。
    SHEETARGB 这个盒子留在本文件的盒子区（声明顺序是硬要求），那边写它走 syncBox。 */
-/* 页签切换 / 底部 fab 那一簇（setTab / moveInd / FABS / tabPick / brandGo / fabAct，
-   连涟漪监听与 resize）搬进 js/tabflow.js（P14 S6 步骤 43，循环依赖，同上）；
-   写 app.js 的 tab / q 走 setTabTo / setQ，lastTab 跟着搬过去了。 */
-/* 搜索框那两个 handler（searchInput / searchClear）搬进 js/searchflow.js（步骤 41，
-   循环依赖，同上）；写 app.js 的 q 走 setQ / setQRaw。 */
 // 安静轮询：数据没变就只刷状态点，不重建 DOM
 /* ---------- S3（D14）：Vue 宿主接口 ----------
    组件不持有数据，只通过 H 读模块状态（getter 取当前值，因为 S / MISSED.v / SHOTFLAGS.v
@@ -423,8 +334,6 @@ setTab();
 loadMissed();
 // 截图捕获的轻量状态（横幅要按"未开启/没权限/没选文件夹"分状态显示）
 shotFlags(function(){ render(); shotIntroOnce() });
-/* 启动自检（R15）搬进 js/selfcheck.js（P14 S6 步骤 49）：把各页渲染和「展开详情」
-   这类交互入口真跑一遍，异常打 SELFCHECK FAIL。 */
 
 /* ---------- S3（D12）：ES module 导出表 ----------
    页面里 70 处内联 handler（69 onclick + 1 oninput）按**全局**作用域解析函数名。

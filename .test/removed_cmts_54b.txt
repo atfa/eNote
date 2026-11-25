@@ -1,0 +1,35 @@
+/* 步骤 49：启动自检搬进 js/selfcheck.js（它自己排 1200ms 后的定时器）。 */
+/* 步骤 53：响应式盒子层（S / syncBox / 七个盒子 / reassign）搬进 js/statebox.js。 */
+/* 步骤 52：安静轮询（SIG / SIG_SKIP / stateSig / refresh）搬进 js/pollflow.js。 */
+/* 步骤 51：渲染核心搬进 js/renderflow.js（app.js 再导出 render / paintStatus / strip）。 */
+/* 步骤 50：常驻面板与两张 Vue 注册表搬进 js/panes.js（视图组件的 import 跟着搬过去）。 */
+/* 步骤 48：$ / esc / ic 搬进 js/domutil.js（零依赖小工具）。 */
+/* 步骤 47：toast 与请求层搬进 js/netflow.js（只依赖 js/shell.js，零循环依赖）。 */
+/* 步骤 46：时间格式化那一簇搬进 js/timeflow.js（零 import 的纯函数模块）。 */
+/* 步骤 45：列表过滤/排序与待办分组搬进 js/listflow.js（纯读，无盒子）。 */
+/* 步骤 44：笔记/待办的操作那一簇搬进 js/noteflow.js（循环依赖，同上）。 */
+/* 步骤 43：页签切换 / 底部 fab 那一簇搬进 js/tabflow.js（循环依赖，同上）。 */
+/* 步骤 42：运行日志 / AI 调用记录那一簇搬进 js/logflow.js（循环依赖，同上）。 */
+/* 步骤 41：服务端搜索那一簇搬进 js/searchflow.js（循环依赖，同上）。 */
+/* 步骤 40：「记一笔」/「添加待办」那一簇搬进 js/addflow.js（循环依赖，同上）。 */
+/* 步骤 39：自绘对话框那一簇搬进 js/dlgflow.js（循环依赖，同上）。 */
+/* 步骤 38：弹层开合（pageSheetVue / sheetVue / closeSheet / sheetLeft）搬进 js/sheetflow.js
+   （循环依赖，同上：本模块顶层不碰 app.js，只在函数体里读 $ 与 VUE_SHEETS）。 */
+/* 步骤 37：打开笔记 / 待办 + 系统日历 / 闹钟那一簇搬进 js/openflow.js（循环依赖，同上）。 */
+/* 步骤 36：错过的提醒那一簇搬进 js/missedflow.js（循环依赖，同上）。 */
+/* 步骤 35：页签偏好 + 主题那一簇搬进 prefsflow.js（循环依赖，同上）。 */
+/* 步骤 34：倒计时 / 提醒 / 常驻后台那一簇搬进 remindflow.js（循环依赖，同上）。 */
+/* 步骤 33：我的页统计那一簇搬进 statsflow.js（循环依赖，同上）。 */
+/* 步骤 32：设置页那一簇搬进 settingsflow.js（循环依赖，同上）。 */
+/* 步骤 31：附件页那一簇搬进 filesflow.js（循环依赖，同上）。 */
+/* 步骤 30：剪贴板暂存那一簇搬进 clipflow.js（循环依赖，同上，只在函数体里读）。 */
+/* 步骤 29：截图捕获那一簇（含监控文件夹）搬进 shotflow.js；这里是循环依赖（shotflow.js
+   反过来 import app.js 的 S / tab / toast / closeSheet …），只在函数体里读，安全。 */
+/* 步骤 16c：最后六个「字符串弹层」—— 排序筛选 / 错过的提醒 / 记一笔 / 添加待办 /
+   运行日志 / AI 调用记录。它们以前是 app.js 里拼 HTML 字符串 + 内联 onclick。 */
+/* 步骤 10：我的页（统计）+ 设置页 */
+/* 步骤 9：剪贴板暂存页 */
+/* 步骤 8：截图暂存页（进度层步骤 17j 搬进了 shell.js 的 <teleport>） */
+/* S3（D14）：Vue 装配层与视图注册表。混合期（步骤 5-10）里已迁移的 tab 走 Vue，
+   其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
+/* S（整份 /api/state 的镜像）搬进 js/statebox.js（P14 S6 步骤 53）。 */

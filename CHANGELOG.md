@@ -1374,6 +1374,29 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### app.js 的过期指针注释收成一张模块索引表（P14 S6 步骤 54）
+
+步骤 29-53 每搬走一簇就留一行「X 搬进 js/y.js（步骤 N）」，25 步之后 **570 行里有 309 行是注释**，其中 73 个块
+（124 行）是纯历史指针——它们描述的代码早就不在这个文件里了。这一步收成文件头的一张分工表。
+**app.js 570 → 479 行**（删 73 个注释块 / 124 行，加 35 行索引块；注释行 309 → 219）。
+
+* 索引表说三件事：**app.js 只剩哪四样**（盒子层 / window 桥 / Vue 宿主接口 H + HOST_KEYS / 导出表）、**27 个模块
+  各管什么**（零依赖 → 只依赖 shell.js → 渲染链 → 数据与偏好 → 功能簇 → 启动自检）、**三条搬动规矩**：
+  ① 模块顶层不许读 app.js（步骤 40 踩过：模块顶层 `var SHEETARG = SHEETARGB.v` → 求值期 undefined → 整份
+  app.js 抛 TypeError、页面全白），只在函数体里读循环依赖才安全；② 写 app.js 的 var 走 setter
+  （setTabTo / setQ / setQRaw / setApiFail / setReadyResolve），判据一句话「属性写能搬，整包赋值不能搬」；
+  ③ 整包赋值的对象一律进盒子，组件读 getter。
+* 删掉的每一行都存了一份在 `.test/removed_cmts_54{,b}.txt`；有价值的教训（17b 的 CLIP 三态、整包赋值要 reassign、
+  盒子声明顺序硬要求）在对应模块的文件头里都有同一份，删的不重复。
+* 闸门一行没改：死代码扫描本来就剔注释，全项目只有两处锚点匹配注释文本（`VUE_SHEETS = {[^}]*progress:` 读的是代码、
+  `行首是 /*` 那条扫 .sh 脚本），都不受影响。122 项一次通过。
+* 探针（`.test/probe_cmt.js`，物理屏）：切页签 / 我的页 hero / 设置弹层标题="设置" / 服务端搜索 `host.q="笔记" 卡片=7`
+  / `end loads=1 状态点=dot`，全程无 JS-STACK / JS-REJECT——注释改动最怕「删注释手滑删了代码行」，走四条主路径兜住。
+  踩坑：探针里写单引号选择器（`'.pane[data-tab=todos] .todo'`）会让 probe.sh 一个字都不输出；「我的」页签的
+  `data-tab` 是 `mine` 不是 `me`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 响应式盒子层搬进 js/statebox.js（P14 S6 步骤 53）
 
 第二十五簇：`S` / `syncBox` / 七个盒子（`TAB` `QB` `OPENB` `REMIND` `STERR` `SRERR` `SHEETARGB`）连 `reassign`

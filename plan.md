@@ -4048,3 +4048,41 @@ end loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.76 P14 S6：app.js 的过期指针注释收成一张模块索引表（步骤 54）
+
+步骤 29-53 每搬走一簇就在 app.js 留一行「X 搬进 js/y.js（步骤 N）」，25 步之后：**570 行里有 309 行是注释**，
+其中 73 个块（124 行）纯粹是历史指针——它们描述的代码早就不在这个文件里了。这一步把它们收成
+文件头的一张分工表。**app.js 570 → 479 行**（删 73 个注释块 / 124 行，加 35 行索引块；注释行 309 → 219）。
+
+* 索引表说三件事：**app.js 只剩哪四样**（盒子层 / window 桥 / Vue 宿主接口 H + HOST_KEYS / 导出表）、
+  **27 个模块各管什么**（按零依赖 → 只依赖 shell.js → 渲染链 → 数据与偏好 → 功能簇 → 启动自检排序）、
+  **三条搬动规矩**：① 模块顶层不许读 app.js（步骤 40 踩过：模块顶层 `var SHEETARG = SHEETARGB.v`
+  → 求值期 undefined → 整份 app.js 抛 TypeError、页面全白），只在函数体里读，循环依赖才安全；
+  ② 写 app.js 的 var 走那边开出来的 setter（setTabTo / setQ / setQRaw / setApiFail / setReadyResolve），
+  判据一句话「属性写能搬，整包赋值不能搬」；③ 整包赋值的对象一律进盒子，组件读 getter。
+* 删掉的每一行都在 `.test/removed_cmts_54.txt` / `.test/removed_cmts_54b.txt` 里存了一份，
+  原文也都在 `git show HEAD~1:go/ui/js/app.js` 与 plan.md 各步骤小节里。有价值的教训（17b 的 CLIP 三态、
+  整包赋值要 reassign、声明顺序硬要求）在对应模块的文件头里都有同一份，删的不重复。
+* 闸门**一行没改**：闸门⑩/⑪ 的死代码扫描本来就剔注释；全项目只有两处锚点匹配注释文本
+  （`VUE_SHEETS = {[^}]*progress:` 读的是代码、`行首是 /*` 那条扫的是 .sh 脚本），都不受影响。
+  122 项一次通过。
+* 探针（物理屏，`.test/probe_cmt.js`）：
+
+```
+就绪 loads=1 卡片=14 tab=mine 可见面板=mine
+切待办页：tab=todos 可见面板=todos 待办行=0
+切我的页：可见面板=mine hero 在=true
+设置弹层：sheet 节点=在 标题="设置"
+搜索：host.q="笔记" 卡片=7 srErr=""
+清空之后：卡片=14 tab=mine 可见面板=mine
+end loads=1 状态点=dot
+```
+
+  注释改动最怕的是「删注释时手滑删了代码行」，所以探针走的是四条主路径（切页签 / 我的页 hero /
+  设置弹层标题 / 服务端搜索）+ `loads=1`，全程没有 JS-STACK / JS-REJECT。
+  踩坑：探针里写了单引号选择器（`'.pane[data-tab=todos] .todo'`）→ probe.sh 直接不输出；
+  还有「我的」页签的 `data-tab` 是 `mine` 不是 `me`。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
