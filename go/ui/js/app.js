@@ -50,6 +50,8 @@ import { MISSED, loadMissed, missedSheet, missedDone, missedGoTodos, missedDismi
 /* 步骤 37：打开笔记 / 待办 + 系统日历 / 闹钟那一簇搬进 js/openflow.js（循环依赖，同上）。 */
 /* 步骤 38：弹层开合（pageSheetVue / sheetVue / closeSheet / sheetLeft）搬进 js/sheetflow.js
    （循环依赖，同上：本模块顶层不碰 app.js，只在函数体里读 $ 与 VUE_SHEETS）。 */
+/* 步骤 39：自绘对话框那一簇搬进 js/dlgflow.js（循环依赖，同上）。 */
+import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
 import { pageSheetVue, sheetVue, closeSheet, sheetLeft } from './sheetflow.js'
 import { openNote, openTodo, openTodoFocus, jump, dueMs, toCalendar, toAlarm }
          from './openflow.js'
@@ -540,43 +542,13 @@ async function showDebug(){
 }
 function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
 
-/* ---------- 自绘对话框（代替原生 confirm/alert）----------
-   WebView 的默认弹框会顶着一行“网址为 http://127.0.0.1 的网页显示：”，
-   对用户毫无意义。Java 的 onJsAlert/onJsConfirm 也一律转发到这里。 */
-var dlgCb = null, dlgCancel = null;
-/* 步骤 15：六个字段写进 shell.dlg，显隐、按钮文案、危险色、取消按钮的显隐全由 DialogHost
-   渲染（正文是 esc 过的纯文本，模板里的 {{ }} 天然转义，与原来的 innerHTML+esc 等价）。 */
-function dialog(o){
-  shell.dlg.title = o.title || '';
-  shell.dlg.body = o.body || '';
-  shell.dlg.ok = o.ok || '确定';
-  shell.dlg.cancel = o.cancel || '取消';
-  shell.dlg.danger = !!o.danger;
-  shell.dlg.noCancel = !!o.noCancel;
-  dlgCb = o.onOk || null; dlgCancel = o.onCancel || null;
-  shell.dlg.on = true;
-}
-function closeDlg(ok){
-  shell.dlg.on = false;
-  var cb = dlgCb, cc = dlgCancel;
-  dlgCb = null; dlgCancel = null;
-  if(ok){ if(cb) cb() } else if(cc) cc();
-}
-function askDel(what, onOk){ dialog({title:'删除', body:what, ok:'删除', danger:true, onOk:onOk}) }
-/* Java 的 onJsAlert/onJsConfirm 转发到这里（id 非空 = confirm，需要回传结果） */
-window.uiDialog = function(title, msg, id){
-  dialog({title:title, body:msg, noCancel:!id,
-    onOk:function(){ if(id && window.Android) Android.dialogResult(id, true) },
-    onCancel:function(){ if(id && window.Android) Android.dialogResult(id, false) }});
-};
+/* 步骤 39：自绘对话框那一簇（dialog / closeDlg / askDel）搬进 js/dlgflow.js（循环依赖，
+   同上：本模块顶层不碰 app.js，只在函数体里读 tab，写 tab 走 setTabTo）。
+   这两行 window 桥留在本文件：Java 的 onJsAlert/onJsConfirm 与手机返回键找的是全局名，
+   闸门㉒ 的 APP_BRIDGES 钉住它们不许搬走。 */
+window.uiDialog = function(title, msg, id){ uiDialog(title, msg, id) };
 
-/* 手机返回键：先关对话框/面板，再回笔记页，最后才退 app */
-window.uiBack = function(){
-  if(shell.dlg.on){ closeDlg(false); return 1; }
-  if(shell.sheet.on){ closeSheet(); return 1; }
-  if(tab !== 'notes'){ tab = syncBox(TAB, 'notes'); setTab(true); return 1; }
-  return 0;
-};
+window.uiBack = function(){ return uiBackKey() };
 /* 步骤 21：「记一笔」与「添加待办」的表单值也搬进状态（步骤 20 的同一套做法）。
    这两个弹层是每次新建，所以初值就是空串 / 默认值，不需要从服务端灌。
    与设置页的差别：这里用 :value（DOM property）而不是 :value.attr —— 这些元素今天

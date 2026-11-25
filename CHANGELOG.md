@@ -1374,6 +1374,26 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 自绘对话框那一簇搬进 js/dlgflow.js（P14 S6 步骤 39）
+
+第十一簇：**自绘对话框**——`dialog`（六个字段写进 `shell.dlg`）、`closeDlg`（取走回调再清空）、
+`askDel`，连 Java 侧两个入口的实现（`uiDialog` / 返回键逐级退出）一起搬成 `go/ui/js/dlgflow.js`，
+**app.js 1068 → 1040 行**（模块 52 行）。
+
+* `dlgCb` / `dlgCancel` 是模块私有：回调只有一对，`dialog()` 装、`closeDlg()` 取走并清空，外部不该碰，
+  所以不导出。
+* **两行 `window` 桥留在 app.js**（清单 (h) 条）：Java 的 `onJsAlert/onJsConfirm` 与手机返回键找的是全局名，
+  闸门㉒ 的 `APP_BRIDGES` 钉住这 10 行不许搬走。模块导出的是它们要调的实现：
+  `window.uiDialog = function(title, msg, id){ uiDialog(title, msg, id) };`
+  `window.uiBack = function(){ return uiBackKey() };`
+* 清单 (c) 条：`uiBackKey` 里那句 `tab = syncBox(TAB, 'notes')` 是**写** app.js 的 `var tab`，ESM 导入是
+  只读绑定，直接写会在链接期 SyntaxError → 改成 `setTabTo('notes')`。读 `tab` 走活绑定，安全。
+* 探针（`.test/probe_dlg.js`）：alert（`id` 为空 → 取消按钮 hidden）、confirm（`id` 非空 → 取消按钮在）、
+  点确定关闭、`uiBack` 的四级优先级逐条验证（对话框 → 1、弹层 → 1、我的页 → 1 且回到笔记页、
+  笔记页 → 0 退 app），`loads=1`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 弹层开合那一簇搬进 js/sheetflow.js（P14 S6 步骤 38）
 
 第十簇：**弹层开合**——`pageSheetVue`（全屏页）、`sheetVue`（底部卡片）、`closeSheet`（收场动画 +

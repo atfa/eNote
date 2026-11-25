@@ -3427,3 +3427,42 @@ nextTick 会把设置页组件挂进排序页的面板，症状是 `apps=2` 且�
 验收：122 闸门（闸门⑱ 跨文件）、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、待办行 651 B 逐字未动，
 弹层 DOM 基准 `dom_equiv3` 全部一致）。
+
+## 9.61 P14 S6：自绘对话框那一簇搬进 js/dlgflow.js（步骤 39）
+
+第十一簇：**自绘对话框**——`dialog`（六个字段写进 `shell.dlg`）、`closeDlg`（取走回调再清空）、
+`askDel`，连 Java 侧两个入口的实现（`uiDialog` / 返回键的逐级退出）一起搬成
+`go/ui/js/dlgflow.js`，**app.js 1068 → 1040 行**（模块 52 行）。
+
+* `dlgCb` / `dlgCancel` 是模块私有：对话框的回调只有一对，`dialog()` 装、`closeDlg()` 取走并清空，
+  外部模块不该碰，所以不导出（闸门⑩ 的死函数扫描认「模块内被用」）。
+* **两行 `window` 桥留在 app.js**（清单 (h) 条）：Java 的 `onJsAlert/onJsConfirm` 与手机返回键找的是
+  全局名，闸门㉒ 的 `APP_BRIDGES` 钉住这 10 行不许搬走。模块导出的是它们要调的实现：
+  `window.uiDialog = function(title, msg, id){ uiDialog(title, msg, id) };`
+  `window.uiBack = function(){ return uiBackKey() };`
+* 清单 (c) 条：`uiBackKey` 里那句 `tab = syncBox(TAB, 'notes')` 是**写** app.js 的 `var tab`，
+  ESM 导入是只读绑定，直接写会在链接期 SyntaxError → 改成 `setTabTo('notes')`（同一行代码，
+  app.js 里本来就有这个 setter）。读 `tab` 用活绑定，安全。
+* 搬迁清单 (g) 条：整段与 `git show HEAD:go/ui/js/app.js` 的 543-579 行逐字 diff，除声明改写
+  （`window.uiDialog = function(…)` → `function uiDialog(…)`、`window.uiBack = function(){` →
+  `function uiBackKey(){`、`tab = syncBox(…)` → `setTabTo(…)`）外全部一致。
+
+探针（物理屏，`.test/probe_dlg.js`，逐次打印 `#dlg` / `#dlgT` / `#dlgB` / `#dlgYes` / `#dlgNo` 与
+`__enote.state.tab`）：
+
+```
+base        dlg=none
+alert       dlg=on title=提示 body=只有确定按钮 yes=确定.btn pri no=hidden     ← id 为空 = alert，取消按钮隐藏
+确定后      dlg=none
+confirm     dlg=on title=确认 body=要回传结果的 yes=确定.btn pri no=取消        ← id 非空 = confirm
+uiBack 关对话框返回 1 → dlg=none
+面板开着 uiBack 返回 1 → 面板关掉后 dlg=none
+我的页 uiBack 返回 1 → 回笔记页 tab=notes
+笔记页 uiBack 返回 0 loads=1
+```
+
+`uiBack` 的四级优先级（对话框 → 弹层 → 回笔记页 → 退 app）是返回键的全部行为，Java 侧
+`evaluateJavascript("window.uiBack ? uiBack() : 0")` 读的就是这个返回值，所以每一级都要单独探针。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

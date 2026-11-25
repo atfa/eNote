@@ -1,27 +1,20 @@
-P14 S6 步骤 38：弹层开合簇搬进 js/sheetflow.js（app.js 1155 → 1068）
+P14 S6 步骤 39：自绘对话框簇搬进 js/dlgflow.js（app.js 1068 → 1040）
 
-第十簇：弹层开合——pageSheetVue（全屏页）、sheetVue（底部卡片）、closeSheet（收场动画 + 摘节点）、
-sheetLeft（van-popup @vue:unmounted 拆 app），连 sheetGen（开启序号，防「开 A 立刻改开 B」时迟到的
-nextTick 把上一个弹层挂进新面板）与 cssMs（时长只从样式表读）一起搬成 go/ui/js/sheetflow.js，
-app.js 1155 → 1068 行（模块 106 行）。
+第十一簇：自绘对话框——dialog（六个字段写进 shell.dlg）、closeDlg（取走回调再清空）、askDel，连 Java 侧
+两个入口的实现（uiDialog / 返回键逐级退出）一起搬成 go/ui/js/dlgflow.js，app.js 1068 → 1040 行（模块 52 行）。
 
-- sheetGen 与 cssMs 是模块私有（只有这两个入口 bump / 只有 closeSheet 用），不导出。
-- 从 app.js 只拿 $ 与 VUE_SHEETS，都只在 nextTick 回调里读 → 求值期不碰，循环依赖安全。
-  VUE_SHEETS 这次加进 app.js 导出表，闸门㉒ 立刻抓到：没导出就是链接期 SyntaxError、整份脚本不执行
-  （步骤 37 那个静默空白页的同一类）。
-- shell / nextTick / mountSheet / unmountAllSheets 直接从 shell.js / vue.js 拿，不绕 app.js。
-- 闸门⑱ 教它读两个文件：bodyOf 原来只在 app.js 里找 pageSheetVue / closeSheet / sheetLeft 的函数体，
-  搬走之后它报「找不到 pageSheetVue（闸门⑱ 在假绿）」——这条门本来就是「找不到就红」，不会静默通过，
-  但契约的新家必须一起扫。现在 appSrc = app.js ∪ sheetflow.js。
-- 搬迁清单 (g) 条照做：6 段（var sheetGen + 5 个函数）与 git show HEAD:go/ui/js/app.js 逐字 diff，
-  全部一致。
+- dlgCb / dlgCancel 是模块私有：回调只有一对，dialog() 装、closeDlg() 取走并清空，外部不该碰，不导出。
+- 两行 window 桥留在 app.js（清单 (h) 条）：Java 的 onJsAlert/onJsConfirm 与手机返回键找的是全局名，
+  闸门㉒ 的 APP_BRIDGES 钉住这 10 行不许搬走。模块导出的是它们要调的实现：
+  window.uiDialog = function(title, msg, id){ uiDialog(title, msg, id) };
+  window.uiBack = function(){ return uiBackKey() };
+- 清单 (c) 条：uiBackKey 里那句 tab = syncBox(TAB, 'notes') 是写 app.js 的 var tab，ESM 导入是只读绑定，
+  直接写会在链接期 SyntaxError → 改成 setTabTo('notes')。读 tab 走活绑定，安全。
+- 清单 (g) 条：整段与 git show HEAD:go/ui/js/app.js 的 543-579 行逐字 diff，除三处声明改写外全部一致。
 
-探针（物理屏 .test/probe_sheet.js，逐次打印 #sheet 的 class / 已挂载 sheet app 数 / #sheetBody 字节数 /
-#panel 的 data-kind）：设置页（sheet on page apps=1 body=4351 kind=settings）、运行日志（卡片形态 apps=1
-body=11358）、排序页（apps=1 body=893）、关掉（sheet=none apps=0，sheetLeft 拆干净）、连开两个
-（settingsSheet() 后立刻 sortSheet() → apps=1 kind=null，sheetGen 守卫生效；搬坏的话是 apps=2 + 面板空白
-点了没反应）、loads=1。
+探针（物理屏 .test/probe_dlg.js，逐次打印 #dlg / #dlgT / #dlgB / #dlgYes / #dlgNo 与 __enote.state.tab）：
+alert（id 为空 → 取消按钮 hidden、确定按钮 .pri）、confirm（id 非空 → 取消按钮在）、点确定关闭、
+uiBack 四级优先级逐条（对话框 → 1、弹层 → 1、我的页 → 1 且回到笔记页、笔记页 → 0 退 app）、loads=1。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd
-**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、待办行 651 B 逐字未动，
-弹层 DOM 基准 dom_equiv3 全部一致）。
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
