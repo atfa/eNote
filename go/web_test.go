@@ -148,11 +148,14 @@ func TestIndexServedFromDirectory(t *testing.T) {
 	// D13/D14：render() 的契约是 Promise。步骤 11 起只剩一条路径：遗留字符串渲染器
 	// （buildPage 那一支）连同 VDIFF 基准一起删了，所以钉的是「Vue 分支必须兑现 Promise」
 	// + 「遗留分支不许回来」。契约比实现先动：调用点（几处 jseval 载荷）一行没改。
-	if n := strings.Count(appjs, "function render(){"); n != 1 {
-		t.Errorf("app.js 里 function render(){ 出现 %d 次（应为 1）：函数声明提升会让后一份覆盖前一份，Vue 分发静默失效", n)
+	// 步骤 51：render() 搬进 js/renderflow.js，下面三条（唯一一份定义、Promise 契约、遗留分支
+	// 不许回来）换读新家——ban 那圈也一起扫，否则 buildPage 搬个家就躲过了。
+	renderjs := appjs + "\n" + uiBody(t, doUI(t, "/js/renderflow.js"))
+	if n := strings.Count(renderjs, "function render(){"); n != 1 {
+		t.Errorf("app.js / js/renderflow.js 里 function render(){ 出现 %d 次（应为 1）：函数声明提升会让后一份覆盖前一份，Vue 分发静默失效", n)
 	}
-	if i := strings.Index(appjs, "function render(){"); i >= 0 {
-		body := appjs[i:]
+	if i := strings.Index(renderjs, "function render(){"); i >= 0 {
+		body := renderjs[i:]
 		if j := strings.Index(body, "\n}"); j > 0 {
 			body = body[:j]
 		}
@@ -161,15 +164,15 @@ func TestIndexServedFromDirectory(t *testing.T) {
 			"try { afterPaint() } finally { markReady() }", // 首屏记号无条件打出去
 		} {
 			if !strings.Contains(body, want) {
-				t.Errorf("app.js 的 render() 缺 %q（D13/D14）", want)
+				t.Errorf("render() 缺 %q（D13/D14）", want)
 			}
 		}
 		// 步骤 11：遗留字符串渲染器删光，注册表是唯一路径。这条是「不许回来」的钉子：
 		// buildPage 一旦复活，render() 就多一条没人测的分支（VDIFF 已随基准一起删，
 		// 那条分支红不了也绿不了，正是「恒绿闸门」最坏的样子）。
 		for _, ban := range []string{"function buildPage", "buildPage(tab)", "function sigOf", "__enote.legacy", "legacy: {"} {
-			if strings.Contains(appjs, ban) {
-				t.Errorf("app.js 里又出现 %q：步骤 11 已删光遗留渲染路径与 VDIFF 基准", ban)
+			if strings.Contains(renderjs, ban) {
+				t.Errorf("app.js / js/renderflow.js 里又出现 %q：步骤 11 已删光遗留渲染路径与 VDIFF 基准", ban)
 			}
 		}
 	}

@@ -3906,3 +3906,52 @@ end loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.73 P14 S6：渲染核心搬进 js/renderflow.js（步骤 51）
+
+第二十三簇：`afterPaint` / `render` / `readyResolve`+`firstPainted` / `markReady` / `syncExpand` /
+`strip` / `paintStatus` 搬成 `go/ui/js/renderflow.js`。**app.js 695 → 626 行**（模块 103 行，
+74 行逐字搬，2 处声明改写）。
+
+* 依赖全部直连：`S`/`tab` 从 app.js（只读），`shell` 从 shell.js，`apps`/`mountView`/`vuePaint`
+  从 vue.js，`paneFor`/`invalidatePanes`/`showPane`/`paneBuilt`/`paneDirty`/`VUE_VIEWS` 从
+  panes.js（步骤 50），`syncReminders` 从 remindflow.js，`clearEnter` 从 noteflow.js，`ic` 从
+  domutil.js（步骤 48）。
+* **本簇第一次出现「app.js 写新模块的变量」**：模块末尾的
+  `var __ready = new Promise(function(r){ readyResolve = r; if(firstPainted) r() })` 要往
+  `readyResolve` 里存 resolve。ESM 的 import 是只读活绑定，所以 renderflow 导出
+  `setReadyResolve(fn)` / `hasFirstPainted()`，app.js 那行改成
+  `var __ready = new Promise(function(r){ setReadyResolve(r); if(hasFirstPainted()) r() })`。
+  这是清单 (c′) 里 `setApiFail`（步骤 47）的同款做法，写进了模块文件头。
+* app.js 的导出表一行没动：`render` / `paintStatus` / `strip` 现在是**再导出**，filesflow、
+  searchflow、tabflow 等九个模块与 HOST 那边一个字没改；`markReady` 是 `__enote.markReady`
+  测试缝的调用面（探针里 `typeof=function`）。
+* 闸门/测试换读处（清单 (e)）：`go/web_test.go` 新增 `renderjs := appjs + /js/renderflow.js`，
+  「全文只有一份 `function render(){`」「render() 必须兑现 Promise（`return vuePaint().then(done, done)`
+  + `try { afterPaint() } finally { markReady() }`）」「遗留分支不许回来（buildPage / sigOf /
+  legacy 那串 ban）」三条改读它——ban 那一圈也一起扫，否则 `buildPage` 搬个家就躲过了。
+  `tools/ui_test.js` 一行没改：闸门⑰/⑱/㉑/㉒ 与 syncExpand、ANIMLOCK 那几条锚点读的都是拼接后的
+  `src`，搬文件对它们透明（ok 行数字一字未变）。
+* 踩坑（清单 (b) 的老坑，第二次犯）：新 import 用 `k+1` 插到 `import { panes, … } from './panes.js'`
+  后面，而那条 import **跨两行**，结果插进 import 中间 → `node --check` 报
+  `SyntaxError: Unexpected reserved word`、闸门㉒ 红。改成插到整条 import 的结束行之后。
+
+探针（物理屏，`.test/probe_render.js`）：
+
+```
+就绪 loads=1 tab=notes 卡片=13
+syncExpand：展开按钮=8 可见=0 隐藏=8
+paintStatus：状态点 class="dot"
+markReady 缝 typeof=function
+首屏记号：ready 已兑现
+strip：笔记页指标条 4 格 = "0待办 | 0逾期 | 8笔记 | 本机 OCR 就绪"
+strip：待办页指标条 4 格 = "0待办 | 0逾期 | 8笔记 | 本机 OCR 就绪"
+切回 notes：卡片=13 状态点="dot"
+end loads=1
+```
+
+「展开按钮 8 个全隐藏」正是 `syncExpand` 的语义（正文没被 clamp 就不该出现按钮）；
+`ready 已兑现` 证明 `setReadyResolve` 那条改写没断首屏记号。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

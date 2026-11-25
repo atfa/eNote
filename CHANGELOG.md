@@ -1374,6 +1374,32 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 渲染核心搬进 js/renderflow.js（P14 S6 步骤 51）
+
+第二十三簇：`afterPaint`/`render`/`readyResolve`+`firstPainted`/`markReady`/`syncExpand`/`strip`/`paintStatus`
+搬成 `go/ui/js/renderflow.js`。**app.js 695 → 626 行**（模块 103 行，74 行逐字搬、2 处声明改写）。
+
+* 依赖全部直连：`S`/`tab` 从 app.js（只读）、`shell` 从 shell.js、`apps`/`mountView`/`vuePaint` 从 vue.js、
+  `paneFor`/`invalidatePanes`/`showPane`/`paneBuilt`/`paneDirty`/`VUE_VIEWS` 从 panes.js（步骤 50）、
+  `syncReminders` 从 remindflow.js、`clearEnter` 从 noteflow.js、`ic` 从 domutil.js（步骤 48）。
+* **本簇第一次出现「app.js 写新模块的变量」**：模块末尾的 `var __ready = new Promise(function(r){ readyResolve = r;
+  if(firstPainted) r() })` 要往 `readyResolve` 存 resolve，而 ESM 的 import 是只读活绑定 → renderflow 导出
+  `setReadyResolve(fn)` / `hasFirstPainted()`，app.js 那行改走这对入口（与步骤 47 的 `setApiFail` 同款，写进文件头）。
+* app.js 导出表一行没动：`render`/`paintStatus`/`strip` 现在是**再导出**，filesflow、searchflow、tabflow 等九个模块
+  与 HOST 一个字没改；`markReady` 是 `__enote.markReady` 测试缝的调用面。
+* `go/web_test.go` 新增 `renderjs := appjs + /js/renderflow.js`，三条钉子（全文只有一份 `function render(){`、
+  render() 必须兑现 Promise、遗留分支 buildPage/sigOf/legacy 不许回来）改读它——ban 那一圈也一起扫，否则
+  `buildPage` 搬个家就躲过了。`tools/ui_test.js` 一行没改：闸门⑰/⑱/㉑/㉒ 与 syncExpand、ANIMLOCK 的锚点读的都是
+  拼接后的 `src`，搬文件对它们透明（ok 行数字一字未变）。
+* 踩坑（第二次犯同一个）：新 import 用 `k+1` 插到 `import { panes, … } from './panes.js'` 之后，而那条 import
+  **跨两行**，插进了 import 中间 → `node --check` 报 `SyntaxError: Unexpected reserved word`、闸门㉒ 红。
+* 探针（`.test/probe_render.js`）：`syncExpand：展开按钮=8 可见=0 隐藏=8`（正文没被 clamp 就不该出现按钮）、
+  `paintStatus：状态点 class="dot"`、`markReady 缝 typeof=function`、`首屏记号：ready 已兑现`（证明
+  `setReadyResolve` 的改写没断首屏记号）、`strip：笔记页/待办页指标条 4 格 = "0待办 | 0逾期 | 8笔记 | 本机 OCR 就绪"`、
+  `loads=1`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 常驻面板与 Vue 注册表搬进 js/panes.js（P14 S6 步骤 50）
 
 第二十二簇：`panes`/`paneBuilt`/`paneDirty`/`tabScroll`/`paneFor`/`invalidatePanes`/`showPane`/`VUE_VIEWS`/`VUE_SHEETS`

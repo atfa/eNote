@@ -1,26 +1,27 @@
-P14 S6 步骤 50：常驻面板与 Vue 注册表搬进 js/panes.js（app.js 756 → 695）
+P14 S6 步骤 51：渲染核心搬进 js/renderflow.js（app.js 695 → 626）
 
-第二十二簇：panes / paneBuilt / paneDirty / tabScroll / paneFor / invalidatePanes / showPane / VUE_VIEWS /
-VUE_SHEETS 搬成 go/ui/js/panes.js。app.js 756 → 695 行（模块 60 行，32 行逐字搬、0 处改写），14 行视图组件
-import 跟着搬走。
+第二十三簇：afterPaint / render / readyResolve+firstPainted / markReady / syncExpand / strip / paintStatus
+搬成 go/ui/js/renderflow.js。app.js 695 → 626 行（模块 103 行，74 行逐字搬、2 处声明改写）。
 
-- 依赖：$ 直接找 js/domutil.js，tab 从 app.js（showPane 只读）；两张注册表里的 14 个组件从 ./views/*.js 直接
-  import（ESM 保证组件先于本模块求值）。
-- 属性写跨模块是合法的：render() 写 paneBuilt[tab] / paneDirty[tab]、shotflow 写 paneDirty[tab]、tabflow 写
-  tabScroll[lastTab] —— 全是属性写、没有整包赋值，import 进来的对象直接改属性就够（ESM 只锁绑定不锁属性）。
-  这条判据写进了模块文件头。
-- app.js 导出表一行没动：paneBuilt / paneDirty / showPane / tabScroll / VUE_SHEETS 现在是再导出（import 进来的
-  名字可以出现在 export {…} 里），tabflow / sheetflow / shotflow 一个字没改。
-- 三处按路径读 app.js 的闸门/测试跟着换读处：tools/ui_test.js 闸门⑮ 新增 regSrc = app.js + js/panes.js（四条
-  注册表正则改读它，失败文案改成「app.js / js/panes.js 里找不到…」）；闸门⑱ 的 appSrc 加上 panes.js（否则
-  「progress 不许回到 VUE_SHEETS 注册表」那条会瞎掉）；go/web_test.go 新增 regjs := appjs + /js/panes.js。
-  这一步第一次 ./build.sh 就是被 go test 拦下的（报「注册表缺 notes/todos/…」），说明这条钉子在新家仍咬得住；
-  闸门⑮ 的 ok 行数字一字未变（4 视图 + 10 弹层、19 个 app、165 个 key）。
+- 依赖全部直连：S / tab 从 app.js（只读）、shell 从 shell.js、apps / mountView / vuePaint 从 vue.js、
+  paneFor / invalidatePanes / showPane / paneBuilt / paneDirty / VUE_VIEWS 从 panes.js（步骤 50）、
+  syncReminders 从 remindflow.js、clearEnter 从 noteflow.js、ic 从 domutil.js（步骤 48）。
+- 本簇第一次出现「app.js 写新模块的变量」：模块末尾的 var __ready = new Promise(function(r){ readyResolve = r;
+  if(firstPainted) r() }) 要往 readyResolve 里存 resolve，而 ESM 的 import 是只读活绑定 → renderflow 导出
+  setReadyResolve(fn) / hasFirstPainted()，app.js 那行改走这对入口（与步骤 47 的 setApiFail 同款做法，写进文件头）。
+- app.js 导出表一行没动：render / paintStatus / strip 现在是再导出，filesflow、searchflow、tabflow 等九个模块与
+  HOST 那边一个字没改；markReady 仍是 __enote.markReady 测试缝的调用面。
+- go/web_test.go 新增 renderjs := appjs + /js/renderflow.js，三条钉子（全文只有一份 function render(){、
+  render() 必须兑现 Promise、遗留分支 buildPage / sigOf / legacy 不许回来）改读它——ban 那一圈也一起扫，否则
+  buildPage 搬个家就躲过了。tools/ui_test.js 一行没改：闸门⑰/⑱/㉑/㉒ 与 syncExpand、ANIMLOCK 的锚点读的都是
+  拼接后的 src，搬文件对它们透明（ok 行数字一字未变）。
+- 踩坑（清单 (b) 的老坑第二次犯）：新 import 用 k+1 插到 import { panes, … } from './panes.js' 之后，而那条
+  import 跨两行，结果插进 import 中间 → node --check 报 SyntaxError: Unexpected reserved word、闸门㉒ 红。
 
-探针（物理屏 .test/probe_panes.js）：就绪 loads=1 pane 数=1 可见=notes → 注册表 VUE_VIEWS keys=files,mine,notes,
-todos、VUE_SHEETS keys=add,addtodo,clip,debug,folders,log,missed,settings,shots,sort → isVue 四个 tab 全 true、
-isVueSheet 三个弹层 true → 逐个切 tab：可见只有一个，各 pane 子节点从 notes:9 todos:2 长到 notes:9 todos:2 files:2
-mine:7，切回 notes 仍是 9（同时证明面板懒建、常驻不重建、同时只有一个可见）→ end loads=1。
+探针（物理屏 .test/probe_render.js）：就绪 loads=1 tab=notes 卡片=13 → syncExpand：展开按钮=8 可见=0 隐藏=8
+（正文没被 clamp 就不该出现按钮）→ paintStatus：状态点 class="dot" → markReady 缝 typeof=function →
+首屏记号：ready 已兑现 → strip：笔记页 / 待办页指标条各 4 格 = "0待办 | 0逾期 | 8笔记 | 本机 OCR 就绪" →
+切回 notes 卡片=13 → end loads=1。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
