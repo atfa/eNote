@@ -62,6 +62,13 @@ function norm(s) {
       return keep.length ? ' class="' + keep.join(' ') + '"' : ''
     })
     .replace(/ onclick="[^"]*"/g, '')
+    /* 步骤 21：Vue 3.5 的 patchProp 在写 value property 之后同步补一份 value 属性
+       （vendor/vue.global.js:12276：patchDOMProp 之后紧跟 patchAttr），所以 :value 绑定的
+       表单元素序列化出来多一个 value="…"（表单元素是空串，select 是当前选项值）。
+       它与 property 相同、是默认值，行为不变；字符串那侧从不写 .value，所以没这个属性。
+       只剥 input/textarea/select 自己开标签上的那一个，option 的 value 是有意义的。 */
+    .replace(/<(input|textarea|select)\b([^>]*)>/g, (mm, tag, at) =>
+      '<' + tag + at.replace(/ value="[^"]*"/g, '') + '>')
     .replace(/<use ([^>]*?)\/>/g, '<use $1></use>')
     .replace(/ style="([^"]*)"/g, (mm, css) =>
       ' style="' + css.split(';').map(s => s.trim()).filter(Boolean)

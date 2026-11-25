@@ -109,9 +109,10 @@ export const MissedSheetView = {
 export const AddSheetView = {
   name: 'AddSheetView',
   components: { Ico },
-  setup(){ const H = inject('H'); return { H } },
+  setup(){ const H = inject('H'); return { H,
+    f: computed(() => (H.FORMS && H.FORMS.add) || { text: '' }) } },
   template: `
-<h2>记一笔</h2><label>文字</label><textarea id="addText" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea><div class="acts"><button class="btn pri" @click="H.addNote()">保存并解析</button><button class="btn" @click="H.pickImage()"><ico n="camera"/>选图片（本机 OCR）</button></div>
+<h2>记一笔</h2><label>文字</label><textarea id="addText" :value="f.text" @input="H.formSet('add','text',$event.target.value)" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea><div class="acts"><button class="btn pri" @click="H.addNote()">保存并解析</button><button class="btn" @click="H.pickImage()"><ico n="camera"/>选图片（本机 OCR）</button></div>
 `
 };
 
@@ -123,11 +124,12 @@ export const AddTodoSheetView = {
     const H = inject('H');
     return {
       H,
-      nid: H.sheetArg
+      nid: H.sheetArg,
+      f: computed(() => (H.FORMS && H.FORMS.todo) || { text:'', date:'', time:'', pri:'normal' })
     }
   },
   template: `
-<h2>添加待办</h2><label>事项</label><input id="tText" placeholder="要做什么"><div class="grid2"><div><label>日期</label><input type="date" id="tDate"></div><div><label>时间</label><input type="time" id="tTime"></div></div><label>优先级</label><select id="tPri"><option value="normal">普通</option><option value="high">重要</option><option value="low">低</option></select><div class="acts"><button class="btn pri" @click="H.addTodo(nid)">添加</button></div>
+<h2>添加待办</h2><label>事项</label><input id="tText" :value="f.text" @input="H.formSet('todo','text',$event.target.value)" placeholder="要做什么"><div class="grid2"><div><label>日期</label><input type="date" id="tDate" :value="f.date" @input="H.formSet('todo','date',$event.target.value)"></div><div><label>时间</label><input type="time" id="tTime" :value="f.time" @input="H.formSet('todo','time',$event.target.value)"></div></div><label>优先级</label><select id="tPri" :value="f.pri" @change="H.formSet('todo','pri',$event.target.value)"><option value="normal">普通</option><option value="high">重要</option><option value="low">低</option></select><div class="acts"><button class="btn pri" @click="H.addTodo(nid)">添加</button></div>
 `
 };
 

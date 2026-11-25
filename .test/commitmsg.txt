@@ -1,32 +1,38 @@
-P14 S6 步骤 20：设置页六个输入框的值搬进状态（SFORM）
+P14 S6 步骤 21：记一笔 / 添加待办两个弹层的表单值搬进状态（FORMS）
 
-步骤 19 之后继续。saveSettings() 是全站最后一处「把 DOM 当用户输入的真相源」：
-$('#sUrl').value.trim() 连读五个输入框，Vue 那一侧完全看不见正在打的东西。后果都写在
-旧注释里 —— settingsRefresh() 专门警告「重建会把输入框里正在打的字清掉」，夹具想改一个
-字段只能写 DOM，探针也读不到表单当前值。
+步骤 20 之后继续。剩下「把 DOM 当用户输入真相源」的地方只剩两个弹层：addNote() 读
+$('#addText').value，addTodo() 读 $('#tText')/#tDate/#tTime/#tPri 四个。
 
 改法
-- app.js 加 var SFORM = Vue.reactive({ v: null }) + formFill()（从 S.settings 灌初值，
-  打开设置页时调用，保存成功后用服务端回包重灌）+ formInput(k, v)（逐键写）。
-- settings.js 的六个输入框改成 :value.attr="f.xxx" @input="H.formInput('xxx', $event.target.value)"，
-  f 是 computed(() => H.SFORM || {…默认值})。宿主接口加 get SFORM() / formInput，
-  HOST_KEYS['sheet:settings'] 22 → 24 个 key。
-- 为什么不用 v-model：v-model 写的是 DOM property，序列化出来没有 value 属性，而 #sUrl 的
-  value 属性是 test.sh 钉住的契约（urlAttr=1，它同时保证「新建 input 的初值从属性来，
-  保存不会存空值」）。:value.attr + @input 是同样的双向效果、属性真的在 DOM 上。
-- 顺带修掉一条过时注释：settingsRefresh() 只重画不重建的真原因不是「丢正在打的字」
-  （值在 SFORM 里，重建不丢），是重建会打断 Android 输入法的组合中状态（拼音打一半被吞）。
-- 签名断言 id="sKey" :value.attr="s.apiKey || ''" 改成新绑定；闸门仍 122 项。
+- app.js 加 var FORMS = Vue.reactive({ v: { add: null, todo: null } }) + formSet(name, k, v)；
+  addSheet() 灌 {text:''}，addTodoSheet(nid) 灌 {text:'',date:'',time:'',pri:'normal'}
+  （两个弹层每次都是新建，不需要从服务端灌）；addNote() / addTodo() 只读 FORMS.v.add /
+  FORMS.v.todo。
+- 模板侧 textarea / 三个 input 用 :value="f.x" @input="H.formSet(...)"，select 用 @change。
+- 与设置页（步骤 20）的差别：这里用 :value（DOM property）而不是 :value.attr —— 这些元素
+  今天 DOM 上没有 value 属性，写 property 保持序列化不变；设置页那六个必须写属性
+  （test.sh 钉住 #sUrl 的 value 属性）。
+- 宿主接口加 get FORMS() / formSet，HOST_KEYS 的 sheet:add 2 → 4、sheet:addtodo 2 → 4。
 
-设备验证（.test/p20form.js）：打开设置页 → 往 #sModel 写值并派发 input →
-__enote.vue.host.SFORM.model 立刻是 probe-model、value 属性跟着变 → saveSettings() 存进去
-（toast「已保存」、S.settings.model 回读一致）→ 关掉重开显示保存值 → 复原为 exec。
-DOM A/B（.test/p20dom.js，基线 = git stash 出步骤 19 的构建）：六个输入框的 outerHTML、
-#sUrl 的七项计算样式与盒子矩形逐字一致（91/63/32/32/30/30 B、计算样式 157 B、711x41@56,629）。
+踩到的新坑（Vue 3.5 行为，记下来）
+- :value 在 Vue 3.5 里不只是写 property：patchProp 走 prop 路径之后会紧跟一次 patchAttr
+  （vendor/vue.global.js:12276：patchDOMProp(...) 之后 if (key === "value" || "checked" ||
+  "selected") patchAttr(...)），所以绑定之后 DOM 上真的多出 value=""（input/textarea）与
+  value="normal"（select）。浏览器自己不会这么干（探针实测
+  document.createElement("input").value="" 序列化无属性）。
+- 它是默认值、与 property 相同，行为不变，但 DOM 序列化变了，于是 .test/dom_equiv3.js 加一条
+  归一化：只剥 input/textarea/select 自己开标签上的 value，option 的 value 是有意义的。
 
-数字：go/ui/js 里「从 DOM 读用户输入」的站点 5 → 0（设置页）；宿主 key 133 → 135。
+设备验证（.test/p21form.js / .test/p21verify.js）：记一笔输入 → FORMS.add.text 同步 →
+保存后笔记出现（标题「步骤 21 探针笔记」，AI 解析成功）；添加待办输入事项 + 2030-01-02 +
+03:04 + high → FORMS.todo 四项全对 → 卡片里出现「步骤 21 探针待办 … 03:04 … 重要」→
+删笔记级联删待办（探针数据自清理）。
+DOM A/B（.test/p21dom.js + .test/cmp_f21.js，基线 = git stash 出步骤 20 的构建）：五个元素的
+outerHTML、八项计算样式与盒子矩形、select 的 selectedIndex/value 共 17 项全部逐字一致。
+
+数字：go/ui/js 里「从 DOM 读用户输入」的站点 4 → 0；宿主 key 135 → 137。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、
-./test.sh --vd **164 ok / 0 FAIL / PASS**（第一轮撞上既有的 OCR 抖动块，重跑绿）、
-三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、设置页保活长说明
-236 B、进度层逐字未动）。
+./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、
+todoRow 651 B、todoTx 454 B、设置页保活长说明 236 B、进度层逐字未动）；记一笔弹层一张
+VD 截图核对（.test/shot_21_add.png）。

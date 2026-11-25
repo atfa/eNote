@@ -1374,6 +1374,34 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 记一笔 / 添加待办两个弹层的表单值搬进状态（P14 S6 步骤 21）
+
+步骤 20 之后继续。剩下「把 DOM 当用户输入真相源」的地方只剩两个弹层：`addNote()` 读
+`$('#addText').value`，`addTodo()` 读 `$('#tText')/#tDate/#tTime/#tPri` 四个。现在 app.js
+加 `FORMS = Vue.reactive({ v: { add: null, todo: null } })` + `formSet(name, k, v)`，
+`addSheet()` / `addTodoSheet(nid)` 灌初值，两个函数只读状态。
+
+* 与设置页（步骤 20）的差别：这里用 `:value`（DOM property）而不是 `:value.attr` —— 这些
+  元素今天 DOM 上没有 value 属性，写 property 保持序列化不变；设置页那六个必须写属性
+  （test.sh 钉住 `#sUrl` 的 value 属性）。select 用 `@change` 不是 `@input`。
+* 宿主接口加 `get FORMS()` / `formSet`，`HOST_KEYS` 的 `sheet:add` 2 → 4、`sheet:addtodo`
+  2 → 4；闸门仍 122 项。
+* 踩到的新坑（Vue 3.5 行为）：`:value` 不只写 property —— `patchProp` 走 prop 路径后会紧跟
+  一次 `patchAttr`（`vendor/vue.global.js:12276`），所以 DOM 上真的多出 `value=""`（input/
+  textarea）与 `value="normal"`（select）；浏览器自己不会这么干（探针实测
+  `document.createElement("input").value=""` 序列化无属性）。它是默认值、与 property 相同，
+  行为不变，但 DOM 序列化变了，`.test/dom_equiv3.js` 因此加一条归一化（只剥 input/
+  textarea/select 自己开标签上的 value，option 的 value 有意义）。
+* 设备验证（`.test/p21form.js` / `.test/p21verify.js`）：记一笔输入 → `FORMS.add.text` 同步 →
+  保存后笔记出现；添加待办输入事项 + 2030-01-02 + 03:04 + high → `FORMS.todo` 四项全对 →
+  卡片里出现「步骤 21 探针待办 … 03:04 … 重要」→ 删笔记级联删待办（探针数据自清理）。
+  DOM A/B（基线 = `git stash` 出步骤 20 的构建）：五个元素的 outerHTML、八项计算样式与盒子
+  矩形、select 的 selectedIndex/value 共 17 项全部逐字一致。
+* 数字：`go/ui/js` 里「从 DOM 读用户输入」的站点 **4 → 0**；宿主 key 135 → 137。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致；记一笔弹层
+  一张 VD 截图核对（`.test/shot_21_add.png`）。
+
 ### 设置页六个输入框的值搬进状态（P14 S6 步骤 20）：`saveSettings()` 不再读 DOM
 
 `saveSettings()` 是全站最后一处「把 DOM 当用户输入的真相源」：`$('#sUrl').value.trim()`

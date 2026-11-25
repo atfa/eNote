@@ -2932,3 +2932,38 @@ DOM A/B（`.test/p20dom.js`，基线 = `git stash` 出步骤 19 的构建）：�
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**
 （第一轮撞上既有的 OCR 抖动块，重跑绿）、三套 DOM 等价工具全部一致。
+
+## 9.43 P14 S6：记一笔 / 添加待办两个弹层的表单值搬进状态（步骤 21）
+
+步骤 20 之后继续。剩下「把 DOM 当用户输入真相源」的地方只剩两个弹层：`addNote()` 读
+`$('#addText').value`，`addTodo()` 读 `$('#tText')/#tDate/#tTime/#tPri` 四个。
+
+**改法**：app.js 加 `var FORMS = Vue.reactive({ v: { add: null, todo: null } })` +
+`formSet(name, k, v)`；`addSheet()` 灌 `{text:''}`，`addTodoSheet(nid)` 灌
+`{text:'',date:'',time:'',pri:'normal'}`（两个弹层每次都是新建，不需要从服务端灌）；
+`addNote()` / `addTodo()` 读 `FORMS.v.add` / `FORMS.v.todo`。模板侧 textarea / 三个 input
+用 `:value="f.x" @input="H.formSet(...)"`，select 用 `@change`。宿主接口加
+`get FORMS()` / `formSet`，`HOST_KEYS` 的 `sheet:add` 2 → 4、`sheet:addtodo` 2 → 4。
+
+**与设置页（步骤 20）的差别**：这里用 `:value`（DOM property）而不是 `:value.attr`——
+这些元素今天 DOM 上没有 value 属性，写 property 保持序列化不变；设置页那六个必须写属性
+（test.sh 钉住 `#sUrl` 的 value 属性）。
+
+**踩到的新坑（Vue 3.5 行为，记下来）**：`:value` 在 Vue 3.5 里不只是写 property——
+`patchProp` 走 prop 路径之后会紧跟一次 `patchAttr`（`vendor/vue.global.js:12276`：
+`patchDOMProp(...)` 之后 `if (key === "value" || "checked" || "selected") patchAttr(...)`），
+所以绑定之后 DOM 上真的多出 `value=""`（input/textarea）与 `value="normal"`（select）。
+浏览器自己不会这么干（探针实测 `document.createElement("input").value=""` 序列化无属性）。
+它是默认值、与 property 相同，行为不变，但 DOM 序列化变了，于是：
+`.test/dom_equiv3.js` 加一条归一化（只剥 input/textarea/select 自己开标签上的 value，
+option 的 value 有意义，不能碰）。
+
+设备验证（`.test/p21form.js` / `.test/p21verify.js`）：记一笔输入 → `FORMS.add.text` 同步 →
+保存后笔记出现（标题「步骤 21 探针笔记」，AI 解析成功）；添加待办输入事项 + 日期 2030-01-02 +
+时间 03:04 + 优先级 high → `FORMS.todo` 四项全对 → 卡片里出现「步骤 21 探针待办 … 03:04 … 重要」
+→ 删笔记级联删待办（探针数据自清理）。DOM A/B（`.test/p21dom.js` + `.test/cmp_f21.js`，
+基线 = `git stash` 出步骤 20 的构建）：五个元素的 outerHTML、八项计算样式与盒子矩形、
+select 的 selectedIndex/value **17 项全部逐字一致**（按上面那条归一化）。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
+三套 DOM 等价工具全部一致；记一笔弹层一张 VD 截图核对（`.test/shot_21_add.png`）。

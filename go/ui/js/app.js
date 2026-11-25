@@ -1488,11 +1488,18 @@ window.uiBack = function(){
   if(tab !== 'notes'){ tab = syncBox(TAB, 'notes'); setTab(true); return 1; }
   return 0;
 };
+/* 步骤 21：「记一笔」与「添加待办」的表单值也搬进状态（步骤 20 的同一套做法）。
+   这两个弹层是每次新建，所以初值就是空串 / 默认值，不需要从服务端灌。
+   与设置页的差别：这里用 :value（DOM property）而不是 :value.attr —— 这些元素今天
+   DOM 上没有 value 属性，写属性保持序列化逐字不变（设置页那六个必须写属性，见步骤 20）。 */
+var FORMS = Vue.reactive({ v: { add: null, todo: null } });
+function formSet(name, k, v){ var f = FORMS.v[name]; if(f) f[k] = v }
 function addSheet(){
+  FORMS.v.add = { text: '' };
   return sheetVue('add');
 }
 async function addNote(){
-  var t = $('#addText').value.trim(); if(!t){toast('写点内容吧');return;}
+  var t = String((FORMS.v.add || {}).text || '').trim(); if(!t){toast('写点内容吧');return;}
   closeSheet(); toast('已加入队列…');
   var r = await api('/api/add',{text:t});
   if(!r.ok) toast(r.error||'失败');
@@ -1508,12 +1515,14 @@ function pickImage(){
 var SHEETARG = SHEETARGB.v;
 function addTodoSheet(nid){
   SHEETARG = syncBox(SHEETARGB, nid);
+  FORMS.v.todo = { text:'', date:'', time:'', pri:'normal' };
   return sheetVue('addtodo');
 }
 async function addTodo(nid){
-  var t=$('#tText').value.trim(); if(!t){toast('写点内容吧');return;}
-  var due = $('#tDate').value ? $('#tDate').value+'T'+($('#tTime').value||'09:00') : '';
-  var r = await api('/api/todo',{action:'add',noteId:nid,text:t,due:due,priority:$('#tPri').value});
+  var f = FORMS.v.todo || {};
+  var t = String(f.text || '').trim(); if(!t){toast('写点内容吧');return;}
+  var due = f.date ? f.date+'T'+(f.time||'09:00') : '';
+  var r = await api('/api/todo',{action:'add',noteId:nid,text:t,due:due,priority:f.pri||'normal'});
   closeSheet(); toast(r.ok?'已添加':'失败'); refresh();
 }
 /* reset=true 表示明确要回到顶部（打开某条笔记、返回键回首页），否则恢复上次的位置 */
@@ -1685,6 +1694,8 @@ var HOST = setHost({
   get llmTest(){ return LLMTEST.v },
   /* 步骤 20：设置页表单（SFORM.v 整包赋值 + 逐键改，读的是 getter）与输入回写。 */
   get SFORM(){ return SFORM.v }, formInput: formInput,
+  /* 步骤 21：记一笔 / 添加待办两个弹层的表单盒子与写回。 */
+  get FORMS(){ return FORMS.v }, formSet: formSet,
   get sheetArg(){ return SHEETARGB.v },
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
@@ -1742,9 +1753,11 @@ var HOST_KEYS = {
   'sheet:missed': ['MISSED', 'S', 'cdCls', 'cdText', 'closeSheet', 'fmtTime', 'jump',
     'missedDismiss', 'missedDone', 'missedGoTodos'],
   /* sheet:add      组件根 AddSheetView，2 个 key */
-  'sheet:add': ['addNote', 'pickImage'],
+  /* sheet:add      组件根 AddSheetView，4 个 key（步骤 21 加 FORMS / formSet） */
+  'sheet:add': ['addNote', 'formSet', 'FORMS', 'pickImage'],
   /* sheet:addtodo  组件根 AddTodoSheetView，2 个 key */
-  'sheet:addtodo': ['addTodo', 'sheetArg'],
+  /* sheet:addtodo  组件根 AddTodoSheetView，4 个 key（步骤 21 加 FORMS / formSet） */
+  'sheet:addtodo': ['addTodo', 'formSet', 'FORMS', 'sheetArg'],
   /* sheet:log      组件根 LogSheetView，1 个 key */
   'sheet:log': ['logData'],
   /* sheet:debug    组件根 DebugSheetView，2 个 key */
