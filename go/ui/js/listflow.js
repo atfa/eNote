@@ -5,7 +5,8 @@
 // 只在函数体里读（契约同 js/shotflow.js 文件头）。
 // tomorrow() 只有 groupTodos() 用，是模块私有；其余五个名字 app.js 挂进 HOST，
 // views/notes.js 与 views/todos.js 通过 H.xxx 读它们。
-import { S, q, now } from './app.js'
+import { S, q } from './app.js'
+import { now } from './timeflow.js'
 import { P } from './prefsflow.js'
 import { SR } from './searchflow.js'
 import { todoEnterCls } from './noteflow.js'

@@ -1374,6 +1374,22 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 时间格式化簇搬进 js/timeflow.js（P14 S6 步骤 46）
+
+第十八簇：**时间的三种说法**——`now()`（due 字段的线格式）、`fmtTime()`（「今天 09:05」）、
+`relTime()`（「3 天前」）搬成 `go/ui/js/timeflow.js`。**app.js 799 → 790 行**（模块 26 行）。
+
+* 第一个**零 import** 的模块：三个纯函数不碰 app.js，连循环依赖都没有（契约空满足）；逐字 diff 0 处改写。
+* 取用面收窄：`shotflow.js` / `listflow.js`（`now`）与 `clipflow.js`（`relTime`）的 import 直接指向
+  `./timeflow.js`，app.js 导出表里这两笔删掉——app.js 不再是所有工具的中间商。
+* 三个名字散在 app.js 两处，两段删除 + 两处留路标注释，替换自下而上做。
+* 探针（`.test/probe_time.js` + `.test/probe_rel.js`）：笔记卡时间 `"手动仅原文 今天 04:13"`、到期段
+  `11/25 09:00[over] | 今天 23:50[today]`（`.due.over` 由 `t.due < H.now()` 算出，顺带验了线格式的
+  字符串比较语义）、`relTime` 四个分支用 `fetch` 打补丁喂四条已知 `createdAt` 的假剪贴板记录打全
+  `["微信 · 刚刚","浏览器 · 15 分钟前","某笔记 · 5 小时前","某阅读器 · 3 天前"]`、`loads=1`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 列表过滤/排序与待办分组搬进 js/listflow.js（P14 S6 步骤 45）
 
 第十七簇：**列表怎么筛、怎么排、怎么分组**——`todoRowCls`、`notesFiltered`、`groupTodos`、`tomorrow`、

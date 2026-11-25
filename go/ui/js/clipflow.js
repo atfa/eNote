@@ -4,7 +4,8 @@
 // 自己新建的 reactive 盒子；app.js 那边（S / toast / esc / relTime / api / refresh /
 // closeSheet / pageSheetVue）全部只在函数体里读，求值期谁都不碰谁。
 import { Vue } from './vue.js'
-import { S, toast, esc, relTime, api, refresh, closeSheet, pageSheetVue } from './app.js'
+import { S, toast, esc, api, refresh, closeSheet, pageSheetVue } from './app.js'
+import { relTime } from './timeflow.js'
 
 /* 步骤 17e：整包赋值的响应式写法。`X = {...}` 对 reactive 对象是换引用，Vue 追踪不到
    （症状：数据换了界面不动）。reassign 在同一个 proxy 上先删键再写键，读侧一个字不用改

@@ -3712,3 +3712,39 @@ base        notes=8 顺序=att-d|标题6|标题5
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.68 P14 S6：时间格式化簇搬进 js/timeflow.js（步骤 46）
+
+第十八簇：**时间的三种说法**——`now()`（服务端 due 字段的线格式 `YYYY-MM-DDTHH:MM`）、
+`fmtTime()`（「今天 09:05」/「11/25 09:00」）、`relTime()`（「刚刚 / 15 分钟前 / 5 小时前 / 3 天前」）
+搬成 `go/ui/js/timeflow.js`。**app.js 799 → 790 行**（模块 26 行）。
+
+* 这是第一个**零 import** 的模块：三个函数都是纯函数（只吃参数、只读 `Date.now()`），
+  不碰 app.js 的任何东西，所以连循环依赖都没有——「模块顶层不读 app.js」那条契约在这里是空满足的。
+  逐字 diff 0 处改写（第三次纯搬家）。
+* 搬走之后，原先「谁都能从 app.js 拿 `now`」的取用面收窄了：`shotflow.js`（`now`）、
+  `listflow.js`（`now`）、`clipflow.js`（`relTime`）三处 import 直接指向 `./timeflow.js`，
+  app.js 的导出表里 `now` / `relTime` 两笔删掉——app.js 不再是所有工具的中间商。
+  `relTime` 本来就不进 HOST（步骤 22 从宿主摘掉，模板里没人读），这次连 app.js 的导出也摘了。
+* 三个名字散在 app.js 的两处（`now`/`fmtTime` 在 api 簇后面，`relTime` 在剪贴板注释群中间），
+  所以是两段删除 + 两处留路标注释；替换自下而上做，行号不会漂。
+* 122 项全绿，没有需要教行锚的门（`ui_test.js` 里只有一句注释提到 `relTime`）。
+
+探针（物理屏，`.test/probe_time.js` + `.test/probe_rel.js`，读的是真 DOM：笔记卡的时间段、
+待办行的到期段与 `.due.over`/`.due.today` 类、剪贴板弹层的计数条）：
+
+```
+笔记卡时间（fmtTime）  "手动仅原文 今天 04:13"
+到期段（fmtTime + now 比对）  11/25 09:00[over] | 今天 23:50[today]
+分组                    已逾期·1|今天·1|无日期·1
+relTime 计数条          ["微信 · 刚刚","浏览器 · 15 分钟前","某笔记 · 5 小时前","某阅读器 · 3 天前"]
+end                    notes=8 待办行=0 loads=1
+```
+
+`relTime` 的四个分支（<60s / <1h / <24h / ≥24h）是拿 `fetch` 打补丁喂四条已知 `createdAt`
+的假剪贴板记录出来的——设备上没有真剪贴板数据，直接开弹层只能看到空态。
+`[over]`/`[today]` 那两个类是 `components/leaf.js` 里 `t.due < H.now()` 算出来的，
+所以这一探针同时验了 `now()` 的字符串比较语义（线格式必须逐字不变，否则逾期判定会漂）。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

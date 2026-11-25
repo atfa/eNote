@@ -62,6 +62,8 @@ import { expand, toggle, todoEnterCls, clearEnter, enterCls, clearSeen, delTodo,
          reparse, delNote, reocr, toggleAI, ANIMLOCK } from './noteflow.js'
 /* 步骤 45：列表过滤/排序与待办分组搬进 js/listflow.js（纯读，无盒子）。 */
 import { todoRowCls, notesFiltered, groupTodos, rank, hit } from './listflow.js'
+/* 步骤 46：时间格式化那一簇搬进 js/timeflow.js（零 import 的纯函数模块）。 */
+import { now, fmtTime, relTime } from './timeflow.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
 import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
@@ -172,12 +174,8 @@ function apiTimeout(path, body, ms){
 function errText(e){
   return (e && e.message === 'timeout') ? '加载超时' : '加载失败';
 }
-function now(){var d=new Date(),p=n=>String(n).padStart(2,'0');
-  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes())}
-function fmtTime(iso){if(!iso)return '';var d=new Date(iso);if(isNaN(d))return iso;
-  var p=n=>String(n).padStart(2,'0'), t=new Date();
-  var same = d.toDateString()===t.toDateString();
-  return (same?'今天':(d.getMonth()+1)+'/'+d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}
+/* 本地时间 now()（服务端 due 字段的线格式）与「今天 09:05」fmtTime() 搬进
+   js/timeflow.js（P14 S6 步骤 46）：两个纯函数，没有跨模块依赖。 */
 /* 到期倒计时（R11）+ 自研到期提醒（R13-E）+ 常驻后台（P6.5）整簇搬进 js/remindflow.js
    （P14 S6 步骤 34）。这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
 /** 通知点按后打开对应笔记（Java 侧调用）*/
@@ -210,15 +208,8 @@ function reassign(box, v){
    HOST / HOST_KEYS 的几笔。循环依赖安全：shotflow.js 只在函数体里读 app.js 的东西。 */
 /* 剪贴板暂存（P7）：顶栏 📋 → 暂存队列 → 勾选 → 存笔记 / 一键解析。整簇搬进
    js/clipflow.js（P14 S6 步骤 30），这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
-function relTime(iso){
-  if(!iso) return '';
-  var d = new Date(iso); if(isNaN(d)) return '';
-  var s = Math.floor((Date.now()-d.getTime())/1000);
-  if(s < 60) return '刚刚';
-  if(s < 3600) return Math.floor(s/60)+' 分钟前';
-  if(s < 86400) return Math.floor(s/3600)+' 小时前';
-  return Math.floor(s/86400)+' 天前';
-}
+/* 相对时间「3 天前」relTime() 搬进 js/timeflow.js（P14 S6 步骤 46）：纯函数，
+   只给 js/clipflow.js 的剪贴板计数条用，不进 HOST。 */
 window.openClip = openClip;
 /* 打开一条笔记 / 一条待办（通知点进来定位到那条待办）+ 把到期时间交给系统日历 /
    闹钟那一簇搬进 js/openflow.js（P14 S6 步骤 37）。下面两行是 Java 侧通知的入口桥，
@@ -790,8 +781,8 @@ window.__enote.buildReady = fetch('/build.json').then(function(r){ return r.json
    活绑定，重新赋值那边看得见，这一点是这次搬迁最容易踩空的地方。
    步骤 38 起这张表也是 js/sheetflow.js 的取用面（$ / VUE_SHEETS）：VUE_SHEETS 是 var，
    只在 nextTick 回调里读，求值期不碰，安全。 */
-export { S, tab, open, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, setTab,
-  refresh, api, paneDirty, statsNow, relTime, statCls,
+export { S, tab, open, q, $, esc, toast, dialog, closeSheet, pageSheetVue, setTab,
+  refresh, api, paneDirty, statsNow, statCls,
   apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel,
   prefs, savePrefs, searchNow, setQ, setQRaw, setTabTo, ST, REQ_TIMEOUT_MS, syncBox, STERR,
   dueMs, REMIND, toggle, VUE_SHEETS, SHEETARGB, SRERR,

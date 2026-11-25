@@ -9,8 +9,9 @@
 // `var x = S.foo` 这种求值期读取。
 import { Vue, mountSheet, unmountAllSheets, sheetPaint } from './vue.js'
 import { CLIP } from './clipflow.js'   /* 步骤 30：CLIP 搬去 clipflow.js 了 */
-import { S, tab, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, setTab,
+import { S, tab, q, $, esc, toast, dialog, closeSheet, pageSheetVue, setTab,
   refresh, api, paneDirty, statsNow } from './app.js'
+import { now } from './timeflow.js'
 
 // ---- 截图捕获（P11）：扫描监控文件夹 → 横幅 → 多选 → 导入笔记 ----
 var SHOTFLAGS = Vue.reactive({ v: null });    // {enabled, granted, folders:n, watermark}  便宜的状态，每次 refresh 都行
