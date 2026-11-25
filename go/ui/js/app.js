@@ -52,6 +52,8 @@ import { MISSED, loadMissed, missedSheet, missedDone, missedGoTodos, missedDismi
    （循环依赖，同上：本模块顶层不碰 app.js，只在函数体里读 $ 与 VUE_SHEETS）。 */
 /* 步骤 39：自绘对话框那一簇搬进 js/dlgflow.js（循环依赖，同上）。 */
 /* 步骤 40：「记一笔」/「添加待办」那一簇搬进 js/addflow.js（循环依赖，同上）。 */
+/* 步骤 41：服务端搜索那一簇搬进 js/searchflow.js（循环依赖，同上）。 */
+import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
 import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
 import { pageSheetVue, sheetVue, closeSheet, sheetLeft } from './sheetflow.js'
@@ -102,41 +104,22 @@ var q = QB.v;
 function ic(n, cls){ return '<svg class="ic' + (cls ? ' ' + cls : '') + '"><use href="#i-' + n + '"/></svg>' }
 /* ---------- 服务端搜索（R3）----------
    列表数据一律来自 /api/search；请求失败时退回本地过滤，断网也能看。 */
-var SR = Vue.reactive({notes:null, todoIds:null, where:{}, total:0, scanned:0});
-var searchSeq = 0, prefsLoaded = false;
-/* 上次搜索结果的指纹，内容一样就不重建 DOM。
-   步骤 31：附件页那一簇（filesflow.js）也要读写它，而 ES module 的 import 是**只读**绑定
-   —— 导入方一写就抛「Assignment to constant variable」（模块永远是严格模式）。所以它从
-   字符串改成盒子，两边都写 SRK.v：这是本项目把 var 交给别的模块用的标准做法（同 S / CLIP）。 */
+var prefsLoaded = false;
+/* SR（服务端搜索结果）与 searchSeq（首页搜索序号）搬进 js/searchflow.js（步骤 41）。
+   上次搜索结果的指纹 SRK 也在那边。 */
 /* q 是 app.js 里的 var，会被重新赋值，别的模块拿到的是只读绑定（同 SRK 装盒那条教训），
    要清它就走这个 setter。shell.q / shell.has 是搜索框的显示状态，这几处赋值一直是连着的。 */
 function setQ(v){ q = syncBox(QB, v); shell.q = q; shell.has = !!q }
+/* 步骤 41：searchInput 要「只写 q、不动 shell.q」——shell.q 是搜索框 v-model 的源，
+   用户正在敲的那串不能被 trim 后的值盖掉；setQ 是「清搜索词」那一路（连 shell.q /
+   shell.has 一起写），searchClear 用它。 */
+function setQRaw(v){ q = syncBox(QB, v) }
 /* tab 同上：`var tab = TAB.v` 会被 `tab = syncBox(TAB, …)` 重新赋值，导入方（missedflow.js）
    只能读，切页签走这个 setter（P14 S6 步骤 36）。只写 tab 本身，页面切换仍走 setTab()。 */
 function setTabTo(v){ tab = syncBox(TAB, v) }
 
-var SRK = { v: '' };
-/* 步骤 13：首页搜索也走 apiTimeout —— fetch 没有超时会永久挂起（WebView 进后台
-   再回来，在飞的 fetch 永不 resolve），症状是首页永久停在上一份数据上。失败退回
-   本地过滤（原有行为）并记 srErr，首页顶部给一条可重试的错误条。 */
-var srErr = SRERR.v;
-async function searchNow(force){
-  if(tab==='files'){ filesNow(); return; }
-  var my = ++searchSeq;
-  try{
-    var d = await apiTimeout('/api/search?'+prefQS());
-    if(my !== searchSeq) return;
-    srErr = syncBox(SRERR, '');
-    var k = JSON.stringify(d);
-    reassign(SR, {notes:d.notes||[], todoIds:d.todoIds||null, where:d.where||{}, total:d.total||0, scanned:d.scanned||0});
-    // 顶部横幅（剪贴板暂存 / 新截图 / 错过的提醒）不在搜索结果里：搜索结果没变、
-    // 但页面签名变了（条数变了）时必须强制重绘，否则「删光剪贴板」「刚扫到新截图」
-    // 回到首页都看不到横幅 —— 这两处的 bug 都是这里短路掉的。
-    if(k === SRK.v && !force){ paintStatus(); return }
-    SRK.v = k;
-  }catch(e){ reassign(SR, {notes:null, todoIds:null, where:{}, total:0, scanned:0}); SRK.v = ''; srErr = syncBox(SRERR, errText(e)) }
-  render();
-}
+/* SRK（上次搜索结果的指纹）与 searchNow 搬进 js/searchflow.js（步骤 41）；
+   附件页那边共用 SRK，从 app.js 拿（app.js 再导出）。 */
 
 /* 主题（R8）那一簇（themeOf / applyTheme / setTheme）搬进 js/prefsflow.js（P14 S6 步骤 35）。 */
 
@@ -626,22 +609,8 @@ function tabPick(t){
 }
 function brandGo(){ tab = syncBox(TAB, 'mine'); setTab(true) }
 function fabAct(){ (FABS[tab] || FABS.notes).fn() }
-var searchT = 0;
-/* 搜索框：shell.q 是输入框里的原文（v-model 双向绑的就是它），真发给服务端的是 trim
-   过的 q。服务端搜索：等用户停手再发，避免每敲一个字就重建一次列表。 */
-function searchInput(v){
-  q = syncBox(QB, v.trim());
-  P().q = q;
-  shell.has = !!q;
-  clearTimeout(searchT);
-  searchT = setTimeout(function(){ searchNow(); savePrefs(); }, 260);
-}
-function searchClear(){
-  q = ''; shell.q = ''; shell.has = false;
-  var el = $('#q'); if(el) el.blur();
-  P().q = '';
-  clearTimeout(searchT); searchNow(); savePrefs();
-}
+/* 搜索框那两个 handler（searchInput / searchClear）搬进 js/searchflow.js（步骤 41，
+   循环依赖，同上）；写 app.js 的 q 走 setQ / setQRaw。 */
 window.addEventListener('resize', moveInd);
 // 安静轮询：数据没变就只刷状态点，不重建 DOM
 /* ---------- S3（D14）：Vue 宿主接口 ----------
@@ -1004,5 +973,5 @@ window.__enote.buildReady = fetch('/build.json').then(function(r){ return r.json
 export { S, tab, open, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, setTab,
   refresh, api, paneDirty, statsNow, relTime, statCls,
   apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel,
-  prefs, savePrefs, searchNow, setQ, setTabTo, ST, REQ_TIMEOUT_MS, syncBox, STERR,
-  dueMs, REMIND, toggle, VUE_SHEETS, SHEETARGB }
+  prefs, savePrefs, searchNow, setQ, setQRaw, setTabTo, ST, REQ_TIMEOUT_MS, syncBox, STERR,
+  dueMs, REMIND, toggle, VUE_SHEETS, SHEETARGB, SRERR }

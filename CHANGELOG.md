@@ -1374,6 +1374,29 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 服务端搜索那一簇搬进 js/searchflow.js（P14 S6 步骤 41）
+
+第十三簇：**服务端搜索**——`SR`、`SRK`（上次结果指纹盒子）、`searchSeq`、`searchNow`、`searchInput`、
+`searchClear`、`searchT`（防抖定时器）搬成 `go/ui/js/searchflow.js`，**app.js 1008 → 977 行**（模块 61 行）。
+
+* 又清掉一个**只写不读的死变量** `srErr`：它写的是 `SRERR.v`，HOST 的 getter 读的也是 `SRERR.v`，那个
+  `var srErr` 没人读。现在两处写直接 `syncBox(SRERR, …)`。这是步骤 40 的 `SHEETARG` 之后第二个（闸门⑩
+  只扫函数，变量扫不到）。
+* 清单 (c) 条：`searchInput` 要写 app.js 的 `var q`，但**不能**用现成的 `setQ()`——`setQ` 连 `shell.q` 一起写，
+  而 `shell.q` 是搜索框 `v-model` 的源，用户正在敲的那串会被 trim 后的值盖掉（行为改动）。于是 app.js
+  新增只写盒子的 `setQRaw(v)`，`searchInput` 用它 + 自己写 `shell.has`；`searchClear` 那三句与 `setQ('')`
+  逐字等价，直接用它。
+* `prefsLoaded`（首帧灌偏好的标记）留在 app.js；`SRERR` 盒子留在盒子区并加进导出表（闸门㉒ 抓到：
+  没导出就是链接期 SyntaxError、页面全白）。
+* 闸门⑰ 的 `srcs` 加上 `js/searchflow.js`：那条门要读 `searchNow` 的函数体（钉它走 `apiTimeout`），
+  函数搬家后不教它读新文件就是永久红。
+* 探针（`.test/probe_search.js` / `.test/probe_errbox.js`，真实路径：给 `#q` 派发 `input` 事件 → `v-model` →
+  `H.searchInput` → 防抖 260ms → `searchNow`）：输入命中/不命中、`#qClear` 清除、空结果 `.empty`、
+  **把 `window.fetch` 换成 reject** → `.errbox`「加载失败，已退回本地过滤 · 重试」出现、恢复后消失
+  （这一条是删掉死变量 `srErr` 的验收点）、`loads=1`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 「记一笔」/「添加待办」那一簇搬进 js/addflow.js（P14 S6 步骤 40）
 
 第十二簇：**添加表单**——`FORMS`、`formSet`、`addSheet`、`addNote`、`pickImage`、`addTodoSheet`、

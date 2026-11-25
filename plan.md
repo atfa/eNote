@@ -3502,3 +3502,44 @@ end       loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.63 P14 S6：服务端搜索那一簇搬进 js/searchflow.js（步骤 41）
+
+第十三簇：**服务端搜索**——`SR`（搜索结果）、`SRK`（上次结果指纹盒子）、`searchSeq`（首页序号）、
+`searchNow`、`searchInput`、`searchClear`、`searchT`（防抖定时器）搬成 `go/ui/js/searchflow.js`，
+**app.js 1008 → 977 行**（模块 61 行）。
+
+* 又清掉一个**只写不读的死变量** `srErr`：它写的是 `SRERR.v`，而 HOST 的 getter 读的是
+  `SRERR.v`（`get srErr(){ return SRERR.v }`），那个 `var srErr` 从头到尾没人读。现在两处写直接
+  `syncBox(SRERR, …)`。这是步骤 40 的 `SHEETARG` 之后第二个（闸门⑩ 只扫函数，变量扫不到）。
+* 清单 (c) 条：`searchInput` 要写 app.js 的 `var q`，而它**不能**用现成的 `setQ()`——`setQ` 连
+  `shell.q` 一起写，而 `shell.q` 是搜索框 `v-model` 的源，用户正在敲的那串会被 trim 后的值盖掉
+  （行为改动）。于是 app.js 新增一个只写盒子的 `setQRaw(v){ q = syncBox(QB, v) }`，
+  `searchInput` 用它 + 自己写 `shell.has`；`searchClear` 那三句
+  （`q=''; shell.q=''; shell.has=false`）与 `setQ('')` 逐字等价，直接用它。
+* `prefsLoaded`（首帧灌偏好的标记）留在 app.js；`SRERR` 盒子留在 app.js 的盒子区并加进导出表
+  （闸门㉒ 抓到：没导出就是链接期 SyntaxError）。
+* 闸门⑰ 的 `srcs` 加上 `js/searchflow.js`：那条门要读 `searchNow` 的函数体（钉它走 `apiTimeout`），
+  函数搬家后不教它读新文件就是永久红。
+* 清单 (g) 条：四段（`SR` / `SRK` / `searchNow` / `searchT`+两个 handler）与
+  `git show HEAD:go/ui/js/app.js` 逐字 diff，除上述 5 处改写外全部一致。
+
+探针（物理屏，`.test/probe_search.js` + `.test/probe_errbox.js`，走真实路径：给 `#q` 派发 `input`
+事件 → `v-model` → `H.searchInput` → 防抖 260ms → `searchNow`）：
+
+```
+base      q="" box=search SR.notes=8 total=8 cards=8
+输入      q="步骤四十一" box=search has SR.notes=0 total=0 cards=0
+清除      q="" box=search SR.notes=8 total=8 cards=8
+空结果    SR.notes=0 cards=0 empty=yes
+搜索失败  errbox="加载失败，已退回本地过滤 · 重试"      ← 删掉死变量 srErr 之后失败条照常出现
+恢复后    SR.notes=8 errbox 只剩笔记自己那条
+end       loads=1
+```
+
+`搜索失败` 那一行是删 `srErr` 的验收点：探针把 `window.fetch` 换成 reject，`.errbox`（
+`views/notes.js` 的 `v-if="srErr"`）出现，恢复 fetch 后消失——证明 `syncBox(SRERR, …)` 这条写路径
+与原来逐字等价。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
