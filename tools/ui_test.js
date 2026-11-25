@@ -680,8 +680,9 @@ const jDark = (themeJava.match(/BG_DARK\s*=\s*0xFF([0-9a-fA-F]{6})/) || [, ''])[
 const meta = (ui.match(/<meta\s+name="theme-color"\s+content="(#[0-9a-fA-F]{3,8})"/) || [, ''])[1].toLowerCase();
 /* 步骤 13：app.js 切主题时会把 meta theme-color 改成字面量（状态栏跟着变），那是第 6 处
    调色板副本。棘轮把 js 内联 style 的 hex 清零了，这两个是调色板定义本身（不是样式值），
-   所以不靠棘轮管，靠这里逐字比；找不到那句就报「闸门在假绿」，不许静默空跑。 */
-const jsTheme = read('go/ui/js/app.js');
+   所以不靠棘轮管，靠这里逐字比；找不到那句就报「闸门在假绿」，不许静默空跑。
+   步骤 35：applyTheme() 搬进了 js/prefsflow.js，闸门跟着搬家（同闸门⑰ 的源列表）。 */
+const jsTheme = read('go/ui/js/app.js') + read('go/ui/js/prefsflow.js');
 const jsThemeColors = jsTheme.match(/mc\.setAttribute\('content',\s*t === 'dark' \? '(#[0-9a-fA-F]{6})' : '(#[0-9a-fA-F]{6})'/) || [, '', ''];
 const pal = [];
 if (!bgLight) pal.push('tokens 里找不到亮色 --bg');

@@ -1374,6 +1374,29 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 页签偏好 + 主题那一簇搬进 js/prefsflow.js（P14 S6 步骤 35）
+
+第七簇：页签偏好（排序/筛选/搜索词）+ 主题（R8）——`prefs` 盒子、`P()`、`PREF_KEYS`、
+`prefPayload`/`prefQS`/`flattenPrefs`、`savePrefs`（含防抖的 `saveT`），加上 `themeOf`/
+`applyTheme`/`setTheme`，搬成 `go/ui/js/prefsflow.js`，**app.js 1280 → 1221 行**（模块 80 行）。
+
+* `curTheme` 两边都要写（app.js 的 `refresh()` 用它判断主题变了没有，`setTheme()` 也写它），
+  所以装进盒子 `CUR`：两边都写 `CUR.v`（SRK 那条规矩）。
+* 闸门④（调色板一致性）读的是 `read('go/ui/js/app.js')`，`applyTheme()` 搬走后它找不到
+  meta theme-color 那句切换，直接报「闸门④ 在假绿」——闸门又一次要跟着代码搬家。
+* **新坑：连续区间切片会把邻居一起搬走。** 偏好簇与主题簇之间夹着 `ic()`、`SR`、`searchSeq`、
+  `prefsLoaded` 四个不相干的定义，它们跟着搬进了 prefsflow.js：`ic` 少了 → app.js 求值到一半抛
+  `ReferenceError: ic is not defined`、页面全白；`searchSeq` 少了 → `searchNow()` 每次抛
+  `ReferenceError: searchSeq is not defined`，页面**看起来是活的**（`__enoteAppLoads=1`、
+  `S.notes` 有 8 条、`S.info.clip=1`），但笔记页只画出一个 `<!---->`，剪贴板横幅不出现。
+  A/B 探针定位：基线 `banner=yes`，改动后 `banner=none`。这类 slip 静态全绿（闸门扫的是拼接后的
+  `ui` 字符串），是 `./test.sh --vd` 的横幅用例抓住的（133 ok 后 ERROR，连跑两次都红）。
+  **新规矩：切完区间必须把新模块的顶层定义清单与计划清单逐字对一遍。**
+* 探针（物理屏）：主题切换 `light → dark → light`、meta `#f5f7fb → #0b0f14 → #f5f7fb` 全对。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致
+  （卡片 2495 B、待办行 651 B 逐字未动）。
+
 ### 倒计时 / 提醒 / 常驻后台那一簇搬进 js/remindflow.js（P14 S6 步骤 34）
 
 第六簇，也是目前最大的一簇：到期倒计时（R11）+ 自研到期提醒（R13-E）+ 常驻后台（P6.5）——

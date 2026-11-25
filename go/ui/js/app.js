@@ -43,6 +43,9 @@ import SettingsSheetView from './views/settings.js'
 /* 步骤 33：我的页统计那一簇搬进 statsflow.js（循环依赖，同上）。 */
 import { ST, statsNow, statCls } from './statsflow.js'
 /* 步骤 34：倒计时 / 提醒 / 常驻后台那一簇搬进 remindflow.js（循环依赖，同上）。 */
+/* 步骤 35：页签偏好 + 主题那一簇搬进 prefsflow.js（循环依赖，同上）。 */
+import { prefs, P, prefQS, flattenPrefs, savePrefs, CUR, themeOf, applyTheme, setTheme }
+         from './prefsflow.js'
 import { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, askNotify,
          notifyResult, keepAliveOn, batteryIgnoring, toggleKeepAlive, askBattery } from './remindflow.js'
 import { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
@@ -78,51 +81,16 @@ var SHEETARGB = Vue.reactive({ v: '' });
 var tab = TAB.v, open = OPENB.v, busy = {};
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
-var curTheme = '';
+
 var q = QB.v;
-/* 每个页签自己的搜索/排序/筛选条件（P3 会持久化到服务端） */
-var prefs = Vue.reactive({
-  notes:{sort:'new', src:'all', status:'all'},
-  todos:{sort:'due', done:'open', pri:'all'},
-  files:{sort:'new', kind:'all'}
-});
-function P(){ return prefs[tab] || prefs.notes }
+/* 页签偏好（排序/筛选/搜索词）那一簇搬进 js/prefsflow.js（P14 S6 步骤 35）。
+   这里剩下的只有挂进 HOST / HOST_KEYS 的几笔。 */
 /* 图标：ic('search') → 一个 24dp 线性图标，颜色跟着 currentColor */
 function ic(n, cls){ return '<svg class="ic' + (cls ? ' ' + cls : '') + '"><use href="#i-' + n + '"/></svg>' }
-
 /* ---------- 服务端搜索（R3）----------
    列表数据一律来自 /api/search；请求失败时退回本地过滤，断网也能看。 */
 var SR = Vue.reactive({notes:null, todoIds:null, where:{}, total:0, scanned:0});
 var searchSeq = 0, prefsLoaded = false;
-var PREF_KEYS = ['src','status','done','pri','kind','file'];
-function prefPayload(){
-  var p = P(), f = {};
-  // done 的「全部」必须显式发给服务端：省略它时 go/search.go:195 会给 todos 默认成
-  // open，于是筛选面板里的「全部」按钮是个空操作（选了之后仍然只看得见未完成）。
-  // 服务端 matchTodo 对 done=all 不匹配任何 case → 不过滤，正好是「全部」的语义。
-  PREF_KEYS.forEach(function(k){ if(p[k] && (p[k] !== 'all' || k === 'done')) f[k] = p[k] });
-  return {tab:tab, q:q, sort:p.sort||'new', dir:p.dir||'', filters:f};
-}
-function prefQS(){
-  var d = prefPayload(), s = 'tab='+d.tab+'&q='+encodeURIComponent(d.q)+'&sort='+encodeURIComponent(d.sort);
-  if(d.dir) s += '&dir='+encodeURIComponent(d.dir);
-  Object.keys(d.filters).forEach(function(k){ s += '&'+k+'='+encodeURIComponent(d.filters[k]) });
-  return s;
-}
-function flattenPrefs(u){
-  var out = {};
-  Object.keys(u||{}).forEach(function(k){
-    var v = u[k]||{}, p = {q:v.q||'', sort:v.sort||'', dir:v.dir||''};
-    Object.keys(v.filters||{}).forEach(function(fk){ p[fk] = v.filters[fk] });
-    out[k] = p;
-  });
-  return out;
-}
-var saveT = 0;
-function savePrefs(){
-  clearTimeout(saveT);
-  saveT = setTimeout(function(){ api('/api/prefs', prefPayload()).catch(function(){}) }, 350);
-}
 /* 上次搜索结果的指纹，内容一样就不重建 DOM。
    步骤 31：附件页那一簇（filesflow.js）也要读写它，而 ES module 的 import 是**只读**绑定
    —— 导入方一写就抛「Assignment to constant variable」（模块永远是严格模式）。所以它从
@@ -154,29 +122,7 @@ async function searchNow(force){
   render();
 }
 
-/* ---------- 主题（R8）：CSS 变量切换 + 同步系统栏颜色 ---------- */
-function themeOf(){
-  var m = (S.settings && S.settings.theme) || 'light';
-  if(m === 'auto')
-    return (window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches) ? 'dark' : 'light';
-  return m === 'dark' ? 'dark' : 'light';
-}
-function applyTheme(){
-  var t = themeOf();
-  document.documentElement.classList.add('theming');
-  document.documentElement.setAttribute('data-theme', t);
-  var mc = document.querySelector('meta[name=theme-color]');
-  if(mc) mc.setAttribute('content', t === 'dark' ? '#0b0f14' : '#f5f7fb');
-  if(window.Android && Android.setTheme) Android.setTheme((S.settings && S.settings.theme) || 'light');
-  setTimeout(function(){ document.documentElement.classList.remove('theming') }, 240);
-}
-async function setTheme(mode){
-  try{
-    var d = await api('/api/theme', {mode:mode});
-    S.settings = d.settings; curTheme = themeOf(); applyTheme(); render();
-    toast('主题：' + ({light:'亮色', dark:'暗色', auto:'跟随系统'}[mode] || mode));
-  }catch(e){ toast('切换失败: '+e) }
-}
+/* 主题（R8）那一簇（themeOf / applyTheme / setTheme）搬进 js/prefsflow.js（P14 S6 步骤 35）。 */
 
 function $(s){return document.querySelector(s)}
 function esc(s){return (s||'').replace(/[&<>"]/g,function(c){
@@ -631,7 +577,7 @@ async function refresh(quiet){
          shell.q = q; shell.has = !!q;
          dirty = true;
        }
-       if(themeOf() !== curTheme){ curTheme = themeOf(); applyTheme(); dirty = true; }
+       if(themeOf() !== CUR.v){ CUR.v = themeOf(); applyTheme(); dirty = true; }
        paintStatus();
        if(!dirty) return;
        SIG = stateSig(d); drawn = true;

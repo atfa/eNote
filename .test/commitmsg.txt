@@ -1,24 +1,29 @@
-P14 S6 步骤 34：倒计时 / 提醒 / 常驻后台那一簇搬进 js/remindflow.js（app.js 1389 → 1280）
+P14 S6 步骤 35：页签偏好 + 主题那一簇搬进 js/prefsflow.js（app.js 1280 → 1226）
 
-第六簇，也是目前最大的一簇：到期倒计时（R11）+ 自研到期提醒（R13-E）+ 常驻后台（P6.5）——
-spanText/cdText/cdCls/tickCD（含 setInterval(tickCD, 20000)）、remindPending/syncReminders、
-精确闹钟与通知权限四件套（exactGranted/askExact/notifyGranted/askNotify/notifyResult）、
-常驻后台五件套（keepAliveOn/batteryIgnoring/toggleKeepAlive/applyKeepAlive/askBattery），
-16 个顶层定义，搬成 go/ui/js/remindflow.js（130 行），app.js 1389 → 1280 行。
+第七簇：页签偏好（排序/筛选/搜索词）+ 主题（R8）—— prefs 盒子、P()、PREF_KEYS、
+prefPayload/prefQS/flattenPrefs、savePrefs（含防抖的 saveT），加上 themeOf/applyTheme/setTheme，
+搬成 go/ui/js/prefsflow.js（78 行），app.js 1280 → 1226 行。
 
-- 新出现一条模块 → 模块的边：notifyResult() 与 applyKeepAlive() 要重画设置页，所以
-  remindflow.js 直接 import { settingsRefresh } from './settingsflow.js'，不再绕 app.js。
-  求值顺序 app.js → settingsflow.js → remindflow.js，两个模块顶层都不读对方，环是安全的。
-- 顶层读 app.js 的坑第三次出现：var remindPending = REMIND.v; —— remindflow.js 的顶层跑在
-  app.js 求值之前，那时 var REMIND 还是 undefined，读它的 .v 直接 TypeError、整份脚本不执行。
-  初值改成字面量 0（REMIND 的初值本来就是 0，语义逐字不变）。这个变量本身只写不读（读侧走
-  get remindPending(){ return REMIND.v }），和步骤 33 的 stErr 一模一样。
-- app.js 导出表加了 dueMs REMIND；syncReminders() 在 app.js 的 afterPaint() 里被调，
-  所以它也在簇的导出名单里。
+- curTheme 两边都要写（app.js 的 refresh() 用它判断主题变了没有，setTheme() 也写它），所以装进
+  盒子 CUR：两边都写 CUR.v（SRK 那条规矩）。
+- 闸门④（调色板一致性）读的是 read('go/ui/js/app.js')，applyTheme() 搬走后它找不到 meta
+  theme-color 那句切换，直接报「闸门④ 在假绿」——闸门要跟着代码搬家，源列表加上 prefsflow.js。
 
-探针（物理屏）：cdText=逾期6小时 | cdCls=cd over | keepAliveOn=false | exactGranted=true |
-notifyGranted=true | batteryIgnoring=true | loads=1。
+新坑：连续区间切片会把邻居一起搬走
+- 偏好簇与主题簇之间夹着 ic()、SR、searchSeq、prefsLoaded 四个不相干的定义，它们跟着搬进了
+  prefsflow.js，而 app.js 里到处在用：
+  * ic 少了 → app.js 求值到一半抛 ReferenceError: ic is not defined，页面全白（探针抓到）。
+  * searchSeq 少了 → searchNow() 每次抛 ReferenceError: searchSeq is not defined，页面看起来是
+    活的（__enoteAppLoads=1、S.notes 有 8 条、S.info.clip=1），但笔记页只画出一个 <!---->，
+    剪贴板横幅不出现。A/B 探针定位：基线 banner=yes，改动后 banner=none。
+- 这一类 slip 静态全绿：闸门扫的是拼接后的 ui 字符串（函数还在，只是换了文件），build、install、
+  122 闸门全绿，只有真机跑起来才红。是 ./test.sh --vd 的「删光剪贴板后首页横幅立刻消失」用例
+  抓住的（133 ok 后 ERROR，连跑两次都红 = 不是抖动）。
+- 新规矩（写进搬迁清单与 plan.md）：切完区间必须把新模块的顶层定义清单与计划清单逐字对一遍，
+  多出来的名字就是被连坐的邻居。
+
+探针（物理屏）：主题切换 light → dark → light、meta #f5f7fb → #0b0f14 → #f5f7fb 全对。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、
-./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（待办行 651 B、
-设置页保活长说明 236 B 逐字未动）。
+./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、
+待办行 651 B 逐字未动）。
