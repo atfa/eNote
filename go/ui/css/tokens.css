@@ -123,7 +123,10 @@
   --van-switch-background:var(--grip);
   --van-switch-on-background:var(--acc2);
   --van-switch-duration:var(--d2);
-  --van-switch-disabled-opacity:.45;   /* = components.css 的 .sw.dis{opacity:.45} */
+  /* 禁用态整条映射表：Vant 的 van-switch 有 disabled prop，我们页面里的「灰掉的开关」
+     是 .sw.on/.sw.off 那套类名（步骤 18e 起 van-switch 顶掉了自绘开关，.sw.dis 那条
+     规则已随它一起删掉，这里只留禁用态的观感）。 */
+  --van-switch-disabled-opacity:.45;
 
   /* 步骤 18e：van-skeleton 的映射表（附件页 / 我的页的骨架屏）。
      Vant 的骨架是「标题 + 一排等高段落」，我们是三种高度的块（14 / 10 / 120px），

@@ -1374,6 +1374,30 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### CSS 里 14 个没人用的类名，闸门⑩ 加第三个方向（P14 S6 步骤 24）
+
+步骤 22/23 把「定义了没人用」搬到函数与宿主 key，这轮搬到 CSS 类名：CSS 里 `.x` 定义的集合，
+减去 js（剔 vendor）/ `index.html` / `test.sh` / `go/web_test.go` 里出现过的词。**193 个
+类名定义里 14 个从没被用过**：`.pri-low`（`todoRowCls` 只加 `pri-high`）、`.ib` `.swi` `.tgl`
+（自绘开关 / 图标按钮时代，只活在 base.css 的两条选择器列表里，步骤 18e 换成 `van-switch`
+后调用者没了）、`.cnt` `.num` `.ts` `.fbar`（等宽数字那条规则选择器列表里的老名字）、`.ntx`
+（`text-wrap:pretty` 列表里的老类名）、`.mt` `.mtt` `.mts` `.mcd`（错过的提醒页字符串渲染器
+时代的行内结构，转 Vue 后 `.msrow` 里用的是 `.todo` 那一套）、`.clipacts`（剪贴板页底部操作条
+现在是固定操作条 `.fbar2`）。
+
+* 删除时只从选择器列表里摘掉那一个 token，其余选择器一个字节没动 —— 类名既然 0 处使用，
+  computed style 必然不变（三套 DOM 等价工具连计算样式一起比，全部一致）。
+* 顺带修一处过期注释：tokens.css 的 `--van-switch-disabled-opacity` 后面写着「= components.css
+  的 `.sw.dis{opacity:.45}`」，那条规则 18e 就删了。它同时是新闸门的假阳性：`stripComments`
+  只处理行首的 `/*`，行尾说明注释留着，于是注释里的 `.sw.dis` 被当成类名定义扫进去了。闸门里
+  CSS 侧改成整段剔 `/* */`。
+* 闸门⑩ 现在是三向：闲置 token（棘轮 11）+ 死函数（0）+ 死 class（0），仍是一条 ok 行、总数
+  122。反向测试：临时加 `.p24DeadCls{color:red}` → 闸门红并点名 `p24DeadCls(go/ui/css/
+  components.css)`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致、我的页一张 VD
+  截图核对；CSS 源文件 65,502 → 65,805 字节（删掉 14 条死规则，换来解释为什么删的注释）。
+
 ### 宿主上没人读的钥匙也扫一遍，闸门⑮ 加反向半边（P14 S6 步骤 23）
 
 步骤 22 的死函数扫描顺手扫了宿主：`HOST` 137 个 key 里，模板不读、`HOST_KEYS` 不列、

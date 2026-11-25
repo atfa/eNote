@@ -120,8 +120,9 @@ a{text-decoration:underline}
 .tx small{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1);color:var(--dim2);font-size:var(--fs-xs);margin-top:var(--s0);line-height:1.5}
 .tx small>*{vertical-align:middle}
 .todo.done .tx{color:var(--dim2);text-decoration:line-through}
+/* 步骤 24 删掉 .pri-low{opacity:.85}：类名在 js 里 0 处使用（todoRowCls 只加 pri-high），
+   字符串渲染器时代留下的。 */
 .pri-high{border-left-color:var(--bad)}
-.pri-low{opacity:.85}
 .due{display:inline-flex;align-items:center;gap:var(--s1);font-size:var(--fs-xs);line-height:1.4;padding:var(--hair) var(--s2);border-radius:var(--r1);border:var(--hair) solid transparent;background:var(--acc-s);color:var(--acc);vertical-align:middle}
 .due .ic{width:11px;height:11px;stroke-width:2}
 .due.over{background:var(--bad-s);color:var(--bad)}
@@ -241,14 +242,14 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
       通用规则用 outline 而不是 box-shadow：.card/.acard/.sheet 靠 box-shadow 做层级，
       写成 box-shadow 的焦点环会在聚焦时把层级阴影顶掉（Austin 审查发现）。 */
 :focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
-.tab:focus-visible,.iconbtn:focus-visible,.chip:focus-visible,.ib:focus-visible{
+.tab:focus-visible,.iconbtn:focus-visible,.chip:focus-visible{
   outline:none;box-shadow:var(--focus);border-radius:var(--r-pill)}
 .seg button:focus-visible{outline:none;box-shadow:var(--focus);border-radius:var(--r1)}
 input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box-shadow:var(--focus);border-color:var(--acc)}
 
 /* 2. 点按手感：去掉 WebView 的 300ms 双击缩放判定（页面本来就不该缩放正文），
       并禁掉控件文字选中——长按按钮弹出"复制"菜单是这类 app 最掉价的地方。 */
-button,.tab,.iconbtn,.chip,.ib,.todo,.row,.acard,.seg button,.swi,.tgl{
+button,.tab,.iconbtn,.chip,.todo,.row,.acard,.seg button{
   touch-action:manipulation;-webkit-user-select:none;user-select:none}
 [onclick]{cursor:pointer}
 
@@ -263,9 +264,9 @@ html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 
 /* 6. 数字对齐。已验证 Chrome 58 支持 font-variant-numeric，所以直接写标准属性。
       计数、时间戳、统计数字必须等宽，否则列表每行的数字右边缘是锯齿。 */
-.metrics .m b,.metrics .m .v,.cnt,.num,.statgrid b,.chart .v,.ts time,time,
-.strip b,.hit b,.fbar b,.sum b,.stat b{font-variant-numeric:tabular-nums}
+.metrics .m b,.metrics .m .v,.statgrid b,.chart .v,time,
+.strip b,.hit b,.sum b,.stat b{font-variant-numeric:tabular-nums}
 
 /* 7. 段落换行：避免最后一行只剩一两个字的"孤字行"，中文段落观感提升明显。
       Chrome 58 不认 text-wrap 会整条忽略，无害降级。 */
-.note p,.ntx,p,.tx{text-wrap:pretty}
+.note p,p,.tx{text-wrap:pretty}

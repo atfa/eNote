@@ -121,10 +121,8 @@
 .owarn .ic{width:14px;height:14px;vertical-align:-2px;margin-right:var(--s1)}
 .msrow{display:flex;gap:var(--s2);align-items:flex-start;padding:var(--s2) var(--s0);border-bottom:var(--hair) solid var(--line);font-size:var(--fs-md)}
 .msrow:last-child{border-bottom:0}
-.msrow .mt{flex:1;min-width:0}
-.msrow .mt .mtt{line-height:1.5}
-.msrow .mt .mts{font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--hair)}
-.msrow .mcd{font-size:var(--fs-xs);color:var(--warn);white-space:nowrap;display:inline-flex;align-items:center;gap:var(--s1)}
+/* 步骤 24 删掉 .msrow 的四个子元素规则（.mt/.mtt/.mts/.mcd）：错过的提醒页转 Vue 组件后
+   行内结构用的是 .todo 那一套，这四个类名在 js 里 0 处使用。 */
 .cliptop{display:flex;gap:var(--s2);align-items:center;margin-bottom:var(--s2)}
 .cliptop .sp{flex:1}
 .clipitem{display:flex;gap:var(--s2);align-items:flex-start;padding:var(--s2);border:var(--hair) solid var(--line);
@@ -144,8 +142,8 @@
 .cliprev{font-size:var(--fs-md);color:var(--fg);white-space:pre-wrap;word-break:break-word}
 .climthumb{font-size:var(--fs-md);color:var(--fg)}
 .climeta{font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s1)}
-.clipacts{display:flex;gap:var(--s2);margin-top:var(--s3)}
-.clipacts .btn{flex:1}
+/* 步骤 24 删掉 .clipacts：剪贴板页转 Vue 后底部操作条是 .fbar2（固定操作条），
+   这个类名在 js 里 0 处使用。 */
 /* 二级页底部固定操作条：列表很长时不用一路滑到底才点得到确定（用户反馈） */
 /* 步骤 13（步骤 8 记账）：窄屏下计数不许在「个已选 · 共」中间断行。计数是
    flex 项且 min-width:0 时，它会被压缩到比自己的文字还窄 → 折成两行、按钮往上挤，

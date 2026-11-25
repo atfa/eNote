@@ -922,6 +922,7 @@ if (SPLIT) {
      （它们只看引用侧）。引用侧剔注释：注释里提一句不算调用者（app.js / shots.js
      各有一处提到它，正是它藏住的原因）。基线 0：新函数必须有人调。 */
   const DEAD_BASELINE = 0;
+  const probs0 = [];
   const jsDefs = new Map();
   for (const [rel, src] of walkJs(uiDir)) {
     for (const m of stripComments(src).matchAll(/(?:^|\n)\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g)) {
@@ -940,14 +941,40 @@ if (SPLIT) {
     if (hits <= where.length) dead.push(name + '（' + where.join(', ') + '）');
   }
 
-  const probs = [];
+  /* 步骤 24：同一套扫 CSS 类名。抓出 14 个（.pri-low / .ib / .swi / .tgl / .cnt / .num /
+     .ts / .fbar / .ntx / .mt / .mtt / .mts / .mcd / .clipacts），全是字符串渲染器时代与
+     Vant 化（van-switch 顶掉 .swi/.tgl）之后留下的死样式。类名是字符串，动态拼接
+     （'pri-' + x.priority）是唯一漏点，所以引用侧连 test.sh 的探针载荷一起看。基线 0。 */
+  const CSS_CLASS_BASELINE = 0;
+  const cssClassDefs = new Map();
+  for (const p of files) {
+    if (!p.endsWith('.css')) continue;
+    /* CSS 注释要整段剔：stripComments 只处理「行首的 /*」，行尾的说明注释留着，
+       tokens.css 那条讲 van-switch 的注释里就写着一个已删掉的 .sw.dis。 */
+    const css = fs.readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of css.matchAll(/\.([A-Za-z][\w-]*)/g)) {
+      if (/^van-/.test(m[1])) continue;   // Vant 自己的类名不是我们的刻度
+      if (!cssClassDefs.has(m[1])) cssClassDefs.set(m[1], []);
+      cssClassDefs.get(m[1]).push(path.relative(root, p));
+    }
+  }
+  const classRefText = jsSources.map(([, s]) => s).join('\n')
+    + read('go/ui/index.html') + read('test.sh') + read('go/web_test.go');
+  const deadCls = [...cssClassDefs].filter(([c]) =>
+    !new RegExp('\\b' + c.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + '\\b').test(classRefText));
+  if (deadCls.length > CSS_CLASS_BASELINE)
+    probs0.push('定义了没人用的 class ' + deadCls.length + ' > ' + CSS_CLASS_BASELINE + '：'
+      + deadCls.map(([c, ps]) => c + '(' + ps.join(',') + ')').join(' '));
+
+  const probs = probs0;
   if (unused.length > UNUSED_BASELINE)
     probs.push('新增定义了却没人用的 token ' + unused.length + ' > ' + UNUSED_BASELINE + '：' + unused.join(' '));
   if (dead.length > DEAD_BASELINE)
     probs.push('定义了没人调的函数 ' + dead.length + ' > ' + DEAD_BASELINE + '：' + dead.join(' | '));
   if (probs.length) bad('定义了却没人用（棘轮）', probs.join(' ; '));
-  else ok('无新增闲置 token（' + unused.length + ' ≤ ' + UNUSED_BASELINE + '）且无死函数（' +
-    jsDefs.size + ' 个函数定义，死函数 ' + dead.length + ' ≤ ' + DEAD_BASELINE + '）');
+  else ok('无新增闲置 token（' + unused.length + ' ≤ ' + UNUSED_BASELINE + '）、无死函数（' +
+    jsDefs.size + ' 个定义，死函数 ' + dead.length + ' ≤ ' + DEAD_BASELINE + '）、无死 class（' +
+    cssClassDefs.size + ' 个 class 定义，死 class ' + deadCls.length + ' ≤ ' + CSS_CLASS_BASELINE + '）');
 }
 
 // ---------- 闸门⑮：Vue 模板编译 + tick 依赖 + 模板 handler 存活性（S3 步骤 5） ----------

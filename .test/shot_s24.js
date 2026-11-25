@@ -1,0 +1,8 @@
+(async function(){
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  __enote.vue.host.tabPick("mine");
+  await sleep(900);
+  __enote.vue.host.openSettings();
+  await sleep(1200);
+  console.log("S24SHOT settings open");
+})()
