@@ -22,17 +22,9 @@ import { Vue, nextTick, setHost, setHostKeys, mountView, mountSheet, unmountShee
 /* 外壳（步骤 15）：顶栏 / 底栏+fab / 弹层宿主 / 对话框 / toast 的组件与它们读的 reactive 状态表。
    shell.js 只依赖 vue.js，不反向读 app.js 的状态（事件走下面的 setHost），所以没有循环导入。 */
 import { shell, mountShell } from './shell.js'
-import { NotesView } from './views/notes.js'
-import TodosView from './views/todos.js'
-import FilesView from './views/files.js'
 /* 步骤 8：截图暂存页（进度层步骤 17j 搬进了 shell.js 的 <teleport>） */
-import { ShotsView } from './views/shots.js'
-import FoldersView from './views/folders.js'
 /* 步骤 9：剪贴板暂存页 */
-import ClipSheetView from './views/clip.js'
 /* 步骤 10：我的页（统计）+ 设置页 */
-import StatsView from './views/stats.js'
-import SettingsSheetView from './views/settings.js'
 /* 步骤 16c：最后六个「字符串弹层」—— 排序筛选 / 错过的提醒 / 记一笔 / 添加待办 /
    运行日志 / AI 调用记录。它们以前是 app.js 里拼 HTML 字符串 + 内联 onclick。 */
 /* 步骤 29：截图捕获那一簇（含监控文件夹）搬进 shotflow.js；这里是循环依赖（shotflow.js
@@ -68,6 +60,9 @@ import { now, fmtTime, relTime } from './timeflow.js'
 import { toast, api, apiTimeout, errText, REQ_TIMEOUT_MS, setApiFail, apiFail } from './netflow.js'
 /* 步骤 48：$ / esc / ic 搬进 js/domutil.js（零依赖小工具）。 */
 import { $, clip, esc, ic } from './domutil.js'
+/* 步骤 50：常驻面板与两张 Vue 注册表搬进 js/panes.js（视图组件的 import 跟着搬过去）。 */
+import { panes, paneBuilt, paneDirty, tabScroll, paneFor, invalidatePanes,
+         showPane, VUE_VIEWS, VUE_SHEETS } from './panes.js'
 /* 步骤 49：启动自检搬进 js/selfcheck.js（它自己排 1200ms 后的定时器）。 */
 import './selfcheck.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
@@ -91,8 +86,6 @@ import { SHOTFLAGS, SHOTS, FOLD, SHOTPROG, shotFlags, shotGo, shotSetup, askShot
          folderSheet, folderLabel, folderPick, folderSelAll, folderPickShots, folderFilter,
          folderSave, shotIntroOnce, scanShotsNow, rescanShots,
          loadShots, shotIgnoreSel, clearShots } from './shotflow.js'
-import { SortSheetView, MissedSheetView, AddSheetView, AddTodoSheetView,
-         LogSheetView, DebugSheetView } from './views/sheets.js'
 /* 步骤 17f：H 暴露的「整包赋值的标量」接上响应式。tab / q 在 app.js 里被引用几十次，
    整词改名风险大于收益，所以用镜像：原变量照旧用，赋值处同步一份进 reactive 盒子，组件读盒子。
    同步只走 syncBox()，不手写第二遍（手写第二遍迟早漏一处，漏了就是「数据换了界面不动」）。
@@ -196,38 +189,8 @@ window.openTodo = openTodo;
    这三块没有 handler，整块交给叶子函数，Vue 侧 v-html 同一份字符串 —— 长段说明文字
    拄进模板的话，模板里多一个换行就少一个空格，VDIFF 比文本节点时很难查。 */
 /* 常驻后台那段长说明（无 handler）；电池优化那一段带两个按钮，留在模板里 */
-/* 每个 tab 一个常驻面板（R14）：来回切页不重绘整个页面，滚动位置也不会丢。
-   数据变了才把「其它页」标记为待重绘，切过去时重建一次。 */
-var panes = {}, paneBuilt = {}, paneDirty = {}, tabScroll = {notes:0, todos:0, files:0, mine:0};
-/* lastTab（上一个页签）只有 setTab 读写，跟着它搬进 js/tabflow.js（步骤 43）。 */
-function paneFor(t){
-  if(!panes[t]){
-    var d = document.createElement('div');
-    d.className = 'pane'; d.dataset.tab = t; d.style.display = 'none';
-    $('#view').appendChild(d);
-    panes[t] = d;
-  }
-  return panes[t];
-}
-/* 数据变了：其它 tab 的面板下次显示时重建（当前 tab 由 render() 直接重建） */
-function invalidatePanes(keep){
-  Object.keys(paneBuilt).forEach(function(k){ if(k !== keep) paneDirty[k] = 1 });
-}
-function showPane(){
-  Object.keys(panes).forEach(function(k){
-    panes[k].style.display = (k === tab) ? '' : 'none';
-  });
-}
-/* 已迁移到 Vue 的 tab（D14 混合期的唯一开关）：加一行就迁移一个视图，删掉一行就退回字符串路径。
-   步骤 5 notes；6 todos；7 files；9 clip；10 stats/mine；步骤 11 删掉遗留路径。 */
-var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView, mine: StatsView };
-/* 步骤 8：弹层（sheet）的注册表，与 VUE_VIEWS 同一套开关语义：加一行就迁移一个弹层，
-   删掉一行就退回字符串路径。步骤 17j：progress（截图导入进度层）从这张表里没掉了 ——
-   它不是弹层，现在住在外壳树的 <teleport> 里，不走 mountSheet 那张表。
-   闸门⑮ 会查完整性：views/ 里 export const *View 必须出现在 VUE_VIEWS ∪ VUE_SHEETS。 */
-var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, clip: ClipSheetView,
-  settings: SettingsSheetView, sort: SortSheetView, missed: MissedSheetView, add: AddSheetView,
-  addtodo: AddTodoSheetView, log: LogSheetView, debug: DebugSheetView };
+/* 每个 tab 一个常驻面板（R14）与两张 Vue 注册表（VUE_VIEWS / VUE_SHEETS）搬进
+   js/panes.js（P14 S6 步骤 50）：这里剩下的只有 render() 里那几笔调用。 */
 /* DOM 测量类的副作用：必须在 DOM 落地之后跑（遗留路径是同步 innerHTML，Vue 路径是 nextTick 之后） */
 function afterPaint(){
   syncReminders();

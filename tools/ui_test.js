@@ -1102,6 +1102,9 @@ if (SPLIT) {
 
       // 模板里的 @click / @input / v-on: 函数名 ⊆ 导出表（闸门①(a) 的 Vue 版）
       const appSrc = read('go/ui/js/app.js');
+      /* 步骤 50：两张注册表（VUE_VIEWS / VUE_SHEETS）搬进 js/panes.js，闸门跟着换读处。
+         注册表是「视图存在但永远不会被挂载」那类静默失效的唯一防线，扫不到就红。 */
+      const regSrc = appSrc + '\n' + read('go/ui/js/panes.js');
       const table = new Set(exportTableKeys(appSrc));
       // 模板里写 H.foo(...) 的 foo 走 setHost 的宿主对象，裸名 foo(...) 走 window（导出表）。
       // 两条解析路径不同，必须分开判 —— 混在一起时「导出表有、setHost 没有」的函数会绿着抛错，
@@ -1244,8 +1247,8 @@ if (SPLIT) {
           }
         }
         const roots = new Map();
-        const vm = /var VUE_VIEWS = \{([^}]*)\}/.exec(appSrc);
-        const sm = /var VUE_SHEETS = \{([\s\S]*?)\};/.exec(appSrc);
+        const vm = /var VUE_VIEWS = \{([^}]*)\}/.exec(regSrc);
+        const sm = /var VUE_SHEETS = \{([\s\S]*?)\};/.exec(regSrc);
         for (const grp of [vm, sm]) if (grp) for (const e of grp[1].split(',')) {
           const p = e.split(':');
           if (p.length === 2) roots.set((grp === vm ? 'view:' : 'sheet:') + p[0].trim(), p[1].trim());
@@ -1303,16 +1306,16 @@ if (SPLIT) {
       }
       if (wiring.length) bad('闸门⑮ Vue 装配缺失', wiring.join(' | '));
       // 注册表：app.js 的 var VUE_VIEWS = { notes: NotesView } 是唯一开关
-      const reg = /var VUE_VIEWS = \{([^}]*)\}/.exec(appSrc);
+      const reg = /var VUE_VIEWS = \{([^}]*)\}/.exec(regSrc);
       const views = reg ? [...reg[1].matchAll(/(\w+)\s*:\s*(\w+)/g)].map(m => ({ tab: m[1], comp: m[2] })) : [];
       // 步骤 8：弹层（sheet）是第二张注册表 VUE_SHEETS，tick 链规则一模一样。弹层不走
       // render()（它只画 tab pane），靠 app.js 的 handler 调 sheetPaint() bump tick；
       // 注册表里缺一个条目 = 那个弹层永远走遗留路径（静默），模板里的 :tick 全没人查。
-      const sreg = /var VUE_SHEETS = \{([^}]*)\}/.exec(appSrc);
+      const sreg = /var VUE_SHEETS = \{([^}]*)\}/.exec(regSrc);
       const sheets = sreg ? [...sreg[1].matchAll(/(\w+)\s*:\s*(\w+)/g)].map(m => ({ tab: m[1] + '(弹层)', comp: m[2] })) : [];
       const tickErrs = [];
-      if (!reg) tickErrs.push('app.js 里找不到 var VUE_VIEWS = {…} 注册表');
-      if (!sreg) tickErrs.push('app.js 里找不到 var VUE_SHEETS = {…} 注册表（步骤 8 起弹层也要登记）');
+      if (!reg) tickErrs.push('app.js / js/panes.js 里找不到 var VUE_VIEWS = {…} 注册表');
+      if (!sreg) tickErrs.push('app.js / js/panes.js 里找不到 var VUE_SHEETS = {…} 注册表（步骤 8 起弹层也要登记）');
       const mounted = views.concat(sheets);
       // 组件 → 是否声明 tick prop。步骤 17l 把整条 tick prop 管道删了（17h 之后没人读它）：
       // 现在两边都禁止 —— 组件不得声明 tick，模板不得传 :tick（多传的 prop 会透传成根元素
@@ -2172,7 +2175,9 @@ if (SPLIT) {
   /* 步骤 38：弹层开合那一簇搬进了 js/sheetflow.js，这条闸门的契约跨两个文件，
      bodyOf 要在 app.js ∪ sheetflow.js 里找函数体（只读 app.js 会假绿：找不到函数体
      时它本来就报「找不到 pageSheetVue」，不会静默通过）。 */
-  const appSrc = read('go/ui/js/app.js') + '\n' + read('go/ui/js/sheetflow.js');
+  /* 步骤 50：VUE_SHEETS 注册表搬进 js/panes.js，下面那条「progress 不许回到注册表」得去新家扫。 */
+  const appSrc = read('go/ui/js/app.js') + '\n' + read('go/ui/js/sheetflow.js')
+    + '\n' + read('go/ui/js/panes.js');
   const vueSrc = read('go/ui/js/vue.js');
   const leaks = [];
   if (!/export function unmountAllSheets\s*\(/.test(vueSrc) || !/Object\.keys\(sheetApps\)/.test(vueSrc))

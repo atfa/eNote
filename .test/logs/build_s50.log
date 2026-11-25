@@ -1,0 +1,15 @@
+==> aapt2 compile (resources)
+==> aapt2 link (binary manifest + R.java, API 33, min 26)
+==> javac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+==> d8 (.class -> classes.dex)
+==> build.json: {"sha":"7991a1af3dde-dirty","builtAt":"2026-11-25T21:30:38Z","app":"dev.xduo.enote"}
+==> go test
+enote: lib loaded
+--- FAIL: TestIndexServedFromDirectory (0.03s)
+    web_test.go:178: app.js 的 VUE_VIEWS 注册表缺 notes / todos / files / mine（步骤 5/6/7/10 转的 Vue 视图）
+    web_test.go:186: app.js 的 VUE_SHEETS 注册表缺 shots / folders / clip / settings（步骤 8/9/10 转 Vue 的弹层）
+FAIL
+FAIL	dev.xduo.enote	1.254s
+FAIL

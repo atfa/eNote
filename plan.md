@@ -3862,3 +3862,47 @@ end loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.72 P14 S6：常驻面板与 Vue 注册表搬进 js/panes.js（步骤 50）
+
+第二十二簇：`panes` / `paneBuilt` / `paneDirty` / `tabScroll` / `paneFor` / `invalidatePanes` /
+`showPane` / `VUE_VIEWS` / `VUE_SHEETS` 搬成 `go/ui/js/panes.js`。**app.js 756 → 695 行**
+（模块 60 行，32 行逐字搬，0 处改写），14 行视图组件的 import 跟着搬走。
+
+* 依赖：`$` 直接找 `js/domutil.js`，`tab` 从 app.js（`showPane` 读它，只读）；两张注册表里的
+  14 个组件从 `./views/*.js` 直接 import（ESM 保证组件先于本模块求值）。
+* **属性写跨模块是合法的**：`render()` 写 `paneBuilt[tab]=1` / `paneDirty[tab]=0`、shotflow 写
+  `paneDirty[tab]=1`、tabflow 写 `tabScroll[lastTab]` —— 全是属性写，没有整包赋值，所以 import
+  进来的对象直接改属性就够（ESM 只锁绑定，不锁属性）。这条写进了文件头，是判「能不能搬」的判据之一。
+* app.js 的导出表一行没动：`paneBuilt` / `paneDirty` / `showPane` / `tabScroll` / `VUE_SHEETS`
+  现在是**再导出**（import 进来的名字可以出现在 `export {…}` 里），tabflow / sheetflow / shotflow
+  那边一个字不用改。
+* 三处闸门/测试跟着换读处（都是「按路径读 app.js」的老路数，见清单 (e)）：
+  1. `tools/ui_test.js` 闸门⑮ 新增 `regSrc = app.js + js/panes.js`，四条注册表正则
+     （`var VUE_VIEWS = {…}` / `var VUE_SHEETS = {…}` 各两处：HOST_KEYS 挂载点核对、tick 链）改读它，
+     失败文案改成「app.js / js/panes.js 里找不到…」；
+  2. 闸门⑱ 的 `appSrc` 加上 panes.js —— 不然「progress 不许回到 VUE_SHEETS 注册表」那条会瞎掉；
+  3. `go/web_test.go` 新增 `regjs := appjs + /js/panes.js`，两条注册表正则改读 `regjs`。
+     这一步第一次 `./build.sh` 就是被它拦下的（`GO_TEST=1` 里 `go test` 报「注册表缺 notes/todos/…」），
+     说明这条钉子在新家仍然咬得住。
+* 闸门⑮ 的 ok 行数字一字未变（4 视图 + 10 弹层、19 个 app、165 个 key）—— 搬文件对它是透明的。
+
+探针（物理屏，`.test/probe_panes.js`）：
+
+```
+就绪 loads=1 pane 数=1 可见=notes
+注册表 VUE_VIEWS keys=files,mine,notes,todos VUE_SHEETS keys=add,addtodo,clip,debug,folders,log,missed,settings,shots,sort
+isVue 四个 tab=notes=true todos=true files=true mine=true
+isVueSheet 三个弹层=settings=true clip=true log=true
+切到 todos：可见=todos 各 pane 子节点=notes:9 todos:2
+切到 files：可见=files 各 pane 子节点=notes:9 todos:2 files:2
+切到 mine：可见=mine 各 pane 子节点=notes:9 todos:2 files:2 mine:7
+切到 notes：可见=notes 各 pane 子节点=notes:9 todos:2 files:2 mine:7
+end loads=1
+```
+
+「各 pane 子节点」那一列同时证明了三件事：面板是**懒建**的（第一次切过去才出现）、**常驻**的
+（切回来时 notes 还是 9 个子节点，没重建）、**同时只有一个可见**。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

@@ -109,6 +109,8 @@ func TestIndexServedFromDirectory(t *testing.T) {
 		t.Errorf("首页的 app.js 没加 type=\"module\"（S3 已转 ES module）")
 	}
 	appjs := uiBody(t, doUI(t, "/js/app.js"))
+	// 步骤 50：两张注册表（VUE_VIEWS / VUE_SHEETS）搬进 js/panes.js，下面两条注册表断言换读新家。
+	regjs := appjs + "\n" + uiBody(t, doUI(t, "/js/panes.js"))
 	for _, want := range []string{"window.__enoteActions = {", "Object.assign(window, window.__enoteActions)", "window.__enote.state = {"} {
 		if !strings.Contains(appjs, want) {
 			t.Errorf("app.js 缺少 %s：转 module 与导出表/状态桥必须同批（D12/D21）", want)
@@ -174,16 +176,16 @@ func TestIndexServedFromDirectory(t *testing.T) {
 	// D14：混合期的唯一开关——注册表。加一行迁移一个视图，删一行退回字符串路径。
 	// 每迁移一个视图就往注册表里追加一项，所以这里按「已迁移的视图都在」判，
 	// 不是整串相等（步骤 5 = notes，步骤 6 = + todos，步骤 7-10 继续加）。
-	if !regexp.MustCompile(`var VUE_VIEWS = \{[^}]*notes: NotesView[^}]*todos: TodosView[^}]*files: FilesView[^}]*mine: StatsView[^}]*\}`).MatchString(appjs) {
-		t.Errorf("app.js 的 VUE_VIEWS 注册表缺 notes / todos / files / mine（步骤 5/6/7/10 转的 Vue 视图）")
+	if !regexp.MustCompile(`var VUE_VIEWS = \{[^}]*notes: NotesView[^}]*todos: TodosView[^}]*files: FilesView[^}]*mine: StatsView[^}]*\}`).MatchString(regjs) {
+		t.Errorf("app.js / js/panes.js 的 VUE_VIEWS 注册表缺 notes / todos / files / mine（步骤 5/6/7/10 转的 Vue 视图）")
 	}
 	// 步骤 8：弹层（sheet）的第二张注册表。pageSheetVue 只认这张表，条目缺了就是那个弹层
 	// 静默走遗留路径，而 VDIFF 比 DOM 分不出来（两条路径的 DOM 按设计逐字相同）。
 	// 步骤 9 加 clip：剪贴板暂存页。步骤 10 加 settings：设置页（它是弹层，不是 tab）。
 	// 步骤 17j：progress（截图导入进度层）从这张表里没掉了 —— 它不是弹层，现在住在外壳
 	// 组件 SheetHost 的 <teleport to="#shotOvlRoot"> 里（闸门⑱ 钉住那里）。
-	if !regexp.MustCompile(`var VUE_SHEETS = \{[^}]*shots: ShotsView[^}]*folders: FoldersView[^}]*clip: ClipSheetView[^}]*settings: SettingsSheetView[^}]*\}`).MatchString(appjs) {
-		t.Errorf("app.js 的 VUE_SHEETS 注册表缺 shots / folders / clip / settings（步骤 8/9/10 转 Vue 的弹层）")
+	if !regexp.MustCompile(`var VUE_SHEETS = \{[^}]*shots: ShotsView[^}]*folders: FoldersView[^}]*clip: ClipSheetView[^}]*settings: SettingsSheetView[^}]*\}`).MatchString(regjs) {
+		t.Errorf("app.js / js/panes.js 的 VUE_SHEETS 注册表缺 shots / folders / clip / settings（步骤 8/9/10 转 Vue 的弹层）")
 	}
 	// 装配：__enote.vue 没设 → vueReady() 恒 false → render() 一直走字符串路径。
 	// 步骤 5 合并时这条被合掉了，结果 VDIFF/NINT 全绿而 Vue 一行没跑（P12 同款）。

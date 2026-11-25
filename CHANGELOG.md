@@ -1374,6 +1374,28 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 常驻面板与 Vue 注册表搬进 js/panes.js（P14 S6 步骤 50）
+
+第二十二簇：`panes`/`paneBuilt`/`paneDirty`/`tabScroll`/`paneFor`/`invalidatePanes`/`showPane`/`VUE_VIEWS`/`VUE_SHEETS`
+搬成 `go/ui/js/panes.js`。**app.js 756 → 695 行**（模块 60 行，32 行逐字搬、0 处改写），14 行视图组件 import 跟着搬走。
+
+* 依赖：`$` 直接找 `js/domutil.js`，`tab` 从 app.js（`showPane` 只读）；两张注册表里的 14 个组件从 `./views/*.js`
+  直接 import（ESM 保证组件先于本模块求值）。
+* **属性写跨模块是合法的**：`render()` 写 `paneBuilt[tab]`/`paneDirty[tab]`、shotflow 写 `paneDirty[tab]`、
+  tabflow 写 `tabScroll[lastTab]` —— 全是属性写、没有整包赋值，import 进来的对象直接改属性就够（ESM 只锁绑定不锁属性）。
+* app.js 导出表一行没动：`paneBuilt`/`paneDirty`/`showPane`/`tabScroll`/`VUE_SHEETS` 现在是**再导出**，
+  tabflow / sheetflow / shotflow 一个字没改。
+* 三处按路径读 app.js 的闸门/测试跟着换读处：闸门⑮ 新增 `regSrc = app.js + js/panes.js`（四条注册表正则改读它，
+  失败文案改成「app.js / js/panes.js 里找不到…」）；闸门⑱ 的 `appSrc` 加上 panes.js（否则「progress 不许回到
+  VUE_SHEETS」那条会瞎）；`go/web_test.go` 新增 `regjs`。第一次 `./build.sh` 正是被 `go test` 拦下的（报「注册表缺
+  notes/todos/…」），说明这条钉子在新家仍咬得住。闸门⑮ 的 ok 行数字一字未变（4 视图 + 10 弹层、19 app、165 key）。
+* 探针（`.test/probe_panes.js`）：`注册表 VUE_VIEWS keys=files,mine,notes,todos`、`VUE_SHEETS` 10 个 key、
+  `isVue` 四个 tab 全 true、`isVueSheet` 三个弹层 true；逐个切 tab 后「可见」只有一个，`各 pane 子节点`
+  从 `notes:9 todos:2` 长到 `notes:9 todos:2 files:2 mine:7` 再切回 notes 仍是 9 —— 同时证明面板是懒建、
+  常驻不重建、同时只有一个可见；`loads=1`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 启动自检搬进 js/selfcheck.js（P14 S6 步骤 49）
 
 第二十一簇：`selfCheck()` 搬成 `go/ui/js/selfcheck.js`。**app.js 756 → 732 行**（模块 43 行，28 行逐字搬、0 处改写）。

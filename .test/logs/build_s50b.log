@@ -1,0 +1,13 @@
+==> aapt2 compile (resources)
+==> aapt2 link (binary manifest + R.java, API 33, min 26)
+==> javac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+==> d8 (.class -> classes.dex)
+==> build.json: {"sha":"7991a1af3dde-dirty","builtAt":"2026-11-25T21:31:25Z","app":"dev.xduo.enote"}
+==> go test
+# dev.xduo.enote [dev.xduo.enote.test]
+./web_test.go:177:149: undefined: regjs
+./web_test.go:185:169: undefined: regjs
+FAIL	dev.xduo.enote [build failed]
+FAIL
