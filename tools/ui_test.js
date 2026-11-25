@@ -1705,7 +1705,11 @@ if (SPLIT) {
     && /^\.chart\{/m.test(src) && /function statCls\(/.test(src);
   sig('我的页统计来自 /api/stats，近 7 天为纯 CSS 柱状图', stats);
   const go = read('go/stats.go');
+  // 步骤 56：web.go 拆成 web.go（服务器 + 静态资源）/ api.go（/api/* 处理器）/
+  // selftest.go（headless 自检），这三个闸门要的东西分散在三个文件里，一起读。
   const goweb = read('go/web.go')
+    + read('go/api.go')
+    + read('go/selftest.go')
     + read('go/shots.go');
   const gopipe = read('go/pipeline.go');
   const goRoutes = /m\.HandleFunc\("\/api\/stats", handleStats\)/.test(read('go/web.go'))

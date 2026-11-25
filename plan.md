@@ -4172,3 +4172,49 @@ store.add(n); …; if n.Status == stQueued { jobs <- n.ID }
 `go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
 `./test.sh --vd` **164 ok / 0 FAIL / PASS**（一次过，image / images / file 三条分支由套件里的
 分享广播与截图导入覆盖）、三套 DOM 等价工具全部一致。
+
+## 9.78 P14 S6：go/web.go 拆成 web.go + api.go + selftest.go（步骤 56）
+
+app.js 收口之后，Go 侧最大的文件是 `go/web.go`（542 行），里面装着三件不相干的事：
+HTTP 服务器与静态资源、13 个 `/api/*` 处理器、headless 自检。拆成三个文件：
+
+| 文件 | 行数 | 内容 |
+|---|---|---|
+| `go/web.go` | 196 | `//go:embed all:ui`、`startWebServer`、`apiMux()` 路由表、`handleUI`、`contentType`、`jsonOut`/`readBody`/`readAll` |
+| `go/api.go` | 290 | 13 个 `handleXxx`：note / add / clip×4 / reparse / delete / todo / settings / theme / llmtest / img |
+| `go/selftest.go` | 81 | `selfTest(arg)`（`am start --es hook selftest`） |
+
+**逐字搬**：脚本核对「原 web.go 剔空行 512 行，在新三文件里 0 行找不到」，新文件只多出三段
+文件头注释与 `package`/`import`。import 是编译器逐轮裁出来的（`api.go` 最后只剩
+`io net/http os strings time`，`selftest.go` 只剩 `encoding/json fmt io net/http time`），
+没有手写猜的 import。
+
+**边界为什么这么切**：`apiMux()` 留在 `web.go` —— 闸门⑯ 从 `go/web.go` 里读
+`m.HandleFunc("/api/stats", handleStats)` 与 `/shotimg` 路由，路由注册表是「服务器」的一部分，
+处理器实现才是「接口面」。`selfTest` 跟 HTTP 只在「调同一批 handler」上有关，读起来是两件事：
+一个是网络面，一个是测试面。
+
+**闸门适配**：闸门⑯ 的 `goweb` 从 `web.go + shots.go` 扩成
+`web.go + api.go + selftest.go + shots.go`（断言文本一个没改，只是让它去四个文件里找同样的东西），
+闸门数仍是 **122**。
+
+探针（物理屏，`.test/probe_go56.js`，逐个打搬进 api.go 的 handler）：
+
+```
+就绪 loads=1 卡片=8
+GET /api/settings（api.go handleSettings）：baseUrl 类型=string theme=light useAI=true
+POST /api/theme（handleTheme）：ok=true theme=light 带 settings=string
+GET /api/clip/list + /api/shots/list：clips=0 shots=0
+POST /api/add（handleAdd → enqueue）：ok=true id=179565
+GET /api/note（handleNote）：状态=done 标题="步骤五六探针及周报提交" 待办=2
+POST /api/todo toggle（handleTodo）：第一次 ok=true done=false 复原 ok=true done=false
+POST /api/delete（handleDelete）：ok=true 再读=false 卡片=8 loads=1
+```
+
+第一条探针里「toggle 两次都 done=false」是**探针的锅**不是代码的锅：toggle 后立刻 GET，没等
+store 落盘。补跑 `.test/probe_go56b.js`（每次 toggle 后等 400ms）打印待办 id 与状态：
+`建好 done=false` → `toggle1 done=true` → `toggle2 done=false`，行为正常。
+
+验收：`ui_test.js` **122 项全绿**、`gofmt -l go` 空、`go vet ./...` 干净、`go test ./...` ok、
+`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**
+（一次过）、三套 DOM 等价工具全部一致。

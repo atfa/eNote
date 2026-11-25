@@ -1374,6 +1374,29 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### go/web.go 拆成 web.go + api.go + selftest.go（P14 S6 步骤 56）
+
+`go/web.go` 542 行里装着三件不相干的事：HTTP 服务器与静态资源、13 个 `/api/*` 处理器、headless 自检。
+
+| 文件 | 行数 | 内容 |
+|---|---|---|
+| `go/web.go` | 196 | `//go:embed all:ui`、`startWebServer`、`apiMux()` 路由表、`handleUI`、`contentType`、`jsonOut`/`readBody`/`readAll` |
+| `go/api.go` | 290 | 13 个 `handleXxx`：note / add / clip×4 / reparse / delete / todo / settings / theme / llmtest / img |
+| `go/selftest.go` | 81 | `selfTest(arg)`（`am start --es hook selftest`） |
+
+* **逐字搬**：脚本核对「原 web.go 剔空行 512 行，在新三文件里 0 行找不到」，新文件只多出三段文件头注释与
+  `package`/`import`。import 是编译器逐轮裁出来的（`api.go` 最后只剩 `io net/http os strings time`），没有手写猜的。
+* **边界为什么这么切**：`apiMux()` 留在 `web.go`——闸门⑯ 从 `go/web.go` 里读 `/api/stats` 与 `/shotimg` 路由，
+  路由注册表是「服务器」的一部分，处理器实现才是「接口面」；`selfTest` 跟 HTTP 只在「调同一批 handler」上有关，
+  读起来是两件事：一个是网络面，一个是测试面。
+* **闸门适配**：闸门⑯ 的 `goweb` 从 `web.go + shots.go` 扩成 `web.go + api.go + selftest.go + shots.go`
+  （断言文本一个没改，只是让它去四个文件里找同样的东西），闸门数仍是 **122**。
+* 探针（`.test/probe_go56.js`，逐个打搬进 api.go 的 handler）：settings / theme / clip-list / shots-list /
+  add → note → todo toggle → delete 全通，`loads=1` 无重启。第一条探针里「toggle 两次都 done=false」是探针的锅
+  （toggle 后立刻读、没等落盘），补跑 `.test/probe_go56b.js` 每次等 400ms：`done=false → true → false` 正常。
+* 验收：`ui_test.js` **122 项全绿**、`gofmt -l go` 空、`go vet ./...` 干净、`go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、
+  `./install.sh` Success、`./test.sh --vd` **164 项 ok / 0 FAIL / PASS**（一次过）、三套 DOM 等价工具全部一致。
+
 ### Go 侧去重 + enqueue 拆分，s45b 三项收尾扫描（P14 S6 步骤 55）
 
 app.js 收口之后转 Go 侧。
