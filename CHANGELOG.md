@@ -1374,6 +1374,36 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### app.js 砍掉 345 行：截图捕获那一簇搬进 js/shotflow.js（P14 S6 步骤 29）
+
+app.js 1957 行是全项目最大的文件，里面最自成的一簇是截图捕获（P11：扫描监控文件夹 → 横幅 →
+多选 → 导入 → 进度层 → 文件夹白名单），355 行、34 个顶层定义，app.js 里剩下的只有「把它们的
+函数名挂进 HOST / HOST_KEYS」那几笔。搬成 `go/ui/js/shotflow.js`（383 行），**app.js 1957 →
+1620 行**。
+
+* 循环依赖（app.js → shotflow.js → app.js）成立的条件写在 shotflow.js 文件头：本模块先被求值，
+  顶层只碰 `vue.js` 的 `Vue` 与自己新建的 reactive 盒子，app.js 那边（`S` / `tab` / `toast` /
+  `closeSheet` …）全部只在函数体里读，求值期谁都不碰谁。`tab` 是 `var tab = TAB.v` 且会被
+  `tab = syncBox(TAB, …)` 重新赋值 —— ES module 的导入是活绑定，重新赋值那边看得见。
+* 依赖清单：从 `vue.js` 拿 `Vue mountSheet unmountAllSheets sheetPaint`，从 `app.js` 拿 16 个
+  （`S tab q $ esc now toast CLIP dialog closeSheet pageSheetVue setTab refresh api paneDirty
+  statsNow`），shotflow.js 导出 34 个名字给 app.js 挂 HOST。
+* 三个坑，都是「静态全绿、运行时页面空白」那一类：
+  1. 扫 app.js 顶层声明的正则只认 `^function`，`^async function` 被漏掉 → `loadShots` /
+     `shotIgnoreSel` / `clearShots` 没搬进 import。症状：`Uncaught ReferenceError: shotIgnoreSel
+     is not defined @app.js:1312`（HOST 的取值表达式），整页空白。
+  2. 多声明符的 `var panes = {}, paneBuilt = {}, paneDirty = {}, tabScroll = {…}` 只抓到第一个
+     名字 → `paneDirty` 漏了，症状是 `JS-REJECT ReferenceError: paneDirty is not defined`（在
+     `folderSave → shotFlags` 的 promise 里），套件报「jseval 没跑完」。两个坑合起来变成工具
+     `.test/scan_module_deps.js`：逐声明符抓顶层名字，再跟目标模块的 import 列表求差。
+  3. 注释写在 `export { … }` 列表里面会把闸门㉒ 的导出解析器打瞎（它按 `}` 截断）；把注释挑到
+     列表外之后，注释文本里写的「`/* */`」那两个字符又提前结束了本注释 → `Uncaught SyntaxError:
+     Invalid or unexpected token @shotflow.js:381`。教训：块注释文本里不许出现块注释的收尾符。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、
+  todoRow 651 B、todoTx 454 B、设置页用法卡 222 B / 保活长说明 236 B、进度层整张卡逐字未动 ——
+  进度层正是 shotflow.js 里的 `shotOverlay`/`shotOvlSub`）。
+
 ### Go 侧的「定义了没人用」：结构体字段（P14 S6 步骤 28）
 
 闸门⑩ 在 JS/CSS 侧查了 token、函数、class、图标、关键帧五个方向，Go 侧对应的那一维是结构体

@@ -3138,3 +3138,42 @@ Go 里没有 `.字段` 读点、UI（js + html 剔 vendor + `test.sh`）里没�
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`（含 `go test` 全绿）、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（我的页 hero、附件页统计条都没变）。
+
+## 9.51 P14 S6：app.js 砍掉 345 行——截图捕获那一簇搬进 js/shotflow.js（步骤 29）
+
+app.js 1957 行是全项目最大的文件，里面最自成的一簇是**截图捕获**（P11：扫描监控文件夹 →
+横幅 → 多选 → 导入 → 进度层 → 文件夹白名单），355 行、34 个顶层定义，app.js 里剩下的只有
+「把它们的函数名挂进 HOST / HOST_KEYS」那几笔。搬成 `go/ui/js/shotflow.js`（385 行），
+**app.js 1957 → 1620 行**（shotflow.js 383 行）。
+
+循环依赖（app.js → shotflow.js → app.js）成立的条件写在 shotflow.js 文件头：本模块先被求值，
+顶层只碰 `vue.js` 的 `Vue` 与自己新建的 reactive 盒子，app.js 那边（`S` / `tab` / `toast` /
+`closeSheet` …）**全部只在函数体里读**，求值期谁都不碰谁。`tab` 是 `var tab = TAB.v` 且会被
+`tab = syncBox(TAB, …)` 重新赋值 —— ES module 的导入是活绑定，重新赋值那边看得见，这是这次
+搬迁最容易踩空的地方。
+
+依赖清单：从 `vue.js` 拿 `Vue mountSheet unmountAllSheets sheetPaint`，从 `app.js` 拿
+`S tab q $ esc now toast CLIP dialog closeSheet pageSheetVue setTab refresh api paneDirty statsNow`
+（16 个），shotflow.js 导出 34 个名字给 app.js 挂 HOST。
+
+**三个坑，都是「静态全绿、运行时页面空白」那一类**：
+
+1. 扫 app.js 顶层声明的正则只认 `^function`，`^async function` 被漏掉 → `loadShots` /
+   `shotIgnoreSel` / `clearShots` 三个没搬进 import。症状：`Uncaught ReferenceError:
+   shotIgnoreSel is not defined @app.js:1312`（HOST 的取值表达式），整页空白、
+   `__enote is not defined`。闸门㉒ 只核对 import↔export 两侧都存在的名字，抓不到「app.js
+   直接读一个没 import 的名字」。
+2. 多声明符的 `var panes = {}, paneBuilt = {}, paneDirty = {}, tabScroll = {…}` 只抓到第一个
+   名字 → `paneDirty` 漏了，症状是 `JS-REJECT ReferenceError: paneDirty is not defined`
+   （在 `folderSave → shotFlags` 的 promise 里），套件报「jseval 没跑完」。
+   两个坑合起来变成工具 `.test/scan_module_deps.js`：逐声明符抓 app.js 顶层名字，再跟目标模块
+   的 import 列表求差，现在只剩 `HOST` / `HOST_KEYS` 两个只在注释里出现的假阳性。
+3. 注释写在 `export { … }` 列表**里面**会把闸门㉒ 的导出解析器打瞎（它按 `}` 截断）；
+   把注释挪到列表外之后，注释文本里写的「`/* */`」那两个字符又提前结束了本注释 →
+   `Uncaught SyntaxError: Invalid or unexpected token @shotflow.js:381`。教训：块注释文本里
+   不许出现块注释的收尾符。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL /
+PASS**、三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、设置页用法卡
+222 B / 保活长说明 236 B、进度层整张卡逐字未动 —— 进度层正是 shotflow.js 里的
+`shotOverlay`/`shotOvlSub`）。
