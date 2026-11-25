@@ -1374,6 +1374,31 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 调试基建（P14 S4 步骤 17a）：Vue 的 dev 构建 + `?vue=dev` + Chrome inspect
+
+* 背景：用户问「Vue 有什么好处、装都装了怎么用起来」。盘点结果 `live()` 120 处 vs `reactive` 3 处、
+  `watch` 0、`<transition>` 0、`<Teleport>` 0、provide/inject 0 —— 只用了模板+组件这一层，
+  响应式那层被 `V.tick++` 大锤绕过了。新阶段 P14 按性价比排：调试基建 → 真响应式 → Transition →
+  Teleport → provide/inject → Vant（像素会变，开工前问用户）。
+* vendor Vue 的 dev 构建 `vue.global.js`（612 KB，同版本 3.5.46，sha256 进 VENDOR.md 新增的表）。
+  实测 prod 构建里 `__VUE_DEVTOOLS_GLOBAL_HOOK__` 出现 0 次、dev 版 1 次 —— 这就是「调试必须换文件、
+  不是加开关」的根据，`go/web_test.go` 钉住它。
+* `index.html` 的 `id="vue-select"` 内联脚本按 `?vue=dev` / localStorage `enote.vue=dev` 选构建，
+  `document.write` 解析期同步插入，保证早于 `<script type=module>`。
+* `MainActivity`：`setWebContentsDebuggingEnabled(true)`（`chrome://inspect` 入口）+
+  私有目录有 `enote/.vuedev` 时自动带 `?vue=dev`。开关刻意与 jseval 的 `.devmode` 分开：
+  测试工具每次都建 `.devmode`，共用会让 `test.sh` 跑成 dev 版 Vue，165 项基线就没得比。
+* 为什么值得多带 612 KB：运行时警告只在 dev 版里。16d 真机抓到的裸 `<ico>` 在 prod 完全静默；
+  dev 模式下 probe 挂一个未注册标签，testlog.txt 立刻出现
+  `[Vue warn]: Failed to resolve component: nosuchtag`（`onConsoleMessage` 把 console 全写进日志）。
+* 闸门：新增 ㉕（共 122 项，见 plan.md §9.27）；`TestVendorHashMatchesDoc` 改成逐文件核对 sha256；
+  首页内联脚本白名单从 1 个放宽到 2 个，ES5 检查对两个都跑。
+* README 新增 §5.2：dev 模式两条路 + `adb connect 127.0.0.1:5555` + `chrome://inspect` +
+  Vue Devtools 扩展步骤（设备装了 Chrome、Termux 无 adb 可装、unpkg 可达，都核过）。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  真机双模式 probe 各一次（prod `vue.global.prod.js`/dev=false，dev `vue.global.js`/dev=true，
+  dev 启动日志有 `You are running a development build of Vue.`）、`test.sh --vd` **166 ok / 0 FAIL / PASS**。
+
 ### 界面（P13 S3 步骤 16d）：最后一批字符串 → 真模板，`v-html` 与内联 `onclick` 双双归零
 
 * 删死代码簇 `folderRender` / `folderCountLabel` / `emptyState`（16c 删掉 `folderRows` /

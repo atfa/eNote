@@ -70,6 +70,15 @@ public class MainActivity extends Activity {
             note("no server: " + url);
             return;
         }
+        // 调试基建（README §5.2）：私有目录里有 enote/.vuedev 时，页面加载 Vue 的 dev 构建
+        // （带运行时警告与 devtools hook；prod 构建里那个 hook 被编译期剪掉了）。
+        // 开关刻意与 jseval 的 .devmode **分开**：测试工具每次都会创建 .devmode，共用一个文件
+        // 就等于 test.sh 跑的是 dev 版 Vue，那 165 项基线（含时序敏感的契约）就没得比了。
+        // 用户机器上两个文件都不存在，dev 版那 612 KB 永远不加载。
+        if (new java.io.File(getFilesDir(), "enote/.vuedev").exists()) {
+            url += (url.contains("?") ? "&" : "?") + "vue=dev";
+            note("dev: vue dev build (enote/.vuedev present)");
+        }
         openWeb(url);
     }
 
@@ -81,6 +90,10 @@ public class MainActivity extends Activity {
         // UI 内嵌在二进制里，装新版后不能拿到旧页面
         web.getSettings().setCacheMode(android.webkit.WebSettings.LOAD_NO_CACHE);
         web.getSettings().setMediaPlaybackRequiresUserGesture(false);
+        // Chrome 远程调试（chrome://inspect）+ Vue Devtools 的入口：WebView 被标记为可调试。
+        // 页面里 ?vue=dev 换到 Vue 的 dev 构建就能看到组件树（README §5.2）。
+        // 开着不改变用户可见行为，代价是设备上的 Chrome 能检查这个本地页面。
+        WebView.setWebContentsDebuggingEnabled(true);
         web.addJavascriptInterface(new Bridge(), "Android");
         // 页面没有横向滚动，但 WebView 自己的滑动拉伸效果还在：在“我的”页左滑会拉伸半个屏再弹回
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);

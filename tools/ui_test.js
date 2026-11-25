@@ -2048,6 +2048,35 @@ if (SPLIT) {
   else ok('闸门㉔ ' + compCount + ' 个组件的自定义标签全在自己 components 里（运行时可解析）');
 }
 
+/* ---------- 闸门㉕：调试基建（S4 步骤 17a）----------
+   两个 Vue 构建 + ?vue=dev 开关 + WebView 可调试，三样是一套：
+   prod 构建里 devtools hook 被编译期剪掉（实测出现 0 次），所以「看组件树」必须换文件；
+   更值钱的是运行时警告 —— 步骤 16d 的裸 <ico> 在 prod 里完全静默。
+   这里钉住四件事：选择器在 module 之前、两个构建都在 VENDOR.md 里登记了 sha256、
+   Java 侧开了 setWebContentsDebuggingEnabled、README §5.2 写着怎么用。
+   （vendor 内容本身的 sha256 由 go/web_test.go 逐文件核对。） */
+{
+  const html = read('go/ui/index.html');
+  const java = read('src/dev/xduo/enote/MainActivity.java');
+  const vendor = read('go/ui/vendor/VENDOR.md');
+  const readme = read('README.md');
+  const miss25 = [];
+  if (!html.includes('/vendor/vue.global.js')) miss25.push('index.html 没有 dev 构建路径');
+  if (!html.includes('__VUE_DEV__')) miss25.push('index.html 没有构建选择器');
+  if (html.indexOf('__VUE_DEV__') > html.indexOf('type="module" src="/js/app.js"'))
+    miss25.push('选择器必须在 <script type=module> 之前（js/vue.js 模块求值时就要拿到 window.Vue）');
+  const rows = [...vendor.matchAll(/\| 文件 \| `([^`]+)` \|[\s\S]{0,500}?\| sha256 \| `([0-9a-f]{64})` \|/g)];
+  if (rows.length < 2) miss25.push('VENDOR.md 里登记的构建不足两个（每个都要有 文件 + sha256 行）');
+  for (const [, name] of rows)
+    if (!read('go/ui/vendor/' + name)) miss25.push('VENDOR.md 登记的 ' + name + ' 不在 vendor 目录里');
+  if (!/setWebContentsDebuggingEnabled\s*\(\s*true\s*\)/.test(java))
+    miss25.push('MainActivity 没开 setWebContentsDebuggingEnabled(true)（Chrome inspect 进不去）');
+  if (!readme.includes('vue=dev')) miss25.push('README 没写 ?vue=dev 怎么用');
+  if (!java.includes('enote/.vuedev')) miss25.push('MainActivity 的 dev 开关不是 enote/.vuedev（必须与 jseval 的 .devmode 分开）');
+  if (miss25.length) bad('闸门㉕ 调试基建缺件（Vue dev 版 / devtools 入口）', miss25.join(' | '));
+  else ok('闸门㉕ 调试基建齐全：' + rows.map(m => m[1]).join(' + ') + ' + ?vue=dev 开关 + WebView 可调试');
+}
+
 // ---------- 输出 ----------
 for (const s of oks) console.log('ok   ' + s);
 for (const s of fails) console.log('FAIL ' + s);

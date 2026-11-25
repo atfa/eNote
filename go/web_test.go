@@ -56,18 +56,27 @@ func TestIndexServedFromDirectory(t *testing.T) {
 	// S3（D16）之后首页允许**一个**内联脚本：feature probe。它必须在 module 之前、语法必须停在
 	// ES5：老 WebView 连 type="module" 都不认，探针写在 app.js 里就跟着模块一起静默失败；
 	// 探针自己用上新语法则是第一个解析失败的脚本——两种都回到白屏，probe 白写。
+	// 步骤 17a 加了第二个允许的内联脚本 id="vue-select"（Vue 构建选择器）：它同样在 module
+	// 之前、同样要在旧引擎上解析得动，所以 ES5 检查对两个都跑。
 	inline := regexp.MustCompile("(?s)<script([^>]*)>(.*?)</script>").FindAllStringSubmatch(code, -1)
 	probeBody, probeCount := "", 0
+	var inlineBodies []string
 	for _, m := range inline {
 		if strings.Contains(m[1], "src=") {
 			continue
 		}
 		probeCount++
-		if !strings.Contains(m[1], `id="probe"`) {
-			t.Errorf("首页多了内联 <script>（属性：%s）；只允许 id=\"probe\" 那一个",
+		isProbe := strings.Contains(m[1], `id="probe"`)
+		isSel := strings.Contains(m[1], `id="vue-select"`)
+		if !isProbe && !isSel {
+			t.Errorf("首页多了内联 <script>（属性：%s）；只允许 id=\"probe\"（D16 特性探针）与 id=\"vue-select\"（Vue 构建选择器）",
 				strings.TrimSpace(m[1]))
+			continue
 		}
-		probeBody = m[2]
+		inlineBodies = append(inlineBodies, m[2])
+		if isProbe {
+			probeBody = m[2]
+		}
 	}
 	if probeCount == 0 {
 		t.Errorf("首页没有内联 probe 脚本（D16：旧 WebView 要失败得响亮）")
@@ -80,8 +89,10 @@ func TestIndexServedFromDirectory(t *testing.T) {
 		{"空值合并 ??", `\?\?`},
 		{"class 声明", `(?m)^[[:space:]]*class[[:space:]]`},
 	} {
-		if regexp.MustCompile(es5.re).MatchString(probeBody) {
-			t.Errorf("probe 脚本用了 %s：老引擎解析不了，探针自己先死（D16）", es5.what)
+		for _, b := range inlineBodies {
+			if regexp.MustCompile(es5.re).MatchString(b) {
+				t.Errorf("首页内联脚本用了 %s：老引擎解析不了，探针自己先死（D16）", es5.what)
+			}
 		}
 	}
 	if strings.Index(code, `id="probe"`) > strings.Index(code, `type="module"`) {
@@ -180,6 +191,13 @@ func TestIndexServedFromDirectory(t *testing.T) {
 	// Vue 是全局构建，js/vue.js 在模块求值时就要拿 window.Vue，所以脚本顺序是硬约束。
 	if i, j := strings.Index(body, "/vendor/vue.global.prod.js"), strings.Index(body, `type="module" src="/js/app.js"`); i < 0 || j < 0 || i > j {
 		t.Errorf("index.html 里 vendored Vue 必须在 <script type=module> 之前（i=%d j=%d）", i, j)
+	}
+	// 步骤 17a：两个 Vue 构建，页面默认 prod，?vue=dev / localStorage enote.vue=dev 时换 dev。
+	// 选择器必须是解析期同步插入（document.write），否则 module 在 Vue 落地前就求值了；
+	// prod 路径保持字面量，上面那条顺序断言扫的就是它。
+	if !strings.Contains(body, "/vendor/vue.global.js") || !strings.Contains(body, "__VUE_DEV__") ||
+		strings.Index(body, "__VUE_DEV__") > strings.Index(body, `type="module" src="/js/app.js"`) {
+		t.Errorf("index.html 缺 Vue 构建选择器（?vue=dev → /vendor/vue.global.js，必须在 module 之前），见 README §5.2")
 	}
 	// 组件 setup() 里就要读宿主接口，所以 setHost 必须早于首次 refresh()。
 	if i, j := strings.Index(appjs, "setHost({"), strings.Index(appjs, "\nrefresh();"); i < 0 || j < 0 || i > j {
@@ -317,30 +335,42 @@ func TestContentTypeMap(t *testing.T) {
 
 // vendor 是第三方整文件：内容必须与 VENDOR.md 记录的 sha256 一致，
 // 否则"谁手改了 Vue / 升级没更新文档"这种事故没人拦得住。
+// 包里有两份 Vue（prod 是页面默认加载的，dev 给 ?vue=dev 调试用），逐文件核对。
 func TestVendorHashMatchesDoc(t *testing.T) {
-	raw, err := fs.ReadFile(uiFS, "ui/vendor/vue.global.prod.js")
-	if err != nil {
-		t.Fatalf("读不到 vendor 里的 Vue: %v", err)
-	}
-	sum := sha256.Sum256(raw)
-	got := hex.EncodeToString(sum[:])
 	doc, err := os.ReadFile("ui/vendor/VENDOR.md")
 	if err != nil {
 		t.Fatalf("读不到 VENDOR.md: %v", err)
 	}
-	m := regexp.MustCompile("sha256\\s*\\|\\s*`([0-9a-f]{64})`").FindSubmatch(doc)
-	if m == nil {
-		t.Fatal("VENDOR.md 里没有 sha256 行（格式：| sha256 | `<64位hex>` |）")
+	rows := regexp.MustCompile("(?s)\\| 文件 \\| `([^`]+)` \\|.{0,500}?\\| sha256 \\| `([0-9a-f]{64})` \\|").FindAllSubmatch(doc, -1)
+	if len(rows) < 2 {
+		t.Fatalf("VENDOR.md 里只找到 %d 个文件条目（期望 prod + dev 两个，格式：| 文件 | `x.js` | … | sha256 | `<64位hex>` |）", len(rows))
 	}
-	if string(m[1]) != got {
-		t.Errorf("vendor 内容与 VENDOR.md 不一致：文件 %s，文档 %s\n升级请照 VENDOR.md 的步骤做，两处一起改", got, m[1])
+	seen := map[string]string{}
+	for _, r := range rows {
+		name, want := string(r[1]), string(r[2])
+		raw, err := fs.ReadFile(uiFS, "ui/vendor/"+name)
+		if err != nil {
+			t.Fatalf("读不到 vendor 里的 %s: %v", name, err)
+		}
+		sum := sha256.Sum256(raw)
+		if got := hex.EncodeToString(sum[:]); got != want {
+			t.Errorf("%s 内容与 VENDOR.md 不一致：文件 %s，文档 %s\n升级请照 VENDOR.md 的步骤做，两处一起改", name, got, want)
+		}
+		seen[name] = string(raw)
 	}
-	if !strings.Contains(string(raw), "vue v3.5.46") {
-		t.Errorf("vendor 文件里的版本号与预期不符，检查是不是下成了 runtime-only 构建")
+	for name, body := range seen {
+		if !strings.Contains(body, "vue v3.5.46") {
+			t.Errorf("%s 里找不到版本号字符串，检查是不是下成了 runtime-only 构建", name)
+		}
 	}
-	// 全局构建自带模板编译器；换成 runtime-only 会让 template: 字符串静默不编译（页面空白）。
-	if !regexp.MustCompile(`version:"3\.5\.`).MatchString(string(raw)) && !strings.Contains(string(raw), "3.5.46") {
-		t.Errorf("vendor 里找不到版本号字符串")
+	// 两个构建的分工就是这套调试基建的全部理由：devtools hook 只在 dev 版里
+	// （prod 构建里它被编译期剪掉了），所以「看组件树」必须换文件，不是加开关。
+	// index.html 的选择器（?vue=dev）与 README §5.2 都建立在这条事实上。
+	if !strings.Contains(seen["vue.global.js"], "__VUE_DEVTOOLS_GLOBAL_HOOK__") {
+		t.Errorf("vue.global.js 里没有 __VUE_DEVTOOLS_GLOBAL_HOOK__，Vue Devtools 看不到组件树")
+	}
+	if strings.Contains(seen["vue.global.prod.js"], "__VUE_DEVTOOLS_GLOBAL_HOOK__") {
+		t.Errorf("vue.global.prod.js 里出现了 devtools hook，那不是 prod 构建")
 	}
 }
 

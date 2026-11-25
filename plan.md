@@ -2282,3 +2282,55 @@ fab 两个 tab + 进度层两块）全部逐字一致。因为 16d 动了 KvRow 
 **P13 的「手工 WebView 代码」到此清零**：`go/ui/js/` 里没有字符串拼 HTML 的渲染器，
 `index.html` 剩下的是图标 sprite（`<use>` 的引用源，必须是静态标记）、五个挂载容器、
 以及 probe 兜底面板（刻意用裸 JS 写：Vue 起不来时它要能画出来告诉你是怎么回事）。
+
+## 9.27 S4 步骤 17a 已完成（调试基建：Vue 的 dev 构建 + `?vue=dev` + Chrome inspect）
+
+**为什么开新阶段**：用户问「Vue 到底有什么好处，装都装了怎么用起来」。先做了盘点，
+`go/ui/js/` 里的 Vue 原语使用量是：
+
+```
+live() 120 处   computed 16 处   reactive 3 处
+watch 0   ref 2   provide/inject 0   onMounted 0   $emit 2
+<transition> 0   <Teleport> 0   插槽 0
+H.xxx 125 个不同引用（宿主上帝对象）
+```
+
+也就是说只用了 Vue 的「模板 + 组件」这一层，响应式那层被 `live()` 的 `V.tick++` 大锤绕过了
+（120 处 `live()` vs 3 处 `reactive`）。新阶段 P14 的顺序按性价比排：
+①调试基建 → ②真响应式删 tick → ③`<Transition>` 动画 → ④`<Teleport>` 弹层宿主 →
+⑤provide/inject 替掉 `H` → ⑥Vant 局部接入（像素会变，开工前问用户）。
+
+**17a 做了什么**（①，为后面五条铺路）：
+
+* vendor Vue 的 **dev 构建** `vue.global.js`（612 KB，同版本 3.5.46，sha256 记进 VENDOR.md
+  新增的表）。prod 构建里 `__VUE_DEVTOOLS_GLOBAL_HOOK__` 出现 **0 次**（编译期剪掉），dev 版 1 次
+  —— 这是「调试必须换文件、不是加开关」的实测根据，`go/web_test.go` 钉住这条。
+* `index.html` 新增 `id="vue-select"` 内联脚本：`?vue=dev` 或 localStorage `enote.vue=dev`
+  时加载 dev 版，否则 prod。用 `document.write` 在解析期同步插入，保证早于
+  `<script type=module>`（`js/vue.js` 模块求值时就要拿到 `window.Vue`）。
+* `MainActivity`：`WebView.setWebContentsDebuggingEnabled(true)`（Chrome `chrome://inspect`
+  的入口），并在私有目录里有 `enote/.vuedev` 时给 URL 拼上 `?vue=dev`。
+  **开关刻意与 jseval 的 `.devmode` 分开**：测试工具每次运行都会创建 `.devmode`，共用一个文件
+  等于 `test.sh` 跑的是 dev 版 Vue，那 165 项基线（含时序敏感的契约）就没得比了。
+* 为什么值得多带 612 KB：运行时警告只在 dev 版里。步骤 16d 真机抓到的裸 `<ico>` 在 prod 里
+  完全静默（Vue 只 `console.warn`），而 `MainActivity.onConsoleMessage` 把 console 全写进
+  `testlog.txt`。真机验证：dev 模式下 probe 挂一个未注册标签，日志立刻出现
+  `[Vue warn]: Failed to resolve component: nosuchtag`。
+* README 新增 §5.2：两条进 dev 模式的路、`adb connect 127.0.0.1:5555`（root 下
+  `setprop service.adb.tcp.port 5555`）+ `chrome://inspect` + Vue Devtools 扩展的步骤。
+  设备事实核过：装了 `com.android.chrome`，Termux 里没有 adb（`pkg install android-tools` 可装），
+  unpkg 可达。
+
+**闸门跟着加**：
+* `ui_test.js` 新增闸门㉕（共 122 项）：选择器在 module 之前、两个构建都在 VENDOR.md 登记且文件
+  存在、Java 开了 `setWebContentsDebuggingEnabled(true)` 且开关文件是 `enote/.vuedev`、README 写了
+  `?vue=dev`。
+* `go/web_test.go`：`TestVendorHashMatchesDoc` 从「单文件」改成逐文件核对（VENDOR.md 里每个
+  `| 文件 |` + `| sha256 |` 条目都查），并钉住「dev 有 devtools hook、prod 没有」。
+* 首页内联脚本白名单从 1 个（`id="probe"`）放宽到 2 个（加 `id="vue-select"`），
+  ES5 检查对两个都跑 —— 它同样在 module 之前、同样要在旧引擎上解析得动。
+
+**验收**：`ui_test.js` **122 项全绿**；`GO_TEST=1 ./build.sh` 绿；`./install.sh` Success；
+真机双模式各测一次：生产 `vue.global.prod.js` / `__VUE_DEV__=false` / 4 个 tab，
+dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出现
+`You are running a development build of Vue.`；`./test.sh --vd` **166 ok / 0 FAIL / PASS**（基线 165，多出的 1 项是 vendor 逐文件核对拆出来的）。

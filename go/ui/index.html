@@ -217,7 +217,26 @@
   <!-- S3（D1/D14）：Vue 3 全局构建（含模板编译器，零构建步骤）必须在 module 之前加载：
        js/vue.js 在模块求值时就要拿到 window.Vue。语法下限实测 Chrome 58（VENDOR.md），
        低于 D16 probe 里已探测的 Proxy/Reflect/Symbol 那一档，所以不需要新增特性探测。 -->
-  <script src="/vendor/vue.global.prod.js"></script>
+  <!-- 两个 Vue 构建都在包里：生产用 prod（174 KB），调试用 dev（612 KB）。
+       dev 版带运行时警告与 devtools hook —— prod 里那个 hook 被编译掉了（实测
+       vue.global.prod.js 里 __VUE_DEVTOOLS_GLOBAL_HOOK__ 出现 0 次），所以「看组件树」
+       必须换文件，不是加开关。开关：URL 加 ?vue=dev，或 localStorage 里 enote.vue=dev
+       （probe 一行就能开：localStorage.setItem('enote.vue','dev');location.reload()）。
+       为什么值得带这 612 KB：步骤 16d 真机抓到的裸 <ico> bug 在 prod 里完全静默
+       （Vue 只 console.warn），而 dev 版会喊出来，MainActivity 的 onConsoleMessage
+       又把 console 全写进 testlog.txt。详见 README §5.2。
+       document.write 在解析期同步插入，顺序有保证；prod 路径保持字面量 —— web_test.go
+       的「vendored Vue 必须在 <script type=module> 之前」扫的就是这个字符串。 -->
+  <script id="vue-select">
+    (function () {
+      var dev = false;
+      try {
+        dev = /[?&]vue=dev\b/.test(location.search) || localStorage.getItem('enote.vue') === 'dev';
+      } catch (e) { }
+      window.__VUE_DEV__ = dev;
+      document.write('<script src="' + (dev ? '/vendor/vue.global.js' : '/vendor/vue.global.prod.js') + '"><\/script>');
+    })();
+  </script>
   <script type="module" src="/js/app.js"></script>
 
 </body>

@@ -1,50 +1,29 @@
-界面 P13 S3 步骤 16d：最后一批字符串 → 真模板，v-html 与内联 onclick 双双归零
+S4 步骤 17a：调试基建（Vue dev 构建 + ?vue=dev + Chrome inspect）
 
-死代码：
-- 删 folderRender / folderCountLabel / emptyState（16c 删掉 folderRows / folderCountHTML
-  之后已无人调用，真机 probe 一调就抛 ReferenceError）。emptyState 里那句
-  onclick="sheetMsg(...)" 是全项目最后一处内联 handler：内联 onclick 21 → 0。
-- 删 shotOverlay / shotOvlSub 的字符串回退分支（VUE_SHEETS.progress 恒为真，那段跑不到）
-  与死变量 SHOTOVL_TEXT。app.js 1864 → 1796 行。
+新阶段 P14 的起点。用户问「Vue 到底有什么好处」，先盘了使用量：live() 120 处 vs
+reactive 3 处、watch 0、<transition> 0、<Teleport> 0、provide/inject 0 —— 只用了
+模板+组件这一层，响应式那层被 V.tick++ 大锤绕过去了。P14 顺序：调试基建 → 真响应式
+→ Transition → Teleport → provide/inject → Vant（像素会变，开工前问用户）。
 
-v-html 6 → 0（模板里不再有任何字符串 HTML）：
-- fab 图标：FABS 改存图标名，TabBar 模板画 <span class="fico"><ico :n=... cls="l"/></span>
-- <empty-state> 内部片段成真模板（<ico> + {{ title }} + v-if 的 .esub）；查过全部 7 个调用方
-  传的都是纯文本，{{ }}（textContent）与 v-html 等价。注释写明：以后要塞 HTML 就加插槽。
-- KvRow 的 v 分支 v-html → {{ }}（调用方是统计卡与采集卡，全是数字与中文）
-- 进度层 .owarn：warn 字符串（ic('alert')+固定文案）→ 模板写死 <ico n="alert"/> + 文案
-- 排序筛选按钮（最后一个）：选项从 [值, HTML] 变 [值, 图标名, 文案]，
-  模板 <ico v-if="o[1]" :n="o[1]"/>{{ o[2] }}；无图标项多出一个 v-if 注释节点 <!---->，
-  它不是元素，textContent、布局、点击都一致
+17a 是第一步，为后面五条铺路：
 
-真机抓到一个真 bug（这一步的价值所在）：
-- 进度层组件用 <ico> 只加了文件头注释里的注册表，没加组件自己的 components: { Ico }
-  → Vue 运行时只 console.warn(Failed to resolve component)，页面上是个裸 <ico n="alert">
-  元素，图标位置空着。闸门⑮ 的注册表是「每文件一份」，Vue 认的是组件自己的 components
-  选项，两者可以不一致。
-- 新增闸门㉔：29 个组件模板里的自定义标签（带连字符 ∪ 不在原生标签表里的单词标签，本项目
-  只有 <ico>）必须出现在该组件自己的 components 里。反向实验：删掉 ShotProgress 的
-  components: { Ico } → 立刻红并点名。
-- 新增闸门㉓：59 个组件模板里 v-html 归零（只扫模板字面量，注释里提 v-html 不算）。
-  反向实验：KvRow 改回 v-html="v" → 立刻红并点名 leaf.js。
+- vendor Vue 的 dev 构建 vue.global.js（612 KB，同版本 3.5.46，sha256 进 VENDOR.md
+  新增的表）。实测 prod 构建里 __VUE_DEVTOOLS_GLOBAL_HOOK__ 出现 0 次、dev 版 1 次，
+  这就是「调试必须换文件、不是加开关」的根据。
+- index.html 新增 id="vue-select" 内联脚本：?vue=dev 或 localStorage enote.vue=dev 时
+  加载 dev 版。document.write 解析期同步插入，保证早于 <script type=module>（js/vue.js
+  模块求值时就要拿到 window.Vue）。
+- MainActivity：setWebContentsDebuggingEnabled(true)（chrome://inspect 入口）+ 私有目录
+  里有 enote/.vuedev 时自动带 ?vue=dev。开关刻意与 jseval 的 .devmode 分开：测试工具每次
+  都建 .devmode，共用会让 test.sh 跑成 dev 版 Vue，165 项基线就没得比。
+- 为什么值得多带 612 KB：运行时警告只在 dev 版里。16d 真机抓到的裸 <ico> 在 prod 完全
+  静默；dev 模式下 probe 挂一个未注册标签，testlog.txt 立刻出现
+  [Vue warn]: Failed to resolve component: nosuchtag。
+- 闸门：ui_test.js 新增 ㉕（共 122 项）；go/web_test.go 的 TestVendorHashMatchesDoc 改成
+  逐文件核对 sha256 并钉住「dev 有 hook、prod 没有」；首页内联脚本白名单从 1 个放宽到
+  2 个（probe + vue-select），ES5 检查对两个都跑。
+- README 新增 §5.2：dev 模式两条路 + adb over WiFi + chrome://inspect + Vue Devtools 步骤。
 
-等价性（29 例逐字一致）：
-- probe_sheets.sh 加四个夹具点（fab 在笔记页/附件页的 .fico、进度层 .owarn 与整张 .ovlcard，
-  进度层用 Vue.createApp(VUE_SHEETS.progress) 现场挂到 #shotOvlRoot 并写 host.SHOTPROG），
-  dom_equiv3.js 扩到 13 例全一致。
-- 16d 动了 KvRow 与 EmptyState，16b/16a 两套重跑：dom_equiv2.js 13 块、dom_equiv.js 3 块全一致。
-- 三个工具的旧侧基线不再写 HEAD（HEAD 一路在动，这一步第一次跑就撞上「HEAD 里找不到 cdChip」），
-  钉死到「那批字符串函数被删掉之前的最后一版」：16d→cf69909、16b→bd91977、16a→98915cc，
-  BASE 环境变量可覆盖。
-
-数字：内联 onclick 0；模板 v-html 0；handler 80（全在 Vue 模板，基线 73）；导出表 68 个 key；
-闸门 121 项（+2）；app.js 1796 行。
-
-验收：ui_test 121 项全绿、GO_TEST=1 ./build.sh 绿、./install.sh Success、
-./test.sh --vd 165 项 ok / 0 FAIL / PASS。
-
-文档：plan.md §9.26、CHANGELOG 步骤 16d 一节。
-
-P13 的「手工 WebView 代码」到此清零：go/ui/js/ 里没有字符串拼 HTML 的渲染器；index.html 剩下
-图标 sprite（<use> 的引用源，必须静态）、五个挂载容器、probe 兜底面板（刻意裸 JS：Vue 起不来
-时它要能画出来告诉你是怎么回事）。
+验收：ui_test 122 项全绿、GO_TEST=1 ./build.sh 绿、./install.sh Success、真机双模式 probe
+各一次（prod vue.global.prod.js/dev=false，dev vue.global.js/dev=true，dev 启动日志有
+"You are running a development build of Vue."）、test.sh --vd 166 ok / 0 FAIL / PASS。

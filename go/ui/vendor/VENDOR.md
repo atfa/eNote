@@ -1,5 +1,10 @@
 # vendored：Vue 3
 
+两个构建都在包里，同一版本，来源同一处。`go/web_test.go` 的 `TestVendorHashMatchesDoc`
+逐文件核对下面两张表的 sha256（第三方整文件不许被手改）。
+
+## 生产构建（页面默认加载）
+
 | | |
 |---|---|
 | 文件 | `vue.global.prod.js` |
@@ -8,6 +13,31 @@
 | 许可 | MIT（(c) 2018-present Yuxi (Evan) You and Vue contributors） |
 | 大小 | 174,069 字节 |
 | sha256 | `c2e4b888ecbb12c7b24fd5e8bf65483ceaab73c37b79402f7968023977ed3e81` |
+
+## 调试构建（`?vue=dev` 时加载，见 README §5.2）
+
+| | |
+|---|---|
+| 文件 | `vue.global.js` |
+| 版本 | 3.5.46 |
+| 来源 | https://unpkg.com/vue@3.5.46/dist/vue.global.js |
+| 许可 | MIT（同上） |
+| 大小 | 612,551 字节 |
+| sha256 | `0f9a092ad87f4e7a2b37c3fb5aa425b34dcd6ceef24070baf0d05e54353e980c` |
+
+为什么要多带这 612 KB：prod 构建里 `__VUE_DEVTOOLS_GLOBAL_HOOK__` 出现 **0 次**（编译期被剪掉），
+所以 Chrome 的 Vue Devtools 扩展在 prod 下什么也看不见；dev 构建出现 1 次。更值钱的是**运行时警告**：
+步骤 16d 真机抓到的裸 `<ico>`（组件没声明 `components`）在 prod 里完全静默，dev 版会
+`console.warn(Failed to resolve component: ico)`，而 `MainActivity.onConsoleMessage` 把 console
+全写进 `testlog.txt`。开关与用法见 README §5.2；`go/web_test.go` 钉住「dev 有 hook、prod 没有」。
+
+升级时两个文件一起换（版本号必须一致，`TestVendorHashMatchesDoc` 会查），两条命令：
+
+```sh
+curl -s -o go/ui/vendor/vue.global.prod.js https://unpkg.com/vue@<版本>/dist/vue.global.prod.js
+curl -s -o go/ui/vendor/vue.global.js       https://unpkg.com/vue@<版本>/dist/vue.global.js
+sha256sum go/ui/vendor/vue.global*.js   # 输出抄进上面两张表
+```
 
 ## 为什么 vendor 而不是 npm
 

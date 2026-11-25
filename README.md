@@ -236,6 +236,57 @@ su --mount-master -c 'am start -n dev.xduo.enote/.MainActivity --es hook jseval 
 `test.sh` 里「P11 文件夹页」那段就是这么写的三条断言：底部操作条是 `sticky` 且滚到中间仍在视口内、
 已选数量随勾选实时变化、已选项全部排在前面、返回我的页后数量同步。
 
+### 5.2 调试：Vue 的 dev 构建与 Chrome Devtools
+
+页面默认加载 `go/ui/vendor/vue.global.prod.js`（174 KB）。包里有第二份
+`vue.global.js`（612 KB，同一版本），带 **Vue 运行时警告**与 **devtools hook**，
+进 dev 模式的两条路（都验过）：
+
+```sh
+# 1) 开发者模式：私有目录里有 enote/.vuedev 就自动带 ?vue=dev
+#    （与 jseval 的 .devmode 分开：测试工具每次都建 .devmode，共用会让 test.sh 跑成 dev 版 Vue）
+asroot_global "touch /data/data/dev.xduo.enote/files/enote/.vuedev"
+source lib/root.sh; asroot_global "am force-stop dev.xduo.enote"; am start -n dev.xduo.enote/.MainActivity
+# 2) 临时：localStorage 开关（不用重启，probe 一行）
+./.test/probe.sh "localStorage.setItem('enote.vue','dev');location.reload()"
+./.test/probe.sh "localStorage.removeItem('enote.vue');location.reload()"   # 关掉
+# 确认现在加载的是哪个构建（dev 版启动会自己喊一句 development build）
+./.test/probe.sh "[...document.scripts].map(s=>s.src).filter(s=>/vue/.test(s)).join()"
+asroot_global "tail -c 400 /data/data/dev.xduo.enote/files/testlog.txt"
+# 关掉：rm /data/data/dev.xduo.enote/files/enote/.vuedev
+```
+
+dev 模式的产物直接落在 testlog.txt 里，这条是它的价值证明：probe 挂一个未注册标签，
+dev 版立刻喊出来，prod 版完全静默 ——
+
+```
+web console: [Vue warn]: Failed to resolve component: nosuchtag
+```
+
+为什么值得多带 612 KB：
+
+* **运行时警告只在 dev 版里。** 步骤 16d 真机抓到的裸 `<ico>`（组件模板用了 `<ico>`
+  但没写自己的 `components: { Ico }`）在 prod 里完全静默 —— Vue 只 `console.warn`，
+  页面上是图标位置空着。dev 版会喊出来，而 `MainActivity.onConsoleMessage` 把 console
+  全写进 `testlog.txt`，所以 `asroot_global "tail -f /data/data/dev.xduo.enote/files/testlog.txt"`
+  就能看到（`vue.global.prod.js` 里 `__VUE_DEVTOOLS_GLOBAL_HOOK__` 出现 0 次，dev 版 1 次，
+  `go/web_test.go` 钉住这条）。
+* **Chrome Devtools 看组件树。** `MainActivity` 里开了 `WebView.setWebContentsDebuggingEnabled(true)`，
+  手机装好 Chrome 后：
+
+  ```sh
+  pkg install -y android-tools                      # Termux 里装 adb
+  asroot_global "setprop service.adb.tcp.port 5555; stop adbd; start adbd"
+  adb connect 127.0.0.1:5555
+  ```
+
+  然后在 Chrome 打开 `chrome://inspect` → 勾选 Discover USB devices（本机走 WiFi 已连）→
+  inspect `127.0.0.1:<端口>` 那个页面 → Devtools 里装 Vue Devtools 扩展，
+  就能看组件树、props、reactive 状态、组件级耗时。dev 模式下才看得到组件树（prod 无 hook）。
+
+dev 模式只影响加载哪个 Vue 构建，不改业务代码；`tools/ui_test.js` 闸门㉕ 钉住这套配置
+（选择器在 module 之前、两个构建都在 VENDOR.md 登记、Java 开了可调试、这一节存在）。
+
 ## 5.0 三个首页横幅的操作逻辑
 
 首页顶部最多三个横幅，都是"打开 app 时算出来"的，处理完就消失：
