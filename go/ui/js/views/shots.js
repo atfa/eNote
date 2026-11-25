@@ -114,15 +114,15 @@ export const ShotsView = {
 
 /* 导入进度层（步骤 8 契约 (c)）：状态在 app.js 的 SHOTPROG（Vue.reactive），因为
    shotOvlSub 是 Java 侧回调写的全局函数，状态放组件里 Java 写不到。组件是纯渲染器。
-   容器由 app.js 挂在 body 级：closeSheet() 会换掉 .panel 的 innerHTML，而进度层要在
-   弹层关掉之后继续活着（shotsImported → AI 解析全部完成才收）。 */
+   步骤 17j：宿主从「app.js 另起一个 Vue app 挂进 body 级 #shotOvlRoot」改成外壳组件
+   SheetHost 里的 <teleport to="#shotOvlRoot">：DOM 落点与层叠零变化，但进度层从此
+   常驻外壳树，弹层开合与它无关（unmountAllSheets 的 ['progress'] 例外名单因此没掉）。 */
 export const ShotProgress = {
   name: 'ShotProgress',
   // 每个组件自己声明 components：闸门⑮ 的注册表是「每个文件一份」（写在文件头注释里），
   // Vue 运行时认的却是组件自己的 components 选项。步骤 16d 给进度层加 <ico> 时就是撞在
   // 这个缝上：静态全绿，真机上渲染出一个 <ico> 裸元素（Vue 只 warn 不报错）。闸门㉔ 钉住它。
   components: { Ico },
-  props: ['tick'],
   setup(){
     return {
       H,

@@ -2467,13 +2467,18 @@ js = r'''(async function(){
     L("btnGo="+vis("shotGo")); L("btnSplit="+vis("shotSplit")); L("btnRaw="+vis("shotRaw"));
     L("goLabel="+((document.querySelector("#sheet #shotGo")||{}).textContent||""));
     // 导入进度层（步骤 8 的第三块）：状态在 app.js 的 SHOTPROG（reactive），组件
-    // ShotProgress 是纯渲染器，挂在 body 级的 #shotOvlRoot 上 —— 进度要在截图弹层
-    // 关掉之后继续活着（shotsImported 才收），而 closeSheet() 会换掉 .panel 的 innerHTML。
+    // ShotProgress 是纯渲染器，步骤 17j 起它是外壳组件 SheetHost 里的
+    // <teleport to="#shotOvlRoot"> 子组件（以前是 app.js 另起一个 Vue app 挂进去）。
+    // 进度要在截图弹层关掉之后继续活着（shotsImported 才收），而 closeSheet() 会换掉
+    // .panel 的内容 —— 它靠的是「不在弹层树里」，不是靠一张例外名单。
     shotOverlay(true, 2, "OCR 完成，AI 正在解析");
-    // 目标状态：body 级的进度层真的挂出来了（它要在弹层关掉之后继续活着）。
+    // 目标状态：body 级的进度层真的渲染出来了（它要在弹层关掉之后继续活着）。
     var tOvl=await poll(function(){ return !!document.querySelector("#shotOvlRoot .ovl") },30,200);
     L("tOvl="+tOvl);
-    L("ovlMounted="+(E.vue.sheets.progress?1:0));
+    L("ovlMounted="+(document.querySelector("#shotOvlRoot .ovl")?1:0));
+    // 步骤 17j：进度层不再走 mountSheet 那张表（它是外壳树的子组件），所以 sheet 注册表
+    // 里不许出现 progress —— 出现了就说明 closeSheet 的 unmountAllSheets 会把它拆掉。
+    L("ovlReg="+(E.vue.sheets.progress?1:0));
     L("ovlBody="+(document.querySelector("#shotOvlRoot .ovl")?1:0));
     L("ovlInSheet="+(document.querySelector("#sheet #shotOvl")?1:0));
     L("ovlSub="+((document.querySelector("#shotOvlSub")||{}).textContent||""));
@@ -2492,7 +2497,7 @@ js = r'''(async function(){
     var tGone=await poll(function(){ return !document.querySelector("#shotOvl") },30,200);
     L("tGone="+tGone);
     L("ovlLeft="+(document.querySelector("#shotOvl")?1:0));
-    L("ovlUnmounted="+(E.vue.sheets.progress?1:0));
+    L("ovlUnmounted="+(document.querySelector("#shotOvlRoot .ovl")?1:0));
   }catch(e){ L("ERR="+(e&&e.message)+" @ "+String((e&&e.stack)||"").split("\n")[1]) }
   try{ closeSheet() }catch(e){}
   L("done=1");
@@ -2545,7 +2550,8 @@ assert d.get("btnSplit") == "0" and d.get("btnRaw") == "0" and d.get("btnGo") ==
   "只选 1 张时按钮没塌成（go=%s split=%s raw=%s）" % (d.get("btnGo"), d.get("btnSplit"), d.get("btnRaw"))
 assert "创建笔记" in d.get("goLabel", ""), "塌成后主按钮文案应变成「创建笔记」（实际 %r）" % d.get("goLabel")
 # 导入进度层：SHOTPROG + ShotProgress 组件，body 级容器，要活过 closeSheet()
-assert d.get("ovlMounted") == "1", "进度层没挂到 __enote.vue.sheets.progress（mountSheet 没走？）"
+assert d.get("ovlMounted") == "1", "进度层没渲染到 body 级的 #shotOvlRoot 里（<teleport> 没落地？）"
+assert d.get("ovlReg") == "0", "进度层又回到 mountSheet 那张表里（__enote.vue.sheets.progress）：closeSheet 会把它拆掉"
 assert d.get("ovlBody") == "1", "进度层不在 body 级的 #shotOvlRoot 里（挂弹层里会被 closeSheet 清掉）"
 assert d.get("ovlInSheet") == "0", "进度层跑到弹层里了"
 assert "AI 正在解析" in d.get("ovlSub", "") and "已用" in d.get("ovlSub", ""), \
@@ -2553,7 +2559,7 @@ assert "AI 正在解析" in d.get("ovlSub", "") and "已用" in d.get("ovlSub", 
 assert d.get("ovlAfterClose") == "1", "截图弹层一关进度层就没了（导入还在跑，用户看不到进度）"
 assert "1 / 2" in d.get("ovlSub2", ""), "shotOvlSub 更新没反映到进度层（实际 %r）" % d.get("ovlSub2")
 assert d.get("ovlLeft") == "0", "关掉之后 #shotOvl 还留在 DOM 里（透明遮罩吃掉点击）"
-assert d.get("ovlUnmounted") == "0", "关掉之后进度层 app 还在 __enote.vue.sheets 里（unmountSheet 没调）"
+assert d.get("ovlUnmounted") == "0", "关掉之后进度层还挂在 #shotOvlRoot 里（SHOTPROG.on 的 v-if 没关掉它）"
 print("  ok (真点击 %s 张：勾选 %s→%s、计数跟变、全选/全不选、单张时按钮塌成 %r；"
       "进度层 body 级、活过 closeSheet、shotOvlSub 实时更新、关掉后零残留)" % (
     d.get("n"), d.get("on0"), d.get("on1"), d.get("foot1")))

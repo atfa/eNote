@@ -84,11 +84,10 @@ export function unmountSheet(name){
    渲染却永远到不了它 —— 开过剪贴板页再开设置页，剪贴板那个 app 就泄漏到 app 关闭。
    closeSheet 以前是手写名单（shots/folders/clip/settings），新增 sheet 忘了加就是
    静默泄漏；现在名单只有一份，就是 sheetApps 这张表本身。
-   keep 是例外：进度层挂在 body 级的 #shotOvlRoot，不在 .panel 里，要活过弹层
-   （shotsImported → AI 解析全部完成才收）。 */
-export function unmountAllSheets(keep){
-  const k = keep || [];
-  Object.keys(sheetApps).forEach(n => { if (k.indexOf(n) < 0) unmountSheet(n) });
+   步骤 17j：以前还要带一个 keep=['progress'] 例外（进度层挂在 body 级，要活过弹层），
+   现在进度层是外壳树里的 <teleport> 子组件，不在这张表里，例外整个没用了。 */
+export function unmountAllSheets(){
+  Object.keys(sheetApps).forEach(n => unmountSheet(n));
 }
 
 /* 步骤 17h 之后 tick 不再是「全量重绘大锤」：状态本身是 reactive 的，computed 直接追踪。

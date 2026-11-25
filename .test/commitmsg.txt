@@ -1,33 +1,28 @@
-P14 S4 步骤 17i：弹层开合交给 <Transition>（删掉 .closing + setTimeout(110) + 收场序号守卫）
+P14 S4 步骤 17j：进度层搬进外壳树的 <Teleport>（删掉第四个 app 与 ['progress'] 例外名单）
 
-closeSheet() 从此只有一句 shell.sheet.on = false。以前是「加 .closing 类 →
-setTimeout(110) 拆 app → sheetGen 号防迟到的回调把新弹层拆掉」——三处必须同步的手写
-动画状态机，少一处就是「弹层空白且点了没反应」。
+截图导入进度层是页面上最后一个「命令式挂出来的 Vue app」：shotOverlay(true,…) 里
+createApp(ShotProgress).mount(#shotOvlRoot)，shotOverlay(false) 里 unmount()。它存在的
+唯一理由是「要活过 closeSheet()」（shotsImported 之后 AI 解析还在跑，而 closeSheet 会把
+.panel 的内容整块换掉），靠的是物理位置：不在 .panel 里。代价是一整圈特例。
 
-- SheetHost 根节点 .sheet 改成 v-if（class="sheet on" 写死：元素只在开着时存在，
-  :class="{on:…}" 等于 leave 第一帧就把 display:flex 抹掉），外面套 <transition>，
-  @after-leave="H.sheetLeft" 里 unmountAllSheets(['progress'])。
-  shell.sheet.closing 删除；sheetGen 只剩「开」这一侧要防（迟到的 nextTick 回调会把
-  上一个弹层的组件挂进新面板），注释同步改写，顺手删掉重复的 var sheetGen 声明。
-- CSS 模式的 <Transition> 在真机上会卡死（验收逼出来的）：Vue 用 requestAnimationFrame
-  推进 CSS 过渡的状态机，页面不可见时 rAF 被挂起 → leave 永不落地 → 弹层关不掉、
-  @after-leave 不调用、sheet 的 app 泄漏。test.sh 的剪贴板 raw 用例（虚拟屏 + 物理屏
-  关）稳定复现：DBG close 之后 30 秒没有 sheetLeft，CPRAW mounted=1。
-  改成 JS 钩子模式（:css="false" + @enter/@leave/@leave-cancelled）：shLeave 自己加类、
-  用 setTimeout 收尾（后台页的 setTimeout 被节流到 1s，但它会跑），时长仍从 CSS 读
-  （getComputedStyle().transitionDuration，样式表依旧是唯一时长来源）；:css="false" 时
-  Vue 不给类记账，所以 leave 被取消（关掉立刻重开）要自己抹类。
-- CSS：leave 类加在根元素上，面板那条改成后代选择器 .sheet.sh-leave-active .panel
-  （特异度压过 base.css 的 .sheet .panel{animation:up}）；遮罩加 transition:opacity
-  var(--d1)。可见差别只有一条：遮罩跟着淡出 110ms（以前瞬间消失）。
-  prefers-reduced-motion 把时长归零 → 20ms 后收尾，动效开关照旧生效。
-- #sheet 从常驻节点变成随开合创建/销毁：D17 测缝载荷先开一个弹层再读
-  __enote.dom.sheet / panel（契约是「getter 能拿到活的节点」），读完关掉；
-  test.sh:1047 改成 null 安全的 !q("#sheet.on")。
-- 闸门⑱ 扩 5 条：:css="false"、@leave="shLeave"、setTimeout(done、shLeaveCancel、
-  CSS 选择器形状。反向验证：删掉 :css="false" 立刻红。
+- SheetHost 模板尾部加 <teleport to="#shotOvlRoot"><shot-progress/></teleport>：进度层
+  从此是外壳树的普通子组件，弹层开合与它无关，开关只剩 SHOTPROG.on 上的 v-if。
+  DOM 落点与层叠零变化（dom_equiv3 的「进度层整张卡」逐字一致）。
+- 连带删掉：unmountAllSheets 的 keep 参数（三处调用点变成 unmountAllSheets()）、
+  VUE_SHEETS.progress（go/web_test.go 的注册表断言同步）、shotOverlay 里的
+  mount/unmount、ShotProgress 的 props:['tick']（17g 之后没人传这个 prop）。
+- 闸门⑮ 立刻抓到真问题：它每个文件只取第一处 components: 当整份文件的名单，shell.js 的
+  第一处是 TabBar 的 { Ico }，于是 <shot-progress> 判为未注册（prod 构建下未注册组件只
+  warn，症状是整块 DOM 直接没）。按项目惯例在文件头补 components: { Ico, ShotProgress }。
+- 闸门⑱ 扩 4 条：teleport 在位、SheetHost 自己声明 ShotProgress、unmountAllSheets 不许再带
+  例外名单、progress 不许回到 VUE_SHEETS。反向验证：删掉 teleport 立刻红。
+- test.sh：ovlMounted / ovlUnmounted 从查 __enote.vue.sheets.progress 改成查 DOM
+  （#shotOvlRoot .ovl 的有无），新增 ovlReg == 0（进度层进了 sheet 注册表就意味着
+  closeSheet 的 unmountAllSheets() 会把它拆掉）。.test/probe_sheets.sh 也不再自己
+  createApp，直接置 SHOTPROG.on 走真路径。
 - 验收：122 静态检查、GO_TEST=1 ./build.sh、./install.sh Success、
-  ./test.sh --vd 166 项全绿 PASS（test_s17k.log）、三套 DOM 等价全部一致
-  （dom_equiv3 / dom_equiv2 / dom_equiv todoTx 454 B）、leave 中段探针
-  op=0.07 panelAnim=down panelDur=0.11s（遮罩淡出 + 面板下滑，与迁移前一致）。
-- 文档：plan.md §9.35、CHANGELOG.md 新节，CHANGELOG 表头的闸门数 119 → 122。
+  ./test.sh --vd 166 项全绿 PASS（test_s17l.log）、三套 DOM 等价全部一致
+  （dom_equiv3 含进度层整张卡 / dom_equiv2 / dom_equiv todoTx 454 B）、真机探针
+  ovl=1 reg=0 → afterClose=1 sheet=0 → gone=0（渲染出来、不在 sheet 表里、活过弹层
+  关闭、关掉后零残留）。
+- 文档：plan.md §9.36、CHANGELOG.md 新节。

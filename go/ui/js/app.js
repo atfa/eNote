@@ -25,8 +25,8 @@ import { shell, mountShell } from './shell.js'
 import { NotesView } from './views/notes.js'
 import TodosView from './views/todos.js'
 import FilesView from './views/files.js'
-/* 步骤 8：截图暂存页 + 选文件夹页 + 导入进度层 */
-import { ShotsView, ShotProgress } from './views/shots.js'
+/* 步骤 8：截图暂存页（进度层步骤 17j 搬进了 shell.js 的 <teleport>） */
+import { ShotsView } from './views/shots.js'
 import FoldersView from './views/folders.js'
 /* 步骤 9：剪贴板暂存页 */
 import ClipSheetView from './views/clip.js'
@@ -513,22 +513,21 @@ function runImportShots(mode, raw, picks){
 }
 /* 进度层：不可点掉，配一句醒目的"别黑屏/别退出"（用户明确要求）。
    组件是 views/shots.js 的 ShotProgress（纯渲染器），状态写进 SHOTPROG（reactive：
-   shotOvlSub 是 Java 回调写的全局函数，状态放组件里 Java 写不到）。容器是 body 级的
-   #shotOvlRoot（index.html）：closeSheet() 会换掉 .panel 的内容，而进度层要在弹层关掉
-   之后继续活着（shotsImported → AI 解析全部完成才收）。
-   步骤 16d 删掉了这里的字符串回退分支：VUE_SHEETS.progress 恒为 true，那段代码跑不到，
-   留着只会让人以为两条路径都要维护。计时器一直在这里（它是行为，不是视图）。 */
+   shotOvlSub 是 Java 回调写的全局函数，状态放组件里 Java 写不到）。
+   步骤 17j：这里不再 mount/unmount 任何 app —— ShotProgress 是外壳组件 SheetHost 里的
+   <teleport to="#shotOvlRoot"> 子组件，常驻外壳树，开关就是 SHOTPROG.on 上的 v-if。
+   以前它是 mountSheet 挂的第四个 app（名字 progress），因此 unmountAllSheets 要给它列
+   例外名单（进度层要活过 closeSheet：shotsImported 之后 AI 解析还在跑）；现在它是
+   弹层树的兄弟，弹层开合与它无关，例外名单整个没用了。
+   计时器一直在这里（它是行为，不是视图）。 */
 function shotOverlay(on, total, what){
   if(!on){
     if(shotTimer){ clearInterval(shotTimer); shotTimer = 0 }
     SHOTPROG.on = false; SHOTPROG.what = ''; SHOTPROG.secs = 0;
-    unmountSheet('progress');
     return;
   }
   SHOTPROG.on = true; SHOTPROG.total = total; SHOTPROG.what = esc(what || ''); SHOTPROG.secs = 0;
   shotStartAt = Date.now();
-  var root = document.getElementById('shotOvlRoot');
-  if(root) mountSheet('progress', root, ShotProgress);
   if(shotTimer) clearInterval(shotTimer);
   /* 步骤 17h：SHOTPROG 是 reactive 的，secs 逐键赋值即触发进度层重算，
      不再 sheetPaint() bump tick 全量失效。 */
@@ -983,10 +982,10 @@ function showPane(){
    步骤 5 notes；6 todos；7 files；9 clip；10 stats/mine；步骤 11 删掉遗留路径。 */
 var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView, mine: StatsView };
 /* 步骤 8：弹层（sheet）的注册表，与 VUE_VIEWS 同一套开关语义：加一行就迁移一个弹层，
-   删掉一行就退回字符串路径。progress 不是弹层而是 body 级的进度层，生死与 sheet 一致
-   （导入开始挂、导入结束销），共用 mountSheet 那张表。
+   删掉一行就退回字符串路径。步骤 17j：progress（截图导入进度层）从这张表里没掉了 ——
+   它不是弹层，现在住在外壳树的 <teleport> 里，不走 mountSheet 那张表。
    闸门⑮ 会查完整性：views/ 里 export const *View 必须出现在 VUE_VIEWS ∪ VUE_SHEETS。 */
-var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, progress: ShotProgress, clip: ClipSheetView,
+var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, clip: ClipSheetView,
   settings: SettingsSheetView, sort: SortSheetView, missed: MissedSheetView, add: AddSheetView,
   addtodo: AddTodoSheetView, log: LogSheetView, debug: DebugSheetView };
 /* 弹层开启序号（步骤 8）。两个开启入口（pageSheetVue / sheetVue）都是「先改 shell.sheet 状态，
@@ -1200,8 +1199,8 @@ function pageSheetVue(name, title, kind){
   /* 步骤 13：先把所有旧 sheet 拆干。以前只拆同名（mountSheet 里那句 unmountSheet(name)），
      于是「开过剪贴板页再开设置页」会把剪贴板那个 app 连同 effect 一起泄漏在面板里：
      innerHTML 已经把它的根节点换成游离节点，它自己不知道，渲染永远到不了它。
-     进度层不在 .panel 里（body 级的 #shotOvlRoot），要活过弹层，所以列为例外。 */
-  unmountAllSheets(['progress']);
+     步骤 17j：进度层不再需要列为例外 —— 它不在 .panel 里，也不在这张表里（见 shotOverlay）。 */
+  unmountAllSheets();
   shell.sheet.page = true;
   shell.sheet.kind = kind || '';
   shell.sheet.full = false;
@@ -1222,7 +1221,7 @@ function pageSheetVue(name, title, kind){
 function sheetVue(name, full){
   sheetGen++;
   var gen = sheetGen;
-  unmountAllSheets(['progress']);
+  unmountAllSheets();
   shell.sheet.page = false;
   shell.sheet.kind = '';
   shell.sheet.full = !!full;
@@ -1398,15 +1397,16 @@ function closeSheet(){
      跑完才 @after-leave → sheetLeft() 拆 app。以前是 setTimeout(110) + sheetGen 号防
      「关掉立刻重开」时迟到的回调把新弹层拆掉；Vue 在 leave 被取消时根本不会调
      after-leave，那个守卫整个没用了。
-     progress 不在这里收：shotsImported 会先 closeSheet 再等 AI 解析完，
-     进度层必须活过弹层（sheetLeft 里列为例外）。 */
+     进度层不在这里收，也不在这张表里：它是外壳树里的 <teleport> 子组件（步骤 17j），
+     shotsImported 先 closeSheet 再等 AI 解析完，进度层自己管自己的生死（SHOTPROG.on）。 */
   shell.sheet.on = false;
 }
 /** <transition @after-leave>：面板的收场动画真结束了才拆 sheet 的 app */
 function sheetLeft(){
   /* 步骤 13：以前这里手写四个名字（shots/folders/clip/settings），新增 sheet 忘了加
-     就是静默泄漏。名单现在只有一份：sheetApps 这张表。progress 是例外（见上）。 */
-  unmountAllSheets(['progress']);
+     就是静默泄漏。名单现在只有一份：sheetApps 这张表。步骤 17j：进度层从例外名单里
+     没掉了（它不在 sheetApps 里，见 shotOverlay 的注释）。 */
+  unmountAllSheets();
 }
 
 /* ---------- 自绘对话框（代替原生 confirm/alert）----------

@@ -46,12 +46,12 @@ JS='(async function(){
   out.fab_notes = (document.querySelector("#fab .fico")||{outerHTML:"(none)"}).outerHTML;
   var SP = __enote.vue.host.SHOTPROG;
   SP.on = true; SP.total = 3; SP.what = "合并成一条笔记"; SP.secs = 5;
-  var ovapp = Vue.createApp(__enote.vue.VUE_SHEETS.progress);
-  ovapp.mount(document.getElementById("shotOvlRoot"));
+  // 步骤 17j：进度层不再由探针自己 createApp，它是外壳树里的 <teleport to="#shotOvlRoot">
+  // 子组件，SHOTPROG.on 一置位就自己渲染（探针走的就是真路径）。
   await new Promise(function(r){ setTimeout(r, 400) });
   out.owarn = (document.querySelector("#shotOvl .owarn")||{outerHTML:"(none)"}).outerHTML;
   out.ovlcard = (document.querySelector("#shotOvl .ovlcard")||{outerHTML:"(none)"}).outerHTML;
-  ovapp.unmount(); SP.on = false;
+  SP.on = false;
   __enote.vue.host.tabPick("files");
   await new Promise(function(r){ setTimeout(r, 600) });
   out.fab_files = (document.querySelector("#fab .fico")||{outerHTML:"(none)"}).outerHTML;

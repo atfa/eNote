@@ -21,10 +21,14 @@
         子节点，绑不到挂载点自身）。
 
    顶栏的显隐（我的页不显示顶栏）走 body[data-tab] + CSS，不走 JS 写 style：
-   它是「当前在哪个页签」这个状态的纯函数，写在 CSS 里比写在 JS 里少一处会漏同步的地方。 */
+   它是「当前在哪个页签」这个状态的纯函数，写在 CSS 里比写在 JS 里少一处会漏同步的地方。
+
+   闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
+   components: { Ico, ShotProgress } */
 
 import { H, Vue } from './vue.js'
 import { Ico } from './components/leaf.js'
+import { ShotProgress } from './views/shots.js'
 
 const { reactive, createApp } = Vue
 
@@ -109,6 +113,7 @@ export const TabBar = {
    两个 .panel 分支各带 id="panel"：v-if/v-else 同时只渲染一个，id 不会重复。 */
 export const SheetHost = {
   name: 'SheetHost',
+  components: { ShotProgress },
   setup(){
     /* 步骤 17i：开合动画走 JS 钩子（:css="false"），不用 Vue 的 CSS 模式。原因：CSS 模式下
        Vue 用 requestAnimationFrame 推进 leave 的状态机，页面不可见时 rAF 被挂起，leave 永不
@@ -152,6 +157,14 @@ export const SheetHost = {
   <div class="panel" id="panel" v-else :class="{full: s.sheet.full}" :data-kind="s.sheet.kind || null"><div class="grip"></div><button class="pclose" @click="H.closeSheet()" aria-label="关闭">✕</button><div id="sheetBody"></div></div>
 </div>
 </transition>
+<!-- 步骤 17j：截图导入进度层从「app.js 里另起一个 Vue app 挂进 #shotOvlRoot」改成
+     外壳组件里的 <teleport>。它要活过弹层（shotsImported 之后 AI 解析还在跑，
+     closeSheet 已经发生），以前靠的是「不在 .panel 里」这个物理位置，代价是
+     unmountAllSheets 要带一个 ['progress'] 例外名单、shotOverlay 要手动 mount/unmount
+     一个 app、VUE_SHEETS 要给它留个位子。现在它是外壳树里的普通子组件：
+     弹层的开合与它无关，teleport 把 DOM 依旧送到 body 级的 #shotOvlRoot（层叠与
+     位置零变化），开关由 SHOTPROG.on 上的 v-if 管。 -->
+<teleport to="#shotOvlRoot"><shot-progress/></teleport>
 `
 }
 

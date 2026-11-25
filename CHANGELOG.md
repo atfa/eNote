@@ -1374,6 +1374,29 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 进度层搬进外壳树的 `<Teleport>`（P14 S4 步骤 17j）：删掉第四个 app 与 `['progress']` 例外名单
+
+- 截图导入进度层是页面上最后一个「命令式挂出来的 Vue app」：`shotOverlay(true,…)` 里
+  `createApp(ShotProgress).mount(#shotOvlRoot)`，`shotOverlay(false)` 里 `unmount()`，
+  存在的唯一理由是「要活过 `closeSheet()`」（靠的是物理位置：不在 `.panel` 里）。
+  代价是一整圈特例：`unmountAllSheets(['progress'])` 三处调用点、`VUE_SHEETS.progress`、
+  组件上残留的 `props:['tick']`。
+- 现在 `SheetHost` 模板尾部一句 `<teleport to="#shotOvlRoot"><shot-progress/></teleport>`：
+  进度层是外壳树的普通子组件，弹层开合与它无关，开关只剩 `SHOTPROG.on` 上的 `v-if`；
+  DOM 落点与层叠零变化（dom_equiv3 的「进度层整张卡」逐字一致）。
+  `unmountAllSheets` 的 `keep` 参数、`VUE_SHEETS.progress`（`go/web_test.go` 同步）、
+  `shotOverlay` 的 mount/unmount、`props:['tick']` 一起没掉。
+- 闸门⑮ 当场拓到真问题：它每文件只取第一处 `components:` 当全量名单，`<shot-progress>`
+  被判未注册（prod 构建下未注册组件只 warn，症状是整块 DOM 直接没）→ 文件头补全量名单行。
+  闸门⑱ 扩 4 条（teleport 在位、SheetHost 自己声明组件、不许再带例外名单、progress 不许回
+  `VUE_SHEETS`），删掉 teleport 反向验证会红。
+- `test.sh` 的 `ovlMounted`/`ovlUnmounted` 改成查 DOM，新增 `ovlReg == 0`（进度层进了 sheet
+  注册表就会被 `closeSheet` 拆掉）；`.test/probe_sheets.sh` 不再自己 createApp，直接置
+  `SHOTPROG.on` 走真路径。
+- 验收：122 静态检查、build/install、`./test.sh --vd` **166 项全绿 PASS**、三套 DOM 等价全部一致、
+  真机探针 `ovl=1 reg=0` → `afterClose=1 sheet=0` → `gone=0`。
+
+
 ### 弹层开合交给 `<Transition>`（P14 S4 步骤 17i）：删掉 `.closing` + `setTimeout(110)` + 收场序号守卫
 
 - `closeSheet()` 从此只有一句 `shell.sheet.on = false`。以前是「加 `.closing` 类 → `setTimeout(110)`

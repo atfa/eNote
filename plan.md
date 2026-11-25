@@ -2499,3 +2499,33 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
 - 验收：122 静态检查、build/install、`./test.sh --vd` **166 项全绿 PASS**、三套 DOM 等价
   全部一致（dom_equiv3 / dom_equiv2 / dom_equiv 454 B todoTx）、真机 leave 中段探针
   `op=0.07 panelAnim=down panelDur=0.11s`（遮罩淡出 + 面板下滑，与迁移前一致）。
+
+### 9.36 步骤 17j：进度层搬进外壳树的 `<Teleport>`（删掉第四个 app 与 `['progress']` 例外名单）（2026-11-25）
+
+- 动机：截图导入进度层是页面上最后一个「命令式挂出来的 Vue app」——`shotOverlay(true,…)`
+  里 `createApp(ShotProgress).mount(#shotOvlRoot)`，`shotOverlay(false)` 里 `unmount()`。
+  它存在的唯一理由是「进度层要活过 `closeSheet()`」（`shotsImported` 之后 AI 解析还在跑，
+  而 `closeSheet` 会把 `.panel` 的内容整块换掉），靠的是物理位置（不在 `.panel` 里）。
+  代价是一整圈特例：`unmountAllSheets(['progress'])` 三处调用点、`VUE_SHEETS.progress`
+  注册项、`shotOverlay` 里的 mount/unmount、组件上残留的 `props:['tick']`。
+- 做法：`SheetHost` 模板尾部加
+  `<teleport to="#shotOvlRoot"><shot-progress/></teleport>`。进度层从此是**外壳树的普通子组件**，
+  弹层的开合与它无关；开关只剩 `SHOTPROG.on` 上的 `v-if`。DOM 落点与层叠零变化
+  （teleport 送到同一个 body 级容器，dom_equiv3 的「进度层整张卡」逐字一致）。
+- 连带删掉：`unmountAllSheets` 的 `keep` 参数（三处调用点变成 `unmountAllSheets()`）、
+  `VUE_SHEETS.progress`（`go/web_test.go` 的注册表断言同步）、`shotOverlay` 里的
+  mount/unmount、`ShotProgress` 的 `props:['tick']`（17g 之后没人传这个 prop）。
+- 闸门⑮ 立刻抓到真问题：它每个文件只取**第一处** `components:` 当整份文件的名单，
+  shell.js 的第一处是 TabBar 的 `{ Ico }`，于是 `<shot-progress>` 判为未注册
+  （prod 构建下未注册组件只 warn，症状是整块 DOM 直接没）。按项目惯例在文件头补
+  `components: { Ico, ShotProgress }` 这行全量名单。
+- 闸门⑱ 扩 4 条：`<teleport to="#shotOvlRoot"><shot-progress/></teleport>` 必须在 SheetHost 里、
+  SheetHost 自己声明 `ShotProgress`、`unmountAllSheets` 不许再带例外名单、
+  `progress` 不许回到 `VUE_SHEETS`。反向验证：把 teleport 删掉立刻红。
+- 测试侧：`test.sh` 的 `ovlMounted` / `ovlUnmounted` 从「查 `__enote.vue.sheets.progress`」
+  改成查 DOM（`#shotOvlRoot .ovl` 的有无），并新增 `ovlReg == 0`：进度层不许出现在 sheet
+  注册表里 —— 出现了就意味着 `closeSheet` 的 `unmountAllSheets()` 会把它拆掉。
+  `.test/probe_sheets.sh` 也不再自己 `createApp`，直接置 `SHOTPROG.on` 走真路径。
+- 验收：122 静态检查、build/install、`./test.sh --vd` **166 项全绿 PASS**、三套 DOM 等价
+  全部一致、真机探针 `ovl=1 reg=0` → `afterClose=1 sheet=0` → `gone=0`
+  （渲染出来、不在 sheet 表里、活过弹层关闭、关掉后零残留）。

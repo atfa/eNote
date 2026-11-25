@@ -1843,7 +1843,10 @@ if (SPLIT) {
    从此是游离节点，app 实例 / effect / computed 缓存全都留着，渲染永远到不了它。
    closeSheet 以前手写四个名字（shots/folders/clip/settings），新增 sheet 忘了加就是
    静默泄漏 —— DOM 上、截图上都看不出，只有 mount 表知道。所以钉住：开新 sheet 与关
-   sheet 都走 unmountAllSheets，进度层（body 级的 #shotOvlRoot，要活过弹层）是例外。 */
+   sheet 都走 unmountAllSheets。
+   步骤 17j：以前还要带一个 keep=['progress'] 例外（进度层挂在 body 级，要活过弹层），
+   现在进度层是外壳组件 SheetHost 里的 <teleport to="#shotOvlRoot"> 子组件，常驻外壳树、
+   不在 sheetApps 里，例外名单整个没用了 —— 这里钉住「不许再带例外」。 */
 {
   const appSrc = read('go/ui/js/app.js');
   const vueSrc = read('go/ui/js/vue.js');
@@ -1859,7 +1862,7 @@ if (SPLIT) {
   const pv = bodyOf('function pageSheetVue(');
   if (!pv) leaks.push('找不到 pageSheetVue（闸门⑱ 在假绿）');
   else {
-    if (!/unmountAllSheets\(\['progress'\]\)/.test(pv)) leaks.push('pageSheetVue 没全量拆 sheet（进度层要列为例外）');
+    if (!/unmountAllSheets\(\s*\)/.test(pv)) leaks.push('pageSheetVue 没全量拆 sheet');
     if (pv.indexOf("unmountSheet('") >= 0) leaks.push('pageSheetVue 里又写了硬编码的 unmountSheet 名单');
   }
   const cs = bodyOf('function closeSheet(');
@@ -1869,7 +1872,11 @@ if (SPLIT) {
     /* 步骤 17i：拆 app 从 closeSheet 搬进了 <transition @after-leave> 的 sheetLeft，
        所以这条契约现在跨两个函数：closeSheet 只负责起 leave，sheetLeft 负责拆。 */
     if (!sl) leaks.push('找不到 sheetLeft（<transition @after-leave> 的回调，闸门⑱ 在假绿）');
-    else if (!/unmountAllSheets\(\['progress'\]\)/.test(sl)) leaks.push('sheetLeft 没全量拆 sheet（进度层要列为例外）');
+    else if (!/unmountAllSheets\(\s*\)/.test(sl)) leaks.push('sheetLeft 没全量拆 sheet');
+    if (/unmountAllSheets\(\s*\[/.test(appSrc))
+      leaks.push('unmountAllSheets 又带例外名单（步骤 17j：进度层是外壳树的 <teleport> 子组件，不在 sheetApps 里，不需要例外）');
+    if (/mountSheet\('progress'/.test(appSrc))
+      leaks.push('shotOverlay 还在手动 mountSheet(\'progress\')（步骤 17j 已交给 <teleport>）');
     if (sl && /unmountSheet\('/.test(sl)) leaks.push('sheetLeft 里又写了硬编码的 unmountSheet 名单（新增 sheet 会静默泄漏）');
     if (/unmountSheet\('/.test(cs)) leaks.push('closeSheet 里又写了硬编码的 unmountSheet 名单（新增 sheet 会静默泄漏）');
     const sh = read('go/ui/js/shell.js');
@@ -1884,6 +1891,13 @@ if (SPLIT) {
     if (!/shLeaveCancel/.test(sh)) leaks.push('shLeave 没有配对的 leave-cancelled 抹类（:css="false" 时 Vue 不记账，关掉立刻重开会残留 leave 类）');
     const ccs = read('go/ui/css/components.css');
     if (!/\.sheet\.sh-leave-active \.panel\{animation:down/.test(ccs)) leaks.push('components.css 的收场动画选择器不是 .sheet.sh-leave-active .panel（leave 类加在根元素上）');
+    /* 步骤 17j：截图导入进度层住在外壳树里，靠 <teleport> 把 DOM 送到 body 级的
+       #shotOvlRoot（层叠与位置零变化）。它必须住在 SheetHost（弹层的开合与它无关），
+       并且组件自己声明 components —— 步骤 16d 的教训：Vue 对未注册组件只 warn。 */
+    if (!/<teleport to="#shotOvlRoot">\s*<shot-progress\/>\s*<\/teleport>/.test(sh))
+      leaks.push('进度层不在 SheetHost 的 <teleport to="#shotOvlRoot"><shot-progress/></teleport> 里');
+    if (!/components:\s*\{[^}]*ShotProgress/.test(sh)) leaks.push('SheetHost 没在自己 components 里声明 ShotProgress');
+    if (/VUE_SHEETS = \{[^}]*progress:/.test(appSrc)) leaks.push('progress 又回到 VUE_SHEETS 注册表（步骤 17j 后它不是弹层）');
   }
   if (leaks.length) bad('sheet 生命周期被破坏', leaks.join('；'));
   else ok('闸门⑱ 开/关弹层都全量拆 sheet，进度层是例外');

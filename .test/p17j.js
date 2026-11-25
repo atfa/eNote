@@ -1,0 +1,14 @@
+var q=function(s){return document.querySelector(s)}; var A=window.__enoteActions;
+A.clipSheet();
+setTimeout(function(){
+  A.shotOverlay(true,2,"OCR done");
+  setTimeout(function(){
+    console.log("PROBE ovl="+(q("#shotOvlRoot .ovl")?1:0)+" reg="+(window.__enote.vue.sheets.progress?1:0)+" sub="+((q("#shotOvlSub")||{}).textContent||""));
+    A.closeSheet();
+    setTimeout(function(){
+      console.log("PROBE afterClose="+(q("#shotOvlRoot .ovl")?1:0)+" sheet="+(q("#sheet")?1:0));
+      A.shotOverlay(false);
+      setTimeout(function(){ console.log("PROBE gone="+(q("#shotOvl")?1:0)) },300);
+    },300);
+  },400);
+},600);

@@ -180,8 +180,10 @@ func TestIndexServedFromDirectory(t *testing.T) {
 	// 步骤 8：弹层（sheet）的第二张注册表。pageSheetVue 只认这张表，条目缺了就是那个弹层
 	// 静默走遗留路径，而 VDIFF 比 DOM 分不出来（两条路径的 DOM 按设计逐字相同）。
 	// 步骤 9 加 clip：剪贴板暂存页。步骤 10 加 settings：设置页（它是弹层，不是 tab）。
-	if !regexp.MustCompile(`var VUE_SHEETS = \{[^}]*shots: ShotsView[^}]*folders: FoldersView[^}]*progress: ShotProgress[^}]*clip: ClipSheetView[^}]*settings: SettingsSheetView[^}]*\}`).MatchString(appjs) {
-		t.Errorf("app.js 的 VUE_SHEETS 注册表缺 shots / folders / progress / clip / settings（步骤 8/9/10 转 Vue 的弹层与进度层）")
+	// 步骤 17j：progress（截图导入进度层）从这张表里没掉了 —— 它不是弹层，现在住在外壳
+	// 组件 SheetHost 的 <teleport to="#shotOvlRoot"> 里（闸门⑱ 钉住那里）。
+	if !regexp.MustCompile(`var VUE_SHEETS = \{[^}]*shots: ShotsView[^}]*folders: FoldersView[^}]*clip: ClipSheetView[^}]*settings: SettingsSheetView[^}]*\}`).MatchString(appjs) {
+		t.Errorf("app.js 的 VUE_SHEETS 注册表缺 shots / folders / clip / settings（步骤 8/9/10 转 Vue 的弹层）")
 	}
 	// 装配：__enote.vue 没设 → vueReady() 恒 false → render() 一直走字符串路径。
 	// 步骤 5 合并时这条被合掉了，结果 VDIFF/NINT 全绿而 Vue 一行没跑（P12 同款）。
