@@ -2,7 +2,7 @@
    附件图标块与元信息行是 components/leaf.js 里的真组件（FileStrip / AttachGlyph /
    AttachMeta），按钮图标是 <ico>；本文件 v-html 已清零。
 
-   读模块状态一律 live()（见 js/vue.js）：FA 是普通模块变量，filesNow() 每次整体替换它，
+   读模块状态一律 computed()（见 js/vue.js）：FA 是普通模块变量，filesNow() 每次整体替换它，
    computed 不依赖 tick 就永远缓存 → 附件页永远停在首屏那份数据。
    FA / q 走 setHost 的 getter（不是快照）：装配时传值的话，后面换掉的 FA 视图看不见。
 
@@ -11,7 +11,7 @@
 
    <empty-state> 不收 :tick：EmptyState（Tony owner）的 props 只有 icon/title/sub，多传的
    :tick 会透传成根元素属性，真机实测 Vue 路径 <div class="empty" tick="27">、遗留路径
-   <div class="empty"> —— 空态的 VDIFF 一比就红。空态文案的响应性已由 emptyTitle: live(...)
+   <div class="empty"> —— 空态的 VDIFF 一比就红。空态文案的响应性已由 emptyTitle: computed(...)
    覆盖，tick 对它没意义。
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
@@ -32,9 +32,9 @@ export const AttachCard = {
       H,
       // cls 里已经带 'acard'，所以模板只写 :class，不再叠静态 class="acard"
       // （Vue 会合并成 "acard acard enter"，VDIFF 比 class 字符串，多一个就红）
-      cls: live(() => H.attachCardCls(props.a)),
-      idx: live(() => Math.min(props.k || 0, 8)),
-      isImg: live(() => props.a.kind === 'image' && !props.a.missing)
+      cls: computed(() => H.attachCardCls(props.a)),
+      idx: computed(() => Math.min(props.k || 0, 8)),
+      isImg: computed(() => props.a.kind === 'image' && !props.a.missing)
     }
   },
   template: `
@@ -57,12 +57,13 @@ export const FilesView = {
   components: { EmptyState, AttachCard, FileStrip },
   setup(){
     const tick = computed(() => V.tick);
-    const FA = live(() => H.FA);
-    const items = live(() => H.FA.items);
+    /* 同 FileStrip：返回容器本身的话，原地改键不会让 computed 值变化 → 不重渲染。 */
+    const FA = computed(() => ({ ...H.FA }));
+    const items = computed(() => H.FA.items);
     return {
       tick, FA, items, H,
       // 空态文案分两种：搜索中 vs 真的一个附件都没有（和遗留 renderFiles 一致）
-      emptyTitle: live(() => H.q ? '没有匹配的附件' : '还没有附件')
+      emptyTitle: computed(() => H.q ? '没有匹配的附件' : '还没有附件')
     }
   },
   template: `

@@ -7,7 +7,15 @@
 /* 诊断缝（步骤 17b）：app.js 被求值几次？两次的话模块状态有两份（CLIP / S / MISSED.v 各一份），
    组件读的那份和测试缝写的那份不是同一个对象，症状是「赋值成功而界面不动」。 */
 window.__enoteAppLoads = (window.__enoteAppLoads || 0) + 1;
-var S = {notes:[], settings:{}, info:{}};
+/* 诊断缝（步骤 17g）：Vue 的 console.error 只给 message，栈才是有用的那半。 */
+window.addEventListener('error', function(e){
+  if(e.error && e.error.stack) console.log('JS-STACK ' + String(e.error.stack).split('\n').slice(0,6).join(' | '));
+});
+window.addEventListener('unhandledrejection', function(e){
+  var r = e.reason;
+  console.log('JS-REJECT ' + (r && r.stack ? String(r.stack).split('\n').slice(0,6).join(' | ') : String(r)));
+});
+var S = Vue.reactive({notes:[], settings:{}, info:{}});
 /* S3（D14）：Vue 装配层与视图注册表。混合期（步骤 5-10）里已迁移的 tab 走 Vue，
    其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
 import { V, Vue, nextTick, setHost, mountView, mountSheet, unmountSheet, unmountAllSheets, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
@@ -1288,7 +1296,7 @@ function stateSig(d){
 }
 async function refresh(quiet){
   if(Date.now() < animLock){ paintStatus(); return }
-  try{ var d = await api('/api/state'); S = d; if(MISSED.v) S.missed = MISSED.v;
+  try{ var d = await api('/api/state'); reassign(S, d); if(MISSED.v) S.missed = MISSED.v;
        var dirty = !quiet || !drawn || stateSig(d) !== SIG;
        if(!prefsLoaded && S.settings && S.settings.ui){
          prefsLoaded = true;
@@ -1756,7 +1764,7 @@ window.__enote = window.__enote || {};
 window.__enote.actions = window.__enoteActions;
 window.__enote.state = {
   get tab(){ return TAB.v }, set tab(v){ tab = syncBox(TAB, v) },
-  get S(){ return S }, set S(v){ S = v },
+  get S(){ return S }, set S(v){ reassign(S, v) },
   get MISSED(){ return MISSED.v }, set MISSED(v){ MISSED.v = v },
   get open(){ return OPENB.v }, set open(v){ open = OPENB.v = v },
   get shotSel(){ return SHOTS.sel }, set shotSel(v){ SHOTS.sel = v },

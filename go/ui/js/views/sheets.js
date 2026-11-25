@@ -12,7 +12,7 @@
      子节点）；CSS 里唯一受影响的选择器 `.sheet .panel>h2` 已补上 `#sheetBody>h2`。
 
    前面几步踩过、写在这里省得再踩的坑：
-   1) 读模块状态一律 live()（见 js/vue.js）：MISSED / LOGDATA 是普通模块变量，computed
+   1) 读模块状态一律 computed()（见 js/vue.js）：MISSED / LOGDATA 是普通模块变量，computed
       不依赖 tick 就永远缓存 → 数据换了视图不动。
    2) 模板里用原始值 + {{ }}，不要再 esc（Vue 插值是 textContent，再 esc 会双重转义）。
    3) 元素之间的纯空白节点会被 Vue 的 whitespace:'condense' 删掉；元素与文本之间的那个
@@ -40,7 +40,7 @@ export const SortSheetView = {
     return {
       H,
       tick: computed(() => V.tick),
-      groups: live(function(){
+      groups: computed(function(){
         var p = H.P(), tab = H.tab;
         // 选项是 [值, 图标名, 文案]：图标是 <ico>，文案是 {{ }}（步骤 16d 之前是
         // ic('clock')+'按到期' 一整串 HTML 走 v-html）。筛选组没有图标 → 空串。
@@ -89,7 +89,7 @@ export const MissedSheetView = {
     return {
       H,
       tick: computed(() => V.tick),
-      items: live(() => {
+      items: computed(() => {
         var m = H.MISSED || H.S.missed;
         return (m && m.items) || [];
       })
@@ -139,7 +139,7 @@ export const LogSheetView = {
     return {
       H,
       tick: computed(() => V.tick),
-      r: live(() => H.logData || {})
+      r: computed(() => H.logData || {})
     }
   },
   template: `
@@ -155,7 +155,7 @@ export const DebugSheetView = {
     return {
       H,
       tick: computed(() => V.tick),
-      calls: live(() => (H.debugData && H.debugData.calls) ? H.debugData.calls.slice(0, 10) : [])
+      calls: computed(() => (H.debugData && H.debugData.calls) ? H.debugData.calls.slice(0, 10) : [])
     }
   },
   template: `

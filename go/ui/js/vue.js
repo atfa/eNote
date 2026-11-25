@@ -28,10 +28,20 @@ export function setHost(h){ H = h; return h }
 
 export const apps = {};
 
+/* 诊断缝（步骤 17g）：Vue 组件里抛的错默认只打 message，栈才是有用的那半。
+   踩过：迁移响应式后渲染函数抛 TypeError，控制台只有「Cannot read properties of
+   undefined (reading 'length')」，找不到是哪个组件；加上栈之后一眼定位。 */
+function vueErrHandler(e, instance, info){
+  var name = instance && instance.$options ? (instance.$options.name || instance.$.__name || '?') : '?';
+  console.log('VUE-ERR [' + name + ' @' + info + '] ' +
+    (e && e.stack ? String(e.stack).split('\n').slice(0, 4).join(' | ') : String(e)));
+}
+
 export function mountView(tab, pane, def){
   const app = Vue.createApp(def);
   app.config.productionTip = false;
   app.config.devtools = false;
+  app.config.errorHandler = vueErrHandler;
   app.mount(pane);
   apps[tab] = app;
   return app;
@@ -51,6 +61,7 @@ export function mountSheet(name, el, def){
   const app = Vue.createApp(def);
   app.config.productionTip = false;
   app.config.devtools = false;
+  app.config.errorHandler = vueErrHandler;
   app.mount(el);
   sheetApps[name] = app;
   /* 验收缝（步骤 17b）：真机探针要查「这个弹层的 app 实例还活着吗」——

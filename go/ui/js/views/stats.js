@@ -3,7 +3,7 @@
    两条渲染路径共用同一批叶子函数，VDIFF 才逐字比得过。
 
    前面几步踩过、写在这里省得再踩的坑：
-   1) 读模块状态一律 live()：ST / SHOTFLAGS 是普通模块变量，statsNow() / shotFlags()
+   1) 读模块状态一律 computed()：ST / SHOTFLAGS 是普通模块变量，statsNow() / shotFlags()
       整体替换它们，computed 不依赖 tick 就永远缓存 → 数字永远停在首屏那份。
    2) 模板里用原始值 + {{ }}，不要再 esc（Vue 的插值是 textContent，传 esc(x) 会双重转义）。
    3) 一个元素里只放一个 {{ }}：两个插值 = 两个文本节点，VDIFF 的序列化器会 trim 每个
@@ -40,7 +40,7 @@ export const StatsStat = {
   components: { Ico },
   props: ['tick', 'i', 'v', 'label', 'icon', 'hot'],
   setup(props){
-    return { H, cls: live(() => H.statCls(props.hot, props.label)) }
+    return { H, cls: computed(() => H.statCls(props.hot, props.label)) }
   },
   template: `
   <div :class="cls" :style="'--i:'+i">
@@ -58,7 +58,7 @@ export const StatsChart = {
   setup(props){
     return {
       H,
-      cols: live(function(){
+      cols: computed(function(){
         var ds = props.days || [], mx = 1;
         ds.forEach(function(d){ mx = Math.max(mx, d.notes, d.done) });
         return ds.map(function(d, k){
@@ -111,12 +111,12 @@ export const StatsView = {
     return {
       H,
       tick,
-      i: live(() => H.S.info),
-      st: live(() => H.ST),
-      stErr: live(() => H.stErr),
-      sf: live(() => H.SHOTFLAGS || {}),
+      i: computed(() => ({ ...H.S.info })),
+      st: computed(() => H.ST),
+      stErr: computed(() => H.stErr),
+      sf: computed(() => H.SHOTFLAGS || {}),
       // 六格：值/图标/热态都从 ST 现算，顺序与遗留 renderMine() 逐字一致
-      tiles: live(function(){
+      tiles: computed(function(){
         var s = H.ST;
         if(!s) return [];
         return [
@@ -128,9 +128,9 @@ export const StatsView = {
           { i: 5, v: s.ai.calls || 0, label: 'AI 调用', icon: 'sparkle' }
         ];
       }),
-      tags: live(() => (H.ST && H.ST.tags) || []),
+      tags: computed(() => (H.ST && H.ST.tags) || []),
       // 截图捕获卡的副标题：三处都是「权限/开关没到位时说什么」，与遗留逐字一致
-      shotSubs: live(function(){
+      shotSubs: computed(function(){
         var sf = H.SHOTFLAGS || {};
         return {
           folders: sf.enabled ? ((sf.folders || 0) + ' 个 · 点这里增删') : '未开启 · 点这里开始',

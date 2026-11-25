@@ -923,8 +923,14 @@ if (SPLIT) {
       /* 步骤 17b：模块状态换成 Vue.reactive 的文件里，computed 直接读状态就建立依赖，
          不需要 live()（那是「状态不是响应式、只能靠 V.tick 全量失效」时代的产物）。
          每迁移完一个文件就往这张表加一个；全迁完把 live() 本身删掉，这张表也一起删。 */
+      /* 步骤 17b–17g：真响应式迁移逐文件推进。白名单里的文件用裸 computed()（真依赖追踪），
+         其余文件仍必须 live()（= computed(V.tick.v + fn)，靠 tick 兜底）。
+         17h 删掉 live() 之后这张白名单整块作废。 */
       const REACTIVE_FILES = new Set(['go/ui/js/views/clip.js', 'go/ui/js/views/folders.js',
-  'go/ui/js/views/shots.js']);
+        'go/ui/js/views/shots.js', 'go/ui/js/views/notes.js', 'go/ui/js/views/todos.js',
+        'go/ui/js/views/stats.js', 'go/ui/js/views/settings.js', 'go/ui/js/views/sheets.js',
+        'go/ui/js/views/files.js', 'go/ui/js/components/leaf.js',
+        'go/ui/js/components.js', 'go/ui/js/components/blocks.js']);
       const viewCode = new Map();   // 视图文件 → 注掉后的代码（下面 H.xxx 全量扫要用）
       for (const f of viewFiles) {
         const src = fs.readFileSync(f, 'utf8');

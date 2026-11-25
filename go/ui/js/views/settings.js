@@ -4,7 +4,7 @@
    <kv-row> / <ocr-ready>；采集卡与用法卡是纯静态文本，直接写在模板里（v-html 已清零）。
 
    前面几步踩过、写在这里省得再踩的坑：
-   1) 读模块状态一律 live()：S / ST / remindPending 是普通模块变量，refresh() 整体替换，
+   1) 读模块状态一律 computed()：S / ST / remindPending 是普通模块变量，refresh() 整体替换，
       computed 不依赖 tick 就永远缓存 → 从系统设置页回来后开关状态是旧的。
    2) 模板里用原始值 + {{ }}，不要再 esc（Vue 插值是 textContent）。
    3) 一个元素里只放一个 {{ }}（两个插值 = 两个文本节点，VDIFF 序列化器 trim 后拼会丢空格）；
@@ -37,20 +37,20 @@ export const SettingsSheetView = {
     return {
       H,
       tick: computed(() => V.tick),
-      s: live(() => H.S.settings),
-      i: live(() => H.S.info),
+      s: computed(() => ({ ...H.S.settings })),
+      i: computed(() => ({ ...H.S.info })),
       // 提醒卡：副标题的插值切分必须与遗留拼接一一对应（三个文本节点）
-      notifyGranted: live(() => H.notifyGranted()),
-      notifyBtnCls: live(() => 'btn sm ' + (H.notifyGranted() ? 'gh' : '')),
-      notifyBtnText: live(() => H.notifyGranted() ? '已开启' : '开启通知'),
+      notifyGranted: computed(() => H.notifyGranted()),
+      notifyBtnCls: computed(() => 'btn sm ' + (H.notifyGranted() ? 'gh' : '')),
+      notifyBtnText: computed(() => H.notifyGranted() ? '已开启' : '开启通知'),
       // 后台卡
-      keepAlive: live(() => H.keepAliveOn()),
-      batteryIgn: live(() => H.batteryIgnoring()),
-      keepSub: live(() => H.keepAliveOn()
+      keepAlive: computed(() => H.keepAliveOn()),
+      batteryIgn: computed(() => H.batteryIgnoring()),
+      keepSub: computed(() => H.keepAliveOn()
         ? (H.batteryIgnoring() ? '已开启 · 已豁免电池优化' : '已开启 · 建议再豁免电池优化')
         : '关闭 · 只在打开 app 时可靠，后台可能收不到提醒'),
-      keepSwCls: live(() => 'sw' + (H.keepAliveOn() ? ' on' : '')),
-      themes: live(function(){
+      keepSwCls: computed(() => 'sw' + (H.keepAliveOn() ? ' on' : '')),
+      themes: computed(function(){
         var cur = H.S.settings.theme || 'light';
         var label = { light: '亮色', dark: '暗色', auto: '跟随系统' };
         return ['light', 'dark', 'auto'].map(function(m){
@@ -60,7 +60,7 @@ export const SettingsSheetView = {
           };
         });
       }),
-      aiSwCls: live(() => 'sw' + (H.S.settings.useAI ? ' on' : ''))
+      aiSwCls: computed(() => 'sw' + (H.S.settings.useAI ? ' on' : ''))
     }
   },
   template: `

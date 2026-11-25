@@ -2427,4 +2427,21 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
 - 闸门签名跟着改 4 处（都保留旧写法兼容）：错过的提醒跳转、statsNow 的 stErr、
   `var tab = 'notes', open = {}` 的声明断言、轮询指纹 mock。
 - 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿。
+### 9.33 步骤 17g：全部视图与组件摘掉 tick（真响应式落地）（2026-11-25）
+
+- 把 `notes/todos/stats/settings/sheets/files/leaf/components/blocks` 里的 `live(fn)` 全换成
+  裸 `computed(fn)`，并删掉 `var t = H.tick.v;` 这类「假依赖」行。闸门⑮ 白名单从 3 个文件扩到 12 个。
+- **踩坑 1：`live(` → `computed(` 是字符串替换，会咬到标识符**。`toggleKeepAlive(` 变成
+  `toggleKeepAcomputed(`（闸门㉑ 抓到模板里引用了不存在的 handler）。
+- **踩坑 2：`computed` 不是全局**。各视图文件靠文件顶上的 `const { computed } = Vue` 拿到它，
+  `components/leaf.js` 只 import 了 `live`，替换后 `computed` 是 undefined → setup 抛错 →
+  组件渲染时 `f.length` 报 `Cannot read properties of undefined (reading 'length')`。
+- **踩坑 3：computed 返回容器本身 = 永远不重渲染**。`computed(() => H.FA)` 每次返回同一个 proxy，
+  `reassign(FA, …)` 原地改键时 computed 重算但值没变，Vue 判定「没变化」直接跳过渲染
+  （症状：附件页顶部条永远停在旧数字）。解法：返回派生快照 `computed(() => ({ total: H.FA.total, … }))`
+  或浅拷贝 `{ ...H.S.info }`。踩到的 5 处：FileStrip、files.js、settings.js ×2、stats.js、components.js。
+- **诊断缝（永久保留）**：`mountView` / `mountSheet` 都挂 `app.config.errorHandler`，
+  打印 `[组件名 @出错阶段] + 栈前 4 行`。Vue 默认只打 message，踩过之后才知道栈才是有用的那半。
+  另加 `window.addEventListener('error'/'unhandledrejection')` 打印栈。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿、三套 DOM 等价全部一致。
 

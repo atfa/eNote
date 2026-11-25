@@ -1374,6 +1374,22 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 全部视图摘掉 tick（P14 S4 步骤 17g）：真响应式落地
+
+- `notes/todos/stats/settings/sheets/files/leaf/components/blocks` 里的 `live(fn)` 全换成裸
+  `computed(fn)`，删掉 `var t = H.tick.v;` 这类假依赖行；闸门⑮ 白名单 3 个文件 → 12 个。
+- 三个坑（都记进 plan §9.33）：
+  1. `live(` → `computed(` 是字符串替换，会咬到标识符：`toggleKeepAlive(` 变成 `toggleKeepAcomputed(`；
+  2. `computed` 不是全局，各文件靠 `const { computed } = Vue` 拿；`leaf.js` 只 import 了 `live`，
+     替换后 setup 抛错，模板里 `f.length` 炸成 `Cannot read properties of undefined (reading 'length')`；
+  3. **computed 返回容器本身 = 永远不重渲染**：`computed(() => H.FA)` 每次返回同一个 proxy，
+     `reassign(FA,…)` 原地改键时值没变，Vue 判定「没变化」跳过渲染（症状：附件页顶部条停在旧数字）。
+     解法是返回派生快照 / 浅拷贝，踩到 6 处。
+- 诊断缝（永久）：`mountView`/`mountSheet` 挂 `app.config.errorHandler`，打印
+  `[组件名 @出错阶段] + 栈前 4 行`；另加 window `error`/`unhandledrejection` 的栈打印。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿、三套 DOM 等价全部一致。
+
+
 ### 镜像盒子（P14 S4 步骤 17f）：`H` 暴露的标量接上响应式
 
 - `tab`/`q`/`open`/`remindPending`/`stErr`/`srErr`/`SHEETARG` 是普通模块变量，组件读 `H.tab`

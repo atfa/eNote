@@ -20,7 +20,8 @@
    components: { Ico, SrcChip, StatusChip, CdChip, RemindBtns, TodoDue, TodoPriChips,
                  NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoTx, TodoRowCompact,
                  KvRow, OcrReady, FileStrip, AttachGlyph, AttachMeta } */
-import { H, live } from '../vue.js'
+import { H, Vue, live } from '../vue.js'
+const { computed } = Vue
 
 /* 图标：sprite 引用。cls 不传时 class="ic"，传 's' 时 class="ic s"，与 ic(n, cls) 一致。 */
 export const Ico = {
@@ -72,7 +73,7 @@ export const NoteHits = {
   components: { Ico },
   props: ['tick', 'n'],
   setup(props){
-    const where = live(() => (H.SR.where && H.SR.where[props.n.id]) || [])
+    const where = computed(() => (H.SR.where && H.SR.where[props.n.id]) || [])
     return { H, where }
   },
   template: `
@@ -95,7 +96,7 @@ export const NoteFacts = {
   components: { Ico },
   props: ['tick', 'n'],
   setup(props){
-    const f = live(() => props.n.facts || [])
+    const f = computed(() => props.n.facts || [])
     return { f }
   },
   template: `
@@ -113,9 +114,9 @@ export const CdChip = {
   props: ['tick', 't'],
   setup(props){
     return { H,
-      show: live(() => !!props.t.due && !props.t.done),
-      cls: live(() => H.cdCls(props.t.due)),
-      txt: live(() => H.cdText(props.t.due)) }
+      show: computed(() => !!props.t.due && !props.t.done),
+      cls: computed(() => H.cdCls(props.t.due)),
+      txt: computed(() => H.cdText(props.t.due)) }
   },
   template: `
 <span v-if="show" :class="cls" :data-due="t.due"><ico n="clock"/>{{ txt }}</span>`
@@ -138,8 +139,8 @@ export const TodoDue = {
   props: ['tick', 'n', 't'],
   setup(props){
     return { H,
-      due: live(() => H.fmtTime(props.t.due)),
-      cls: live(() => {
+      due: computed(() => H.fmtTime(props.t.due)),
+      cls: computed(() => {
         const t = props.t
         const overdue = t.due < H.now(), today = t.due.slice(0, 10) === H.now()
         return 'due' + (overdue && !t.done ? ' over' : (today ? ' today' : ''))
@@ -167,8 +168,8 @@ export const TodoTx = {
   props: ['tick', 't', 'n'],
   setup(props){
     return { H,
-      due: live(() => H.fmtTime(props.t.due)),
-      over: live(() => props.t.due < H.now() && !props.t.done) }
+      due: computed(() => H.fmtTime(props.t.due)),
+      over: computed(() => props.t.due < H.now() && !props.t.done) }
   },
   template: `
 <span class="ttx">{{ t.text }}<small><template v-if="t.due"><span class="due" :class="{over: over}"><ico n="calendar"/>{{ due }}</span>{{ ' ' }}<cd-chip :t="t" :tick="tick"/><remind-btns :n="n" :t="t" :tick="tick"/></template><a href="#" @click.prevent="H.jump(n.id)">{{ n.title || '查看笔记' }}</a></small></span>`
@@ -182,7 +183,7 @@ export const TodoRowCompact = {
   components: { Ico, TodoDue, TodoPriChips },
   props: ['tick', 't', 'n'],
   setup(props){
-    return { H, cls: live(() => H.todoRowCls(props.n, props.t)) }
+    return { H, cls: computed(() => H.todoRowCls(props.n, props.t)) }
   },
   template: `
 <div class="todo" :class="cls" :id="'t'+n.id+'_'+t.id">
@@ -221,7 +222,9 @@ export const OcrReady = {
 export const FileStrip = {
   name: 'FileStrip',
   setup(){
-    return { H, FA: live(() => H.FA) }
+    /* 返回容器本身是陷阱：reassign(FA, …) 原地改键，computed 每次返回同一个 proxy，
+       Vue 判定「值没变」就不重渲染（症状：附件页顶部条永远停在旧数字）。返回快照。 */
+    return { H, FA: computed(() => ({ total: H.FA.total, bytes: H.FA.bytes, missing: H.FA.missing })) }
   },
   template: `
 <div class="strip"><template v-if="!FA.total">附件 <b>0</b></template><template v-else>附件 <b>{{ FA.total }}</b> · {{ H.fmtSize(FA.bytes) }}<template v-if="FA.missing"> · <i>{{ FA.missing }} 个文件缺失</i></template></template></div>`
@@ -233,7 +236,7 @@ export const AttachGlyph = {
   components: { Ico },
   props: ['a'],
   setup(props){
-    return { n: live(() => H.attachGlyphName(props.a)) }
+    return { n: computed(() => H.attachGlyphName(props.a)) }
   },
   template: `<div class="aglyph"><ico :n="n" cls="xl"/></div>`
 }

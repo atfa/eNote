@@ -12,7 +12,8 @@
    这行注释里；运行时每个组件仍各自注册自己模板里用到的那些。
    components: { Ico, KvRow, OcrReady, StatsHero, StatsNotesCard, StatsRunCard,
                  SettingsDataCard, SettingsRunCard, SettingsOcrCard } */
-import { H, live } from '../vue.js'
+import { H, Vue, live } from '../vue.js'
+const { computed } = Vue
 import { Ico, KvRow, OcrReady } from './leaf.js'
 
 /* 我的页顶部整块：logo + 四格统计（.hero 这个壳也在组件里，消费方只写一个标签）。
@@ -54,8 +55,8 @@ export const SettingsDataCard = {
   setup(){
     return {
       H,
-      st: live(() => H.ST),
-      i: live(() => H.S.info)
+      st: computed(() => H.ST),
+      i: computed(() => ({ ...H.S.info }))
     }
   },
   template: `
