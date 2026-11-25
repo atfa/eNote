@@ -966,6 +966,22 @@ if (SPLIT) {
     probs0.push('定义了没人用的 class ' + deadCls.length + ' > ' + CSS_CLASS_BASELINE + '：'
       + deadCls.map(([c, ps]) => c + '(' + ps.join(',') + ')').join(' '));
 
+  /* 步骤 25：图标精灵图里没人用的 symbol。引用有两种写法：模板里写死 href="#i-x"，
+     或数据里 icon: 'x'（模板拼 '#i-'+name），两种都算用了。抓出 20 个（i-key / i-shield /
+     i-link / i-chevr / i-filter / i-send / i-copy / i-eye / i-star / i-wifi / i-lock /
+     i-play / i-history / i-idcard / i-phone / i-mail / i-globe / i-list / i-share /
+     i-power），全是历次改图标时留下的旧图。 */
+  const ICON_BASELINE = 0;
+  const spriteHtml = read('go/ui/index.html');
+  const iconIds = [...spriteHtml.matchAll(/<symbol id="(i-[a-z0-9-]+)"/g)].map(m => m[1]);
+  const iconRef = jsSources.map(([, s]) => s).join('\n') + spriteHtml + read('test.sh');
+  const deadIcons = iconIds.filter(id => {
+    const n = id.replace(/^i-/, '');
+    return !iconRef.includes('#' + id) && !iconRef.includes("'" + n + "'") && !iconRef.includes('"' + n + '"');
+  });
+  if (deadIcons.length > ICON_BASELINE)
+    probs0.push('精灵图里没人用的图标 ' + deadIcons.length + ' > ' + ICON_BASELINE + '：' + deadIcons.join(' '));
+
   const probs = probs0;
   if (unused.length > UNUSED_BASELINE)
     probs.push('新增定义了却没人用的 token ' + unused.length + ' > ' + UNUSED_BASELINE + '：' + unused.join(' '));
@@ -974,7 +990,8 @@ if (SPLIT) {
   if (probs.length) bad('定义了却没人用（棘轮）', probs.join(' ; '));
   else ok('无新增闲置 token（' + unused.length + ' ≤ ' + UNUSED_BASELINE + '）、无死函数（' +
     jsDefs.size + ' 个定义，死函数 ' + dead.length + ' ≤ ' + DEAD_BASELINE + '）、无死 class（' +
-    cssClassDefs.size + ' 个 class 定义，死 class ' + deadCls.length + ' ≤ ' + CSS_CLASS_BASELINE + '）');
+    cssClassDefs.size + ' 个 class 定义，死 class ' + deadCls.length + ' ≤ ' + CSS_CLASS_BASELINE +
+    '）、无死图标（' + iconIds.length + ' 个 symbol，死图标 ' + deadIcons.length + ' ≤ ' + ICON_BASELINE + '）');
 }
 
 // ---------- 闸门⑮：Vue 模板编译 + tick 依赖 + 模板 handler 存活性（S3 步骤 5） ----------

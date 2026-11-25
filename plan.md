@@ -3043,3 +3043,22 @@ select 的 selectedIndex/value **17 项全部逐字一致**（按上面那条归
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
 三套 DOM 等价工具全部一致、我的页一张 VD 截图核对；CSS 源文件 65,502 → 65,805 字节
 （删掉 14 条死规则，换来解释为什么删的注释）。
+
+## 9.47 P14 S6：图标精灵图里 20 个没人用的图标，闸门⑩ 加第四个方向（步骤 25）
+
+「定义了没人用」这一族还剩最后一处：`index.html` 的图标精灵图。扫描口径要注意用法有两种
+—— 模板里写死 `href="#i-x"`，数据里写 `icon: 'x'`（模板拼 `'#i-' + name`），两种都算引用；
+只按 `#i-x` 找会误报 61 个，加上裸名这条才是真的 **20 个**：
+
+`i-key i-shield i-link i-chevr i-filter i-send i-copy i-eye i-star i-wifi i-lock i-play
+i-history i-idcard i-phone i-mail i-globe i-list i-share i-power`
+
+全是历次改图标时留下的旧图（比如 `i-chevr` 被 `i-chev` 的旋转顶掉、`i-copy`/`i-eye` 是
+剪贴板页改版前的）。删掉 20 个 symbol，精灵图 71 → 51，`index.html` 少 2,972 字节。
+
+**闸门⑩ 现在是四向**：闲置 token（棘轮 11）+ 死函数（0）+ 死 class（0）+ 死图标（0），
+仍是一条 ok 行、总数 122。反向测试踩到正则太窄：临时加的 `<symbol id="i-p25dead">` 没被抓到，
+因为 id 字符类写的是 `i-[a-z-]+`，数字被挡在外面 → 改成 `i-[a-z0-9-]+`，再测就点名它了。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
+三套 DOM 等价工具全部一致（图标是 `<use>` 引用，删掉的 20 个没人引用，DOM 与计算样式不变）。

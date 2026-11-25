@@ -1374,6 +1374,24 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 图标精灵图里 20 个没人用的图标，闸门⑩ 加第四个方向（P14 S6 步骤 25）
+
+「定义了没人用」这一族还剩最后一处：`index.html` 的图标精灵图。扫描口径要注意用法有两种
+—— 模板里写死 `href="#i-x"`，数据里写 `icon: 'x'`（模板拼 `'#i-' + name`），两种都算引用；
+只按 `#i-x` 找会误报 61 个，加上裸名这条才是真的 **20 个**：`i-key i-shield i-link i-chevr
+i-filter i-send i-copy i-eye i-star i-wifi i-lock i-play i-history i-idcard i-phone i-mail
+i-globe i-list i-share i-power`。全是历次改图标时留下的旧图（比如 `i-chevr` 被 `i-chev` 的
+旋转顶掉、`i-copy`/`i-eye` 是剪贴板页改版前的）。删掉 20 个 symbol，精灵图 71 → 51，
+`index.html` 少 2,972 字节。
+
+* 闸门⑩ 现在是四向：闲置 token（棘轮 11）+ 死函数（0）+ 死 class（0）+ 死图标（0），仍是一条
+  ok 行、总数 122。
+* 反向测试踩到正则太窄：临时加的 `<symbol id="i-p25dead">` 没被抓到，因为 id 字符类写的是
+  `i-[a-z-]+`，数字被挡在外面 → 改成 `i-[a-z0-9-]+`，再测就点名它了。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（图标是 `<use>`
+  引用，删掉的 20 个没人引用，DOM 与计算样式不变）。
+
 ### CSS 里 14 个没人用的类名，闸门⑩ 加第三个方向（P14 S6 步骤 24）
 
 步骤 22/23 把「定义了没人用」搬到函数与宿主 key，这轮搬到 CSS 类名：CSS 里 `.x` 定义的集合，
