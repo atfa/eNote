@@ -18,7 +18,7 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, ShotItem, Ico, ShotProgress } */
 
-import { V, H, Vue, live } from '../vue.js'
+import { V, H, Vue,  } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico } from '../components/leaf.js'
 
@@ -126,7 +126,9 @@ export const ShotProgress = {
   setup(){
     return {
       H,
-      P: computed(() => H.SHOTPROG)
+      /* 返回容器本身是陷阱：SHOTPROG 是逐键改的（secs 每秒 +1），computed 每次返回同一个
+         proxy → Vue 判定「值没变」不重渲染，秒表会冻在第一个数。返回快照。 */
+      P: computed(() => ({ ...H.SHOTPROG }))
     }
   },
   template: `

@@ -17,7 +17,7 @@
    它只用得到 <ico>，所以全量名单写在下面这行注释里（运行时各组件注册自己用到的那些）。
    components: { Ico, EmptyState, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact } */
 
-import { H, Vue, live } from './vue.js'
+import { H, Vue,  } from './vue.js'
 const { computed } = Vue
 // 基础组件 <empty-state> 归 Tony（owner 见文件头注释），在这里统一注册。
 import { EmptyState } from './components/empty-state.js'

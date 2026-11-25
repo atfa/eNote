@@ -530,9 +530,10 @@ function shotOverlay(on, total, what){
   var root = document.getElementById('shotOvlRoot');
   if(root) mountSheet('progress', root, ShotProgress);
   if(shotTimer) clearInterval(shotTimer);
+  /* 步骤 17h：SHOTPROG 是 reactive 的，secs 逐键赋值即触发进度层重算，
+     不再 sheetPaint() bump tick 全量失效。 */
   shotTimer = setInterval(function(){
     SHOTPROG.secs = Math.round((Date.now() - shotStartAt) / 1000);
-    sheetPaint();
   }, 1000);
 }
 /** 更新进度层副标题（OCR 完 → 进入 AI 解析，或 3/7 这种进度） */
@@ -540,7 +541,6 @@ function shotOvlSub(txt){
   if(!SHOTPROG.on) return;
   SHOTPROG.what = esc(txt);
   SHOTPROG.secs = Math.round((Date.now() - shotStartAt) / 1000);
-  sheetPaint();
 }
 /** Java 导完（OCR + 入队）的回调：清暂存 → 进度层继续盯着 AI 解析 → 全部结束才收 */
 window.shotsImported = function(res){

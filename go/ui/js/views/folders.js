@@ -21,7 +21,7 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, FolderRow, Ico } */
 
-import { V, H, Vue, live } from '../vue.js'
+import { V, H, Vue,  } from '../vue.js'
 import { EmptyState } from '../components.js'
 import { Ico } from '../components/leaf.js'
 

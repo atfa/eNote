@@ -13,7 +13,7 @@
       真组件（步骤 16），不再走 v-html。
    4. 事件用 @click="H.xxx(...)"，函数名必须 ⊆ 导出表（闸门①(a)）。 */
 
-import { V, H, Vue, live } from '../vue.js'
+import { V, H, Vue,  } from '../vue.js'
 import { StripBar, MissedBanner, ShotBanner, ClipBanner, EmptyState, NoteCard } from '../components.js'
 
 const { computed } = Vue

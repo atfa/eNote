@@ -89,20 +89,14 @@ export function unmountAllSheets(keep){
   Object.keys(sheetApps).forEach(n => { if (k.indexOf(n) < 0) unmountSheet(n) });
 }
 
-/* 弹层重画：render() 只驱动 tab 页，sheet 里的状态（shotSel / folderSel / folderQ）变了
-   得有人 bump tick。少了这步就是「点了没反应」——computed 依赖 V.tick，没人 bump 就永远
-   缓存，而签名测试和静态闸门全绿（步骤 8 契约 (b)：app.js 的 shotPick / folderPick /
-   folderFilter 在 Vue 路径上都要调它）。 */
+/* 步骤 17h 之后 tick 不再是「全量重绘大锤」：状态本身是 reactive 的，computed 直接追踪。
+   现在 tick 只有一个用途 —— Android 桥那种「拉」式只读接口（notifyGranted / keepAliveOn /
+   batteryIgnoring）不可观察，原生状态变了得有人喊一嗓子。settings.js 里那几个 computed
+   显式读 V.tick.v，settingsRefresh() 在 onAppResume / notifyResult 里 bump 一次。 */
 export function sheetPaint(){
   V.tick++;
   return Vue.nextTick();
 }
-
-/* 组件里读模块状态的 computed 必须包 live()：S / MISSED / SHOTFLAGS 是普通
-   模块变量，不是响应式的，computed 没有响应式依赖就永远缓存 —— 数据变了视图不动
-   （症状：删光剪贴板后首页横幅不消失，实测踩过）。live() 让 computed 依赖 V.tick，
-   render() 每调一次就全部失效重算，语义等于今天的「全量重绘」。 */
-export function live(fn){ return Vue.computed(function(){ V.tick; return fn() }) }
 
 /* 验收缝（步骤 17b）：真机探针要证明「DOM 变了而 V.tick 一动没动」，也就是更新来自
    响应式依赖本身，不是 tick 大锤。迁移完成后 live() 与这个缝一起删。 */

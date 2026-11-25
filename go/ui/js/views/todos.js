@@ -13,7 +13,7 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，本文件第一个组件是 TodoRow，
    所以全量名单写在下面这行注释里（运行时各组件注册自己用到的那些）。
    components: { StripBar, EmptyState, TodoRow, Ico, TodoTx } */
-import { V, H, Vue, live } from '../vue.js'
+import { V, H, Vue,  } from '../vue.js'
 import { StripBar, EmptyState } from '../components.js'
 import { Ico, TodoTx } from '../components/leaf.js'
 

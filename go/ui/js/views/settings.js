@@ -24,7 +24,7 @@
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard } */
-import { V, H, Vue, live } from '../vue.js'
+import { V, H, Vue } from '../vue.js'
 import { Ico, KvRow } from '../components/leaf.js'
 import { SettingsDataCard, SettingsRunCard, SettingsOcrCard } from '../components/blocks.js'
 
@@ -34,22 +34,27 @@ export const SettingsSheetView = {
   name: 'SettingsSheetView',
   components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard },
   setup(){
+    /* 通知权限 / 常驻后台 / 电池优化这三样是 Android 桥的「拉」式接口，本身不可观察。
+       V.tick 现在是「原生状态可能变了」的纪元号：onAppResume / notifyResult 里的
+       settingsRefresh() bump 一次，下面这几个 computed 显式读它才会重算。
+       （步骤 17h 之前：所有 computed 靠 live() 隐式绑 tick，每次 render 全量重绘。） */
+    const nat = computed(() => V.tick.v);
     return {
       H,
       tick: computed(() => V.tick),
       s: computed(() => ({ ...H.S.settings })),
       i: computed(() => ({ ...H.S.info })),
       // 提醒卡：副标题的插值切分必须与遗留拼接一一对应（三个文本节点）
-      notifyGranted: computed(() => H.notifyGranted()),
-      notifyBtnCls: computed(() => 'btn sm ' + (H.notifyGranted() ? 'gh' : '')),
-      notifyBtnText: computed(() => H.notifyGranted() ? '已开启' : '开启通知'),
+      notifyGranted: computed(() => { nat.value; return H.notifyGranted() }),
+      notifyBtnCls: computed(() => { nat.value; return 'btn sm ' + (H.notifyGranted() ? 'gh' : '') }),
+      notifyBtnText: computed(() => { nat.value; return H.notifyGranted() ? '已开启' : '开启通知' }),
       // 后台卡
-      keepAlive: computed(() => H.keepAliveOn()),
-      batteryIgn: computed(() => H.batteryIgnoring()),
-      keepSub: computed(() => H.keepAliveOn()
+      keepAlive: computed(() => { nat.value; return H.keepAliveOn() }),
+      batteryIgn: computed(() => { nat.value; return H.batteryIgnoring() }),
+      keepSub: computed(() => { nat.value; return H.keepAliveOn()
         ? (H.batteryIgnoring() ? '已开启 · 已豁免电池优化' : '已开启 · 建议再豁免电池优化')
-        : '关闭 · 只在打开 app 时可靠，后台可能收不到提醒'),
-      keepSwCls: computed(() => 'sw' + (H.keepAliveOn() ? ' on' : '')),
+        : '关闭 · 只在打开 app 时可靠，后台可能收不到提醒' }),
+      keepSwCls: computed(() => { nat.value; return 'sw' + (H.keepAliveOn() ? ' on' : '') }),
       themes: computed(function(){
         var cur = H.S.settings.theme || 'light';
         var label = { light: '亮色', dark: '暗色', auto: '跟随系统' };

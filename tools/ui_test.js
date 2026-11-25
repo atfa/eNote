@@ -920,30 +920,25 @@ if (SPLIT) {
     if (VVue) {
       const tplErrs = [], tpls = [];
       const bareComputed = [];
-      /* 步骤 17b：模块状态换成 Vue.reactive 的文件里，computed 直接读状态就建立依赖，
-         不需要 live()（那是「状态不是响应式、只能靠 V.tick 全量失效」时代的产物）。
-         每迁移完一个文件就往这张表加一个；全迁完把 live() 本身删掉，这张表也一起删。 */
-      /* 步骤 17b–17g：真响应式迁移逐文件推进。白名单里的文件用裸 computed()（真依赖追踪），
-         其余文件仍必须 live()（= computed(V.tick.v + fn)，靠 tick 兜底）。
-         17h 删掉 live() 之后这张白名单整块作废。 */
-      const REACTIVE_FILES = new Set(['go/ui/js/views/clip.js', 'go/ui/js/views/folders.js',
-        'go/ui/js/views/shots.js', 'go/ui/js/views/notes.js', 'go/ui/js/views/todos.js',
-        'go/ui/js/views/stats.js', 'go/ui/js/views/settings.js', 'go/ui/js/views/sheets.js',
-        'go/ui/js/views/files.js', 'go/ui/js/components/leaf.js',
-        'go/ui/js/components.js', 'go/ui/js/components/blocks.js']);
+      /* 步骤 17h：live() 已删。所有 computed 一律裸写，靠真依赖追踪；
+         再出现 live( 就是退回「靠 V.tick 全量失效」的老路（每次 render 全量重算），直接红。
+         另一半契约：computed 的体不许只返回容器本身（computed(() => H.FA)）——
+         原地改键时值没变，Vue 判定「没变化」跳过渲染，症状是「数据变了视图不动」。 */
       const viewCode = new Map();   // 视图文件 → 注掉后的代码（下面 H.xxx 全量扫要用）
+      /* 只查「原地改键」那批容器（reassign / 逐键赋值）；ST / MISSED / SHOTFLAGS / LOGDATA /
+         DEBUGDATA 是 {v:} 容器且整包赋值，每次都是新对象，返回它本身没问题。 */
+      const CONTAINER_GETTERS = new Set(['S', 'SR', 'FA', 'prefs', 'SHOTPROG', 'SHOTS', 'CLIP',
+        'FOLD', 'open']);
       for (const f of viewFiles) {
         const src = fs.readFileSync(f, 'utf8');
-        // 读模块状态的 computed 必须包 live()：S / MISSED 不是响应式的，computed 没依赖就永远缓存，
-        // 症状是「数据变了视图不动」（实测：删光剪贴板后首页横幅不消失）。唯一允许的直接 computed
-        // 是 tick 源本身。取后窗口 80 字符判 V.tick：computed 的箭头体里括号嵌套，正则匹不出平衡括号。
         const code = stripComments(src);
         viewCode.set(path.relative(root, f), code);
-        for (let i = code.indexOf('computed('); i >= 0; i = code.indexOf('computed(', i + 1)) {
-          const win = code.slice(i, i + 80);
-          if (!/V\.tick/.test(win) && !REACTIVE_FILES.has(path.relative(root, f)))
-            bareComputed.push(path.relative(root, f) + '：' + win.replace(/\s+/g, ' ').slice(0, 56))
-        }
+        for (const m of code.matchAll(/\blive\s*\(/g))
+          bareComputed.push(path.relative(root, f) + '：还活着一个 live()（17h 已删，用裸 computed）')
+        for (const m of code.matchAll(/computed\(\s*(?:\(\)\s*=>|function\s*\(\s*\)\s*\{?)\s*H\.(\w+)\s*\)\s*[,}]/g))
+          if (CONTAINER_GETTERS.has(m[1]))
+            bareComputed.push(path.relative(root, f) + '：computed 直接返回容器 H.' + m[1] +
+              '（原地改键不会让 computed 值变化 → 不重渲染，返回快照）')
         for (const m of src.matchAll(/template: `([\s\S]*?)`\n\}/g)) {
           tpls.push([path.relative(root, f), m[1]]);
           try { VVue.compile(m[1]) } catch (e) { tplErrs.push(path.relative(root, f) + '：' + e.message) }
@@ -1170,7 +1165,7 @@ if (SPLIT) {
       }
       if (!liveChecked) liveBad.push('闸门⑮ 一个组件的 setup() 也没扫到（视图写法改名了？闸门在假绿）');
       if (bareComputed.length)
-        bad('闸门⑮ 组件里的 computed 没包 live()（数据变了视图不动）', bareComputed.join(' | '));
+        bad('闸门⑮ 组件用裸 computed 且不许返回容器本身（数据变了视图不动）', bareComputed.join(' | '));
       else if (missHost.size) bad('闸门⑮ 模板里的 H.xxx 不在 setHost（Vue 渲染抛错→静默回退字符串）', [...missHost].join(' '));
       else if (miss.size) bad('闸门⑮ 模板里的 handler 不在导出表（点了没反应）', [...miss].join(' '));
       else if (tickErrs.length) bad('闸门⑮ Vue tick 依赖断了', tickErrs.join(' | '));

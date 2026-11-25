@@ -2444,4 +2444,23 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
   打印 `[组件名 @出错阶段] + 栈前 4 行`。Vue 默认只打 message，踩过之后才知道栈才是有用的那半。
   另加 `window.addEventListener('error'/'unhandledrejection')` 打印栈。
 - 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿、三套 DOM 等价全部一致。
+### 9.34 步骤 17h：删掉 `live()`，tick 降级为「原生状态纪元号」（2026-11-25）
+
+- `live()` 与它的 12 个 import 全删；闸门⑮ 的白名单作废，改成两条正向契约：
+  1. 视图/组件文件里不许再出现 `live(`（出现就是退回「靠 V.tick 全量失效」的老路）；
+  2. `computed(() => H.容器)` 直接返回**原地改键**那批容器（S / SR / FA / prefs / SHOTPROG /
+     SHOTS / CLIP / FOLD / open）直接红 —— 原地改键时 computed 值没变，Vue 跳过渲染。
+     `ST` / `MISSED` / `SHOTFLAGS` / `LOGDATA` / `DEBUGDATA` 是 `{v:}` 容器且整包赋值，
+     每次都是新对象，返回它本身没问题，所以不在名单里。
+  闸门自己也要反向验证：临时注入一个 `computed(() => H.FA)` 确认它会红（第一次注入没红，
+  因为 `matchAll` 只有一个捕获组却写了 `m[2]` —— 闸门在假绿）。
+- 反向验证当场抓到一个存量真 bug：`ShotProgress` 的 `P: computed(() => H.SHOTPROG)`，
+  `SHOTPROG.secs` 每秒逐键 +1，而 computed 返回容器本身 → 秒表会冻在第一个数。
+  改成 `computed(() => ({ ...H.SHOTPROG }))`，同时删掉 `shotTimer` / `shotOvlSub` 里的
+  `sheetPaint()`（reactive 赋值自己就触发重算）。
+- `V.tick` 不删，语义降级为**原生状态纪元号**：`notifyGranted()` / `keepAliveOn()` /
+  `batteryIgnoring()` 是 Android 桥的「拉」式只读接口，本身不可观察。settings.js 里那 6 个
+  computed 显式读 `V.tick.v`（`const nat = computed(() => V.tick.v)`），
+  `settingsRefresh()` 在 `onAppResume` / `notifyResult` 里 bump 一次。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿、三套 DOM 等价全部一致。
 

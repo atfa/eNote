@@ -12,7 +12,7 @@
    这行注释里；运行时每个组件仍各自注册自己模板里用到的那些。
    components: { Ico, KvRow, OcrReady, StatsHero, StatsNotesCard, StatsRunCard,
                  SettingsDataCard, SettingsRunCard, SettingsOcrCard } */
-import { H, Vue, live } from '../vue.js'
+import { H, Vue,  } from '../vue.js'
 const { computed } = Vue
 import { Ico, KvRow, OcrReady } from './leaf.js'
 

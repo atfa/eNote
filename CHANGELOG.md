@@ -1374,6 +1374,22 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 删掉 `live()`（P14 S4 步骤 17h）：tick 降级为「原生状态纪元号」
+
+- `live()` 与 12 个 import 全删。闸门⑮ 的白名单作废，改成两条正向契约：视图里不许出现 `live(`；
+  `computed(() => H.容器)` 直接返回**原地改键**那批容器（S/SR/FA/prefs/SHOTPROG/SHOTS/CLIP/FOLD/open）直接红。
+  `ST`/`MISSED`/`SHOTFLAGS` 是 `{v:}` 容器且整包赋值，每次都是新对象，返回它本身没问题。
+- 闸门自己也要反向验证：临时注入一个 `computed(() => H.FA)` 确认它会红
+  （第一次注入没红 —— `matchAll` 只有一个捕获组却写了 `m[2]`，闸门在假绿）。
+- 反向验证当场抓到存量真 bug：`ShotProgress` 的 `P: computed(() => H.SHOTPROG)`，
+  `SHOTPROG.secs` 每秒逐键 +1 而 computed 返回容器本身 → 秒表冻在第一个数。
+  改成返回快照，并删掉 `shotTimer`/`shotOvlSub` 里的 `sheetPaint()`。
+- `V.tick` 不删，语义降级为原生状态纪元号：`notifyGranted()`/`keepAliveOn()`/`batteryIgnoring()`
+  是 Android 桥的「拉」式接口，不可观察；settings.js 里 6 个 computed 显式读 `V.tick.v`，
+  `settingsRefresh()` 在 `onAppResume`/`notifyResult` 里 bump 一次。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿、三套 DOM 等价全部一致。
+
+
 ### 全部视图摘掉 tick（P14 S4 步骤 17g）：真响应式落地
 
 - `notes/todos/stats/settings/sheets/files/leaf/components/blocks` 里的 `live(fn)` 全换成裸

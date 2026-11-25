@@ -20,7 +20,7 @@
    components: { Ico, SrcChip, StatusChip, CdChip, RemindBtns, TodoDue, TodoPriChips,
                  NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoTx, TodoRowCompact,
                  KvRow, OcrReady, FileStrip, AttachGlyph, AttachMeta } */
-import { H, Vue, live } from '../vue.js'
+import { H, Vue,  } from '../vue.js'
 const { computed } = Vue
 
 /* 图标：sprite 引用。cls 不传时 class="ic"，传 's' 时 class="ic s"，与 ic(n, cls) 一致。 */
