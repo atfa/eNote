@@ -2987,3 +2987,27 @@ select 的 selectedIndex/value **17 项全部逐字一致**（按上面那条归
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
 三套 DOM 等价工具全部一致（纯删死代码，DOM 一个字节没变）。
+
+## 9.45 P14 S6：宿主上没人读的钥匙也扫一遍（步骤 23）
+
+步骤 22 的死函数扫描顺手扫了宿主：`HOST` 137 个 key 里，模板不读、`HOST_KEYS` 不列、
+`test.sh` 不探针的有 5 个 —— `shotSetup` / `askShotPerm` 是截图横幅按 `go` 字符串分发的
+（`components.js` 里 `go: 'shotSetup'`，模板写 `@click="H.shotGo(text.go)"`），真在用；
+`closeDlg` 是扫描器的假阳性（见下）；剩下 `todoEnterCls`、`relTime` 是视图转 Vue 后模板不再
+读的函数，函数本身是 app.js 内部用的，挂在宿主上只是让 `narrowHost` 多搬两个没人读的钥匙 →
+删，**HOST 137 → 135**。
+
+**扫描器自己的 bug**：`setHostKeys` 原来整段扫 `(?:^|[,{])\s*(?:get\s+)?NAME\s*[(:]`，
+`dlgOk: function(){ closeDlg(true) }` 里的 `closeDlg(` 前缀是 `{`，被当成宿主 key 收了进来。
+改成逐行取（行首的 `name:` / `get name(`，加逗号后的 `name:` 与 `, get name(`），函数体里的
+调用不再算 key。这个 bug 一直藏着：正向检查（模板用的 key 在不在宿主上）永远不会因为它多算
+而报警，只有反方向才暴露。
+
+**闸门⑮ 加反向半边**：宿主 key 若「模板不读、HOST_KEYS 不列、test.sh 不探针」→ 装配缺失。
+引用侧三处：组件 chunk 里的 `H.xxx`、shell.js 里的 `H.xxx`、`go: 'name'` 字符串分发；
+基线 0。反向测试：临时加 `p22DeadHost: function(){ return 1 }` → 闸门红并点名它。
+闸门总数仍 122（并进闸门⑮ 已有的 `wiring` 数组，不新增 ok 行）。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**
+（第一次跑撞到新 flaky：`一键解析入队的笔记没解析完（done 0/2）`，重跑绿）、三套 DOM 等价
+工具全部一致。

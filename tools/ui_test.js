@@ -124,8 +124,19 @@ function setHostKeys(src) {
     else if (src[k] === '}') { d--; if (!d) break }
   }
   const body = src.slice(j + 1, k).replace(/\/\*[\s\S]*?\*\//g, '');
+  /* 步骤 22：逐行取 key，不再整段扫。整段扫的 [,{] 前缀会把函数体里的调用当 key ——
+     dlgOk: function(){ closeDlg(true) } 里的 closeDlg( 就被收进过宿主 key 集合，
+     于是「宿主挂了没人读的 key」那条反向检查一直指着它。行首（含 get 形式）+
+     逗号后的 name: 才是宿主 key 的写法。 */
   const keys = [];
-  for (const m of body.matchAll(/(?:^|[,{])\s*(?:get\s+)?([A-Za-z_$][\w$]*)\s*[(:]/g)) keys.push(m[1]);
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) continue;
+    const a = /^(?:get\s+)?([A-Za-z_$][\w$]*)\s*[(:]/.exec(t);
+    if (a) keys.push(a[1]);
+    for (const m of line.matchAll(/,\s*([A-Za-z_$][\w$]*)\s*:/g)) keys.push(m[1]);
+    for (const m of line.matchAll(/,\s*get\s+([A-Za-z_$][\w$]*)\s*\(/g)) keys.push(m[1]);
+  }
   return keys;
 }
 
@@ -1187,6 +1198,28 @@ if (SPLIT) {
         }
         for (const appId of hostKeys.keys())
           if (!roots.has(appId)) wiring.push(`HOST_KEYS 表里的 ${appId} 没有对应挂载点（表在骗人）`);
+
+        /* 步骤 22：反方向也查一遍。原来只查「模板读了宿主没有的」（少钥匙 → 那一片渲染成
+           空），反方向「宿主挂了没人读的钥匙」以前没人查：todoEnterCls / relTime 就是这么
+           挂着的 —— 视图转 Vue 后模板不再读它们，函数是 app.js 内部用的，挂在宿主上只是
+           让 narrowHost 多搬两个没人读的钥匙。shotSetup / askShotPerm 是截图横幅按 go 字符串
+           分发的（components.js 里 go: 'shotSetup'），模板里没有 H.它们 —— 所以引用侧要连
+           HOST_KEYS 表和 test.sh 探针载荷一起看。基线 0。 */
+        const hostRead = new Set();
+        for (const [, ks] of compKeys) for (const k of ks) hostRead.add(k);
+        for (const m of shellSrc.matchAll(/\bH\.(\w+)/g)) hostRead.add(m[1]);
+        /* 截图横幅那四个状态点是按字符串分发的（components.js 里 go: 'shotSetup'，
+           模板写 @click="H.shotGo(text.go)"），模板里没有 H.shotSetup —— 字符串也算读它。 */
+        for (const [f, src0] of jsSources) {
+          if (/vue\.js$/.test(f)) continue;
+          for (const m of stripComments(src0).matchAll(/\bgo:\s*'([A-Za-z_$][\w$]*)'/g)) hostRead.add(m[1]);
+        }
+        const declaredAll = new Set();
+        for (const ks of hostKeys.values()) for (const k of ks) declaredAll.add(k);
+        const hostDead = [...host].filter(k => !hostRead.has(k) && !declaredAll.has(k)
+          && !new RegExp('\\b' + k + '\\b').test(testSh));
+        if (hostDead.length)
+          wiring.push(`宿主上挂了没人读的 key：${hostDead.join(' ')}（模板不读、HOST_KEYS 不列、test.sh 不探针）`);
       }
       if (wiring.length) bad('闸门⑮ Vue 装配缺失', wiring.join(' | '));
       // 注册表：app.js 的 var VUE_VIEWS = { notes: NotesView } 是唯一开关

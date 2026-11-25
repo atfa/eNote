@@ -1628,8 +1628,10 @@ var HOST = setHost({
      字符串渲染器」，肉眼看不出来 —— 闸门⑮（ui_test.js）静态扫模板里的 H.xxx 必须都在
      setHost 的 key 里（Vue 读的是宿主对象，不是 window），test.sh 的 TINT 步骤动态断言
      __enote.vue.isVue(todos) 且 TodosView 真的挂载了。 */
-  strip: strip, P: P, groupTodos: groupTodos, todoEnterCls: todoEnterCls,
-  todoRowCls: todoRowCls,
+  /* 步骤 22 从宿主里摘掉 todoEnterCls / relTime：模板里没人读 H.它们（闸门⑮ 只查
+     「模板用了宿主没有的」，反方向没人查），函数是 app.js 内部用的，挂在宿主上只是
+     让 narrowHost 多搬两个没人读的钥匙。 */
+  strip: strip, P: P, groupTodos: groupTodos, todoRowCls: todoRowCls,
   /* 步骤 15：外壳（顶栏 / 底栏+fab / 弹层宿主 / 对话框）的事件入口。模板里写的是
      @click="H.xxx(...)"，走的就是这张表（闸门⑮ 逐个查名字在不在）。 */
   brandGo: brandGo, tabPick: tabPick, fabAct: fabAct,
@@ -1662,7 +1664,7 @@ var HOST = setHost({
   get clipList(){ return CLIP.list }, get clipSel(){ return CLIP.sel },
   get clipLoading(){ return CLIP.loading }, get clipError(){ return CLIP.error },
   clipPick: clipPick, clipSelAll: clipSelAll, clipDel: clipDel,
-  clipDelSel: clipDelSel, clipParse: clipParse, relTime: relTime,
+  clipDelSel: clipDelSel, clipParse: clipParse,
   clipItemCls: clipItemCls, clipPrevText: clipPrevText, clipThumbText: clipThumbText,
   clipMetaText: clipMetaText, clipParseText: clipParseText,
   /* 步骤 10 加：StatsView / SettingsSheetView 的宿主接口（同上，漏一个就是静默回退字符串渲染器，

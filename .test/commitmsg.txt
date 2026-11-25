@@ -1,27 +1,30 @@
-P14 S6 步骤 22：删掉第一个死函数 syncShotBtns，闸门⑩ 加上「定义了没人调」的 JS 半边
+P14 S6 步骤 23：宿主上没人读的钥匙也扫一遍，闸门⑮ 加反向半边
 
-表单值全部进状态之后，回头扫一遍迁移留下的死代码。
+步骤 22 的死函数扫描顺手扫了宿主：HOST 137 个 key 里，模板不读、HOST_KEYS 不列、test.sh
+不探针的有 5 个。
 
-扫描口径
-- 定义侧：go/ui/js（剔 vendor）里所有 (async) function NAME( 定义，注释剔掉。
-- 引用侧：视图代码（剔注释）+ test.sh + go/ui/index.html + go/web_test.go + ui_test.js 自己
-  （夹具的 JS 载荷在 shell 字符串里，测试签名断言也真的算「有人关心这个函数」）。
-- 出现次数 ≤ 定义次数的就是死函数。全库 172 个函数定义，只抓出一个：syncShotBtns(n)。
+逐个看过
+- shotSetup / askShotPerm：截图横幅按 go 字符串分发的（components.js 里 go: 'shotSetup'，
+  模板写 @click="H.shotGo(text.go)"），真在用，保留。
+- closeDlg：扫描器的假阳性（见下）。
+- todoEnterCls / relTime：视图转 Vue 后模板不再读它们，函数是 app.js 内部用的，挂在宿主上
+  只是让 narrowHost 多搬两个没人读的钥匙 → 删，HOST 137 → 135。
 
-syncShotBtns(n) 是字符串渲染器时代命令式改截图弹层底部按钮的函数（一张时只留「创建笔记」，
-用户反馈：一张时「合并」与「各存」是同一件事）。视图转 Vue 后调用者没了，规则搬进
-views/shots.js 的 one / goText / goStyle 三个 computed，函数还活着。
+扫描器自己的 bug
+- setHostKeys 原来整段扫 (?:^|[,{])\s*(?:get\s+)?NAME\s*[(:]，dlgOk: function(){ closeDlg(true) }
+  里的 closeDlg( 前缀是 {，被当成宿主 key 收了进来。
+- 改成逐行取：行首的 name: / get name(，加逗号后的 name: 与 , get name(。函数体里的调用不再
+  算 key。
+- 这个 bug 一直藏着：正向检查（模板用的 key 在不在宿主上）永远不会因为它多算而报警，只有反
+  方向才暴露。
 
-它为什么能藏住：两处注释提到它（app.js 的 VDIFF 注释、shots.js 的 computed 注释），而闸门
-⑧/⑮ 只看引用侧（用了没定义 / 模板 handler 存活性），都不看「定义了没人用」。
-
-闸门⑩ 扩半边
-- 原来只查 CSS 自定义属性（--x: 定义了没人 var()，棘轮 11），现在同一套逻辑搬到 JS 函数，
-  棘轮 0：新函数必须有人调。
-- 两条合成一条闸门：闸门总数钉在 122，加一条就是改约定。
-- 反向测试：临时加一个 function p22DeadProbe(){}，闸门红并点名
-  p22DeadProbe（go/ui/js/app.js）；删掉回到 122 全绿。
+闸门⑮ 加反向半边
+- 宿主 key 若「模板不读、HOST_KEYS 不列、test.sh 不探针」→ 装配缺失。引用侧三处：组件 chunk
+  里的 H.xxx、shell.js 里的 H.xxx、go: 'name' 字符串分发。基线 0。
+- 反向测试：临时加 p22DeadHost: function(){ return 1 } → 闸门红并点名它；删掉回到 122 全绿。
+- 闸门总数仍 122：并进闸门⑮ 已有的 wiring 数组，不新增 ok 行。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、
-./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（纯删死代码，DOM
-一个字节没变：卡片 2495 B、todoRow 651 B、todoTx 454 B、设置页保活长说明 236 B、进度层）。
+./test.sh --vd **164 ok / 0 FAIL / PASS**（第一次跑撞到新 flaky：一键解析入队的笔记没解析完
+（done 0/2），重跑绿）、三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、
+设置页保活长说明 236 B、进度层逐字未动）。
