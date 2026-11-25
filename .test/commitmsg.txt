@@ -1,26 +1,27 @@
-P14 S6 步骤 52：安静轮询搬进 js/pollflow.js（app.js 626 → 585）
+P14 S6 步骤 53：响应式盒子层搬进 js/statebox.js（app.js 585 → 570）
 
-第二十四簇：SIG / drawn / SIG_SKIP / stateSig / refresh 连 prefsLoaded 一起搬成 go/ui/js/pollflow.js。
-app.js 626 → 585 行（模块 73 行，45 行逐字搬、1 行改写）。
+第二十五簇：S / syncBox / 七个盒子（TAB QB OPENB REMIND STERR SRERR SHEETARGB）连 reassign 一起搬成
+go/ui/js/statebox.js。app.js 585 → 570 行（模块 43 行，21 行逐字搬、0 处改写）。
 
-- 依赖：S / q / reassign / setQRaw 从 app.js，shell 从 shell.js，api 从 netflow.js，MISSED 从 missedflow.js，
-  SHOTFLAGS 从 shotflow.js，prefs / P / flattenPrefs / themeOf / CUR / applyTheme 从 prefsflow.js，
-  ANIMLOCK 从 noteflow.js，paintStatus / render 从 renderflow.js（步骤 51），searchNow 从 searchflow.js。
-- prefsLoaded 是跟着走的：全项目只有 refresh() 读它、写它，所以它属于新模块，app.js 只留一行指针注释。
-  判据是「谁写它」：只有新模块写 → 整块搬走不用 setter；app.js 写（步骤 51 的 readyResolve）才必须开入口。
-- 唯一改写的一行：q = syncBox(QB, P().q || '') → setQRaw(P().q || '')。q 是 app.js 的 var，跨模块只能走 setter
-  （searchflow 早就是这么做的），下一行 shell.q = q 读到的就是新值。
-- app.js 导出表一行没动：refresh 现在是再导出，十来个模块与 __enoteActions 那边一个字没改；
-  setInterval(… refresh(true) …)、refresh() 与 window.onAppResume 三处调用点留在 app.js。
-- 闸门/测试一行没改：闸门⑩/⑪（SIG_SKIP 排除表 = 行为契约）与 ANIMLOCK 那条锚点读的都是拼接后的 src；
-  go/web_test.go 钉的「setHost({ 必须出现在 \nrefresh(); 之前」两条都在 app.js 里，透明。
-- 踩坑：闸门㉒ 当场报出「pollflow.js import 的 MISSED 不是 ./shotflow.js 的导出」——MISSED 在 missedflow.js。
-  这类「模块解析期 SyntaxError → 整页空白」的错全靠这条闸门兜住。
+- 零循环依赖：statebox.js 只 import { Vue } from './vue.js'，不读 app.js 任何东西——目前分层最干净的一层。
+- 为什么盒子能搬、setQ / setQRaw / setTabTo 不能搬：盒子是对象，跨模块只有属性写（syncBox 写的是 box.v），
+  import 进来直接改属性就够；那三个 setter 写的是 app.js 的 tab / q 两个 var（整包重新赋值），必须留在声明处。
+  判据一句话：属性写能搬，整包赋值不能搬。
+- 「盒子必须早于第一次读它」这条硬要求（踩过：盒子放文件中部，var tab = TAB.v 在第 32 行，var 提升让 TAB
+  那一刻是 undefined → 整份 app.js 抛 TypeError、页面全白）现在由 ESM 的求值顺序保证：import 先于 app.js
+  的函数体跑完。教训原文搬进 statebox.js 文件头。
+- app.js 导出表一行没动：S（13 个模块 import）、syncBox（4 个）、reassign（3 个）、REMIND / STERR / SRERR /
+  SHEETARGB 全部变成再导出，那边一个字没改。闸门/测试也一行没改：闸门⑮ 的 exportTableKeys(appSrc) 只看
+  app.js 的导出表（没变），go/web_test.go 钉的 setHost({ 在 \nrefresh(); 之前、window.__enote.state = { 都在 app.js。
+- 踩坑（清单 (b) 第四次）：python 里 L[17]=[...] 写成列表赋值，下一行 l.strip() 抛 AttributeError——脚本先写
+  模块文件、后写 app.js，崩在中间正好保住 app.js 原样。
 
-探针（物理屏 .test/probe_poll.js）：就绪 loads=1 卡片=8 历史探针笔记=0 → 静置 6.5s（3 轮轮询）：首张卡是同一个
-节点=true（SIG_SKIP 排除表的行为契约：uptimeS 每秒都在变，没排掉就每轮全量重绘、节点被换掉）→ prefsLoaded：
-搜索框 value="" 偏好 P().q="" → api/add ok=true → 外部加数据后 5s：卡片 8→9（指纹比较与重绘链没断）→
-删掉 1 条标记笔记后卡片=8（期望 8）→ end loads=1。探针自带清理。
+探针（物理屏 .test/probe_box.js）：就绪 loads=1 卡片=8 → S 同一份对象：host.S===state.S=true → 点待办页签之后：
+host.tab=todos state.tab=todos 可见面板=todos → 盒子 QB：searchInput 之后 host.q="笔记" 清除按钮在=true →
+盒子 OPENB：open 里这条的展开位=true → 盒子 SHEETARGB / remindPending / stErr / srErr 四个 getter 都读得到 →
+reassign 不换引用：state.S===旧引用=true host.S===旧引用=true notes 被换成=0 → refresh 之后数据回来 notes=8 →
+end loads=1。搜索框 value="" 而 host.q="笔记" 是 searchInput 的既有语义（只写 q、不动 shell.q，步骤 41 记过），
+不是回归。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

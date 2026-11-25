@@ -1374,6 +1374,28 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 响应式盒子层搬进 js/statebox.js（P14 S6 步骤 53）
+
+第二十五簇：`S` / `syncBox` / 七个盒子（`TAB` `QB` `OPENB` `REMIND` `STERR` `SRERR` `SHEETARGB`）连 `reassign`
+一起搬成 `go/ui/js/statebox.js`。**app.js 585 → 570 行**（模块 43 行，21 行逐字搬、0 处改写）。
+
+* 零循环依赖：statebox.js 只 `import { Vue } from './vue.js'`，不读 app.js 任何东西——目前分层最干净的一层。
+* **为什么盒子能搬、`setQ`/`setQRaw`/`setTabTo` 不能搬**：盒子是对象，跨模块只有属性写（`syncBox` 写 `box.v`）；
+  那三个 setter 写的是 app.js 的 `tab` / `q` 两个 var（整包赋值），必须留在声明处。判据一句话：
+  **属性写能搬，整包赋值不能搬**。
+* 「盒子必须早于第一次读它」这条硬要求（踩过：盒子放文件中部、`var tab = TAB.v` 在第 32 行，var 提升让 TAB
+  那一刻是 undefined → 整份 app.js 抛 TypeError、页面全白）现在由 ESM 的求值顺序保证，教训原文搬进文件头。
+* app.js 导出表一行没动：`S`（13 个模块 import）、`syncBox`（4 个）、`reassign`（3 个）、`REMIND`/`STERR`/`SRERR`/
+  `SHEETARGB` 全部变成**再导出**，那边一个字没改。闸门/测试也一行没改（闸门⑮ 只看 app.js 的导出表；
+  `go/web_test.go` 钉的 `setHost({` 在 `\nrefresh();` 之前、`window.__enote.state = {` 都留在 app.js）。
+* 探针（`.test/probe_box.js`）：`S 同一份对象：host.S===state.S=true`、`点待办页签之后：host.tab=todos state.tab=todos
+  可见面板=todos`、`盒子 QB：searchInput 之后 host.q="笔记"…清除按钮在=true`、`盒子 OPENB：open 里这条的展开位=true`、
+  四个盒子 getter、`reassign 不换引用：state.S===旧引用=true host.S===旧引用=true notes 被换成=0` →
+  `refresh 之后数据回来 notes=8` → `loads=1`。`搜索框 value=""` 而 `host.q="笔记"` 是 `searchInput` 的既有语义
+  （只写 q、不动 shell.q，步骤 41 记过），不是回归。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 安静轮询搬进 js/pollflow.js（P14 S6 步骤 52）
 
 第二十四簇：`SIG`/`drawn`/`SIG_SKIP`/`stateSig`/`refresh` 连 `prefsLoaded` 一起搬成 `go/ui/js/pollflow.js`。

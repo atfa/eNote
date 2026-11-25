@@ -4000,3 +4000,51 @@ end loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.75 P14 S6：响应式盒子层搬进 js/statebox.js（步骤 53）
+
+第二十五簇：`S` / `syncBox` / 七个盒子（`TAB` `QB` `OPENB` `REMIND` `STERR` `SRERR` `SHEETARGB`）
+连 `reassign` 一起搬成 `go/ui/js/statebox.js`。**app.js 570 → 570 行**（模块 43 行，21 行逐字搬，
+0 处改写；app.js 从 585 行减到 570 行）。
+
+* 零循环依赖：statebox.js 只 `import { Vue } from './vue.js'`，不读 app.js 任何东西 —— 它是目前
+  分层最干净的一层（netflow 同款待遇）。
+* **为什么这些盒子能搬、`setQ`/`setQRaw`/`setTabTo` 不能搬**：盒子是对象，跨模块只有属性写
+  （`syncBox(box, v)` 写的是 `box.v`），import 进来直接改属性就够；而那三个 setter 写的是 app.js 的
+  `tab` / `q` 两个 var（整包重新赋值），必须留在声明处。判据一句话：**属性写能搬，整包赋值不能搬**。
+* 「盒子必须早于第一次读它」这条硬要求（踩过：盒子放文件中部，`var tab = TAB.v` 在第 32 行，
+  var 提升让 TAB 那一刻是 undefined → 整份 app.js 抛 TypeError、页面全白）现在由 ESM 的求值顺序
+  保证：import 先于 app.js 的函数体跑完。这条教训原文搬进了 statebox.js 文件头。
+* app.js 的导出表一行没动：`S`（13 个模块 import）、`syncBox`（4 个）、`reassign`（3 个）、
+  `REMIND` / `STERR` / `SRERR` / `SHEETARGB` 全部变成**再导出**，那边一个字没改。
+* 闸门/测试**一行没改**：闸门⑮ 的 `exportTableKeys(appSrc)` 只看 app.js 的导出表（没变），
+  `go/web_test.go` 钉的 `setHost({` 在 `\nrefresh();` 之前、`window.__enote.state = {` 都在 app.js。
+* 踩坑（清单 (b) 第四次）：python 里 `L[17]=[...]` 写成列表赋值，下一行 `l.strip()` 抛
+  `AttributeError` —— 脚本先写模块文件、后写 app.js，崩在中间正好保住 app.js 原样（重跑前先
+  `node --check` 全部模块）。
+
+探针（物理屏，`.test/probe_box.js`）：
+
+```
+就绪 loads=1 卡片=8
+S 同一份对象：host.S===state.S=true notes=8
+盒子 TAB：host.tab=notes state.tab=notes
+点待办页签之后：host.tab=todos state.tab=todos 可见面板=todos
+切回笔记之后：host.tab=notes 可见面板=notes
+盒子 QB：searchInput 之后 host.q="笔记" 搜索框 value="" 清除按钮在=true
+searchClear 之后 host.q="" 搜索框 value=""
+盒子 OPENB：open 里这条的展开位=true 键数=1 与点开的笔记一致=true
+盒子 SHEETARGB：开设置弹层前 host.sheetArg=""
+盒子 SHEETARGB：弹层开着 host.sheetArg="" 弹层节点=在 另外三个盒子 host.remindPending=0 host.stErr="" host.srErr=""
+reassign 不换引用：state.S===旧引用=true host.S===旧引用=true notes 被换成=0
+refresh 之后数据回来：notes=8 卡片=8
+end loads=1
+```
+
+`host.S===state.S` 与 `reassign 不换引用=true` 是这一层的全部契约：Vue 读的、测试缝写的、
+十几个模块 import 的是同一个 proxy，`__enote.state.S = {...}` 换内容不换引用。
+`搜索框 value=""` 而 `host.q="笔记"` 是 `searchInput` 的既有语义（只写 q、不动 shell.q，
+步骤 41 记过），不是回归。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

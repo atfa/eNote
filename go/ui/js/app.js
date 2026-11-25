@@ -15,7 +15,7 @@ window.addEventListener('unhandledrejection', function(e){
   var r = e.reason;
   console.log('JS-REJECT ' + (r && r.stack ? String(r.stack).split('\n').slice(0,6).join(' | ') : String(r)));
 });
-var S = Vue.reactive({notes:[], settings:{}, info:{}});
+/* S（整份 /api/state 的镜像）搬进 js/statebox.js（P14 S6 步骤 53）。 */
 /* S3（D14）：Vue 装配层与视图注册表。混合期（步骤 5-10）里已迁移的 tab 走 Vue，
    其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
 import { Vue, nextTick, setHost, setHostKeys, mountView, mountSheet, unmountSheet, unmountAllSheets, sheetPaint, vuePaint, apps, sheetApps } from './vue.js'
@@ -68,6 +68,8 @@ import { render, afterPaint, markReady, syncExpand, strip, paintStatus,
          setReadyResolve, hasFirstPainted } from './renderflow.js'
 /* 步骤 52：安静轮询（SIG / SIG_SKIP / stateSig / refresh）搬进 js/pollflow.js。 */
 import { refresh } from './pollflow.js'
+/* 步骤 53：响应式盒子层（S / syncBox / 七个盒子 / reassign）搬进 js/statebox.js。 */
+import { S, syncBox, TAB, QB, OPENB, REMIND, STERR, SRERR, SHEETARGB, reassign } from './statebox.js'
 /* 步骤 49：启动自检搬进 js/selfcheck.js（它自己排 1200ms 后的定时器）。 */
 import './selfcheck.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
@@ -91,22 +93,9 @@ import { SHOTFLAGS, SHOTS, FOLD, SHOTPROG, shotFlags, shotGo, shotSetup, askShot
          folderSheet, folderLabel, folderPick, folderSelAll, folderPickShots, folderFilter,
          folderSave, shotIntroOnce, scanShotsNow, rescanShots,
          loadShots, shotIgnoreSel, clearShots } from './shotflow.js'
-/* 步骤 17f：H 暴露的「整包赋值的标量」接上响应式。tab / q 在 app.js 里被引用几十次，
-   整词改名风险大于收益，所以用镜像：原变量照旧用，赋值处同步一份进 reactive 盒子，组件读盒子。
-   同步只走 syncBox()，不手写第二遍（手写第二遍迟早漏一处，漏了就是「数据换了界面不动」）。
-   对象型的（open）让原变量直接指向盒子里的 proxy，逐键改也追踪得到。 */
-function syncBox(box, v){ box.v = v; return v }
-var TAB = Vue.reactive({ v: 'notes' });
-var QB = Vue.reactive({ v: '' });
-var OPENB = Vue.reactive({ v: {} });
-var REMIND = Vue.reactive({ v: 0 });
-var STERR = Vue.reactive({ v: '' });
-var SRERR = Vue.reactive({ v: '' });
-var SHEETARGB = Vue.reactive({ v: '' });
-
-/* 声明顺序是硬要求：盒子必须在第一次读它之前建好。踩过：盒子放在文件中部，
-   而 `var tab = TAB.v` 在第 32 行 —— var 提升让 TAB 在那一刻是 undefined，
-   整份 app.js 抛 TypeError，页面全白（真机日志：Cannot read properties of undefined (reading 'v')）。 */
+/* 响应式盒子层（syncBox / TAB / QB / OPENB / REMIND / STERR / SRERR / SHEETARGB）与 S、
+   reassign 一起搬进 js/statebox.js（P14 S6 步骤 53）：盒子先于本文件求值，
+   「盒子必须早于第一次读它」那条硬要求由 ESM 的 import 顺序保证。 */
 var tab = TAB.v, open = OPENB.v, busy = {};
 /* seen（已出现过的卡片 id）只有入场动画那一簇读写，跟着它搬进 js/noteflow.js（步骤 44）。 */
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
@@ -157,11 +146,7 @@ function setTabTo(v){ tab = syncBox(TAB, v) }
    换掉就丢掉 reactive 的代理，症状正是「数据变了界面不动」。 */
 /* 步骤 17e：整包赋值的响应式写法。`X = {...}` 对 reactive 对象是换引用，Vue 追踪不到
    （症状：数据换了界面不动）。reassign 在同一个 proxy 上先删键再写键，读侧一个字不用改。 */
-function reassign(box, v){
-  for(var k in box) delete box[k];
-  if(v && typeof v === 'object') Object.assign(box, v);
-  return box;
-}
+/* reassign（逐键换内容不换引用）搬进 js/statebox.js（P14 S6 步骤 53）。 */
 
 /* 剪贴板暂存队列整簇（含 CLIP 盒子）搬进 js/clipflow.js（P14 S6 步骤 30）。 */
 /* emptyState() 也一起删：空态块现在是 components/empty-state.js 的 <empty-state> 组件，
