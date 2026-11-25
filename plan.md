@@ -2396,4 +2396,21 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
 - 一次 OCR flake：`test.sh --vd` 第一次跑在「OCR 没能在现造的图里读出 VVVFEVMY」上 ERROR 中止，
   重跑 166 项全绿。OCR 是本地 tesseract 路径，与本轮改动无关（本轮只动 JS）。
 - 验收：122 静态检查、build/install、`./test.sh --vd` 166 项、`.test/dom_equiv3.js` 13 项全绿。
+### 9.31 步骤 17e：状态层全部 reactive 化（视图还没摘 tick）（2026-11-25）
+
+- 目标：把剩下的模块状态都变成 `Vue.reactive`，这样 `live()`（= `computed(tick + fn)`）除了 tick
+  依赖之外也**开始真正追踪依赖**——状态先响应式化是安全的，视图可以之后逐页摘 tick。
+- 两种写法：
+  - **原地 reassign**（`prefs` / `SR` / `FA`）：`var X = Vue.reactive({...})`，整包赋值改成
+    `reassign(X, {...})`（同一个 proxy 上先删键再写键）。读侧一个字不用改，真值性也不变。
+  - **`{v: 初值}` 容器**（`MISSED` / `ST` / `SHOTFLAGS` / `LOGDATA` / `DEBUGDATA`）：这些初值是
+    `null`，代码里到处是 `if(!ST) return`，直接给对象会让真值性变味，所以套一层 `{v:…}`：
+    读 `ST.v`、写 `ST.v = …`，整包赋值可追踪，真值性逐字不变。
+  - 对外的两个面（`setHost` 的 getter、`__enote.state` 的 getter/setter）名字全部不变，
+    夹具与组件零改动。
+- 改名踩的坑：`MISSED` 这类整词替换会连 `get MISSED(){` / `set MISSED(v){` 一起改坏
+  （`get MISSED.v(){` 是语法错误），要逐条修回；`var A = …, B = …` 一行里两个变量也会被改坏。
+  `node --input-type=module --check` 是最快的兜底（比跑真机快两个数量级）。
+- 闸门 mock 跟着换形状：轮询指纹用例里的 `SHOTFLAGS` mock 改成 `{v:{…}}`，三处 mutation 同步。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿（视图仍走 tick，行为零变化）。
 

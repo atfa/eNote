@@ -1223,7 +1223,8 @@ if (SPLIT) {
   if (!mSkip || !mSig) { bad('轮询指纹', 'app.js 里找不到 SIG_SKIP / stateSig'); return; }
   // 名字不能叫 stateSig：eval 里声明的函数要和外层区分开，同名会撞
   // 「Identifier 'stateSig' has already been declared」（踩过）。
-  const SHOTFLAGS = { enabled: 1, folders: 2, granted: 1 };
+  /* 步骤 17e：app.js 的 SHOTFLAGS 变成 {v:…} 容器（整包赋值要可追踪），mock 跟着换形状。 */
+  const SHOTFLAGS = { v: { enabled: 1, folders: 2, granted: 1 } };
   const sigFn = eval(mSkip[0] + ';' + mSig[0] + '; stateSig');
 
   const base = () => JSON.parse(JSON.stringify({
@@ -1284,11 +1285,11 @@ if (SPLIT) {
   /* 截图开关不在 /api/state 里（它是 JS 侧 var SHOTFLAGS，由 Android.shotFlags 异步回填），
      所以只能单独拼进指纹。踩过：选完文件夹我的页还显示旧数字。反向实验：把 stateSig 末尾
      那个 [sf.enabled, sf.folders, sf.granted] 数组删掉，这两条一起红。 */
-  SHOTFLAGS.folders = 3;
+  SHOTFLAGS.v.folders = 3;
   eq('截图文件夹数变化要重绘（踩过：选完文件夹我的页还显示旧数字）', s0, sigFn(base()), false);
-  SHOTFLAGS.enabled = 0;
+  SHOTFLAGS.v.enabled = 0;
   eq('截图监控开关变化要重绘（横幅按开关分状态显示）', s0, sigFn(base()), false);
-  SHOTFLAGS.enabled = 1; SHOTFLAGS.folders = 2;
+  SHOTFLAGS.v.enabled = 1; SHOTFLAGS.v.folders = 2;
   eq('截图开关改回来指纹也改回来（不是恒变）', s0, sigFn(base()), true);
 
   for (const [cname, cpass, cnote] of checks) {

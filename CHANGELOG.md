@@ -1374,6 +1374,20 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 状态层 reactive 化（P14 S4 步骤 17e）：视图还没摘 tick，依赖先接上
+
+- `prefs`/`SR`/`FA` 用**原地 reassign**（`reassign(box,v)`：同一个 proxy 上先删键再写键，读侧零改动）；
+  `MISSED`/`ST`/`SHOTFLAGS`/`LOGDATA`/`DEBUGDATA` 用 **`{v:初值}` 容器**（初值是 `null`，代码里到处是
+  `if(!ST) return`，直接给对象会让真值性变味）。`setHost` 与 `__enote.state` 的名字全部不变，
+  夹具与组件零改动。
+- 从这一步起 `live()`（= `computed(tick + fn)`）除了 tick 依赖开始**真正追踪依赖**：状态先响应式化
+  是安全的，视图可以之后逐页摘 tick。
+- 改名坑：整词替换会连 `get MISSED(){` 一起改坏（`get MISSED.v(){` 是语法错误）、
+  `var A = …, B = …` 一行两个变量也会被改坏；`node --input-type=module --check` 是最快的兜底。
+- 闸门 mock 跟着换形状（轮询指纹用例的 `SHOTFLAGS` → `{v:{…}}`）。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿。
+
+
 ### 真响应式第 3 片（P14 S4 步骤 17d）：截图页摘掉 `V.tick`
 
 - `shotSel/shotList/shotLoading/shotError` 收进 `SHOTS = Vue.reactive({sel,list,loading,error})`；

@@ -4,7 +4,7 @@
 // window.__enoteActions 导出表 + Object.assign(window, …)（见文件末尾 D12）。
 // 转 module 与导出表、tools/ui_test.js 闸门① 同批落地，中间态不能存在：
 // 少了任何一环，70 个 handler 会全部静默失效（P12 那一类「点了没反应」）。
-/* 诊断缝（步骤 17b）：app.js 被求值几次？两次的话模块状态有两份（CLIP / S / MISSED 各一份），
+/* 诊断缝（步骤 17b）：app.js 被求值几次？两次的话模块状态有两份（CLIP / S / MISSED.v 各一份），
    组件读的那份和测试缝写的那份不是同一个对象，症状是「赋值成功而界面不动」。 */
 window.__enoteAppLoads = (window.__enoteAppLoads || 0) + 1;
 var S = {notes:[], settings:{}, info:{}};
@@ -35,18 +35,18 @@ var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘�
 var curTheme = '';
 var q = '';
 /* 每个页签自己的搜索/排序/筛选条件（P3 会持久化到服务端） */
-var prefs = {
+var prefs = Vue.reactive({
   notes:{sort:'new', src:'all', status:'all'},
   todos:{sort:'due', done:'open', pri:'all'},
   files:{sort:'new', kind:'all'}
-};
+});
 function P(){ return prefs[tab] || prefs.notes }
 /* 图标：ic('search') → 一个 24dp 线性图标，颜色跟着 currentColor */
 function ic(n, cls){ return '<svg class="ic' + (cls ? ' ' + cls : '') + '"><use href="#i-' + n + '"/></svg>' }
 
 /* ---------- 服务端搜索（R3）----------
    列表数据一律来自 /api/search；请求失败时退回本地过滤，断网也能看。 */
-var SR = {notes:null, todoIds:null, where:{}, total:0, scanned:0};
+var SR = Vue.reactive({notes:null, todoIds:null, where:{}, total:0, scanned:0});
 var searchSeq = 0, prefsLoaded = false;
 var PREF_KEYS = ['src','status','done','pri','kind','file'];
 function prefPayload(){
@@ -90,13 +90,13 @@ async function searchNow(force){
     if(my !== searchSeq) return;
     srErr = '';
     var k = JSON.stringify(d);
-    SR = {notes:d.notes||[], todoIds:d.todoIds||null, where:d.where||{}, total:d.total||0, scanned:d.scanned||0};
+    reassign(SR, {notes:d.notes||[], todoIds:d.todoIds||null, where:d.where||{}, total:d.total||0, scanned:d.scanned||0});
     // 顶部横幅（剪贴板暂存 / 新截图 / 错过的提醒）不在搜索结果里：搜索结果没变、
     // 但页面签名变了（条数变了）时必须强制重绘，否则「删光剪贴板」「刚扫到新截图」
     // 回到首页都看不到横幅 —— 这两处的 bug 都是这里短路掉的。
     if(k === SRK && !force){ paintStatus(); return }
     SRK = k;
-  }catch(e){ SR = {notes:null, todoIds:null, where:{}, total:0, scanned:0}; SRK = ''; srErr = errText(e) }
+  }catch(e){ reassign(SR, {notes:null, todoIds:null, where:{}, total:0, scanned:0}); SRK = ''; srErr = errText(e) }
   render();
 }
 
@@ -293,15 +293,23 @@ function askBattery(){
    现在赋值即触发，views/clip.js 的 computed 不再依赖 tick（clipPick 也不再 sheetPaint）。
    整体赋值的地方（loadClips / clipParse / 夹具 setter）写的是属性，别把对象换掉：
    换掉就丢掉 reactive 的代理，症状正是「数据变了界面不动」。 */
+/* 步骤 17e：整包赋值的响应式写法。`X = {...}` 对 reactive 对象是换引用，Vue 追踪不到
+   （症状：数据换了界面不动）。reassign 在同一个 proxy 上先删键再写键，读侧一个字不用改。 */
+function reassign(box, v){
+  for(var k in box) delete box[k];
+  if(v && typeof v === 'object') Object.assign(box, v);
+  return box;
+}
+
 var CLIP = Vue.reactive({ sel: {}, list: [], loading: false, error: '' });
 /* emptyState() 也一起删：空态块现在是 components/empty-state.js 的 <empty-state> 组件，
    app.js 里最后一个调用方就是上面那个 folderRender。 */
 /* 错过的提醒（后台被冻结时到点的那些）：只在有内容时出现，点开看清单 */
-var MISSED = null;   // 服务端只在启动时算一次，之后 refresh 覆盖 S 时要把它贴回去
+var MISSED = Vue.reactive({ v: null });   // 服务端只在启动时算一次，之后 refresh 覆盖 S 时要把它贴回去
 async function loadMissed(){
   try{
     var d = await api('/api/missed');
-    if(d && d.count){ MISSED = d; S.missed = d; render(); }
+    if(d && d.count){ MISSED.v = d; S.missed = d; render(); }
   }catch(e){}
 }
 /* 错过的提醒面板的操作逻辑（用户反馈：只能看，没法处理）
@@ -312,7 +320,7 @@ async function loadMissed(){
    横幅本身是"上次打开 app 之后到点的未完成待办"，服务端记的水位；点过「我知道了」
    之后水位已推进，同一批不会再来烦你（下一批要等新的到点提醒）。 */
 function missedSheet(){
-  var m = MISSED || S.missed;
+  var m = MISSED.v || S.missed;
   if(!m) return;
   return pageSheetVue('missed', '错过的提醒');
 }
@@ -320,19 +328,19 @@ function missedDone(ev, nid, tid, el){
   ev.stopPropagation();
   toggle(nid, tid, el);          // 复用待办页：划线 → 原位淡出 → 新位置高亮入场
   setTimeout(function(){         // 动画跑完再把这条从清单里摘掉
-    if(!MISSED) return;
-    var n0 = (MISSED.items || []).length;
-    MISSED.items = (MISSED.items || []).filter(function(t){ return t.id !== tid });
-    MISSED.count = (MISSED.items || []).length;
-    if(S.missed) S.missed = MISSED;
-    if((MISSED.items || []).length === n0) return;
+    if(!MISSED.v) return;
+    var n0 = (MISSED.v.items || []).length;
+    MISSED.v.items = (MISSED.v.items || []).filter(function(t){ return t.id !== tid });
+    MISSED.v.count = (MISSED.v.items || []).length;
+    if(S.missed) S.missed = MISSED.v;
+    if((MISSED.v.items || []).length === n0) return;
     render();                 // 背后的横幅条数
-    if(MISSED.items.length) missedSheet(); else closeSheet();
+    if(MISSED.v.items.length) missedSheet(); else closeSheet();
   }, 900);
 }
 function missedGoTodos(){ closeSheet(); tab = 'todos'; setTab(true); }
 function missedDismiss(){
-  MISSED = null;
+  MISSED.v = null;
   if(S) S.missed = null;
   closeSheet();
   render();
@@ -340,9 +348,9 @@ function missedDismiss(){
 }
 /* 点清单里的一条：跳到笔记并展开那条待办 */
 // ---- 截图捕获（P11）：扫描监控文件夹 → 横幅 → 多选 → 导入笔记 ----
-var SHOTFLAGS = null;    // {enabled, granted, folders:n, watermark}  便宜的状态，每次 refresh 都行
+var SHOTFLAGS = Vue.reactive({ v: null });    // {enabled, granted, folders:n, watermark}  便宜的状态，每次 refresh 都行
 /* 步骤 17d：截图页的四份状态收进一个 reactive 对象（同 17b CLIP / 17c FOLD）。
-   SHOTFLAGS 不进来：它是 Android.shotFlags() 的整包返回，读它的是「我的」页（还没迁），
+   SHOTFLAGS.v 不进来：它是 Android.shotFlags() 的整包返回，读它的是「我的」页（还没迁），
    整对象 reactive 化要连 shotFlags() 的回调一起动，留到 stats 那片。 */
 var SHOTS = Vue.reactive({ sel: {}, list: [], loading: false, error: '' });
 // 暂存区里被勾选的截图 id / /api/shots/list 的结果（sheet 用）
@@ -363,11 +371,11 @@ var shotTimer = 0, shotStartAt = 0;
 var SHOTPROG = Vue.reactive({ on: false, total: 0, what: '', secs: 0 });
 
 function shotFlags(cb){
-  if(!(window.Android && Android.shotFlags)){ SHOTFLAGS = {enabled:false, granted:false, folders:0}; if(cb) cb(); return }
+  if(!(window.Android && Android.shotFlags)){ SHOTFLAGS.v = {enabled:false, granted:false, folders:0}; if(cb) cb(); return }
   try{
     var d = JSON.parse(Android.shotFlags() || '{}');
-    SHOTFLAGS = d && typeof d === 'object' ? d : null;
-  }catch(e){ SHOTFLAGS = null }
+    SHOTFLAGS.v = d && typeof d === 'object' ? d : null;
+  }catch(e){ SHOTFLAGS.v = null }
   if(cb) cb();
 }
 /* 截图横幅四种状态点下去各去哪：Vue 模板里写成 H.shotGo(kind) 而不是 H[text.go]()，
@@ -591,7 +599,7 @@ function loadFolders(){
   try{ raw = (window.Android && Android.shotFolders) ? Android.shotFolders() : '[]' }catch(e){}
   try{ FOLD.all = JSON.parse(raw) || [] }catch(e){ FOLD.all = [] }
   var want = {};
-  ((SHOTFLAGS && SHOTFLAGS.list) || []).forEach(function(p){ want[p] = 1 });
+  ((SHOTFLAGS.v && SHOTFLAGS.v.list) || []).forEach(function(p){ want[p] = 1 });
   FOLD.sel = {};
   FOLD.all.forEach(function(f){
     // 首次：默认勾上名字像截图目录的；已经有配置的按配置来
@@ -649,13 +657,13 @@ function folderSave(){
  */
 function shotIntroOnce(){
   if(!(window.Android && Android.shotFlags)) return;
-  var f = SHOTFLAGS || {};
+  var f = SHOTFLAGS.v || {};
   if(f.enabled) return;
   var asked = false;
   try{ asked = localStorage.getItem('shotIntro') === '1' }catch(e){}
   if(asked) return;
   setTimeout(function(){
-    if(SHOTFLAGS && SHOTFLAGS.enabled) return;   // 这期间用户已经自己开了
+    if(SHOTFLAGS.v && SHOTFLAGS.v.enabled) return;   // 这期间用户已经自己开了
     dialog({
       title: '要不要自动收集截图？',
       body: '选几个文件夹盯着（默认就是截图目录），之后新截图会先排队，你勾选后一次性变成笔记。随时可以在「我的 → 截图捕获」里改。',
@@ -673,13 +681,13 @@ function shotIntroOnce(){
 }
 function scanShotsNow(){
   if(!(window.Android && Android.scanShots)) return toast('只在 app 内可用');
-  if(!(SHOTFLAGS && SHOTFLAGS.granted)) return askShotPerm();
+  if(!(SHOTFLAGS.v && SHOTFLAGS.v.granted)) return askShotPerm();
   toast('正在扫描监控文件夹…');
   Android.scanShots(true);
 }
 function rescanShots(days){
   if(!(window.Android && Android.rescanShots)) return toast('只在 app 内可用');
-  if(!(SHOTFLAGS && SHOTFLAGS.granted)) return askShotPerm();
+  if(!(SHOTFLAGS.v && SHOTFLAGS.v.granted)) return askShotPerm();
   dialog({
     title: '回捞最近 ' + days + ' 天的截图？',
     body: '会重新扫一遍监控文件夹，可能一次冒出上百张。已经见过的不会重复收，觉得太多可以先去文件夹里只保留一个目录。',
@@ -1037,7 +1045,7 @@ function paintStatus(){
 }
 /* ---------- 附件页（R4）----------
    数据来自 /api/attachments（服务端过滤/排序，含磁盘文件数校验）。 */
-var FA = {items:[], total:0, bytes:0, files:0, missing:0, scanned:0, diskFiles:0, loaded:false, error:''};
+var FA = Vue.reactive({items:[], total:0, bytes:0, files:0, missing:0, scanned:0, diskFiles:0, loaded:false, error:''});
 /* 步骤 13：附件页的抢占判定以前用**服务端搜索共用的** searchSeq，笔记页搜索一在飞，
    附件页这次请求的结果就被整次丢掉（`if(my !== searchSeq) return`），FA.loaded 永远停在
    false → 用户侧症状是附件页停在骨架屏，只能切走再切回来。真机套件也撞过（步骤 11 的
@@ -1063,17 +1071,17 @@ async function filesNow(){
     var d = await apiTimeout('/api/attachments?'+s);
     if(my !== filesSeq) return;
     var k = JSON.stringify(d);
-    FA = {items:d.items||[], total:d.total||0, bytes:d.bytes||0, files:d.files||0,
+    reassign(FA, {items:d.items||[], total:d.total||0, bytes:d.bytes||0, files:d.files||0,
           missing:d.missing||0, scanned:d.scanned||0, diskFiles:d.diskFiles||0,
-          loaded:true, error:''};
+          loaded:true, error:''});
     filesRetry = 0;
     if(k === SRK){ paintStatus(); return }
     SRK = k;
   }catch(e){
     if(my !== filesSeq) return;
-    FA = {items:FA.items, total:FA.total, bytes:FA.bytes, files:FA.files,
+    reassign(FA, {items:FA.items, total:FA.total, bytes:FA.bytes, files:FA.files,
           missing:FA.missing, scanned:FA.scanned, diskFiles:FA.diskFiles,
-          loaded:false, error:errText(e)};
+          loaded:false, error:errText(e)});
     SRK = '';
     if(filesRetry < 2){ filesRetry++; setTimeout(filesNow, 1500*filesRetry) }
   }
@@ -1114,12 +1122,12 @@ function pickFile(){
 /* 步骤 13：stBusy 以前没有超时 —— 一次永不返回的 /api/stats 把我的页永久钉在骨架屏
    （`if(stBusy) return` 之后再也没有第二次机会）。现在请求带超时，stBusy 带时间戳，
    超过 REQ_TIMEOUT_MS + 宽限期就允许新的请求进入；失败记 stErr，骨架屏上给「重试」按钮。 */
-var ST = null, stBusy = false, stSince = 0, stErr = '';
+var ST = Vue.reactive({ v: null }), stBusy = false, stSince = 0, stErr = '';
 async function statsNow(){
   if(stBusy && (Date.now() - stSince) < REQ_TIMEOUT_MS + 2000) return;
   stBusy = true; stSince = Date.now();
-  try{ ST = await apiTimeout('/api/stats'); stErr = '' }
-  catch(e){ ST = null; stErr = errText(e) }
+  try{ ST.v = await apiTimeout('/api/stats'); stErr = '' }
+  catch(e){ ST.v = null; stErr = errText(e) }
   stBusy = false;
   if(tab==='mine') render();
 }
@@ -1215,11 +1223,11 @@ function importJSON(){
   Android.pickJSON();
 }
 function clearAllNotes(){
-  var n = ST ? ST.notes.total : (S.info.notes||0);
+  var n = ST.v ? ST.v.notes.total : (S.info.notes||0);
   askDel('清空全部 '+n+' 条笔记？附件文件一并删除，设置与 API Key 保留。', function(){
     api('/api/clear', {}).then(function(r){
       toast(r.ok ? ('已删除 '+r.deleted+' 条') : ('清空失败: '+(r.error||'')));
-      ST = null; refresh(); statsNow();
+      ST.v = null; refresh(); statsNow();
     }, function(e){ toast('清空失败: '+e) });
   });
 }
@@ -1258,13 +1266,13 @@ var SIG_SKIP = { uptimeS:1, tz:1, go:1, dir:1 };
 function stateSig(d){
   var i = {}, src = (d && d.info) || {}, k;
   for(k in src){ if(!SIG_SKIP[k]) i[k] = src[k] }
-  var sf = (typeof SHOTFLAGS === 'object' && SHOTFLAGS) || {};   // 启动早期还没有 flags
+  var sf = (typeof SHOTFLAGS.v === 'object' && SHOTFLAGS.v) || {};   // 启动早期还没有 flags
   return JSON.stringify([d && d.notes, i, (d && d.settings) || {},
     [sf.enabled?1:0, sf.folders||0, sf.granted?1:0]]);
 }
 async function refresh(quiet){
   if(Date.now() < animLock){ paintStatus(); return }
-  try{ var d = await api('/api/state'); S = d; if(MISSED) S.missed = MISSED;
+  try{ var d = await api('/api/state'); S = d; if(MISSED.v) S.missed = MISSED.v;
        var dirty = !quiet || !drawn || stateSig(d) !== SIG;
        if(!prefsLoaded && S.settings && S.settings.ui){
          prefsLoaded = true;
@@ -1348,15 +1356,15 @@ async function testLLM(){
 /* 运行日志 / AI 调用记录：步骤 16c 之前是「取完数据才弹」（await api 然内拼字符串），
    组件里自己 fetch 会变成「先弹出一个空的再填」，那是行为改动不是重构，所以数据依旧
    在这里取好，经 HOST 的 logData / debugData 递给组件（弹层每次打开都是新实例）。 */
-var LOGDATA = null, DEBUGDATA = null;
+var LOGDATA = Vue.reactive({ v: null }), DEBUGDATA = Vue.reactive({ v: null });
 async function showLog(){
   var r = await api('/api/log?n=150');
-  LOGDATA = r;
+  LOGDATA.v = r;
   return sheetVue('log');
 }
 async function showDebug(){
   var r = await api('/api/llmlog');
-  DEBUGDATA = r;
+  DEBUGDATA.v = r;
   return sheetVue('debug');
 }
 function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
@@ -1470,7 +1478,7 @@ function setTab(reset){
   var y = reset ? 0 : (tabScroll[tab] || 0);
   if(reset) tabScroll[tab] = 0;
   requestAnimationFrame(function(){ window.scrollTo(0, y) });
-  if(tab==='mine' && !ST) statsNow();
+  if(tab==='mine' && !ST.v) statsNow();
   /* 指示条要量活动页签的真实几何，而 .tab.on 这个类是 Vue 在 nextTick 才落到 DOM 上的，
      所以测量也必须排在 nextTick 之后（同步量会量到上一个页签的位置）。 */
   nextTick(moveInd);
@@ -1534,13 +1542,13 @@ function searchClear(){
 window.addEventListener('resize', moveInd);
 // 安静轮询：数据没变就只刷状态点，不重建 DOM
 /* ---------- S3（D14）：Vue 宿主接口 ----------
-   组件不持有数据，只通过 H 读模块状态（getter 取当前值，因为 S / MISSED / SHOTFLAGS
+   组件不持有数据，只通过 H 读模块状态（getter 取当前值，因为 S / MISSED.v / SHOTFLAGS.v
    这些是会被整体赋值的 var）。必须在首次 refresh() 之前装好：render() 会 mount Vue 视图，
    组件 setup() 里就要读 H。 */
 var HOST = setHost({
   V: V,
   get S(){ return S }, get SR(){ return SR }, get tab(){ return tab },
-  get open(){ return open }, get MISSED(){ return MISSED }, get SHOTFLAGS(){ return SHOTFLAGS },
+  get open(){ return open }, get MISSED(){ return MISSED.v }, get SHOTFLAGS(){ return SHOTFLAGS.v },
   notesFiltered: notesFiltered, enterCls: enterCls, ic: ic, esc: esc, fmtTime: fmtTime,
   /* 步骤 16：叶子 HTML 函数（srcChip / statusChip / factsInner / factsBlock / todoRow /
      metaHTML / whereHTML / attachHTML / cbInnerHTML / todoTxHTML / remindBtns）翻成了
@@ -1594,8 +1602,8 @@ var HOST = setHost({
   clipMetaText: clipMetaText, clipParseText: clipParseText,
   /* 步骤 10 加：StatsView / SettingsSheetView 的宿主接口（同上，漏一个就是静默回退字符串渲染器，
      闸门⑮ 静态扇模板里的 H.xxx 钉住它）。
-     ST / remindPending 会被整体赋值（statsNow / refresh），必须走 getter；SHOTFLAGS 步骤 8 已有。 */
-  get ST(){ return ST }, get remindPending(){ return remindPending },
+     ST.v / remindPending 会被整体赋值（statsNow / refresh），必须走 getter；SHOTFLAGS.v 步骤 8 已有。 */
+  get ST(){ return ST.v }, get remindPending(){ return remindPending },
   get stErr(){ return stErr }, statsNow: statsNow,
   get srErr(){ return srErr },
   /* 步骤 13 加：真机竞态回归用例要能在附件页请求在飞时开一次笔记页搜索（抢占
@@ -1608,7 +1616,7 @@ var HOST = setHost({
   setPref: setPref, resetPrefs: resetPrefs,
   missedDone: missedDone, missedGoTodos: missedGoTodos, missedDismiss: missedDismiss,
   addNote: addNote, pickImage: pickImage, addTodo: addTodo, clipText: clip,
-  get logData(){ return LOGDATA }, get debugData(){ return DEBUGDATA },
+  get logData(){ return LOGDATA.v }, get debugData(){ return DEBUGDATA.v },
   get sheetArg(){ return SHEETARG },
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
@@ -1722,7 +1730,7 @@ Object.assign(window, window.__enoteActions);
    注释会被当成一个名字，运行时导出表比对（P6.6）立刻红。 */
 
 /* ---------- S3（D21）：状态桥 ----------
-   jseval 测试载荷跑在 module 外面，拿不到模块作用域里的变量。tab / MISSED / SHOTS.sel
+   jseval 测试载荷跑在 module 外面，拿不到模块作用域里的变量。tab / MISSED.v / SHOTS.sel
    在载荷里是**整体赋值**（tab="notes"），必须有 setter：否则赋值只是在 window 上新建一个
    同名全局变量，模块里的 tab 一动不动，测试会「绿着骗过去」——这正是最难查的一类假绿。
    S / open / SHOTS.list 载荷只读或只改属性，getter 就够；一并给 setter 免得以后踩同一个坑。
@@ -1732,7 +1740,7 @@ window.__enote.actions = window.__enoteActions;
 window.__enote.state = {
   get tab(){ return tab }, set tab(v){ tab = v },
   get S(){ return S }, set S(v){ S = v },
-  get MISSED(){ return MISSED }, set MISSED(v){ MISSED = v },
+  get MISSED(){ return MISSED.v }, set MISSED(v){ MISSED.v = v },
   get open(){ return open }, set open(v){ open = v },
   get shotSel(){ return SHOTS.sel }, set shotSel(v){ SHOTS.sel = v },
   get shotList(){ return SHOTS.list }, set shotList(v){ SHOTS.list = v },
@@ -1747,14 +1755,14 @@ window.__enote.state = {
      app.js / go/web_test.go / tools/ui_test.js 三处名单同步）。 */
   get clipList(){ return CLIP.list }, set clipList(v){ CLIP.list = v },
   get clipSel(){ return CLIP.sel }, set clipSel(v){ CLIP.sel = v },
-  /* 步骤 10 加：我的页 / 设置页的夹具要注入 ST（/api/stats 的返回），没 setter 就是 D21
+  /* 步骤 10 加：我的页 / 设置页的夹具要注入 ST.v（/api/stats 的返回），没 setter 就是 D21
      那个坑。闭合集 22 → 23 名，app.js / go/web_test.go / tools/ui_test.js 三处名单同步。 */
-  get ST(){ return ST }, set ST(v){ ST = v },
+  get ST(){ return ST.v }, set ST(v){ ST.v = v },
   /* 步骤 5 加：SR 是 notesFiltered() 的第一优先级输入（if(SR.notes) return SR.notes），
      不暴露它，夹具把 S.notes 改成 [] 也画不出空态 —— 画的是服务端搜索结果那 2 条，
      症状是「Vue 视图的 computed 冻住了」，实测在这里烧了两轮探针才定位。
      闭合集 16 → 17 名（D21），闸门③与 web_test 的名单同步。 */
-  get SR(){ return SR }, set SR(v){ SR = v }
+  get SR(){ return SR }, set SR(v){ reassign(SR, v) }
 };
 
 /* ---------- S3（D17）：__enote 测试缝 ----------
