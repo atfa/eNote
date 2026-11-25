@@ -70,7 +70,7 @@ export const FilesView = {
   template: `
 <file-strip/>
 <div class="card" v-if="!FA.loaded">
-  <div class="skel img"></div><div class="skel l"></div><div class="skel s"></div>
+  <van-skeleton class="skel skel-img" :row="3" :row-width="['100%','100%','45%']" :title="false" :animate="false"/>
   <div class="errbox" v-if="FA.error">{{ FA.error }}，正在重试 ·
     <button class="btn sm gh" @click="H.filesNow()">立即重试</button>
   </div>

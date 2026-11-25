@@ -213,9 +213,14 @@ pre{background:var(--pre-bg);border:var(--hair) solid var(--line);border-radius:
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2)}
 .pill{display:inline-flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border-radius:var(--r-pill);
   background:var(--acc-s);color:var(--acc);font-size:var(--fs-sm);font-weight:600;border:var(--hair) solid var(--acc)}
-.sw{position:relative;width:46px;height:26px;flex:0 0 46px;border-radius:var(--r-pill);background:var(--grip);transition:background var(--d2) var(--ease)}
-.sw:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--on-solid);transition:left var(--d2) var(--ease)}
-.sw.on{background:var(--acc2)}.sw.on:after{left:23px}
+/* 步骤 18e：开关换成 Vant 的 van-switch。尺寸 / 配色 / 时长全部走 tokens.css 的
+   --van-switch-* 映射表（46×26、圆点走 20px、var(--d2)，与旧 .sw 逐字对齐），
+   这里只留两件事：
+   ① flex 基准 —— .setrow 给开关留 46px，宽度变了整行会挤；
+   ② 缓动 —— Vant 的轨道 transition 没写 timing-function（默认 ease）、圆点写死
+   cubic-bezier(.3,1.05,.4,1.05)（回弹），旧版两处都是 var(--ease)。 */
+.sw{flex:0 0 46px;transition-timing-function:var(--ease)}
+.sw .van-switch__node{transition-timing-function:var(--ease)}
 /* 分段控件（主题切换等） */
 .seg{display:flex;gap:var(--s1);background:var(--card2);border:var(--hair) solid var(--line);border-radius:var(--r2);padding:var(--s1)}
 .seg button{flex:1;border:0;background:none;color:var(--dim);padding:var(--s2) var(--s2);border-radius:var(--r1);position:relative;

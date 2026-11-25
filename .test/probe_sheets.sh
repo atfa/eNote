@@ -43,6 +43,14 @@ JS='(async function(){
   __enote.state.MISSED = {count:0, items:[]};
   await dump("missed_empty", function(){ return missedSheet() });
   // ---- 16d 新增：fab 图标（v-html → <ico>）与进度层 .owarn（v-html → 模板 + <ico>）----
+  // fab 图标只由 setTab() 写（state.tab + render() 不碰它，见 app.js:1502），所以这里必须
+  // 走 tabPick：上一支探针（probe_dom2）停在附件页时，直接读会抓到附件页的 #i-clip。
+  // 还要先走一趟 files：tabPick 对「已经在的页签」是早退（app.js:1565），模块里的 tab
+  // 已经是 notes 时它只滚回顶部，fab 不会被重写。
+  __enote.vue.host.tabPick("files");
+  await new Promise(function(r){ setTimeout(r, 400) });
+  __enote.vue.host.tabPick("notes");
+  await new Promise(function(r){ setTimeout(r, 600) });
   out.fab_notes = (document.querySelector("#fab .fico")||{outerHTML:"(none)"}).outerHTML;
   var SP = __enote.vue.host.SHOTPROG;
   SP.on = true; SP.total = 3; SP.what = "合并成一条笔记"; SP.secs = 5;

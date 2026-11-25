@@ -1730,8 +1730,12 @@ if (SPLIT) {
   sig('待办竖条统一占位（checkbox 对齐）', priBar);
 
   // P6.5 常驻后台：设置页开关 + 引导 + 前台服务/电池优化接口都存在
-  const ka = /function toggleKeepAlive\(el\)/.test(src)
+  // 步骤 18e：开关是 van-switch，handler 不再接元素（类名是 keepAliveOn() 的纯函数），
+  // 乐观更新改由 applyKeepAlive 里的 settingsRefresh() 负责。
+  const ka = /function toggleKeepAlive\(\)/.test(src)
     && /Android\.setKeepAlive\(on\)/.test(src)
+    && /function applyKeepAlive\(on\)\{[\s\S]{0,200}settingsRefresh\(\)/.test(src)
+    && !/el\.className\s*=\s*'sw'/.test(src)
     && /function askBattery\(\)/.test(src)
     && /常驻后台/.test(src)
     && /去关闭电池优化/.test(src);
@@ -2252,7 +2256,12 @@ if (SPLIT) {
           if (tag[1].includes('-') || !NATIVE.has(tag[1])) used.add(tag[1]);
       compCount++;
       for (const tag of used)
-        if (!declared.has(tag)) miss24.push(rel + ' 的 ' + name + ' 模板用了 <' + tag + '> 但自己没声明');
+        if (!declared.has(tag)) {
+          // 豁免 van-*：Vant 是 app.use(Vant) 全局注册（闸门⑮ 同源，那边钉着 withHost 里
+          // 确实 app.use(Vant)），不是组件局部声明；van-switch / van-skeleton 都是这条路。
+          if (tag.indexOf('van-') === 0) continue;
+          miss24.push(rel + ' 的 ' + name + ' 模板用了 <' + tag + '> 但自己没声明');
+        }
     }
   }
   if (miss24.length) bad('闸门㉔ 组件的 components 选项缺声明（Vue 只 warn，渲染出裸元素）',

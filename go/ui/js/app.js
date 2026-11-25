@@ -279,20 +279,23 @@ function keepAliveOn(){
 function batteryIgnoring(){
   try { return !!(window.Android && Android.batteryIgnoring && Android.batteryIgnoring()); } catch(e){ return true }
 }
-function toggleKeepAlive(el){
+/* 步骤 18e：开关是 van-switch，类名由状态算出来（settings.js 的 keepSwCls），
+   handler 不再接元素。关掉要二次确认：服务一停，后台到点的提醒就全交给系统调度了 */
+function toggleKeepAlive(){
   if(!window.Android || !Android.setKeepAlive){ toast('常驻后台只在 app 内可用'); return }
   var on = !keepAliveOn();
-  // 关掉要二次确认：服务一停，后台到点的提醒就全交给系统调度了
   if(!on){
     dialog({title:'关闭常驻后台', body:'关闭后 app 在后台可能被系统冻结，到点提醒可能不响。',
-      ok:'关闭', danger:true, onOk:function(){ applyKeepAlive(el, false) }});
+      ok:'关闭', danger:true, onOk:function(){ applyKeepAlive(false) }});
     return;
   }
-  applyKeepAlive(el, true);
+  applyKeepAlive(true);
 }
-function applyKeepAlive(el, on){
+function applyKeepAlive(on){
   Android.setKeepAlive(on);
-  el.className = 'sw' + (on ? ' on' : '');
+  /* 开关的视觉状态是 keepAliveOn() 的纯函数，所以这里立刻重读一次原生状态：
+     旧版是 el.className 乐观地先改，500ms 后再校准；现在乐观那一步由 computed 做。 */
+  settingsRefresh();
   if(on){
     toast('已开启常驻后台');
     if(!batteryIgnoring()) setTimeout(function(){ toast('再点「去关闭电池优化」后台才稳') }, 2400);
@@ -1362,7 +1365,7 @@ function reocr(id){ if(!window.Android){toast('图片识别只在 app 内可用'
   toast('正在识别图片…'); Android.reocr(id); setTimeout(refresh,1500); setTimeout(refresh,5000); }
 function jump(id){ tab='notes'; open[id]=true; setTab(true); refresh();
   setTimeout(function(){var el=document.getElementById('n'+id);if(el)el.scrollIntoView({behavior:'smooth',block:'center'})},250); }
-function toggleAI(el){ var s=S.settings; s.useAI=!s.useAI; el.classList.toggle('on'); saveSettings(); }
+function toggleAI(){ var s=S.settings; s.useAI=!s.useAI; saveSettings(); }
 async function saveSettings(){
   var s = {baseUrl:$('#sUrl').value.trim(), apiKey:$('#sKey').value.trim(),
     model:$('#sModel').value.trim(), timeoutS:parseInt($('#sTimeout').value)||90,

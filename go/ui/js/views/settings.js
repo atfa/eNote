@@ -19,8 +19,10 @@
       写 :value.attr 才与遗留的字符串属性一致（步骤 8 的 folderQ 是反例：那里连属性都不该有）。
       值一律 `x || ''`：遗留 esc(undefined) 得到 value=""，Vue 的 .attr 遇到 null/undefined
       会 removeAttribute，两边就差一个属性。
-   b) 开关 .sw 的 onclick="toggleAI(this)" 传的是元素本身（函数内部 el.classList.toggle），
-      Vue 里用 $event.currentTarget 拿同一个元素，两条路径共用同一个函数。
+   b) 开关（步骤 18e 起是 Vant 的 van-switch）不再把元素递给 handler：旧版 onclick=
+      "toggleAI(this)" 靠 el.classList.toggle 改像素，状态与类名是两条线；现在类名是
+      状态的纯函数（keepSwCls / aiSwCls 拼 'sw' + ' on'），:model-value 与 @update:model-value
+      接同一个状态源，app.js 里那两处 DOM 写操作随之删掉。
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard } */
@@ -79,7 +81,7 @@ export const SettingsSheetView = {
 <div class="pgroup">后台</div>
 <div class="card">
   <div class="row between" style="margin-top:var(--s0)"><div><b>常驻后台</b><div style="font-size:var(--fs-xs);color:var(--dim)">{{ keepSub }}</div></div>
-  <div :class="keepSwCls" @click="H.toggleKeepAlive($event.currentTarget)"></div></div>
+  <van-switch :class="keepSwCls" :model-value="keepAlive" @update:model-value="H.toggleKeepAlive"/></div>
   <template v-if="keepAlive">
     <div class="kv" style="margin-top:var(--s2)" v-if="batteryIgn"><span>电池优化</span><span style="color:var(--ok)">已豁免，不会被冻结</span></div>
     <template v-else>
@@ -94,7 +96,7 @@ export const SettingsSheetView = {
 <div class="pgroup">AI 模型（BYOK）</div>
 <div class="card">
   <div class="row between" style="margin-top:var(--s0)"><div><b>启用 AI 解析</b><div style="font-size:var(--fs-xs);color:var(--dim)">关闭后只保存原文，不调用模型</div></div>
-  <div :class="aiSwCls" @click="H.toggleAI($event.currentTarget)"></div></div>
+  <van-switch :class="aiSwCls" :model-value="s.useAI" @update:model-value="H.toggleAI"/></div>
   <label>API Base URL（OpenAI 兼容）</label><input id="sUrl" :value.attr="s.baseUrl || ''" placeholder="https://your-server:8080/v1">
   <label>API Key</label><input id="sKey" :value.attr="s.apiKey || ''" placeholder="sk-...">
   <div class="fhint">明文存在本机 app 私有目录（别的 app 读不到），这里显示的就是已保存的 key，换 key 直接改这一栏</div>

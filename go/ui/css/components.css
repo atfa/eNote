@@ -217,12 +217,21 @@
 .li .lico{flex:0 0 32px;height:32px;border-radius:var(--r1);display:flex;align-items:center;
   justify-content:center;background:var(--acc-s);color:var(--acc)}
 .li .lico .ic{width:16px;height:16px}
-.skel{border-radius:var(--r1);background:linear-gradient(90deg,var(--card2) 25%,var(--card) 37%,var(--card2) 63%);
+/* 步骤 18e：骨架屏换成 Vant 的 van-skeleton。DOM 从三个 .skel 块变成
+   .van-skeleton > .van-skeleton__content > N × .van-skeleton-paragraph，.skel 类名留在
+   根节点（test.sh:3276 用它判定「还在加载」）。Vant 的段落是等高的
+   （--van-skeleton-paragraph-height），我们的三档高度（120 / 14 / 10）按位置补；
+   动画 Vant 是整块 blink，我们是渐变扫过（shim），所以背景与 animation 由下面这条给全。
+   旧版只有 .skel.l 带 margin（上下各 var(--s2)），.skel.s 不带 —— 所以最后一段 margin 归零。
+   模板上的 :animate="false" 是必需的：Vant 的 van-skeleton--animate 会给根节点加一个
+   opacity 呼吸动画（实测 opacity 在 0.73~1 之间跳），与我们的 shim 叠在一起就是双重动画。 */
+.skel.van-skeleton{display:block;padding:0}
+.skel .van-skeleton-paragraph{height:14px;margin:var(--s2) 0;border-radius:var(--r1);
+  background:linear-gradient(90deg,var(--card2) 25%,var(--card) 37%,var(--card2) 63%);
   background-size:400% 100%;animation:shim 1.2s var(--ease) infinite}
+.skel .van-skeleton-paragraph:last-child{height:10px;width:45%;margin:0}
+.skel-img .van-skeleton-paragraph:first-child{height:120px;border-radius:var(--r2)}
 @keyframes shim{from{background-position:100% 0}to{background-position:0 0}}
-.skel.img{border-radius:var(--r2)}
-.skel.l{height:14px}.skel.s{height:10px}
-.skel.l{height:14px;margin:var(--s2) 0}.skel.s{height:10px;width:45%}.skel.img{height:120px;margin:var(--s2) 0}
 .empty .em{font-size:var(--fs-display);margin-bottom:var(--s2);opacity:.6;animation:bob 2.6s var(--ease) infinite}
 .empty .eo{width:76px;height:76px;margin:0 auto var(--s3);border-radius:var(--r3);display:flex;align-items:center;
   justify-content:center;background:linear-gradient(160deg,var(--acc-s),var(--card));border:var(--hair) solid var(--line);box-shadow:var(--sh);animation:bob 3.4s var(--ease) infinite}
@@ -270,5 +279,3 @@
 .cb{animation:none}
 .cb.on{animation:pop var(--d2) var(--ease)}
 @keyframes pop{0%{transform:scale(.7)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
-
-.sw.dis{opacity:.45}

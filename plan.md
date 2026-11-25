@@ -2807,3 +2807,62 @@ Vant 的 popup 从 2001 起递增，固定层级的东西只能站到它上面�
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
 三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。
+
+**步骤 18e：`van-switch` + `van-skeleton`（van-picker 判定为不适用）（2026-11-25，全绿）**
+
+这是 ⑥ 的收尾：剩下三个 Vant 组件里，`van-switch` 换设置页两个开关，`van-skeleton` 换附件页与
+我的页的骨架屏，`van-picker` 没有落点（见末尾的判定）。
+
+**开关：状态重新变成唯一来源。** 旧写法是「像素与状态各改各的」：`onclick="toggleAI(this)"` 把
+元素递进函数，函数里 `el.classList.toggle('on')` / `el.className='sw' + (on?' on':'')` 先乐观改
+类名，500ms 后再 `settingsRefresh()` 校准。现在 `:model-value` 读状态、`@update:model-value` 写
+状态，类名是状态的纯函数（`keepSwCls` / `aiSwCls` 拼 `'sw' + (on?' on':'')`，test.sh 断言的
+`on` 类名契约不变），`toggleKeepAlive()` / `applyKeepAlive(on)` / `toggleAI()` 三个 handler 的
+元素参数与两处 DOM 写操作一起删掉，乐观那一步交给 computed（`applyKeepAlive` 里立刻
+`settingsRefresh()`，500ms 那次校准保留）。顺带白拿 `role="switch"` + `aria-checked` + `tabindex`。
+
+尺寸映射是这一步全部的技术含量：Vant 的开关**全部由 font-size 驱动** —— 高 = `1em + 4px`、
+宽 = `1.8em + 4px`、圆点 = `1em`、位移 = 宽 − 圆点 − 4px。旧 `.sw` 是 46×26（不是 2:1），所以
+`--van-switch-size:22px`（高正好 26px）+ `--van-switch-width:46px`（位移自动算成 46−22−4 = 20px，
+与旧版 `left:3px→23px` 逐字相同）。圆点 22px（旧版 20px）是这一步唯一的像素差，两边都垂直居中。
+`base.css` 的三条 `.sw` 规则只剩两条：`flex:0 0 46px`（`.setrow` 给开关留的宽度，删了整行会挤）
+和 `transition-timing-function:var(--ease)`（Vant 的轨道 transition 没写 timing-function、圆点写死
+`cubic-bezier(.3,1.05,.4,1.05)` 回弹，旧版两处都是 `var(--ease)`）。`.sw.dis{opacity:.45}` 是死代码
+（JS 与 test.sh 都不挂这个类），删掉，禁用态改由 `--van-switch-disabled-opacity` 给。
+
+**骨架屏：`.skel` 的三种高度按位置补。** Vant 的骨架是「标题 + 一排等高段落」，我们是
+120 / 14 / 10 px 三档，所以 `components.css` 用 `:nth-child` / `:last-child` 把高度与圆角补回来，
+动画保留我们自己的渐变扫过（`shim`）而不是 Vant 的整块 blink。`:animate="false"` 是必需的：
+Vant 的 `van-skeleton--animate` 会给根节点挂一个 opacity 呼吸动画（实测 opacity 在 0.73~1 之间跳），
+与 shim 叠在一起就是双重动画。`.skel` 类名留在根节点（test.sh 用它判定「还在加载」）。
+
+**闸门两处**：常驻后台那条签名断言（`function toggleKeepAlive(el)`）改成新签名，并加两条
+「DOM 写操作不许回来」的负断言（`applyKeepAlive(on)` 里必须能看到 `settingsRefresh()`、
+`el.className='sw'` 必须不存在）；闸门㉔（组件模板里的自定义标签必须在自己的 `components:` 里
+声明）加 `van-*` 豁免 —— 与闸门⑮ 同源：Vant 走 `app.use(Vant)` 全局注册，那条断言在闸门⑮
+里钉着，两处豁免必须成对出现，否则一边改另一边假绿。
+
+**van-picker 判定：不适用。** 计划里写它对应「时间选择器」，但 app 里没有 app 内的时间选择器：
+添加待办的日期/时间是原生 `<input type="date">` / `<input type="time">`（`views/sheets.js:131`），
+点开的是**系统**控件（Android 原生日历/时钟弹窗）。换成 `van-picker` 是换交互（滚轮 vs 系统弹窗），
+不是换实现，属于「新增功能」，而 ⑥ 的边界是「只用 Vant 重写已有 UI」。所以本步不动它，
+`van-picker` 随 `app.use(Vant)` 一起可用，将来要做「app 内滚轮选时间」时直接取用。
+
+设备实测（`.test/p18sw.js` 读计算样式，基线 = `git stash` 出 18d 的构建，比对器 `.test/cmp_sw.js`）：
+开关轨道（46×26、`--grip`/`--acc2`、`background-color 0.18s`）、圆点（22px、白、无阴影、
+位移 20px、`var(--ease)`）、开/关两态与「点一下翻转」全部对齐；骨架屏三条（120/14/10 px、
+圆角 12/8/8、margin 8/8/0、宽度 100%/100%/45%、渐变与 shim 动画）**逐字一致**。
+四条允许的结构性等价（同一个像素的两种写法，写在比对器里）：轨道圆角 999px→22px（26px 高的盒子上
+两者都 ≥ 半高，都是胶囊）、圆点圆角 50%→100%（正方形上等价）、位移 `transition:left`→
+`transition:transform`、轨道 `transition-property:background`→`background-color`（只有颜色在变）。
+类名从 `sw on` 变成 `van-switch van-switch--on sw on`（Vant 的类在前，我们的在后，`on` 契约不变）。
+我的页骨架屏（同一套 CSS 的两行变体）在探针里抓不到：本机 `/api/stats` 往返 < 16ms，加载帧
+观察不到（`__enote.ST=null` 之后 rAF 里已经画完），附件页那一页的三行变体已逐字覆盖同一批规则。
+
+顺手修了探针一处污染：`.test/probe_sheets.sh` 读 `fab_notes` 前必须 `tabPick("files")` 再
+`tabPick("notes")` 走一趟 —— `tabPick` 对「已经在的页签」是早退（app.js:1565 只滚回顶部），
+上一支探针停在附件页时 fab 不会被重写，症状是 `dom_equiv3` 的「fab 图标 · 笔记页」抓到 `#i-clip`。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
+三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。
+设置页开关与附件页骨架屏各有一张 VD 截图核对（`.test/shot_18e_settings.png` / `.test/shot_18e_skel.png`）。

@@ -1,32 +1,66 @@
-P14 S5 步骤 18d：SheetHost → van-popup，17i 的 <Transition> JS 钩子整批退役
+P14 S5 步骤 18e：开关与骨架屏换成 Vant 组件（van-picker 判定为不适用）
 
-弹层外壳换成 Vant 的 van-popup：定位（fixed 贴底、宽 100%）、遮罩、滚动锁定、
-z-index 分层归 Vant，.sheet 只剩「宽屏上把面板居中」+ 面板自己的样式 + 入场动画。
-类名契约一个没动：#sheet 的 .on/.page、#panel、#sheetBody、.grip、.pclose 全在，
-test.sh 的 8 处 #sheet.on 选择器、闸门⑥ 的 .sheet、闸门⑦ 的层叠基线全部照旧。
-遮罩是 Vant 的 .van-overlay，配色与毛玻璃由 overlay-class 送进来的 .sheet-ovl 提供。
+⑥（Vant 组件库）的收尾。设置页两个手写开关换成 `<van-switch>`，附件页与我的页的
+骨架屏换成 `<van-skeleton>`；计划里的第三项 `van-picker` 判定为不适用。
 
-显隐照 18b/18c 走 v-if + :show="true"（Vue 的 <Transition> 靠双 rAF 排程，不可见窗口上
-永不结束，见 18c 的记录），于是 17i 那套 <transition :css="false"> 的 JS 钩子
-（shEnter/shLeave/shLeaveCancel/leaveMs）整批删掉。shell.sheet 新增 mounted（节点在不在）
-与 on（看不看得见）分离：closeSheet = on=false 挂 .closing 播收场动画 + 定时器摘节点，
-摘节点时 van-popup 的 @vue:unmounted 调 sheetLeft() 拆弹层内容的 app。
-闸门⑱ 契约跟着换：@after-leave → @vue:unmounted，并新增「不许再用 <transition>」
-「时长必须从样式表读（cssMs --d1）」「摘节点的定时器必须带状态守卫」三条。
+开关：状态重新成为唯一来源
+- 旧写法是「像素与状态各改各的」：`onclick="toggleAI(this)"` 把元素递进函数，函数里
+  `el.classList.toggle('on')` / `el.className='sw'+(on?' on':'')` 乐观改类名，500ms 后才
+  `settingsRefresh()` 校准。现在 `:model-value` 读状态、`@update:model-value` 写状态，
+  类名是状态的纯函数（settings.js 的 `keepSwCls` / `aiSwCls` 拼 `'sw' + (on?' on':'')`，
+  test.sh 断言的 `on` 类名契约不变）。
+- 三个 handler 的元素参数与两处 DOM 写操作一起删掉：`toggleKeepAlive(el)`→`()`、
+  `applyKeepAlive(el,on)`→`(on)`（乐观那一步交给 computed，立刻 `settingsRefresh()`，
+  500ms 那次校准保留）、`toggleAI(el)`→`()`。
+- 尺寸映射是这一步全部的技术含量：Vant 的开关全部由 font-size 驱动（高 = 1em+4px、
+  宽 = 1.8em+4px、圆点 = 1em、位移 = 宽−圆点−4px），旧 `.sw` 是 46×26（不是 2:1），
+  所以 tokens.css 给 `--van-switch-size:22px`（高正好 26px）+ `--van-switch-width:46px`
+  （位移自动算成 46−22−4 = 20px，与旧版 `left:3px→23px` 逐字相同）。圆点 22px（旧版
+  20px）是这一步唯一的像素差，两边都垂直居中。
+- `base.css` 三条 `.sw` 规则只剩两条：`flex:0 0 46px`（`.setrow` 给开关留的宽度）与
+  `transition-timing-function:var(--ease)`（Vant 的轨道没写 timing-function、圆点写死
+  `cubic-bezier(.3,1.05,.4,1.05)` 回弹，旧版两处都是 `var(--ease)`）。
+  `.sw.dis{opacity:.45}` 是死代码（JS 与 test.sh 都不挂这个类），删掉，禁用态改由
+  `--van-switch-disabled-opacity` 给。
 
-两个坑：
-1) cssMs 把 getPropertyValue('--d1') 读到的 "110ms" 当秒乘了 1000 → 110 秒后才摘节点，
-   test.sh --vd 报「关掉弹层之后还有 sheet 活着（sheets=settings）」。CSS 时长带单位。
-2) Vant 的 Overlay 组件自带 <Transition appear>，摘 van-fade-appear-from 同样要等 rAF，
-   不可见窗口上遮罩永久透明；views/shell.css 钉回 opacity:1（迁移前遮罩本来就是瞬间出现）。
+骨架屏
+- Vant 的骨架是「标题 + 一排等高段落」，我们是 120 / 14 / 10 px 三档，`components.css`
+  用 `:nth-child` / `:last-child` 把高度与圆角补回来，动画保留我们自己的渐变扫过（`shim`）。
+- `:animate="false"` 是必需的：Vant 的 `van-skeleton--animate` 给根节点挂 opacity 呼吸动画
+  （实测 0.73~1 之间跳），与 shim 叠起来就是双重动画。`.skel` 类名留在根节点
+  （test.sh 用它判定「还在加载」）。
 
-进度层 .ovl 的 z-index 80 → 9000：旧版 80 > sheet 40（进度层压在弹层之上），
-Vant 的 popup 从 2001 起递增，固定层级的东西只能站到它上面，不能混着排。
+闸门两处
+- 常驻后台的签名断言改成新签名，并加两条负断言：`applyKeepAlive(on)` 里必须能看到
+  `settingsRefresh()`、`el.className='sw'` 必须不存在 —— 防 DOM 写操作回来。
+- 闸门㉔（组件模板里的自定义标签必须在自己的 `components:` 里声明）加 `van-*` 豁免，
+  与闸门⑮ 同源（Vant 走 `app.use(Vant)` 全局注册）；两处豁免必须成对出现。
 
-真机计算样式对比（基线 = git stash 出 18c 的构建）：page 形态的 #sheet .panel/.phead/
-.pbody/.btn、卡片形态的 #sheet .panel/.grip/.pclose/#sheetBody 全部逐字一致；#sheet 根节点
-只差遮罩搬走、z-index 40→2001、max-height:100% 与根盒从满屏变成贴底内容盒（透明 +
-overflow:visible，视觉零差别）；关掉之后节点与遮罩都无残留。后台屏截图核对通过。
+van-picker 判定：不适用
+- app 里没有 app 内的时间选择器：添加待办的日期/时间是原生 `<input type="date">` /
+  `<input type="time">`（views/sheets.js:131），点开的是系统控件。换成 van-picker 是换交互
+  （滚轮 vs 系统弹窗）而不是换实现，属于新增功能；⑥ 的边界是「只用 Vant 重写已有 UI」。
 
-验收：122 闸门、GO_TEST=1 ./build.sh、./install.sh、./test.sh --vd 164 ok / 0 FAIL / PASS、
-dom_equiv / dom_equiv2 / dom_equiv3 全部一致。
+设备 A/B（.test/p18sw.js + .test/cmp_sw.js，基线 = git stash 出 18d 的构建）
+- 开关轨道（46×26、--grip/--acc2、background-color 0.18s）、圆点（22px、白、无阴影、位移
+  20px、var(--ease)）、开/关两态与「点一下翻转」全部对齐；骨架屏三条（120/14/10 px、圆角
+  12/8/8、margin 8/8/0、宽度 100%/100%/45%、渐变与 shim 动画）逐字一致。
+- 四条允许的结构性等价（同一个像素的两种写法）写在比对器里：轨道圆角 999px→22px（26px
+  高上都算胶囊）、圆点圆角 50%→100%、位移 transition:left→transition:transform、轨道
+  transition-property:background→background-color。类名 `sw on` → `van-switch
+  van-switch--on sw on`（我们的 `on` 在后，契约不变）。
+- 我的页骨架屏（同一套 CSS 的两行变体）在探针里抓不到：本机 /api/stats 往返 < 16ms，
+  加载帧观察不到；附件页那三行已逐字覆盖同一批规则。
+
+顺手修了探针一处污染：.test/probe_sheets.sh 读 fab_notes 前必须 tabPick("files") 再
+tabPick("notes") 走一趟 —— tabPick 对「已经在的页签」是早退（app.js:1565 只滚回顶部），
+上一支探针停在附件页时 fab 不会被重写，症状是 dom_equiv3 的「fab 图标 · 笔记页」抓到
+#i-clip。新增 .test/vdshot.sh（探针 + 虚拟屏截图）。
+
+数字：`.sw` 的 DOM 写操作 2 → 0；base.css 的 `.sw` 规则 3 → 2；components.css 的 `.skel`
+规则 6 → 4（+1 条 @keyframes）；tokens.css 新增 11 条 --van-switch-* / --van-skeleton-* 映射。
+
+验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、
+./test.sh --vd **164 ok / 0 FAIL / PASS**（与 18a–18d 基线逐条相同）、三套 DOM 等价工具全部
+一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页保活长说明 236 B 逐字未动）；
+设置页开关与附件页骨架屏各一张 VD 截图核对。

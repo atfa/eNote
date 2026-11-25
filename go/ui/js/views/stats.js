@@ -144,7 +144,7 @@ export const StatsView = {
   template: `
 <stats-hero :i="i" :st="st"/>
 <template v-if="!st">
-  <div class="card"><div class="skel l"></div><div class="skel s"></div></div>
+  <div class="card"><van-skeleton class="skel" :row="2" :row-width="['100%','45%']" :title="false" :animate="false"/></div>
   <div class="card" v-if="stErr"><div class="errbox">{{ stErr }} ·
     <button class="btn sm gh" @click="H.statsNow()">立即重试</button></div></div>
 </template>

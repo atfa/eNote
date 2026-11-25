@@ -109,6 +109,31 @@
      18d 的 van-popup（底部弹层）旧版是 .5，到时候用 overlay-class 单独盖。 */
   --van-overlay-background:rgba(0,0,0,.45);
 
+  /* 步骤 18e：van-switch 的映射表（设置页「常驻后台」「启用 AI」两个开关）。
+     旧 .sw：46×26 胶囊、20px 白点走 20px（left 3px→23px）、无阴影、时长 var(--d2)。
+     Vant 的开关全部由 font-size 驱动：高 = 1em + 4px、宽 = 1.8em + 4px、圆点 = 1em、
+     位移 = 宽 - 1em - 4px。1em=22px 时高正好 26px；宽不是 2:1（46:26），所以宽度单独给
+     46px —— 位移自动算成 46-22-4 = 20px，与旧版逐字相同。圆点 22px（旧版 20px）是
+     唯一的像素差，两边都是垂直居中。圆角 Vant 用 --van-switch-node-size（=1em=22px），
+     26px 高的盒子上 22px 圆角已经是胶囊，不需要再指 --r-pill。 */
+  --van-switch-size:22px;
+  --van-switch-width:46px;
+  --van-switch-node-background:var(--on-solid);
+  --van-switch-node-shadow:none;
+  --van-switch-background:var(--grip);
+  --van-switch-on-background:var(--acc2);
+  --van-switch-duration:var(--d2);
+  --van-switch-disabled-opacity:.45;   /* = components.css 的 .sw.dis{opacity:.45} */
+
+  /* 步骤 18e：van-skeleton 的映射表（附件页 / 我的页的骨架屏）。
+     Vant 的骨架是「标题 + 一排等高段落」，我们是三种高度的块（14 / 10 / 120px），
+     等高这一维由 components.css 的 :nth-child 补；动画 Vant 是整块 blink，我们是渐变
+     扫过（shim），所以背景与动画在 components.css 里由我们自己给。这里只把 Vant 的
+     默认间距挪开，别让它的 --van-padding-md 内距和段落 margin 混进我们的卡片。 */
+  --van-skeleton-paragraph-height:14px;
+  --van-skeleton-paragraph-margin-top:0;
+  --van-skeleton-title-width:100%;
+
   --hair:1px;
 
   /* ---- S2 新增：圆角刻度（三档 + 胶囊）---- */
