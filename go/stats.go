@@ -42,7 +42,8 @@ type statsRes struct {
 	Tags      []TagStat      `json:"tags"`
 	Sources   map[string]int `json:"sources"`
 	Bytes     int64          `json:"bytes"`
-	Generated string         `json:"generatedAt"`
+	/* 步骤 28 删掉 Generated string `json:"generatedAt"`：统计接口原来带一个「生成时刻」，
+	   UI 的「更新于」是前端自己记的刷新时间，Go 里也没人读这个字段，纯死负载。 */
 }
 
 func stats() statsRes {
@@ -52,7 +53,6 @@ func stats() statsRes {
 		Attach:    map[string]any{"byKind": map[string]int{}},
 		AI:        map[string]any{},
 		Sources:   map[string]int{},
-		Generated: time.Now().Format("2006-01-02T15:04:05"),
 		Days:      lastDays(7)}
 	for _, k := range []string{"total", "done", "raw", "error", "queued", "parsing"} {
 		res.Notes[k] = 0

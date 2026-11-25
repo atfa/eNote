@@ -3108,3 +3108,33 @@ Java、JS 路由名），所以闸门⑩ 不需要第五个方向。
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL /
 PASS**（第一次跑撞到老熟的可复现块「截图扫描没有收到新图」，重跑即过）、三套 DOM 等价工具
 全部一致（关键帧没人引用，DOM 与计算样式不变）。
+
+## 9.50 P14 S6：Go 侧的「定义了没人用」——结构体字段（步骤 28）
+
+闸门⑩ 在 JS/CSS 侧查了 token、函数、class、图标、关键帧五个方向，Go 侧对应的那一维是**结构体
+字段**：字段被 JSON 序列化给 UI，UI 从来不读，Go 自己也不读 —— 比 JS 更隐蔽，因为「后端算出来」
+看起来总像有用。
+
+扫描口径（`.test/scan_gofields.js`）：`go/*.go`（剔 `_test.go`）里带 `json:"tag"` 的导出字段，
+Go 里没有 `.字段` 读点、UI（js + html 剔 vendor + `test.sh`）里没有 `tag` 这个词，才算死。
+**114 个 json tag 里 28 个 UI 不读**，逐个分类后：
+
+- 12 个是 LLM 线协议（`role messages max_tokens stream reasoning_effort reasoning_content
+  finish_reason choices usage ts url code`）—— 发给模型服务的请求/响应体，协议要求存在；
+- 11 个 Go 自己读（`noteAt dirs imported skipped invalid limit dupes doneAt imageName aiRaw
+  prompt sources`）—— 序列化给 UI 是顺带，字段本身在用；
+- **只有 `statsRes.Generated`（json:generatedAt）是真死**：统计接口带的「生成时刻」，UI 的
+  「更新于」是前端自己记的刷新时间，Go 里除了赋值没人读它 → 删字段 + 删赋值。
+
+**闸门落在 Go 测试里**（`go/deadcode_test.go` 的 `TestNoDeadJSONFields`），不是 ui_test.js：
+它扫的是 Go 源码，跑在 `go test` 里才自然，`GO_TEST=1 ./build.sh` 顺带就跑了。基线是
+`wireProtocolFields` 白名单（5 个 LLM 请求体字段：Go 里确实没有 `.Role` 这样的读点，
+但协议要求它们存在）。反向测试：给 `statsRes` 加一个 `P28Dead string json:"p28dead"` →
+测试红并点名 `P28Dead (json:p28dead) stats.go`。
+
+顺手把测试自己的口径写清楚：UI 侧只读 `go/ui`（剔 vendor）+ `test.sh`，**不读
+`app/src/main/assets`** —— 那是 `build.sh` 每次拷过去的构建产物，拿它当引用侧会让闸门
+在「构建前 / 构建后」两种状态下宽严不一。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`（含 `go test` 全绿）、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（我的页 hero、附件页统计条都没变）。
