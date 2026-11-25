@@ -93,8 +93,7 @@ func openStore(dir string) (*Store, error) {
 	if err == nil && len(b) > 0 {
 		if err := json.Unmarshal(b, s); err != nil {
 			// never lose the user's data: keep the broken file and start fresh
-			bak := s.path + ".bad-" + time.Now().Format("20060102-150405")
-			_ = os.Rename(s.path, bak)
+			bak := moveAsideCorrupt(s.path)
 			s.Notes = nil
 			logf("store: corrupt %s moved to %s", s.path, bak)
 		}
@@ -154,16 +153,41 @@ func fileSize(p string) int64 {
 }
 
 // save writes atomically (temp file + rename); caller holds the lock.
-func (s *Store) save() error {
-	tmp := s.path + ".tmp"
-	b, err := json.MarshalIndent(s, "", " ")
+func (s *Store) save() error { return writeJSONAtomic(s.path, s) }
+
+// writeJSONAtomic 是三个 store 共用的原子写：先写 .tmp 再 rename。直接 WriteFile 写到一半被杀
+// 会留下半截 JSON，下次启动解析失败就回默认值（config.go 那边多一步 fsync + .bak，因为它丢的是
+// API Key，值得多花一次磁盘同步）。P14 S6 步骤 55 从 store/clip/shots 三份逐字相同的实现收成一份。
+func writeJSONAtomic(path string, v any) error {
+	b, err := json.MarshalIndent(v, "", " ")
 	if err != nil {
 		return err
 	}
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	return os.Rename(tmp, path)
+}
+
+// moveAsideCorrupt 把解析不了的 JSON 挪成 .bad-<时间戳> 再从零开始：宁可给用户一个空列表，
+// 也不要每次启动都解析失败。返回改名后的路径，调用方 log 用。
+func moveAsideCorrupt(path string) string {
+	bak := path + ".bad-" + time.Now().Format("20060102-150405")
+	_ = os.Rename(path, bak)
+	return bak
+}
+
+// snapshotSorted 复制一份切片（连元素一起复制）再排序：调用方拿到的是快照，锁外读到的
+// 不是写线程正在改的那些指针。P14 S6 步骤 55 从 clip/shots 两个 snapshot() 收成一份。
+func snapshotSorted[T any](in []*T, less func(a, b *T) bool) []*T {
+	out := make([]*T, 0, len(in))
+	for _, x := range in {
+		cp := *x
+		out = append(out, &cp)
+	}
+	sort.Slice(out, func(i, j int) bool { return less(out[i], out[j]) })
+	return out
 }
 
 func (s *Store) add(n *Note) {

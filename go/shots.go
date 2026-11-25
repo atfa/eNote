@@ -82,9 +82,8 @@ func openShotStore(dir string) (*ShotStore, error) {
 	s := &ShotStore{path: filepath.Join(dir, "shot.json")}
 	if b, err := os.ReadFile(s.path); err == nil && len(b) > 0 {
 		if err := json.Unmarshal(b, s); err != nil {
-			_ = os.Rename(s.path, s.path+".bad-"+time.Now().Format("20060102-150405"))
+			logf("shot: corrupt %s moved aside", moveAsideCorrupt(s.path))
 			s.Shots, s.Ignored = nil, nil
-			logf("shot: corrupt %s moved aside", s.path)
 		}
 	}
 	// 文件被用户在系统里删掉了（或者清理工具动了）→ 记录跟着消失，别给用户一个坏入口
@@ -103,34 +102,18 @@ func openShotStore(dir string) (*ShotStore, error) {
 	return s, nil
 }
 
-func (s *ShotStore) save() error {
-	tmp := s.path + ".tmp"
-	b, err := json.MarshalIndent(s, "", " ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
-}
+func (s *ShotStore) save() error { return writeJSONAtomic(s.path, s) }
 
 func (s *ShotStore) snapshot() []*Shot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]*Shot, 0, len(s.Shots))
-	for _, x := range s.Shots {
-		cp := *x
-		out = append(out, &cp)
-	}
 	// 时间升序：合并成一条笔记时，附件顺序 = 截图先后顺序
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].DateAdded != out[j].DateAdded {
-			return out[i].DateAdded < out[j].DateAdded
+	return snapshotSorted(s.Shots, func(a, b *Shot) bool {
+		if a.DateAdded != b.DateAdded {
+			return a.DateAdded < b.DateAdded
 		}
-		return out[i].CreatedAt.Before(out[j].CreatedAt)
+		return a.CreatedAt.Before(b.CreatedAt)
 	})
-	return out
 }
 
 func (s *ShotStore) ignoredKey(name string, size int64) string {

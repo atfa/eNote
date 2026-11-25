@@ -4086,3 +4086,89 @@ end loads=1 状态点=dot
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.77 P14 S6：Go 侧去重 + enqueue 拆分，s45b 三项收尾扫描（步骤 55）
+
+app.js 收口之后转 Go 侧。三件事：
+
+**① 三份逐字相同的原子写收成一份**（`go/store.go`）
+
+`Store.save` / `ClipStore.save` / `ShotStore.save` 是三段一模一样的
+`MarshalIndent → WriteFile(.tmp) → Rename`，`openStore` / `openClipStore` / `openShotStore`
+又是三段一模一样的「解析失败 → 挪成 `.bad-<时间戳>` → 从零开始」。现在：
+
+```go
+func (s *Store) save() error { return writeJSONAtomic(s.path, s) }   // clip / shots 同形
+…
+bak := moveAsideCorrupt(s.path)   // 返回改名后的路径，调用方 log 用
+```
+
+`config.go` 那份**没**并进来：它多一步 `fsync` 加一份 `.bak`，因为丢的是 API Key
+（表现是「每次都得重新填 key」），值得多花一次磁盘同步，缩进也是两个空格。
+`clip.go` 的 `sort` import 跟着 snapshot 的改动删掉了。
+
+**② 两个 snapshot 的「复制一份再排序」收成泛型**
+
+```go
+func snapshotSorted[T any](in []*T, less func(a, b *T) bool) []*T
+```
+
+`ClipStore.snapshot`（按 CreatedAt 倒序）与 `ShotStore.snapshot`（DateAdded 升序、同天再比
+CreatedAt）各自只剩 3 行 + 一个 less。锁语义没动：仍在持锁时复制，锁外读到的不是写线程
+正在改的那些指针。
+
+**③ `enqueue` 109 行 → 26 行路由 + 五个小函数**
+
+原来一个函数里同时装着「新建笔记」「四种入队形态（image / images / file / text）」
+「谁负责落库」，四个 case 各占 15~35 行。现在：
+
+```go
+n := newNote(r)
+var e string
+switch r.Kind {
+case "image":  fillImage(n, r)
+case "images": e = fillImages(n, r)
+case "file":   e = fillFile(n, r)
+default:       e = fillText(n, r)   // text
+}
+if e != "" { return enqueueResult{Kind: r.Kind, Error: e} }   // 这条别存，不落库
+store.add(n); …; if n.Status == stQueued { jobs <- n.ID }
+```
+
+四个 `fill*` 是**逐字搬**的：脚本比对「原四个 case 体 77 行 vs 新四个函数体 77 行，剔缩进与
+空行后逐字一致」，只有三处必要改写——`break`（跳出 switch 继续落库）→ `return ""`、
+两处 `return enqueueResult{Kind: r.Kind, Error: X}` → `return X`。早退语义没变：
+「没有图片」「文件路径为空」「内容为空」都发生在 `store.add` 之前，原样不落库。
+
+**④ 顺手**：`gofmt -w go/stats.go go/web_test.go`（步骤 28 删字段留下的结构体对齐），
+现在 `gofmt -l go` 为空。
+
+**s45b 三项扫描结论（都是「已经干净」，记下数字免得下次再扫一遍）**
+
+* **剩余 esc()**：全项目代码里只剩 3 处调用——`domutil.js` 的定义 + `shotflow.js` 两处
+  `SHOTPROG.what = esc(…)`。这两处是**必须**的：遗留路径写的是 `sub.textContent = esc(txt)`，
+  DOM 文本里就是字面 `&amp;`，DOM 等价基线钉着它。其余 20 多处 `esc` 全在注释里
+  （各视图文件头写着「模板里用原始值 + {{ }}，不要再 esc，会双重转义」）。
+* **S.settings 死字段**：8 个字段全部在用——UI 读 `theme` / `useAI` / `ui`，设置表单读写
+  `baseUrl` / `apiKey` / `model` / `timeoutS` / `maxTokens` / `temperature`，Go 侧每个都有读点。
+  Go 侧的字段死代码闸门（`go/deadcode_test.go`）本来就盯着这一维，114 个 json 字段 0 死。
+* **重复字面量**：出现 ≥5 次的字面量 top 全是模板语法片段（`@click=` 37 次、`:class=` 20 次、
+  `./app.js` 20 次、`btn sm` 11 次…），提取成常量只会让模板更难读。API 路径最多重复 3 次
+  （`/api/todo`），内联 style 最多重复 5 次，且换成 class 会改 DOM 序列化 → 撞 DOM 等价基线。
+* 顺带扫的：最长函数是 `tabflow.js setTab` 29 行（Go 侧最长是 `stats` 81 行，enqueue 拆完 26 行）；
+  跨文件 ≥4 行的重复只剩各视图的 import 头 2 处。
+
+探针（物理屏，`.test/probe_go55.js`，走 enqueue 的 text 分支全链路）：
+
+```
+就绪 loads=1 卡片=8
+空文本（fillText 早退，不落库）：ok=false error="内容为空" 落库条数=0
+文本入队：ok=true id=179564 error=""
+解析到终态：条数=1 状态=done 标题="步骤五五探针买牛奶提醒" 待办=1 正文长度=18
+清理之后：剩余=0 卡片=8 loads=1
+```
+
+验收：`ui_test.js` **122 项全绿**（未改闸门）、`gofmt -l go` 空、`go vet ./...` 干净、
+`go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+`./test.sh --vd` **164 ok / 0 FAIL / PASS**（一次过，image / images / file 三条分支由套件里的
+分享广播与截图导入覆盖）、三套 DOM 等价工具全部一致。

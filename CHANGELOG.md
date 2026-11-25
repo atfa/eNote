@@ -1374,6 +1374,34 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Go 侧去重 + enqueue 拆分，s45b 三项收尾扫描（P14 S6 步骤 55）
+
+app.js 收口之后转 Go 侧。
+
+* **三份逐字相同的原子写收成一份**：`Store.save` / `ClipStore.save` / `ShotStore.save` 都是
+  `MarshalIndent → WriteFile(.tmp) → Rename`，三个 `open*Store` 都是「解析失败 → 挪成
+  `.bad-<时间戳>` → 从零开始」。现在只剩 `writeJSONAtomic(path, v)` 与 `moveAsideCorrupt(path)` 两份实现。
+  `config.go` 那份**没**并进来：它多一步 `fsync` 加一份 `.bak`，因为丢的是 API Key（表现是「每次都得重新填 key」），
+  值得多花一次磁盘同步。
+* **两个 snapshot 的「复制一份再排序」收成泛型** `snapshotSorted[T]`：clip（CreatedAt 倒序）与 shots
+  （DateAdded 升序、同天比 CreatedAt）各自只剩 3 行 + 一个 less；锁语义没动（仍持锁复制）。
+* **`enqueue` 109 行 → 26 行路由 + 五个小函数**（`newNote` / `fillImage` / `fillImages` / `fillFile` /
+  `fillText`）。四个 `fill*` 逐字搬：脚本比对「原四个 case 体 77 行 vs 新四个函数体 77 行，剔缩进与空行后
+  逐字一致」，只有三处必要改写（`break` → `return ""`、两处 `return enqueueResult{Kind: …, Error: X}` →
+  `return X`）。早退语义没变：「没有图片」「文件路径为空」「内容为空」都发生在 `store.add` 之前，不落库。
+* 顺手 `gofmt -w go/stats.go go/web_test.go`（步骤 28 删字段留下的对齐），`gofmt -l go` 现在为空。
+* **s45b 三项扫描结论**（都是「已经干净」，记下数字）：代码里真正的 `esc()` 只剩 3 处调用（domutil 定义 +
+  shotflow 两处 `SHOTPROG.what`，DOM 基线钉着 esc 过的串），其余 20 多处都在注释里；`S.settings` 8 个字段
+  全部在用（UI 读 theme/useAI/ui，设置表单读写其余 6 个）；出现 ≥5 次的字面量 top 全是模板语法片段
+  （`@click=` 37 次、`./app.js` 20 次），API 路径最多重复 3 次，内联 style 换成 class 会改 DOM 序列化 →
+  撞等价基线。顺带：最长函数是 `tabflow.js setTab` 29 行，跨文件 ≥4 行重复只剩各视图的 import 头。
+* 探针（`.test/probe_go55.js`，enqueue 的 text 分支全链路）：`空文本（fillText 早退，不落库）：ok=false
+  error="内容为空" 落库条数=0` → `文本入队 ok=true` → `解析到终态：状态=done 标题="步骤五五探针买牛奶提醒"
+  待办=1` → `清理之后：剩余=0 loads=1`。
+* 验收：`ui_test.js` **122 项全绿**（未改闸门）、`gofmt -l go` 空、`go vet ./...` 干净、`go test ./...` ok、
+  `GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd` **164 项 ok / 0 FAIL / PASS**（一次过，
+  image / images / file 三条分支由套件里的分享广播与截图导入覆盖）、三套 DOM 等价工具全部一致。
+
 ### app.js 的过期指针注释收成一张模块索引表（P14 S6 步骤 54）
 
 步骤 29-53 每搬走一簇就留一行「X 搬进 js/y.js（步骤 N）」，25 步之后 **570 行里有 309 行是注释**，其中 73 个块

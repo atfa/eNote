@@ -160,7 +160,7 @@ func TestIndexServedFromDirectory(t *testing.T) {
 			body = body[:j]
 		}
 		for _, want := range []string{
-			"return vuePaint().then(done, done);",        // Vue 分支（D14）
+			"return vuePaint().then(done, done);",          // Vue 分支（D14）
 			"try { afterPaint() } finally { markReady() }", // 首屏记号无条件打出去
 		} {
 			if !strings.Contains(body, want) {
@@ -337,7 +337,7 @@ func TestContentTypeMap(t *testing.T) {
 		"a.svg":     "image/svg+xml",
 		"a.png":     "image/png",
 		"a.map":     "application/json; charset=utf-8",
-		"a.weird":   "",   // 空串 = 不服务，handleUI 会 404
+		"a.weird":   "", // 空串 = 不服务，handleUI 会 404
 		"a.md":      "",
 		"a.CSS":     "text/css; charset=utf-8",
 	}

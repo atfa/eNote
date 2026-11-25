@@ -33,27 +33,27 @@ type TagStat struct {
 }
 
 type statsRes struct {
-	OK        bool           `json:"ok"`
-	Notes     map[string]int `json:"notes"`
-	Todos     map[string]int `json:"todos"`
-	Attach    map[string]any `json:"attach"`
-	AI        map[string]any `json:"ai"`
-	Days      []DayStat      `json:"days"`
-	Tags      []TagStat      `json:"tags"`
-	Sources   map[string]int `json:"sources"`
-	Bytes     int64          `json:"bytes"`
+	OK      bool           `json:"ok"`
+	Notes   map[string]int `json:"notes"`
+	Todos   map[string]int `json:"todos"`
+	Attach  map[string]any `json:"attach"`
+	AI      map[string]any `json:"ai"`
+	Days    []DayStat      `json:"days"`
+	Tags    []TagStat      `json:"tags"`
+	Sources map[string]int `json:"sources"`
+	Bytes   int64          `json:"bytes"`
 	/* 步骤 28 删掉 Generated string `json:"generatedAt"`：统计接口原来带一个「生成时刻」，
 	   UI 的「更新于」是前端自己记的刷新时间，Go 里也没人读这个字段，纯死负载。 */
 }
 
 func stats() statsRes {
 	res := statsRes{OK: true,
-		Notes:     map[string]int{},
-		Todos:     map[string]int{},
-		Attach:    map[string]any{"byKind": map[string]int{}},
-		AI:        map[string]any{},
-		Sources:   map[string]int{},
-		Days:      lastDays(7)}
+		Notes:   map[string]int{},
+		Todos:   map[string]int{},
+		Attach:  map[string]any{"byKind": map[string]int{}},
+		AI:      map[string]any{},
+		Sources: map[string]int{},
+		Days:    lastDays(7)}
 	for _, k := range []string{"total", "done", "raw", "error", "queued", "parsing"} {
 		res.Notes[k] = 0
 	}

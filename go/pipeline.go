@@ -71,92 +71,19 @@ func enqueue(r ingestReq) enqueueResult {
 	if n.Source == "" {
 		n.Source = "manual-text"
 	}
+	var e string
 	switch r.Kind {
 	case "image":
-		if r.OCRError != "" {
-			n.Status = stError
-			n.Error = r.OCRError
-		}
-		n.ImagePath = r.Path
-		n.ImageName = firstNonEmpty(r.Name, filepath.Base(r.Path))
-		if r.Path != "" {
-			attachTo(n, attachmentFor(n.ID, r.Path, n.ImageName, r.MIME, r.Source, n.CreatedAt))
-		}
-		n.OCRText = strings.TrimSpace(r.OCR)
-		n.OCRMs = r.OCRMs
-		n.RawText = n.OCRText
-		n.Content = n.OCRText
-		if n.Status != stError && n.OCRText == "" {
-			n.Status = stRaw
-			n.Error = "图片里没有识别到文字"
-		}
+		fillImage(n, r)
 	case "images":
-		// 多张截图合成一条笔记（P11 合并模式）：附件按时间顺序全部挂上，
-		// OCR 文本拼接后只调一次 LLM —— 10 张图 = 1 次调用，不是 10 次。
-		if len(r.Images) == 0 {
-			return enqueueResult{Kind: r.Kind, Error: "没有图片"}
-		}
-		var parts []string
-		ocrErr := ""
-		for _, im := range r.Images {
-			name := firstNonEmpty(im.Name, filepath.Base(im.Path))
-			attachTo(n, attachmentFor(n.ID, im.Path, name, im.MIME, n.Source, n.CreatedAt))
-			if n.ImagePath == "" {
-				n.ImagePath, n.ImageName = im.Path, name
-			}
-			if t := strings.TrimSpace(im.OCR); t != "" {
-				parts = append(parts, t)
-			}
-			if im.Err != "" && ocrErr == "" {
-				ocrErr = im.Err
-			}
-			n.OCRMs += im.Ms
-		}
-		n.OCRText = strings.Join(parts, "\n\n---\n\n")
-		n.RawText = n.OCRText
-		n.Content = n.OCRText
-		n.Title = fmt.Sprintf("截图 %d 张 · %s", len(r.Images), time.Now().Format("01-02 15:04"))
-		switch {
-		case ocrErr != "":
-			n.Status, n.Error = stError, ocrErr
-		case n.OCRText == "":
-			n.Status, n.Error = stRaw, "图片里没有识别到文字"
-		case r.Raw:
-			n.Status, n.Error = stRaw, "原样保存，未做 AI 解析"
-		}
+		e = fillImages(n, r)
 	case "file":
-		// a document (pdf, docx, txt, ...) shared or picked: stored, not sent to the LLM
-		if n.Source == "manual-text" {
-			n.Source = "manual-file"
-		}
-		if r.FileError != "" {
-			n.Status = stError
-			n.Error = r.FileError
-			n.Content = "文件接收失败：" + r.FileError
-			n.Title = firstNonEmpty(r.Name, "文件")
-			break
-		}
-		if r.Path == "" {
-			return enqueueResult{Kind: r.Kind, Error: "文件路径为空"}
-		}
-		n.Title = firstNonEmpty(r.Name, filepath.Base(r.Path))
-		n.Content = "已保存附件：" + n.Title
-		n.RawText = ""
-		n.Status = stRaw
-		n.Error = "文件已保存，未做 AI 解析"
-		attachTo(n, attachmentFor(n.ID, r.Path, n.Title, r.MIME, n.Source, n.CreatedAt))
+		e = fillFile(n, r)
 	default: // text
-		n.RawText = strings.TrimSpace(r.Text)
-		n.Content = n.RawText
-		n.Title = strings.TrimSpace(r.Subject)
-		if n.RawText == "" {
-			return enqueueResult{Kind: r.Kind, Error: "内容为空"}
-		}
-		if r.Raw {
-			// 原样存为笔记：不调 LLM，直接落库
-			n.Status = stRaw
-			n.Error = "原样保存，未做 AI 解析"
-		}
+		e = fillText(n, r)
+	}
+	if e != "" {
+		return enqueueResult{Kind: r.Kind, Error: e}
 	}
 	store.add(n)
 	logf("enqueue %s kind=%s source=%s len=%d ocrMs=%d status=%s",
@@ -165,6 +92,126 @@ func enqueue(r ingestReq) enqueueResult {
 		jobs <- n.ID
 	}
 	return enqueueResult{ID: n.ID, Kind: r.Kind}
+}
+
+/* 步骤 55：enqueue 原来 109 行，四个 kind 的填充分支各占 15~35 行，读一遍要在脑子里同时装下
+   「新建笔记」「四种入队形态」「谁负责落库」。现在 enqueue 只剩路由：新建 → 按 kind 填 →
+   填不出内容就直接返回（不落库）→ 落库 → 排队。四个 fill* 逐字搬自原来的四个 case，
+   语义一个字节没改：返回非空字符串 =「这条别存」，对应原来 case 里的
+   `return enqueueResult{Kind: …, Error: …}`；文件分支那个 `break`（跳出 switch 继续落库）
+   现在写成 `return ""`。 */
+
+// newNote 是入队时的空壳：状态先给 queued，各 kind 的 fill* 负责把内容填进去。
+func newNote(r ingestReq) *Note {
+	n := &Note{
+		ID:        newID(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Status:    stQueued,
+		Source:    r.Source,
+	}
+	if n.Source == "" {
+		n.Source = "manual-text"
+	}
+	return n
+}
+
+// fillImage：单张图（分享图片 / 相册选一张），OCR 文本就是正文。
+func fillImage(n *Note, r ingestReq) {
+	if r.OCRError != "" {
+		n.Status = stError
+		n.Error = r.OCRError
+	}
+	n.ImagePath = r.Path
+	n.ImageName = firstNonEmpty(r.Name, filepath.Base(r.Path))
+	if r.Path != "" {
+		attachTo(n, attachmentFor(n.ID, r.Path, n.ImageName, r.MIME, r.Source, n.CreatedAt))
+	}
+	n.OCRText = strings.TrimSpace(r.OCR)
+	n.OCRMs = r.OCRMs
+	n.RawText = n.OCRText
+	n.Content = n.OCRText
+	if n.Status != stError && n.OCRText == "" {
+		n.Status = stRaw
+		n.Error = "图片里没有识别到文字"
+	}
+}
+
+// fillImages：多张截图合成一条笔记（P11 合并模式）：附件按时间顺序全部挂上，
+// OCR 文本拼接后只调一次 LLM —— 10 张图 = 1 次调用，不是 10 次。
+func fillImages(n *Note, r ingestReq) string {
+	if len(r.Images) == 0 {
+		return "没有图片"
+	}
+	var parts []string
+	ocrErr := ""
+	for _, im := range r.Images {
+		name := firstNonEmpty(im.Name, filepath.Base(im.Path))
+		attachTo(n, attachmentFor(n.ID, im.Path, name, im.MIME, n.Source, n.CreatedAt))
+		if n.ImagePath == "" {
+			n.ImagePath, n.ImageName = im.Path, name
+		}
+		if t := strings.TrimSpace(im.OCR); t != "" {
+			parts = append(parts, t)
+		}
+		if im.Err != "" && ocrErr == "" {
+			ocrErr = im.Err
+		}
+		n.OCRMs += im.Ms
+	}
+	n.OCRText = strings.Join(parts, "\n\n---\n\n")
+	n.RawText = n.OCRText
+	n.Content = n.OCRText
+	n.Title = fmt.Sprintf("截图 %d 张 · %s", len(r.Images), time.Now().Format("01-02 15:04"))
+	switch {
+	case ocrErr != "":
+		n.Status, n.Error = stError, ocrErr
+	case n.OCRText == "":
+		n.Status, n.Error = stRaw, "图片里没有识别到文字"
+	case r.Raw:
+		n.Status, n.Error = stRaw, "原样保存，未做 AI 解析"
+	}
+	return ""
+}
+
+// fillFile：文档附件（pdf / docx / txt…）分享进来或选进来，只存不调 LLM。
+func fillFile(n *Note, r ingestReq) string {
+	if n.Source == "manual-text" {
+		n.Source = "manual-file"
+	}
+	if r.FileError != "" {
+		n.Status = stError
+		n.Error = r.FileError
+		n.Content = "文件接收失败：" + r.FileError
+		n.Title = firstNonEmpty(r.Name, "文件")
+		return ""
+	}
+	if r.Path == "" {
+		return "文件路径为空"
+	}
+	n.Title = firstNonEmpty(r.Name, filepath.Base(r.Path))
+	n.Content = "已保存附件：" + n.Title
+	n.RawText = ""
+	n.Status = stRaw
+	n.Error = "文件已保存，未做 AI 解析"
+	attachTo(n, attachmentFor(n.ID, r.Path, n.Title, r.MIME, n.Source, n.CreatedAt))
+	return ""
+}
+
+// fillText：纯文本（分享文本 / 手输），返回非空 = 这条别存。
+func fillText(n *Note, r ingestReq) string {
+	n.RawText = strings.TrimSpace(r.Text)
+	n.Content = n.RawText
+	n.Title = strings.TrimSpace(r.Subject)
+	if n.RawText == "" {
+		return "内容为空"
+	}
+	if r.Raw {
+		// 原样存为笔记：不调 LLM，直接落库
+		n.Status = stRaw
+		n.Error = "原样保存，未做 AI 解析"
+	}
+	return ""
 }
 
 // reingest replaces the text of an existing note ("重新识别图片") and sends it back to the LLM.

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -43,36 +42,19 @@ func openClipStore(dir string) (*ClipStore, error) {
 	s := &ClipStore{path: filepath.Join(dir, "clip.json")}
 	if b, err := os.ReadFile(s.path); err == nil && len(b) > 0 {
 		if err := json.Unmarshal(b, s); err != nil {
-			_ = os.Rename(s.path, s.path+".bad-"+time.Now().Format("20060102-150405"))
+			logf("clip: corrupt %s moved aside", moveAsideCorrupt(s.path))
 			s.Clips = nil
-			logf("clip: corrupt %s moved aside", s.path)
 		}
 	}
 	return s, nil
 }
 
-func (s *ClipStore) save() error {
-	tmp := s.path + ".tmp"
-	b, err := json.MarshalIndent(s, "", " ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
-}
+func (s *ClipStore) save() error { return writeJSONAtomic(s.path, s) }
 
 func (s *ClipStore) snapshot() []*Clip {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]*Clip, 0, len(s.Clips))
-	for _, c := range s.Clips {
-		cp := *c
-		out = append(out, &cp)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
-	return out
+	return snapshotSorted(s.Clips, func(a, b *Clip) bool { return a.CreatedAt.After(b.CreatedAt) })
 }
 
 func clipCount() int {
