@@ -1374,6 +1374,31 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 安静轮询搬进 js/pollflow.js（P14 S6 步骤 52）
+
+第二十四簇：`SIG`/`drawn`/`SIG_SKIP`/`stateSig`/`refresh` 连 `prefsLoaded` 一起搬成 `go/ui/js/pollflow.js`。
+**app.js 626 → 585 行**（模块 73 行，45 行逐字搬、1 行改写）。
+
+* 依赖：`S`/`q`/`reassign`/`setQRaw` 从 app.js、`shell` 从 shell.js、`api` 从 netflow.js、`MISSED` 从
+  missedflow.js、`SHOTFLAGS` 从 shotflow.js、`prefs`/`P`/`flattenPrefs`/`themeOf`/`CUR`/`applyTheme` 从
+  prefsflow.js、`ANIMLOCK` 从 noteflow.js、`paintStatus`/`render` 从 renderflow.js（步骤 51）、`searchNow` 从 searchflow.js。
+* **`prefsLoaded` 跟着走**：全项目只有 `refresh()` 读它写它，所以它属于新模块，app.js 只留指针注释。
+  判据是「谁写它」：只有新模块写 → 整块搬走不用 setter；app.js 写（步骤 51 的 `readyResolve`）才必须开入口。
+* 唯一改写的一行：`q = syncBox(QB, P().q || '')` → `setQRaw(P().q || '')`（`q` 是 app.js 的 var，跨模块只能走
+  setter，searchflow 早就是这么做的），下一行 `shell.q = q` 读到的就是新值。
+* app.js 导出表一行没动：`refresh` 现在是**再导出**，十来个模块与 `__enoteActions` 一个字没改；
+  `setInterval(… refresh(true) …)`、`refresh()` 与 `window.onAppResume` 三处调用点留在 app.js。
+* 闸门/测试**一行没改**：闸门⑩/⑪（`SIG_SKIP` 排除表 = 行为契约）与 ANIMLOCK 锚点读的都是拼接后的 `src`；
+  `go/web_test.go` 钉的「`setHost({` 必须出现在 `\nrefresh();` 之前」两条都在 app.js 里，透明。
+* 踩坑：闸门㉒ 当场报出「pollflow.js import 的 MISSED 不是 ./shotflow.js 的导出」——`MISSED` 在
+  missedflow.js。这类「模块解析期 SyntaxError → 整页空白」的错全靠这条闸门兜住。
+* 探针（`.test/probe_poll.js`）：`静置 6.5s（3 轮轮询）：首张卡是同一个节点=true`（`SIG_SKIP` 排除表的行为契约：
+  `uptimeS` 每秒都在变，没排掉就每轮全量重绘、节点被换掉）、`prefsLoaded：搜索框 value="" 偏好 P().q=""`、
+  `api/add ok=true` → `外部加数据后 5s：卡片 8→9`（指纹比较与重绘链没断）→ 删掉标记笔记 → `loads=1`。
+  探针自带清理（开头报历史探针笔记数，结尾删干净）。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 渲染核心搬进 js/renderflow.js（P14 S6 步骤 51）
 
 第二十三簇：`afterPaint`/`render`/`readyResolve`+`firstPainted`/`markReady`/`syncExpand`/`strip`/`paintStatus`

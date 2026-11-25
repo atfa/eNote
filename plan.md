@@ -3955,3 +3955,48 @@ end loads=1
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.74 P14 S6：安静轮询搬进 js/pollflow.js（步骤 52）
+
+第二十四簇：`SIG` / `drawn` / `SIG_SKIP` / `stateSig` / `refresh` 连 `prefsLoaded` 一起搬成
+`go/ui/js/pollflow.js`。**app.js 626 → 585 行**（模块 73 行，45 行逐字搬，1 行改写）。
+
+* 依赖：`S`/`q`/`reassign`/`setQRaw` 从 app.js，`shell` 从 shell.js，`api` 从 netflow.js，
+  `MISSED` 从 missedflow.js，`SHOTFLAGS` 从 shotflow.js，`prefs`/`P`/`flattenPrefs`/`themeOf`/
+  `CUR`/`applyTheme` 从 prefsflow.js，`ANIMLOCK` 从 noteflow.js，`paintStatus`/`render` 从
+  renderflow.js（步骤 51），`searchNow` 从 searchflow.js。
+* **`prefsLoaded` 是跟着走的**：全项目只有 `refresh()` 读它、写它（`if(!prefsLoaded && …){ prefsLoaded = true }`），
+  所以它属于新模块，app.js 只留一行指针注释。判据：先看「谁写它」，只有 refresh 写 → 整块搬走，
+  不需要 setter（对比步骤 51 的 `readyResolve`：那边是 app.js 写，才必须开入口）。
+* 唯一改写的一行：`q = syncBox(QB, P().q || '')` → `setQRaw(P().q || '')`。`q` 是 app.js 的 var，
+  别的模块拿到的是只读活绑定，写它必须走 setter（searchflow 早就是这么做的），下一行
+  `shell.q = q` 读到的就是新值。
+* app.js 的导出表一行没动：`refresh` 现在是**再导出**，十来个模块与 `__enoteActions` 那边一个字没改；
+  `setInterval(… refresh(true) …)`、`refresh()` 与 `window.onAppResume` 三处调用点留在 app.js。
+* 闸门/测试**一行没改**：闸门⑩/⑪（`SIG_SKIP` 排除表 = 行为契约）与 ANIMLOCK 那条锚点读的都是拼接后的
+  `src`；`go/web_test.go` 钉的「`setHost({` 必须出现在 `\nrefresh();` 之前」两条都在 app.js 里，透明。
+* 踩坑（清单 (b) 的第三次）：又一次把新 import 插到跨两行的 import 后面 —— 这次是插到
+  `} from './renderflow.js'` 之后，位置对了；真正踩空的是 python 里 `L[117]=[...]` 写成列表赋值，
+  后面的 `l.strip()` 直接抛 `AttributeError`，app.js 因此**没被写坏**（脚本先写模块文件、后写 app.js，
+  崩在中间正好保住原文件）。重跑前先 `node --check` 全部模块，闸门㉒ 当场报出
+  「pollflow.js import 的 MISSED 不是 ./shotflow.js 的导出」——`MISSED` 在 missedflow.js。
+
+探针（物理屏，`.test/probe_poll.js`）：
+
+```
+就绪 loads=1 卡片=8 历史探针笔记=0
+静置 6.5s（3 轮轮询）：首张卡是同一个节点=true 卡片=8（uptimeS 在排除表里，不该重建 DOM）
+prefsLoaded：搜索框 value="" 偏好 P().q=""
+api/add ok=true id=1795645751723569yzsh
+外部加数据后 5s（轮询自动重绘）：卡片=9（之前 8）
+找到带标记的笔记 1 条（含上一轮没清掉的）
+删掉 1 条之后 4s：卡片=8（期望 8：本轮加的 1 条 - 清掉的 1 条）
+end loads=1
+```
+
+「首张卡是同一个节点 = true」是 `SIG_SKIP` 排除表的行为契约（`uptimeS` 每秒都在变，没排掉的话
+每轮全量重绘，节点会被换掉）；「外部加数据后 5s 卡片 +1」证明 `refresh` 的指纹比较与重绘链没断。
+探针自带清理（开头报历史笔记数，结尾删干净）。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

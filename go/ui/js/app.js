@@ -66,6 +66,8 @@ import { panes, paneBuilt, paneDirty, tabScroll, paneFor, invalidatePanes,
 /* 步骤 51：渲染核心搬进 js/renderflow.js（app.js 再导出 render / paintStatus / strip）。 */
 import { render, afterPaint, markReady, syncExpand, strip, paintStatus,
          setReadyResolve, hasFirstPainted } from './renderflow.js'
+/* 步骤 52：安静轮询（SIG / SIG_SKIP / stateSig / refresh）搬进 js/pollflow.js。 */
+import { refresh } from './pollflow.js'
 /* 步骤 49：启动自检搬进 js/selfcheck.js（它自己排 1200ms 后的定时器）。 */
 import './selfcheck.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
@@ -115,7 +117,7 @@ var q = QB.v;
 /* ic()（图标字符串生成器）搬进 js/domutil.js（P14 S6 步骤 48）。 */
 /* ---------- 服务端搜索（R3）----------
    列表数据一律来自 /api/search；请求失败时退回本地过滤，断网也能看。 */
-var prefsLoaded = false;
+/* prefsLoaded（首帧偏好只应用一次的闩）跟着轮询簇搬进 js/pollflow.js（P14 S6 步骤 52）。 */
 /* SR（服务端搜索结果）与 searchSeq（首页搜索序号）搬进 js/searchflow.js（步骤 41）。
    上次搜索结果的指纹 SRK 也在那边。 */
 /* q 是 app.js 里的 var，会被重新赋值，别的模块拿到的是只读绑定（同 SRK 装盒那条教训），
@@ -218,52 +220,9 @@ window.onAppResume = function(){
 };
 /* 导出 JSON / 导入 JSON / 清空全部笔记 / 排序浮层 / 偏好读写搬进 js/settingsflow.js
    （P14 S6 步骤 32）。 */
-/* ---------- 轮询：只在数据真的变了才重绘（避免秒级闪烁 ----------
-   2s 一次的 /api/state 很便宜，但 render() 要重建整个列表、重载缩略图、
-   重播入场动画。所以先比指纹，没变就只刷新右上角状态点。 */
-var SIG = '', drawn = false;
-/* 轮询指纹的排除表：/api/state 里每秒都在变、界面又不展示的字段。
-   不排掉的话「数据没变就不重绘」这条契约（D8）直接失效——uptimeS 每秒 +1，
-   每一轮都算「变了」，四个 tab 每秒全量重绘一次，正是本文件顶部说的闪屏来源。
-   排除表就是行为契约，tools/ui_test.js 有断言钉住它（改名 / 删字段即红）。 */
-var SIG_SKIP = { uptimeS:1, tz:1, go:1, dir:1 };
-
-/* 整份 /api/state 的指纹。步骤 11 把原来的「逐字段手挑」换成「整份序列化 + 排除表」：
-   手挑那份漏一个字段就是静默不重绘（注释里记着 i.shot 踩过），整份序列化把这类漏项
-   封掉——新字段默认进签名，只有明确列进排除表的才不参与。
-   契约翻转（步骤 11 记录）：笔记正文 content 变化现在会触发重绘（旧签名只取
-   id/status/updatedAt/title/子项数，正文改了不重绘）。这是更严的方向，代价是
-   「AI 解析写完正文」那一拍多一次重绘。
-   shot / server 不能排：截图页的 banner 读 info.shot、设置页显示 info.server，
-   排掉就是「外部改了数据界面不更新」。 */
-function stateSig(d){
-  var i = {}, src = (d && d.info) || {}, k;
-  for(k in src){ if(!SIG_SKIP[k]) i[k] = src[k] }
-  var sf = (typeof SHOTFLAGS.v === 'object' && SHOTFLAGS.v) || {};   // 启动早期还没有 flags
-  return JSON.stringify([d && d.notes, i, (d && d.settings) || {},
-    [sf.enabled?1:0, sf.folders||0, sf.granted?1:0]]);
-}
-async function refresh(quiet){
-  if(Date.now() < ANIMLOCK.v){ paintStatus(); return }
-  try{ var d = await api('/api/state'); reassign(S, d); if(MISSED.v) S.missed = MISSED.v;
-       var dirty = !quiet || !drawn || stateSig(d) !== SIG;
-       if(!prefsLoaded && S.settings && S.settings.ui){
-         prefsLoaded = true;
-         var fp = flattenPrefs(S.settings.ui);
-         Object.keys(fp).forEach(function(k){
-           prefs[k] = Object.assign(prefs[k]||{}, fp[k]);
-         });
-         q = syncBox(QB, P().q || '');
-         shell.q = q; shell.has = !!q;
-         dirty = true;
-       }
-       if(themeOf() !== CUR.v){ CUR.v = themeOf(); applyTheme(); dirty = true; }
-       paintStatus();
-       if(!dirty) return;
-       SIG = stateSig(d); drawn = true;
-       searchNow(dirty); }
-  catch(e){ shell.dot = 'bad'; if(!drawn) render(); }
-}
+/* ---------- 轮询：只在数据真的变了才重绘 ----------
+   SIG / drawn / SIG_SKIP / stateSig / refresh 连 prefsLoaded 一起搬进 js/pollflow.js
+   （P14 S6 步骤 52）：这里剩下的只有 setInterval 那一行与 __enoteActions 里的 refresh。 */
 /* 设置页保存（saveSettings）跟着 toggleAI 搬进 js/settingsflow.js / js/noteflow.js：
    它读的是 settingsflow 的 SFORM，formFill 也在那边（步骤 42 / 44）。 */
 /* 运行日志 / AI 调用记录 / AI 连通测试那一簇（LLMTEST / testLLM / LOGDATA / DEBUGDATA /
