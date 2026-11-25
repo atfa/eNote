@@ -51,6 +51,8 @@ import { MISSED, loadMissed, missedSheet, missedDone, missedGoTodos, missedDismi
 /* 步骤 38：弹层开合（pageSheetVue / sheetVue / closeSheet / sheetLeft）搬进 js/sheetflow.js
    （循环依赖，同上：本模块顶层不碰 app.js，只在函数体里读 $ 与 VUE_SHEETS）。 */
 /* 步骤 39：自绘对话框那一簇搬进 js/dlgflow.js（循环依赖，同上）。 */
+/* 步骤 40：「记一笔」/「添加待办」那一簇搬进 js/addflow.js（循环依赖，同上）。 */
+import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
 import { pageSheetVue, sheetVue, closeSheet, sheetLeft } from './sheetflow.js'
 import { openNote, openTodo, openTodoFocus, jump, dueMs, toCalendar, toAlarm }
@@ -549,43 +551,9 @@ function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
 window.uiDialog = function(title, msg, id){ uiDialog(title, msg, id) };
 
 window.uiBack = function(){ return uiBackKey() };
-/* 步骤 21：「记一笔」与「添加待办」的表单值也搬进状态（步骤 20 的同一套做法）。
-   这两个弹层是每次新建，所以初值就是空串 / 默认值，不需要从服务端灌。
-   与设置页的差别：这里用 :value（DOM property）而不是 :value.attr —— 这些元素今天
-   DOM 上没有 value 属性，写属性保持序列化逐字不变（设置页那六个必须写属性，见步骤 20）。 */
-var FORMS = Vue.reactive({ v: { add: null, todo: null } });
-function formSet(name, k, v){ var f = FORMS.v[name]; if(f) f[k] = v }
-function addSheet(){
-  FORMS.v.add = { text: '' };
-  return sheetVue('add');
-}
-async function addNote(){
-  var t = String((FORMS.v.add || {}).text || '').trim(); if(!t){toast('写点内容吧');return;}
-  closeSheet(); toast('已加入队列…');
-  var r = await api('/api/add',{text:t});
-  if(!r.ok) toast(r.error||'失败');
-  setTimeout(refresh,500); setTimeout(refresh,3000); setTimeout(refresh,9000);
-}
-function pickImage(){
-  if(!window.Android){toast('选图只在 app 内可用');return;}
-  Android.pickImage(); closeSheet(); toast('已提交，正在识别图片…');
-  setTimeout(refresh,1500); setTimeout(refresh,5000); setTimeout(refresh,12000);
-}
-/* 给哪条笔记加待办：弹层组件不接 props（mountSheet 只挂不传），所以存进模块变量，
-   组件挂载时读一次（见 views/sheets.js 的 AddTodoSheetView）。 */
-var SHEETARG = SHEETARGB.v;
-function addTodoSheet(nid){
-  SHEETARG = syncBox(SHEETARGB, nid);
-  FORMS.v.todo = { text:'', date:'', time:'', pri:'normal' };
-  return sheetVue('addtodo');
-}
-async function addTodo(nid){
-  var f = FORMS.v.todo || {};
-  var t = String(f.text || '').trim(); if(!t){toast('写点内容吧');return;}
-  var due = f.date ? f.date+'T'+(f.time||'09:00') : '';
-  var r = await api('/api/todo',{action:'add',noteId:nid,text:t,due:due,priority:f.pri||'normal'});
-  closeSheet(); toast(r.ok?'已添加':'失败'); refresh();
-}
+/* 「记一笔」与「添加待办」那一簇（FORMS / formSet / addSheet / addNote / pickImage /
+   addTodoSheet / addTodo）搬进 js/addflow.js（P14 S6 步骤 40，循环依赖，同上）。
+   SHEETARGB 这个盒子留在本文件的盒子区（声明顺序是硬要求），那边写它走 syncBox。 */
 /* reset=true 表示明确要回到顶部（打开某条笔记、返回键回首页），否则恢复上次的位置 */
 function setTab(reset){
   tab = syncBox(TAB, tab || 'notes');
@@ -1037,4 +1005,4 @@ export { S, tab, open, q, $, esc, now, toast, dialog, closeSheet, pageSheetVue, 
   refresh, api, paneDirty, statsNow, relTime, statCls,
   apiTimeout, P, SRK, reassign, paintStatus, errText, render, enterCls, askDel,
   prefs, savePrefs, searchNow, setQ, setTabTo, ST, REQ_TIMEOUT_MS, syncBox, STERR,
-  dueMs, REMIND, toggle, VUE_SHEETS }
+  dueMs, REMIND, toggle, VUE_SHEETS, SHEETARGB }

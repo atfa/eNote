@@ -3466,3 +3466,39 @@ uiBack 关对话框返回 1 → dlg=none
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.62 P14 S6：「记一笔」/「添加待办」那一簇搬进 js/addflow.js（步骤 40）
+
+第十二簇：**添加表单**——`FORMS`（两个弹层的表单状态）、`formSet`（输入回写）、`addSheet`、
+`addNote`、`pickImage`、`addTodoSheet`、`addTodo` 搬成 `go/ui/js/addflow.js`，
+**app.js 1040 → 1008 行**（模块 50 行）。
+
+* **清单 (d) 条第一次真的咬到**：原来那行 `var SHEETARG = SHEETARGB.v;` 若照搬进模块，就是在
+  模块求值期读 app.js 的盒子。ESM 的求值顺序是「被 import 的先跑」，addflow.js 的函数体跑之前
+  app.js 的 `var SHEETARGB` 还是 `undefined` → `Cannot read properties of undefined (reading 'v')`
+  → 整份 app.js 不执行、页面全白（闸门全绿，症状只有空白页，同步骤 37 那一类）。
+  顺带发现 `SHEETARG` 是个**只写不读**的死变量（组件读的是 `H.sheetArg` → `SHEETARGB.v`），
+  于是那行整个删掉，写 nid 直接 `syncBox(SHEETARGB, nid)`。
+* `SHEETARGB` 这个盒子留在 app.js 的盒子区（第 81-87 行，那里的注释写着「声明顺序是硬要求」），
+  模块 import 它、只写它的 `.v`（写导入对象的属性合法，写导入绑定本身才违法）。
+* 模块顶层只 import `Vue`（来自 vue.js）与 `sheetVue` / `closeSheet`（来自 sheetflow.js），
+  从 app.js 拿的 `toast / api / refresh / syncBox / SHEETARGB` 全部只在函数体里读。
+* 搬迁清单 (g) 条：整段与 `git show HEAD:go/ui/js/app.js` 的 552-588 行逐字 diff，除上面那两处
+  声明改写外全部一致。
+
+探针（物理屏，`.test/probe_add.js`，走真实用户路径：点 `#fab` → 弹层 → 输入框派发 `input` 事件 →
+点弹层里的按钮）：
+
+```
+base      sheet=none notes=8 todos=0
+记一笔    sheet=on body=269 addText=yes → 输入 typed → clicked → notes=9 sheet=none
+addtodo   sheet=on body=450 tText=yes h2=添加待办 → 输入 typed → clicked → todos=1 sheet=none
+end       loads=1
+```
+
+`formSet` 不是全局（只挂在 HOST 上），所以探针用「给 `#addText` / `#tText` 派发 input 事件」这条
+真实路径验证 `@input="H.formSet(...)"` → `FORMS.v.add/todo` 的回写管道没断；`addTodoSheet(nid)` 的
+`nid` 走 `SHEETARGB` → `H.sheetArg` → 组件 `setup()` 里读一次，`h2=添加待办` + `todos=1` 证明这条链通。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

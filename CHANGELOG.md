@@ -1374,6 +1374,26 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 「记一笔」/「添加待办」那一簇搬进 js/addflow.js（P14 S6 步骤 40）
+
+第十二簇：**添加表单**——`FORMS`、`formSet`、`addSheet`、`addNote`、`pickImage`、`addTodoSheet`、
+`addTodo` 搬成 `go/ui/js/addflow.js`，**app.js 1040 → 1008 行**（模块 50 行）。
+
+* **清单 (d) 条第一次真的咬到**：原来那行 `var SHEETARG = SHEETARGB.v;` 若照搬进模块，就是在模块求值期
+  读 app.js 的盒子——ESM 里被 import 的模块先求值，那时 app.js 的 `var SHEETARGB` 还是 `undefined` →
+  `Cannot read properties of undefined (reading 'v')` → 整份 app.js 不执行、页面全白（闸门全绿）。
+  顺带发现 `SHEETARG` 是**只写不读**的死变量（组件读的是 `H.sheetArg` → `SHEETARGB.v`），那行整个删掉，
+  写 nid 直接 `syncBox(SHEETARGB, nid)`。
+* `SHEETARGB` 盒子留在 app.js 的盒子区（注释写着「声明顺序是硬要求」），模块 import 它、只写它的 `.v`
+  （写导入对象的属性合法，写导入绑定本身才违法）。
+* 模块顶层只 import `Vue`（vue.js）与 `sheetVue` / `closeSheet`（sheetflow.js）；从 app.js 拿的
+  `toast / api / refresh / syncBox / SHEETARGB` 全部只在函数体里读。
+* 探针（`.test/probe_add.js`，真实用户路径：点 `#fab` → 弹层 → 给输入框派发 `input` 事件 → 点按钮）：
+  记一笔 `notes=8 → 9`、添加待办 `todos=0 → 1`、两次都 `sheet=none`（弹层自己收掉）、`loads=1`。
+  `formSet` 不是全局，所以用 input 事件验证 `@input="H.formSet(...)"` → `FORMS.v` 的回写管道没断。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 自绘对话框那一簇搬进 js/dlgflow.js（P14 S6 步骤 39）
 
 第十一簇：**自绘对话框**——`dialog`（六个字段写进 `shell.dlg`）、`closeDlg`（取走回调再清空）、
