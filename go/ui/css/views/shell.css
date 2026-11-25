@@ -9,8 +9,14 @@
    （Vue 的 enter/leave 在双 requestAnimationFrame 里起跳，Chrome 不给不可见窗口出帧时
    rAF 不跑，弹层会永久停在 enter-from 的 opacity:0 上、且 leave 永不结束）。
    于是 Vant 那些 van-fade-* / van-dialog-bounce-* / van-popup-slide-* 类一个都不会出现，
-   这里无需覆盖；入场动效是 .enote-toast / .enote-dialog 上的 pop 关键帧（components.css、
-   base.css），CSS 动画走合成器，不经过 Vue。 */
+   这里无需覆盖；入场动效是 .enote-toast / .enote-dialog / .sheet .panel 上的关键帧
+   （components.css、base.css），CSS 动画走合成器，不经过 Vue。
+
+   唯一的例外是遮罩：Vant 的 Overlay 组件自己带 <Transition appear>（不受我们 v-if 影响），
+   挂载时挂 van-fade-appear-from（opacity:0），摘这个类同样要等一次 rAF —— 不可见窗口上
+   遮罩会永久透明。迁移前遮罩是瞬间出现的（display:none→flex 不触发 transition），
+   所以「不淡入」本来就是现状，这里把它钉死。特异度 (0,2,0) 压过 Vant 的 (0,1,0)。 */
+.van-overlay.van-fade-enter-from,.van-overlay.van-fade-appear-from{opacity:1}
 
 /* 顶栏显隐（步骤 15）：我的页用自己的 hero 头部，不显示顶栏。
    以前是 setTab() 里 $('#topbar').style.display = mine?'none':'flex'，现在它是

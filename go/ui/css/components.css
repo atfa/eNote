@@ -103,7 +103,10 @@
 .fcb .ic{width:12px;height:12px;opacity:0}
 .frow.on .fcb .ic{opacity:1}
 /* 长任务进度层：不可点掉，顶部是要求用户"别黑屏/别退出"的醒目提示 */
-.ovl{position:fixed;inset:0;z-index:80;background:rgba(8,12,20,.55);backdrop-filter:blur(3px);
+/* z-index 9000：截图导入进度层要压在弹层之上（步骤 17j 之前是 80 > sheet 40）。
+   步骤 18d 之后弹层是 Vant 的 popup，z-index 从 2000 起每开一个弹层 +1，
+   固定层级的东西只能站到它上面去，不能混着排。 */
+.ovl{position:fixed;inset:0;z-index:9000;background:rgba(8,12,20,.55);backdrop-filter:blur(3px);
   display:flex;align-items:center;justify-content:center;padding:var(--s5)}
 .ovlcard{width:100%;max-width:340px;background:var(--card);border-radius:var(--r3);padding:var(--s4) var(--s4);
   box-shadow:var(--sh3,0 18px 48px rgba(0,0,0,.28));text-align:center}
@@ -231,12 +234,13 @@
 /* --- 面板（底部弹出，带弹性）：.sheet / .sheet .panel 的覆盖样式已并入 css/base.css --- */
 @keyframes up{from{transform:translateY(40px) scale(.98);opacity:.5}to{transform:none;opacity:1}}
 .sheet .panel.full{max-height:94vh;height:94vh;border-radius:var(--r3) var(--r3) 0 0}
-/* 步骤 17i：收场动画从 JS 加类（.sheet.closing）换成 <Transition> 的 leave 类。
-   leave 类加在根元素 .sheet 上（Transition 过渡的就是它），所以面板那条是后代选择器；
-   特异度 .sheet.sh-leave-active .panel = (0,2,1)，压得过 base.css 的 .sheet .panel{animation:up}。 */
-.sheet.sh-leave-active{transition:opacity var(--d1) var(--ease)}
-.sheet.sh-leave-to{opacity:0}
-.sheet.sh-leave-active .panel{animation:down var(--d1) var(--ease) forwards}
+/* 步骤 18d：收场动画回到「JS 加类」—— v-if 之后没有 Vue 的 leave 阶段（见 js/shell.js），
+   app.js closeSheet 先把 .closing 挂上 #sheet，动画时长（--d1）跑完才摘节点。
+   .closing 挂在根元素上，所以面板那条是后代选择器；特异度 .sheet.closing .panel = (0,3,0)，
+   压得过 base.css 的 .sheet .panel{animation:up}。遮罩是 Vant 的 .van-overlay，
+   收场时 overlay-class 换成 sheet-ovl sheet-closing，用 Vant 自己的 van-fade-out 关键帧。 */
+.sheet.closing .panel{animation:down var(--d1) var(--ease) forwards}
+.sheet-ovl.sheet-closing{animation:van-fade-out var(--d1) var(--ease) forwards}
 @keyframes down{to{transform:translateY(30px);opacity:0}}
 /* 面板关闭按钮：没有它就只能点遮罩，手机返回键会直接退出 app */
 .sheet .panel{position:relative}

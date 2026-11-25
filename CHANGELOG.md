@@ -1374,6 +1374,45 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 弹层换成 `van-popup`（P14 S5 步骤 18d）：17i 的 `<Transition>` JS 钩子整批退役
+
+`SheetHost` 的外壳换成 `<van-popup position="bottom">`。定位（fixed 贴底、宽 100%）、遮罩、
+滚动锁定、z-index 分层归 Vant；`.sheet` 只剩「宽屏上把面板居中」、面板自己的样式和入场动画。
+**类名契约一个没动**：`#sheet` 上的 `.on` / `.page`、`#panel`、`#sheetBody`、`.grip`、`.pclose`
+全在，test.sh 的 8 处 `#sheet.on` 选择器、闸门⑥ 的 `.sheet`、闸门⑦ 的层叠基线全部照旧。
+遮罩是 Vant 的 `.van-overlay`，配色与毛玻璃由 `overlay-class` 送进来的 `.sheet-ovl` 提供，
+`rgba(10,16,26,.42)` + `blur(6px)` 逐字未动。`.van-popup` 自带白底和 `overflow-y:auto`，
+两条都要写回：白底会在面板圆角外露出一圈，overflow 会裁掉面板往上散的那层阴影。
+
+**遮罩是 v-if 方案的唯一例外**：Vant 的 Overlay 组件自带 `<Transition appear>`，挂载时挂
+`van-fade-appear-from{opacity:0}`，摘这个类同样要等一次 rAF —— 不可见窗口上遮罩会永久透明。
+`views/shell.css` 加一条把它钉回 `opacity:1`：迁移前遮罩是瞬间出现的（`display:none→flex`
+本来就不触发 transition），「不淡入」就是现状。
+
+显隐照 18b/18c 走 **`v-if` + `:show="true"`**，于是 17i 那套 `<transition :css="false">` 的 JS
+钩子（`shEnter` / `shLeave` / `shLeaveCancel` / `leaveMs`）整批删掉 —— 理由和当年一模一样，
+只是这次连 Vue 的过渡组件都不用了。`shell.sheet` 新增 `mounted`（节点在不在）与 `on`（看不看得见）
+分离：`closeSheet()` = `on=false` 挂 `.closing` 播收场动画（面板下滑 + 遮罩淡出，关键帧与时长
+沿用迁移前的 `down` / `--d1`）+ 定时器摘节点，摘节点时 van-popup 的 `@vue:unmounted` 调
+`sheetLeft()` 拆弹层内容的 app。闸门⑱ 的契约跟着换：`@after-leave` → `@vue:unmounted`，
+并新增「不许再用 `<transition>`」「时长必须从样式表读」「摘节点的定时器必须带状态守卫」三条。
+
+踩到的坑：`cssMs` 第一版把 `getPropertyValue('--d1')` 读到的 `"110ms"` 当秒乘了 1000 → 110 秒后
+才摘节点，`test.sh --vd` 报「关掉弹层之后还有 sheet 活着（sheets=settings）」。CSS 时长带单位，
+`parseFloat("110ms")` 给的就是毫秒数。进度层 `.ovl` 的 z-index 从 80 提到 **9000**：旧版是
+80 > sheet 40（进度层必须压在弹层之上），Vant 的 popup 从 2001 起递增，固定层级的东西只能站到
+它上面去，不能混着排。
+
+**真机计算样式对比**（基线 = `git stash` 出 18c 的构建，`.test/sh_base.txt` / `.test/sc_base.txt`
+vs `.test/sh_18d.txt` / `.test/sc_18d.txt`）：page 形态的 `#sheet .panel` / `.phead` / `.pbody` /
+`.btn`、卡片形态的 `#sheet .panel` / `.grip` / `.pclose` / `#sheetBody` **全部逐字一致**；
+`#sheet` 根节点只差遮罩搬走、z-index 40→2001、`max-height:100%`（Vant 自带）与根盒从满屏变成
+贴底的内容盒（透明 + `overflow:visible`，视觉零差别）；关掉之后节点与遮罩都无残留。
+后台屏截图（运行日志卡片弹层：圆角、抓手、关闭按钮、遮罩压暗毛玻璃）核对通过。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 对话框换成 `van-dialog`（P14 S5 步骤 18c）：顺带挖出 Vue 的 `<Transition>` 在不可见窗口上永不结束
 
 `DialogHost` 的模板换成 `<van-dialog>`，标题走 `#title` 插槽（里面还是我们的 `<h3 id="dlgT">`）、

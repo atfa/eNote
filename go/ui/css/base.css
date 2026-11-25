@@ -178,18 +178,22 @@ label{display:block;font-size:var(--fs-xs);color:var(--dim);margin:var(--s3) 0 v
 .fhint{font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s1);line-height:1.45}
 .empty{text-align:center;color:var(--dim2);padding:var(--s6) var(--s4);font-size:var(--fs-base)}
 .empty div{font-size:var(--fs-display);margin-bottom:var(--s2);opacity:.6}
-.sheet{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);display:none;
-  align-items:flex-end;justify-content:center}
-.sheet.on{display:flex}
+/* 步骤 18d：弹层外壳是 Vant 的 van-popup，.sheet 挂在它的根节点上（见 js/shell.js）。
+   定位（fixed 贴底、宽 100%）、遮罩、滚动锁定、z-index 分层都归 Vant，这里只剩三件事：
+   宽屏上把面板居中（Vant 的 bottom popup 是满宽左对齐的块）、补 Vant 没有的维度、
+   入场动画。.van-popup 自带白底与 overflow-y:auto，两条都要写回：白底会在面板的圆角外
+   露出一圈，overflow 会裁掉面板往上散的那层阴影。 */
+.sheet{display:flex;align-items:flex-end;justify-content:center;background:transparent;overflow:visible}
+.sheet.page{height:100%}
 .sheet .panel{width:100%;max-width:760px;max-height:88vh;overflow:auto;background:var(--card);border-radius:var(--r3) var(--r3) 0 0;padding:var(--s4) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom));border-top:var(--hair) solid var(--line);animation:up var(--d2) var(--ease)}
-/* S2：这两条原来在 css/components.css，和上面的 .sheet / .sheet .panel 同名同属性
-   （background、animation），跨文件层叠靠加载顺序，肉眼看不出来。合并到同一文件、
-   紧邻原规则之后，层叠顺序变成读得出来的。tools/ui_test.js 闸门⑦ 的 CASCADE_BASELINE
-   就是为这两条开的，现在清空。 */
-.sheet{background:rgba(10,16,26,.42);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-  transition:opacity var(--d2) var(--ease)}
+/* S2：这条原来在 css/components.css，和上面那条同名同属性（animation），跨文件层叠靠
+   加载顺序，肉眼看不出来。合并到同一文件、紧邻原规则之后，层叠顺序变成读得出来的。
+   tools/ui_test.js 闸门⑦ 的 CASCADE_BASELINE 就是为这两条开的，现在清空。 */
 .sheet .panel{animation:up var(--d2) cubic-bezier(.2,1.08,.28,1);
   box-shadow:0 -8px 40px rgba(12,22,40,.16)}
+/* 遮罩是 Vant 的 .van-overlay（类名由 SheetHost 的 overlay-class 送进来）：
+   配色与毛玻璃沿用迁移前 .sheet 的那两条，一点没改。 */
+.sheet-ovl{background:rgba(10,16,26,.42);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 @keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
 .grip{width:38px;height:4px;border-radius:var(--r-pill);background:var(--grip);margin:0 auto var(--s3)}
 h2{font-size:var(--fs-lg);margin:0 0 var(--s1)}

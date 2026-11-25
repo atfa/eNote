@@ -2761,3 +2761,49 @@ test.sh：三处对话框轮询（设置页清空、笔记删除、附件删除�
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
 三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。
+
+**步骤 18d：`SheetHost` → `van-popup`（2026-11-25，全绿）**
+
+分工变了：定位（fixed 贴底、宽 100%）、遮罩、滚动锁定（`useLockScroll`）、z-index 分层归 Vant；
+`.sheet` 只剩「宽屏上把面板居中」+ 面板自己的样式 + 入场动画。类名契约一个没动：`#sheet` 上的
+`.on` / `.page`、`#panel`、`#sheetBody`、`.grip`、`.pclose` 全在 —— test.sh 的 8 处 `#sheet.on`
+选择器、闸门⑥ 的 `.sheet`、闸门⑦ 的 CASCADE 基线全部照旧。
+
+| 旧 `.sheet`（base.css） | 现在 | 说明 |
+|---|---|---|
+| `position:fixed;inset:0;z-index:40` | `.van-popup.van-popup--bottom`（Vant） | z-index 由 Vant 全局计数器给，从 2001 起每开一个 +1 |
+| `display:none` / `.on{display:flex}` | `v-if`（节点在不在）+ `.sheet{display:flex}` | 与 18b/18c 同一个理由：Vue 的 `<Transition>` 靠双 rAF 排程 |
+| `background:rgba(10,16,26,.42)` + `backdrop-filter:blur(6px)` | `.sheet-ovl`（挂在 Vant 的 `.van-overlay` 上，`overlay-class` 送进去） | 配色与毛玻璃逐字未动 |
+| `.sheet.closing .panel{animation:down}` | 同名同规则，`.closing` 由 `closeSheet` 的定时器挂/摘 | 17i 的 `<transition :css="false">` JS 钩子整批退役 |
+| （无） | `.sheet{background:transparent;overflow:visible}` | `.van-popup` 自带白底与 `overflow-y:auto`：白底会在面板圆角外露出一圈，overflow 会裁掉面板往上散的阴影 |
+| （无） | `.sheet.page{height:100%}` | 全屏页形态要根节点撑满 |
+
+**遮罩是唯一的例外**：Vant 的 Overlay 组件自带 `<Transition appear>`（不受我们的 v-if 影响），
+挂载时挂 `van-fade-appear-from{opacity:0}`，摘这个类同样要等一次 rAF —— 不可见窗口上遮罩会永久
+透明。`views/shell.css` 加一条 `.van-overlay.van-fade-enter-from,.van-overlay.van-fade-appear-from
+{opacity:1}` 钉死：迁移前遮罩是瞬间出现的（`display:none→flex` 不触发 transition），「不淡入」
+本来就是现状，特异度 (0,2,0) 压过 Vant 的 (0,1,0)。
+
+**收场动画回到「JS 加类」**：`shell.sheet` 新增 `mounted`（节点在不在）与 `on`（看不看得见）分离。
+`closeSheet()` = `on=false`（挂 `.closing` 播动画）+ `setTimeout(cssMs('--d1')+20)` 摘节点，
+摘节点时 van-popup 的 `@vue:unmounted` → `sheetLeft()` 拆弹层内容的 app（闸门⑱ 的契约从
+`@after-leave` 换成 `@vue:unmounted`，并新增「不许再用 `<transition>`」「时长必须从样式表读」
+「摘节点的定时器必须带状态守卫」三条）。定时器在后台标签页被节流到 1s，但它会跑；CSS 动画走
+合成器，不受影响 —— 这正是 17i 当初选 JS 钩子的理由，现在连 Vue 的过渡组件都不用了。
+
+踩到的坑：`cssMs` 第一版把 `getPropertyValue('--d1')` 的 `"110ms"` 当秒乘了 1000 → 110 秒后才摘
+节点，`test.sh --vd` 报「关掉弹层之后还有 sheet 活着（sheets=settings）」。CSS 时长带单位，
+`parseFloat("110ms")` 给的就是毫秒数，必须认后缀。
+
+z-index：进度层 `.ovl` 从 80 提到 **9000**（旧版是 80 > sheet 40，进度层必须压在弹层之上；
+Vant 的 popup 从 2001 起递增，固定层级的东西只能站到它上面，不能混着排）。
+
+设备实测（`.test/p18sheet.js` / `.test/p18card.js` 读计算样式，基线 = `git stash` 出 18c 的构建）：
+**page 形态的 `#sheet .panel` / `.phead` / `.pbody` / `.btn`、卡片形态的 `#sheet .panel` / `.grip` /
+`.pclose` / `#sheetBody` 全部逐字一致**；`#sheet` 根节点只差遮罩搬走（`background`/`backdrop-filter`
+→ `.van-overlay`）、z-index 40→2001、`max-height:100%`（Vant 自带）与根节点从满屏盒变成贴底的
+内容盒（透明 + `overflow:visible`，视觉零差别）；关掉之后节点与遮罩都无残留。后台屏截图（运行日志
+卡片弹层）核对通过。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、
+三套 DOM 等价工具全部一致（卡片 2495 B、todoRow 651 B、todoTx 454 B、进度层、设置页 236 B 逐字未动）。

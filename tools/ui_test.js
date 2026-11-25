@@ -2033,9 +2033,9 @@ if (SPLIT) {
   const sl = bodyOf('function sheetLeft(');
   if (!cs) leaks.push('找不到 closeSheet（闸门⑱ 在假绿）');
   else {
-    /* 步骤 17i：拆 app 从 closeSheet 搬进了 <transition @after-leave> 的 sheetLeft，
-       所以这条契约现在跨两个函数：closeSheet 只负责起 leave，sheetLeft 负责拆。 */
-    if (!sl) leaks.push('找不到 sheetLeft（<transition @after-leave> 的回调，闸门⑱ 在假绿）');
+    /* 步骤 18d：拆 app 从 closeSheet 搬进了 van-popup 的 @vue:unmounted（sheetLeft），
+       所以这条契约跨两个函数：closeSheet 只负责起收场动画与摘节点，sheetLeft 负责拆。 */
+    if (!sl) leaks.push('找不到 sheetLeft（van-popup @vue:unmounted 的回调，闸门⑱ 在假绿）');
     else if (!/unmountAllSheets\(\s*\)/.test(sl)) leaks.push('sheetLeft 没全量拆 sheet');
     if (/unmountAllSheets\(\s*\[/.test(appSrc))
       leaks.push('unmountAllSheets 又带例外名单（步骤 17j：进度层是外壳树的 <teleport> 子组件，不在 sheetApps 里，不需要例外）');
@@ -2044,17 +2044,22 @@ if (SPLIT) {
     if (sl && /unmountSheet\('/.test(sl)) leaks.push('sheetLeft 里又写了硬编码的 unmountSheet 名单（新增 sheet 会静默泄漏）');
     if (/unmountSheet\('/.test(cs)) leaks.push('closeSheet 里又写了硬编码的 unmountSheet 名单（新增 sheet 会静默泄漏）');
     const sh = read('go/ui/js/shell.js');
-    if (!/<transition[^>]*@after-leave="H\.sheetLeft"/.test(sh)) leaks.push('SheetHost 的 <transition> 没接 @after-leave=H.sheetLeft（拆不掉 sheet）');
-    if (/shell\.sheet\.closing/.test(appSrc)) leaks.push('closeSheet 还在用 .closing + setTimeout（17i 已交给 <transition>）');
-    /* 步骤 17i：leave 必须是 JS 钩子模式。CSS 模式下 Vue 用 requestAnimationFrame 推进
-       状态机，页面不可见时 rAF 挂起 → leave 永不落地 → 弹层关不掉、sheet 的 app 也不拆。
-       真机验收（test.sh 剪贴板 raw 用例，虚显 + 屏关）拓到过：改回 CSS 模式就复现。 */
-    if (!/<transition[^>]*:css="false"/.test(sh)) leaks.push('SheetHost 的 <transition> 不是 JS 钩子模式（:css="false"）：CSS 模式的 leave 靠 rAF 推进，页面不可见时永不落地');
-    if (!/<transition[^>]*@leave="shLeave"/.test(sh)) leaks.push('SheetHost 的 <transition> 没接 @leave=shLeave');
-    if (!/setTimeout\(done/.test(sh)) leaks.push('shLeave 没用定时器收尾（见 SheetHost 注释：rAF 在不可见页面被挂起）');
-    if (!/shLeaveCancel/.test(sh)) leaks.push('shLeave 没有配对的 leave-cancelled 抹类（:css="false" 时 Vue 不记账，关掉立刻重开会残留 leave 类）');
+    /* 步骤 18d：外壳是 van-popup，显隐是 v-if + :show="true"，摘节点时 @vue:unmounted 拆 app。
+       17i 那套 <transition :css="false"> 的 JS 钩子整批退役 —— 理由一模一样（Vue 的过渡
+       靠双 requestAnimationFrame 排程，Chrome 不给不可见窗口出帧时永不落地，弹层关不掉、
+       sheet 的 app 也不拆），只是这次连 Vue 的 <Transition> 都不用了：节点在不在是状态的
+       纯函数，收场动画是 CSS 关键帧（走合成器），摘节点的定时器在后台标签页会被节流但会跑。 */
+    if (!/@vue:unmounted="H\.sheetLeft"/.test(sh)) leaks.push('SheetHost 的 van-popup 没接 @vue:unmounted=H.sheetLeft（拆不掉 sheet）');
+    if (/<transition/.test(sh)) leaks.push('SheetHost 用回了 <transition>：Vue 的过渡靠 rAF 排程，不可见窗口上永不落地（见 shell.js 的 SheetHost 注释）');
+    if (!/shell\.sheet\.on = false/.test(cs)) leaks.push('closeSheet 没把 shell.sheet.on 置 false');
+    if (!/shell\.sheet\.mounted = false/.test(cs)) leaks.push('closeSheet 没摘节点（shell.sheet.mounted = false）');
+    if (!/setTimeout\(function\(\)\{ if\(!shell\.sheet\.on\)/.test(cs))
+      leaks.push('closeSheet 摘节点的定时器没有状态守卫（关掉立刻重开会被迟到的定时器摘掉）');
+    if (!/cssMs\('--d1'\)/.test(cs)) leaks.push('closeSheet 的收场时长没从样式表读（cssMs(\'--d1\')，样式表是时长唯一来源）');
+    if (!/shell\.sheet\.mounted = true/.test(pv)) leaks.push('pageSheetVue 没让节点先存在（shell.sheet.mounted = true）');
     const ccs = read('go/ui/css/components.css');
-    if (!/\.sheet\.sh-leave-active \.panel\{animation:down/.test(ccs)) leaks.push('components.css 的收场动画选择器不是 .sheet.sh-leave-active .panel（leave 类加在根元素上）');
+    if (!/\.sheet\.closing \.panel\{animation:down/.test(ccs)) leaks.push('components.css 的收场动画选择器不是 .sheet.closing .panel（.closing 挂在根元素上）');
+    if (!/\.sheet-ovl\.sheet-closing\{animation:van-fade-out/.test(ccs)) leaks.push('遮罩的收场动画没走 .sheet-ovl.sheet-closing（遮罩是 Vant 的 .van-overlay）');
     /* 步骤 17j：截图导入进度层住在外壳树里，靠 <teleport> 把 DOM 送到 body 级的
        #shotOvlRoot（层叠与位置零变化）。它必须住在 SheetHost（弹层的开合与它无关），
        并且组件自己声明 components —— 步骤 16d 的教训：Vue 对未注册组件只 warn。 */

@@ -1205,6 +1205,7 @@ function pageSheetVue(name, title, kind){
   shell.sheet.kind = kind || '';
   shell.sheet.full = false;
   shell.sheet.title = title;
+  shell.sheet.mounted = true;
   shell.sheet.on = true;
   return nextTick(function(){
     if(gen !== sheetGen) return;
@@ -1226,6 +1227,7 @@ function sheetVue(name, full){
   shell.sheet.kind = '';
   shell.sheet.full = !!full;
   shell.sheet.title = '';
+  shell.sheet.mounted = true;
   shell.sheet.on = true;
   return nextTick(function(){
     if(gen !== sheetGen) return;
@@ -1391,17 +1393,33 @@ async function showDebug(){
   return sheetVue('debug');
 }
 function clip(s,n){s=s||'';return s.length>n?s.slice(0,n)+'…':s}
+/* 样式表是动画时长的唯一来源：这里读 tokens.css 的 --d1（"110ms"）换算成毫秒。
+   单位要认：CSS 时长写成 110ms 时 parseFloat 给的就是毫秒数，写成 .2s 才是秒。 */
+function cssMs(name){
+  var s = '';
+  try{ s = String(getComputedStyle(document.documentElement).getPropertyValue(name)).trim() }
+  catch(e){ return 0 }
+  var v = parseFloat(s);
+  if(!isFinite(v) || v <= 0) return 0;
+  return /ms$/.test(s) ? Math.round(v) : Math.round(v * 1000);
+}
 function closeSheet(){
   if(!shell.sheet.on) return;
-  /* 步骤 17i：收摊交给 SheetHost 里的 <Transition>：on=false 触发 leave 动画，动画真的
-     跑完才 @after-leave → sheetLeft() 拆 app。以前是 setTimeout(110) + sheetGen 号防
-     「关掉立刻重开」时迟到的回调把新弹层拆掉；Vue 在 leave 被取消时根本不会调
-     after-leave，那个守卫整个没用了。
+  /* 步骤 18d：外壳是 van-popup，显隐是 v-if（没有 Vue 的 leave 阶段，理由见 js/shell.js
+     的 SheetHost 注释），所以收场动画自己排：on=false 让 SheetHost 挂上 .closing
+     （面板下滑 + 遮罩淡出，规则在 css/components.css），动画跑完才摘节点。
+     摘掉之后 van-popup 的 @vue:unmounted → sheetLeft() 拆弹层内容的 app。
+     「关掉立刻重开」由状态守卫：定时器只在仍然 on=false 时才摘，重开就不摘。
+     定时器在后台标签页会被节流到 1s，但它会跑 —— 17i 的教训是 rAF 在不可见窗口上
+     永不跑，Vue 的 <Transition> 因此不可用（CSS 动画走合成器，不受影响）。
      进度层不在这里收，也不在这张表里：它是外壳树里的 <teleport> 子组件（步骤 17j），
      shotsImported 先 closeSheet 再等 AI 解析完，进度层自己管自己的生死（SHOTPROG.on）。 */
   shell.sheet.on = false;
+  var ms = cssMs('--d1');
+  if(!ms){ shell.sheet.mounted = false; return }
+  setTimeout(function(){ if(!shell.sheet.on) shell.sheet.mounted = false }, ms + 20);
 }
-/** <transition @after-leave>：面板的收场动画真结束了才拆 sheet 的 app */
+/** van-popup 的 @vue:unmounted：节点真摘掉了，才拆 sheet 的 app */
 function sheetLeft(){
   /* 步骤 13：以前这里手写四个名字（shots/folders/clip/settings），新增 sheet 忘了加
      就是静默泄漏。名单现在只有一份：sheetApps 这张表。步骤 17j：进度层从例外名单里

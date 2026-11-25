@@ -51,6 +51,9 @@ export const shell = reactive({
   ind: { w: 0, x: 0 },
   sheet: {
     on: false,
+    /* 步骤 18d：节点在不在（v-if）。on 是「看得见」，mounted 是「节点存在」——
+       关掉时先 on=false 播收场动画，动画跑完才 mounted=false 摘节点（app.js closeSheet） */
+    mounted: false,
     /* page: true = 全屏页形态（.phead + .pbody），false = 底部卡片形态（.grip + .pclose）
        kind: #panel 的 data-kind（CSS 钩子，见 SheetHost 注释），空 = 不写这个属性
        步骤 16c：内容只剩 Vue 挂载一条路，mode:'html' 与 html 字段随六个字符串弹层一起删掉。 */
@@ -105,51 +108,41 @@ export const TabBar = {
 `
 }
 
-/* 弹层宿主：遮罩 + 面板。面板有两种形态，与迁移前一致：
+/* 弹层宿主（步骤 18d：外壳换成 Vant 的 van-popup）：遮罩 + 面板。
+   面板有两种形态，与迁移前一致：
    - page 形态（全屏页）：.panel.page = .phead（返回按钮 + 标题）+ .pbody
    - 卡片形态（底部弹出）：.panel = .grip + .pclose + 内容
    内容都交给弹层视图挂载（#sheetBody 是它的容器，也是夹具锚点）：步骤 16c 之后
    字符串内容那条路（mode='html'）已经没有了，六个字符串弹层全成了 VUE_SHEETS 里的组件。
    卡片形态的内容比迁移前多出 #sheetBody 这一层包装，CSS 里唯一受影响的子选择器
    `.sheet .panel>h2` 已补上 `#sheetBody>h2`（见 css/components.css）。
-   两个 .panel 分支各带 id="panel"：v-if/v-else 同时只渲染一个，id 不会重复。 */
+   两个 .panel 分支各带 id="panel"：v-if/v-else 同时只渲染一个，id 不会重复。
+
+   换成 van-popup 之后分工变了：定位（fixed 贴底、宽 100%）、遮罩、滚动锁定、z-index
+   分层归 Vant，`.sheet` 只剩「让 .panel 在宽屏上居中」和面板自己的样式（见 css/base.css）。
+   类名契约一个没动：#sheet 上的 .on / .page、#panel、#sheetBody、.grip、.pclose 全在，
+   test.sh 的 8 处 `#sheet.on` 选择器与闸门⑥ 的 .sheet 都照旧。
+
+   显隐是 v-if + :show="true"（同 18b/18c，理由见下面 DialogHost 的注释：Vue 的
+   <Transition> 靠双 requestAnimationFrame 排程，不可见窗口上永不结束）。代价与对话框一样：
+   节点随开合创建/销毁，且没有 leave 阶段 —— 收场动画（面板下滑 + 遮罩淡出）改由
+   .closing 类 + app.js closeSheet 的定时器驱动：on=false 先挂 .closing 播动画，
+   动画时长（--d1，从样式表读）跑完才把 mounted 置 false 摘掉节点。
+   摘节点时 van-popup 的 @vue:unmounted → H.sheetLeft 拆掉弹层内容的 app（闸门⑱）。 */
 export const SheetHost = {
   name: 'SheetHost',
   components: { ShotProgress },
-  setup(){
-    const H = inject('H');
-    /* 步骤 17i：开合动画走 JS 钩子（:css="false"），不用 Vue 的 CSS 模式。原因：CSS 模式下
-       Vue 用 requestAnimationFrame 推进 leave 的状态机，页面不可见时 rAF 被挂起，leave 永不
-       落地 —— 真机验收（test.sh 的剪贴板 raw 用例，虚显 + 屏关）拓到：弹层关不掉，sheet 的
-       app 也不拆（泄漏）。改成定时器推进：后台标签页的 setTimeout 会被节流到 1s，但它会跑。
-       时长仍从 CSS 读（transition-duration = --d1），样式表依旧是唯一时长来源。 */
-    function leaveMs(el){
-      var d = '';
-      try{ d = getComputedStyle(el).transitionDuration || '' }catch(e){ return 0 }
-      var ms = 0;
-      String(d).split(',').forEach(function(s){
-        var v = Math.round(parseFloat(s) * 1000);
-        if(v > ms) ms = v;
-      });
-      return ms;
-    }
-    function shEnter(el, done){ done() }   /* 入场动画是 .sheet .panel{animation:up}，元素新建就自己跑 */
-    function shLeave(el, done){
-      el.classList.add('sh-leave-active', 'sh-leave-to');
-      setTimeout(done, leaveMs(el) + 20);
-    }
-    /* 关掉立刻重开：leave 被取消，得自己把 leave 类抹掉（:css="false" 时 Vue 不记账） */
-    function shLeaveCancel(el){ el.classList.remove('sh-leave-active', 'sh-leave-to') }
-    return { H, s: shell, shEnter, shLeave, shLeaveCancel }
-  },
+  setup(){ return { H: inject('H'), s: shell } },
   template: `
-<transition :css="false" @enter="shEnter" @leave="shLeave" @leave-cancelled="shLeaveCancel" @after-leave="H.sheetLeft">
-<div class="sheet on" id="sheet" v-if="s.sheet.on" @click.self="H.closeSheet()">
-  <!-- 步骤 17i：开合动画与拆 app 都交给 <Transition>。以前是 CSS 的 .sheet.closing .panel
-       {animation:down} + app.js 里 setTimeout(110) 手动拆 app，还要 sheetGen 号防「关掉立刻
-       重开」时迟到的回调把新弹层拆掉。Vue 在 leave 被取消时不会调 after-leave，那个守卫
-       整个没用了。时长与关键帧沿用原来的 --d1 / up / down，像素与动效零变化；
-       唯一的可见差别：遮罩（.sheet 背景）现在随 leave 淡出 110ms，以前是瞬间消失。 -->
+<van-popup v-if="s.sheet.mounted" id="sheet" :show="true" position="bottom"
+           :class="['sheet', s.sheet.on ? 'on' : 'closing', s.sheet.page ? 'page' : '']"
+           :overlay-class="s.sheet.on ? 'sheet-ovl' : 'sheet-ovl sheet-closing'"
+           :close-on-click-overlay="true" @click-overlay="H.closeSheet()"
+           @vue:unmounted="H.sheetLeft">
+  <!-- 收场动画：.closing 挂在 #sheet 上（app.js closeSheet 的定时器决定它挂多久），
+       面板下滑 + 遮罩淡出的规则在 css/components.css，关键帧与时长沿用迁移前的
+       down / --d1，像素与动效零变化。入场动画是 .sheet .panel{animation:up}，
+       节点新建就自己跑，不需要任何 JS 参与。 -->
   <!-- data-kind 是 CSS 钩子（css/views/settings.css 靠它定位设置页）。步骤 15 之前面板是
        index.html 里的常驻元素，调用方直接写 #panel.dataset.kind 就行；现在面板随弹层开合被
        创建/销毁，钩子必须进状态，否则设置页样式全丢（真机验收抓到）。空串时不写这个属性。 -->
@@ -158,8 +151,7 @@ export const SheetHost = {
     <div class="pbody" id="sheetBody"></div>
   </div>
   <div class="panel" id="panel" v-else :class="{full: s.sheet.full}" :data-kind="s.sheet.kind || null"><div class="grip"></div><button class="pclose" @click="H.closeSheet()" aria-label="关闭">✕</button><div id="sheetBody"></div></div>
-</div>
-</transition>
+</van-popup>
 <!-- 步骤 17j：截图导入进度层从「app.js 里另起一个 Vue app 挂进 #shotOvlRoot」改成
      外壳组件里的 <teleport>。它要活过弹层（shotsImported 之后 AI 解析还在跑，
      closeSheet 已经发生），以前靠的是「不在 .panel 里」这个物理位置，代价是
