@@ -2334,3 +2334,36 @@ H.xxx 125 个不同引用（宿主上帝对象）
 真机双模式各测一次：生产 `vue.global.prod.js` / `__VUE_DEV__=false` / 4 个 tab，
 dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出现
 `You are running a development build of Vue.`；`./test.sh --vd` **166 ok / 0 FAIL / PASS**（基线 165，多出的 1 项是 vendor 逐文件核对拆出来的）。
+
+### 9.28 步骤 17b：真响应式第 1 片 —— clip 页摘掉 V.tick（2026-11-25）
+
+- **为什么**：17a 把「看得见」补齐，17b 补「响应式」——今天 120 个 `live()` 是「每次 render() 全量重算」
+  的翻译，不是 Vue 的依赖追踪。第一片挑 clip 页：它是唯一一份「状态在 app.js 模块变量里、
+  组件靠 getter 读」的页，改动面最小，且步骤 9 的交互用例（勾选、解析、删除）正好能证明
+  「没有 tick 也更新」。
+- **状态**：`clipSel/clipList/clipLoading/clipError` 四个模块变量 → `var CLIP = Vue.reactive({sel:{},list:[],loading:false,error:''})`。
+  对外两个面（`setHost` 的 getter、`__enote.state` 的 getter/setter）保持原名字，测试与组件都不用改。
+  `loadClips()` 里的 `sheetPaint()` 删掉（返回 `Promise.resolve()`），`clipPick`/`clipSelAll` 的
+  `sheetPaint()` 也删掉——它们只改 CLIP，Vue 自己会重画。
+- **组件**：`views/clip.js` 的 12 个 `live(...)` 全换成裸 `computed(...)`；`ClipCount`（clip 页脚）
+  从 `components/leaf.js` 搬进 `views/clip.js`（leaf.js 是通用组件库，页脚只服务这一页，
+  留在通用库里等于逼着通用库认识页内状态）；`ClipItem` 的 `tick` prop 删掉。
+- **闸门 ⑮ 改成白名单制**：`REACTIVE_FILES` 里的文件必须用裸 `computed`（不许 `live(`），
+  其余文件仍强制 `computed` 包在 `live()` 里。这样迁移期两种写法各自的约束都还在，
+  迁完的文件不会悄悄退回 tick 驱动。clip 页的签名断言同步改成 `CLIP.sel = keep`。
+- **三个诊断缝**（都留在生产里，各一行）：`window.__enoteAppLoads`（app.js 被求值几次）、
+  `window.__enoteVtick()`（读 V.tick）、`mountSheet` 记 `window.__enoteSheet={name,app}`
+  （`app._instance.scope.active` 是「响应式更新能不能到达这个弹层」的唯一判据）。
+  这次靠它们排掉了「app.js 被求值两次 → 模块状态两份」这个假说（实测 loads=1）。
+- **两个坑（都写进 CHANGELOG）**：
+  1. **夹具要写 `window.__enote.state`，不是 `window.__enoteActions`。** 导出表上的
+     `clipList`/`clipSel` 是**快照数据属性**（装配时取一次值），赋值只落在 window 上；
+     状态桥 `__enote.state.*` 才是带 setter 的活口。写错的症状是「赋值读回来是对的、
+     界面永远不动」，本轮在这里烧了十几轮探针。
+  2. **dev 构建会渲染 `<!--v-if-->` 注释节点**（prod 是 `<!---->`），DOM 等价工具的归一化只删
+     `<!---->`，所以跑 `.test/dom_equiv*.js` 前必须 `rm enote/.vuedev`（本轮 4 项「不一致」全是这个）。
+- **响应式证明**（`.test/probe_react.sh`，一行版）：注入 2 条 → 列表渲染出来；点 `#clipitem-a2`
+  → `.clipitem.on` 1→2、页脚「1 条已选」→「2 条已选」，全程 `tick 9→9` 一动没动。
+- 验收：`node tools/ui_test.js` 122 检查全绿；`GO_TEST=1 ./build.sh`；`./install.sh` Success；
+  `./test.sh --vd` **166 项全绿**；`.test/dom_equiv3.js`（13 项）/ `dom_equiv2.js` / `dom_equiv.js`
+  三套 DOM 等价全部一致（prod 模式下）。

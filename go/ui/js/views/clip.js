@@ -2,9 +2,11 @@
    components/leaf.js 的 <ico>，底部计数条是 <clip-count>（#clipFoot 这个 id 是 CSS
    与真机夹具的定位点，跟着进了组件模板）；本文件 v-html 已清零。
 
-   前面几步踩过、写在这里省得再踩的坑：
-   1) 读模块状态一律 live()：clipList / clipSel 是普通模块变量，loadClips() 与 clipParse()
-      整体替换它们，computed 不依赖 tick 就永远缓存 → 勾选点了没反应。
+   步骤 17b 起本文件不再用 live()：app.js 的剪贴板状态换成了 Vue.reactive 的 CLIP 对象，
+   赋值即触发重画，computed 直接读 H.clipList / H.clipSel 就建立依赖。踩过的坑：
+   1) 状态不是响应式的时候，computed 永远缓存 → 勾选点了没反应，当时的解法是每个 computed
+      包一层 live()（依赖 V.tick，render() 每调一次全部失效）。那是全量重绘，不是响应式；
+      现在状态本身响应式了，包 live() 反而让每次 render() 都重算这些与剪贴板无关的 computed。
    2) 模板里用原始值 + {{ }}，不要再 esc：遗留路径是 innerHTML 拼 esc(x)，DOM 文本 =
       解码后的原值；Vue 的 {{ }} 是 textContent，传原值才等价（传 esc(x) 会双重转义）。
       图标那一段是 HTML，所以走 v-html，并且必须与遗留拼的是同一个字符串（一个文本节点）。
@@ -19,9 +21,9 @@
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
    components: { EmptyState, ClipItem, Ico, ClipCount } */
-import { V, H, Vue, live } from '../vue.js'
+import { H, Vue } from '../vue.js'
 import { EmptyState } from '../components.js'
-import { Ico, ClipCount } from '../components/leaf.js'
+import { Ico } from '../components/leaf.js'
 
 const { computed } = Vue
 
@@ -36,15 +38,16 @@ const { computed } = Vue
 export const ClipItem = {
   name: 'ClipItem',
   components: { Ico },
-  props: ['tick', 'x'],
+  props: ['x'],
   setup(props){
+    // cls 读的是 CLIP.sel（响应式），勾选一条只重画这一条
     return {
       H,
-      cls: live(() => H.clipItemCls(props.x)),
-      isImg: live(() => props.x.kind === 'image'),
-      thumb: live(() => H.clipThumbText(props.x)),
-      prev: live(() => H.clipPrevText(props.x)),
-      meta: live(() => H.clipMetaText(props.x))
+      cls: computed(() => H.clipItemCls(props.x)),
+      isImg: computed(() => props.x.kind === 'image'),
+      thumb: computed(() => H.clipThumbText(props.x)),
+      prev: computed(() => H.clipPrevText(props.x)),
+      meta: computed(() => H.clipMetaText(props.x))
     }
   },
   template: `
@@ -62,6 +65,20 @@ export const ClipItem = {
   </div>`
 };
 
+/* 底部计数条（步骤 17b 从 components/leaf.js 搬过来：它是剪贴板专属的，跟着状态走）。
+   id="clipFoot" 是 CSS 与真机夹具的定位点，逐字保留。 */
+export const ClipCount = {
+  name: 'ClipCount',
+  setup(){
+    return {
+      sel: computed(() => { var n = 0; H.clipList.forEach(function(c){ if(H.clipSel[c.id]) n++ }); return n }),
+      total: computed(() => H.clipList.length)
+    }
+  },
+  template: `
+<div class="count" id="clipFoot" style="margin-bottom:var(--s2)"><b>{{ sel }}</b> 条已选<template v-if="total"> · 共 {{ total }} 条</template></div>`
+}
+
 /* 暂存页主体。挂载点 = pageSheetVue 建的 .pbody（app.js），所以模板是多根片段，
    三个根节点与遗留 clipSheet() 写进 .pbody 的三段 DOM 一一对应。
    id（#clipList / #clipFoot）逐字保留：CSS 与真机夹具都靠它们定位，改了就是静默失联。 */
@@ -69,17 +86,16 @@ export const ClipSheetView = {
   name: 'ClipSheetView',
   components: { EmptyState, ClipItem, ClipCount },
   setup(){
-    const tick = computed(() => V.tick);
-    const items = live(() => H.clipList);
-    const selCount = live(() => H.clipList.filter(function(c){ return !!H.clipSel[c.id] }).length);
+    const items = computed(() => H.clipList);
+    const selCount = computed(() => H.clipList.filter(function(c){ return !!H.clipSel[c.id] }).length);
     return {
       H,
-      tick, items,
-      loading: live(() => H.clipLoading),
-      err: live(() => H.clipError),
+      items,
+      loading: computed(() => H.clipLoading),
+      err: computed(() => H.clipError),
       // 三态判定顺序与 loadClips() / clipListHTML() 一致：加载中 → 加载失败 → 空 → 列表
       // clipCount() 那句：只选一条时不带数字
-      parseText: live(() => H.clipParseText(selCount.value))
+      parseText: computed(() => H.clipParseText(selCount.value))
     }
   },
   template: `
@@ -91,7 +107,7 @@ export const ClipSheetView = {
   <template v-if="loading">加载中…</template>
   <div class="empty" v-else-if="err">加载失败</div>
   <empty-state v-else-if="!items.length" icon="inbox" title="暂存区是空的"/>
-  <clip-item v-for="(x,k) in items" :key="x.id" :x="x" :tick="tick"/>
+  <clip-item v-for="(x,k) in items" :key="x.id" :x="x"/>
 </div>
 <!-- 内联 display:block 是有意的（闸门⑲ 钉住）：这两个弹层的计数独占一行、按钮整行排在下面。
      .pfoot 默认是 flex + flex-wrap（步骤 13 为文件夹页窄屏加的），走 flex 会让计数和三个按钮挤一行。 -->

@@ -53,6 +53,9 @@ export function mountSheet(name, el, def){
   app.config.devtools = false;
   app.mount(el);
   sheetApps[name] = app;
+  /* 验收缝（步骤 17b）：真机探针要查「这个弹层的 app 实例还活着吗」——
+     _instance.scope.active 是响应式更新能不能到达它的唯一判据。 */
+  window.__enoteSheet = { name: name, app: app };
   return app;
 }
 
@@ -89,6 +92,10 @@ export function sheetPaint(){
    （症状：删光剪贴板后首页横幅不消失，实测踩过）。live() 让 computed 依赖 V.tick，
    render() 每调一次就全部失效重算，语义等于今天的「全量重绘」。 */
 export function live(fn){ return Vue.computed(function(){ V.tick; return fn() }) }
+
+/* 验收缝（步骤 17b）：真机探针要证明「DOM 变了而 V.tick 一动没动」，也就是更新来自
+   响应式依赖本身，不是 tick 大锤。迁移完成后 live() 与这个缝一起删。 */
+if (typeof window !== "undefined") window.__enoteVtick = function(){ return V.tick };
 
 /* 一次绘制：bump tick → 等 Vue 把 DOM 打完。
    返回的 Promise 就是 render() 对外的 Promise（D13），调用点 await 它即可。 */

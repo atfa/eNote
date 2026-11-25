@@ -4,6 +4,9 @@
 // window.__enoteActions 导出表 + Object.assign(window, …)（见文件末尾 D12）。
 // 转 module 与导出表、tools/ui_test.js 闸门① 同批落地，中间态不能存在：
 // 少了任何一环，70 个 handler 会全部静默失效（P12 那一类「点了没反应」）。
+/* 诊断缝（步骤 17b）：app.js 被求值几次？两次的话模块状态有两份（CLIP / S / MISSED 各一份），
+   组件读的那份和测试缝写的那份不是同一个对象，症状是「赋值成功而界面不动」。 */
+window.__enoteAppLoads = (window.__enoteAppLoads || 0) + 1;
 var S = {notes:[], settings:{}, info:{}};
 /* S3（D14）：Vue 装配层与视图注册表。混合期（步骤 5-10）里已迁移的 tab 走 Vue，
    其余走本文件里的遗留字符串渲染器；步骤 11 删掉遗留路径。 */
@@ -281,12 +284,16 @@ function askBattery(){
 }
 /** 通知点按后打开对应笔记（Java 侧调用）*/
 // ---- 剪贴板暂存（R7/P6）：横幅 + 批量勾选 + 一键解析 ----
-/* 步骤 9 转 Vue：clipList 是 /api/clip/list 的结果，clipLoading / clipError 是加载三态。
+/* 步骤 9 转 Vue：CLIP.list 是 /api/clip/list 的结果，CLIP.loading / CLIP.error 是加载三态。
    三个都会被整体赋值，进 setHost 必须走 getter（同 shotList / FA 的教训：传值的话
    Vue 拿的是装配时那份快照，症状是「数据变了界面不动」）。 */
-var clipSel = {};
-var clipList = [];
-var clipLoading = false, clipError = '';
+/* 步骤 17b：这四个从「普通模块变量 + V.tick 大锤」换成一个 reactive 对象。
+   之前 computed 看不见它们（不是响应式的），所以每个读它们的 computed 都得包 live()、
+   每次状态变了都得 sheetPaint() bump 一下才重画 —— 那是全量重绘，不是响应式。
+   现在赋值即触发，views/clip.js 的 computed 不再依赖 tick（clipPick 也不再 sheetPaint）。
+   整体赋值的地方（loadClips / clipParse / 夹具 setter）写的是属性，别把对象换掉：
+   换掉就丢掉 reactive 的代理，症状正是「数据变了界面不动」。 */
+var CLIP = Vue.reactive({ sel: {}, list: [], loading: false, error: '' });
 /* emptyState() 也一起删：空态块现在是 components/empty-state.js 的 <empty-state> 组件，
    app.js 里最后一个调用方就是上面那个 folderRender。 */
 /* 错过的提醒（后台被冻结时到点的那些）：只在有内容时出现，点开看清单 */
@@ -713,7 +720,7 @@ window.onClipRead = function(n, added){
    esc 的分工（步骤 5 定的契约）：这些函数产出 HTML 字符串（遗留侧用），Vue 模板里用
    原始值 + {{ }}（Vue 自己转义），所以模板侧不调 esc —— 调了就双重转义。
    需要转义的片段因此有两个版本：*HTML 给遗留，*Text 给 Vue。 */
-function clipItemCls(c){ return 'clipitem' + (clipSel[c.id] ? ' on' : '') }
+function clipItemCls(c){ return 'clipitem' + (CLIP.sel[c.id] ? ' on' : '') }
 function clipPrevText(c){
   var t = String(c.text || '')
   return t.slice(0, 160) + (c.text && c.text.length > 160 ? '…' : '')
@@ -728,42 +735,45 @@ function clipMetaText(c){ return (c.app || '剪贴板') + ' · ' + relTime(c.cre
 function clipParseText(n){ return n > 1 ? ('一键解析 ' + n + ' 条') : '一键解析' }
 function clipSheet(){
   // 步骤 11：只剩 Vue 一条路径（ClipSheetView）；条数很多时操作按钮固定在底部的契约在模板里
-  clipLoading = true; clipError = ''
+  CLIP.loading = true; CLIP.error = ''
   pageSheetVue('clip', '剪贴板暂存')
   loadClips()
 }
 async function loadClips(){
   try{
     var r = await api('/api/clip/list');
-    clipList = (r && r.clips) || [];
-    S.info.clip = clipList.length;
-    // clipSel 是全局的，只增不减的话「已选 N 条」会把早就处掉的旧 id 也算进去
+    CLIP.list = (r && r.clips) || [];
+    S.info.clip = CLIP.list.length;
+    // CLIP.sel 是全局的，只增不减的话「已选 N 条」会把早就处掉的旧 id 也算进去
     var keep = {};
-    clipList.forEach(function(c){ keep[c.id] = clipSel[c.id] !== undefined ? clipSel[c.id] : true });
-    clipSel = keep;
-    clipLoading = false; clipError = '';
-    return sheetPaint();   // 数据写完 bump tick 就够
+    CLIP.list.forEach(function(c){ keep[c.id] = CLIP.sel[c.id] !== undefined ? CLIP.sel[c.id] : true });
+    CLIP.sel = keep;
+    CLIP.loading = false; CLIP.error = '';
+    // 步骤 17b：CLIP 是 reactive 的，赋值即重画，不再 sheetPaint() bump tick。
+    // 返回一个微任务让调用点（clipParse 等）的 await 语义不变。
+    return Promise.resolve();
   }catch(e){
-    /* clipLoading 必须一起落下：模板的三态判定是 `v-if="loading"` 优先于
-       `v-else-if="err"`，只写 clipError 的话加载失败永远停在「加载中…」，
-       「加载失败」那一支是死代码（步骤 14 的 clipError 客户端回归抓到的真 bug）。
+    /* CLIP.loading 必须一起落下：模板的三态判定是 `v-if="loading"` 优先于
+       `v-else-if="err"`，只写 CLIP.error 的话加载失败永远停在「加载中…」，
+       「加载失败」那一支是死代码（步骤 14 的 CLIP.error 客户端回归抓到的真 bug）。
        截图页的 loadShots 一直是两个一起写的（app.js 的 shotLoading = false; shotError = 'fail'）。 */
-    clipLoading = false; clipError = String(e);
+    CLIP.loading = false; CLIP.error = String(e);
     // #clipList 的子节点是 Vue 管的，直接写 innerHTML 会与它的虚拟 DOM 抢；
-    // bump tick 让模板的三态判定重算就够了。
-    return sheetPaint();
+    // 现在两个属性都是响应式的，赋值就让模板的三态判定重算。
+    return Promise.resolve();
   }
 }
 function clipPick(id, el){
-  clipSel[id] = !clipSel[id];
-  return sheetPaint();
+  // 步骤 17b：这一行就是全部。CLIP 是 reactive 的，勾选一条只重画那一条与底部计数，
+  // 不用 sheetPaint() 把整个弹层的所有 computed 全失效一遍（那正是 live() 时代的做法）。
+  CLIP.sel[id] = !CLIP.sel[id];
 }
 function clipSelAll(v){
-  Object.keys(clipSel).forEach(function(k){ clipSel[k]=v; });
-  return sheetPaint();   // 计数与按钮文案都是 computed，bump tick 即可
+  Object.keys(CLIP.sel).forEach(function(k){ CLIP.sel[k]=v; });
+  // 计数与按钮文案都是 computed，读的是同一个 reactive 对象，赋值即更新
 }
 function clipSelected(){
-  return Object.keys(clipSel).filter(function(k){return clipSel[k]});
+  return Object.keys(CLIP.sel).filter(function(k){return CLIP.sel[k]});
 }
 function clipDel(ev, id){
   if(ev && ev.stopPropagation) ev.stopPropagation();
@@ -778,7 +788,7 @@ async function clipRemove(ids){
   try{
     var r = await api('/api/clip/remove', {ids:ids});
     if(r && r.ok === false) return toast('删除失败: '+(r.error||''));
-    ids.forEach(function(id){ delete clipSel[id]; });
+    ids.forEach(function(id){ delete CLIP.sel[id]; });
     toast('已删除 '+ids.length+' 条');
     if(window.Android && Android.clipSync) Android.clipSync();
     loadClips();
@@ -797,12 +807,12 @@ async function clipParse(ai){
   var ok = !err && r && r.ok;
   if(!ok){
     // 失败不关弹层、不清勾选（同步骤 13 的「骨架屏可重试」）：以前失败也走
-    // closeSheet + clipSel={}，用户要重开页、重勾一遍才能重试。
+    // closeSheet + CLIP.sel={}，用户要重开页、重勾一遍才能重试。
     toast((ai ? '解析失败: ' : '保存失败: ') + (err || (r && r.error) || '未知错误'));
     return;
   }
   toast(ai ? '已入队解析 '+r.parsed+' 条' : '已存 '+r.parsed+' 条笔记');
-  clipSel = {};
+  CLIP.sel = {};
   if(window.Android && Android.clipSync) Android.clipSync();
   closeSheet();
   refresh();
@@ -1575,9 +1585,9 @@ var HOST = setHost({
   folderPick: folderPick, folderSelAll: folderSelAll, folderPickShots: folderPickShots,
   folderFilter: folderFilter, folderSave: folderSave,
   /* 步骤 9 加：ClipSheetView 的宿主接口（同上，漏一个就是静默回退字符串渲染器）。
-     clipList / clipSel 会被整体赋值（loadClips / clipParse），必须走 getter。 */
-  get clipList(){ return clipList }, get clipSel(){ return clipSel },
-  get clipLoading(){ return clipLoading }, get clipError(){ return clipError },
+     CLIP.list / CLIP.sel 会被整体赋值（loadClips / clipParse），必须走 getter。 */
+  get clipList(){ return CLIP.list }, get clipSel(){ return CLIP.sel },
+  get clipLoading(){ return CLIP.loading }, get clipError(){ return CLIP.error },
   clipPick: clipPick, clipSelAll: clipSelAll, clipDel: clipDel,
   clipDelSel: clipDelSel, clipParse: clipParse, relTime: relTime,
   clipItemCls: clipItemCls, clipPrevText: clipPrevText, clipThumbText: clipThumbText,
@@ -1733,10 +1743,10 @@ window.__enote.state = {
   get folderAll(){ return folderAll }, set folderAll(v){ folderAll = v },
   get folderSel(){ return folderSel }, set folderSel(v){ folderSel = v },
   get folderQ(){ return folderQ }, set folderQ(v){ folderQ = v },
-  /* 步骤 9 加：剪贴板页夹具与交互用例要读 clipList / clipSel（闭合集 20 → 22 名，
+  /* 步骤 9 加：剪贴板页夹具与交互用例要读 CLIP.list / CLIP.sel（闭合集 20 → 22 名，
      app.js / go/web_test.go / tools/ui_test.js 三处名单同步）。 */
-  get clipList(){ return clipList }, set clipList(v){ clipList = v },
-  get clipSel(){ return clipSel }, set clipSel(v){ clipSel = v },
+  get clipList(){ return CLIP.list }, set clipList(v){ CLIP.list = v },
+  get clipSel(){ return CLIP.sel }, set clipSel(v){ CLIP.sel = v },
   /* 步骤 10 加：我的页 / 设置页的夹具要注入 ST（/api/stats 的返回），没 setter 就是 D21
      那个坑。闭合集 22 → 23 名，app.js / go/web_test.go / tools/ui_test.js 三处名单同步。 */
   get ST(){ return ST }, set ST(v){ ST = v },

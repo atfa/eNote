@@ -1374,6 +1374,27 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 真响应式第 1 片（P14 S4 步骤 17b）：clip 页摘掉 `V.tick`
+
+- clip 页的四个模块变量收进 `CLIP = Vue.reactive({sel,list,loading,error})`；`views/clip.js` 的
+  12 个 `live()` 换成裸 `computed()`；`loadClips()` / `clipPick` / `clipSelAll` 里的 `sheetPaint()`
+  删掉。真机证明：注入 2 条 → 列表画出来，点一条 → `.clipitem.on` 1→2、页脚「1 条已选」→
+  「2 条已选」，全程 `V.tick` 9→9 一动没动（`.test/probe_react.sh`）。
+- `ClipCount`（clip 页脚）从 `components/leaf.js` 搬进 `views/clip.js`：通用组件库不该认识页内状态。
+- 闸门 ⑮ 改白名单制：`REACTIVE_FILES` 里的文件必须裸 `computed`（不许 `live(`），其余文件仍必须
+  `live()` 包 `computed`——迁移期两种写法各自的约束都留着，迁完的文件不会悄悄退回 tick 驱动。
+- 三个诊断缝：`window.__enoteAppLoads`（app.js 被求值几次）、`window.__enoteVtick()`、
+  `mountSheet` 记 `window.__enoteSheet={name,app}`（`app._instance.scope.active` 是「响应式更新
+  能不能到达这个弹层」的唯一判据）。本轮靠它们排掉「app.js 求值两次 → 模块状态两份」的假说。
+- 坑①：夹具要写 `window.__enote.state.*`（带 setter 的状态桥）。导出表 `__enoteActions` 上的
+  `clipList`/`clipSel` 是**快照数据属性**，赋值只落在 window 上，模块里的 CLIP 一动不动——
+  症状是「赋值读回来是对的、界面永远不动」，本轮在这里烧了十几轮探针。
+- 坑②：dev 构建渲染 `<!--v-if-->` 注释节点（prod 是 `<!---->`），DOM 等价工具的归一化只删后者，
+  所以跑 `.test/dom_equiv*.js` 前必须 `rm enote/.vuedev`（本轮 4 项「不一致」全是这个）。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项、`.test/dom_equiv3.js` 13 项 +
+  `dom_equiv2.js` + `dom_equiv.js` 全绿。
+
+
 ### 调试基建（P14 S4 步骤 17a）：Vue 的 dev 构建 + `?vue=dev` + Chrome inspect
 
 * 背景：用户问「Vue 有什么好处、装都装了怎么用起来」。盘点结果 `live()` 120 处 vs `reactive` 3 处、

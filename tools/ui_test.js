@@ -920,6 +920,10 @@ if (SPLIT) {
     if (VVue) {
       const tplErrs = [], tpls = [];
       const bareComputed = [];
+      /* 步骤 17b：模块状态换成 Vue.reactive 的文件里，computed 直接读状态就建立依赖，
+         不需要 live()（那是「状态不是响应式、只能靠 V.tick 全量失效」时代的产物）。
+         每迁移完一个文件就往这张表加一个；全迁完把 live() 本身删掉，这张表也一起删。 */
+      const REACTIVE_FILES = new Set(['go/ui/js/views/clip.js']);
       const viewCode = new Map();   // 视图文件 → 注掉后的代码（下面 H.xxx 全量扫要用）
       for (const f of viewFiles) {
         const src = fs.readFileSync(f, 'utf8');
@@ -930,7 +934,8 @@ if (SPLIT) {
         viewCode.set(path.relative(root, f), code);
         for (let i = code.indexOf('computed('); i >= 0; i = code.indexOf('computed(', i + 1)) {
           const win = code.slice(i, i + 80);
-          if (!/V\.tick/.test(win)) bareComputed.push(path.relative(root, f) + '：' + win.replace(/\s+/g, ' ').slice(0, 56))
+          if (!/V\.tick/.test(win) && !REACTIVE_FILES.has(path.relative(root, f)))
+            bareComputed.push(path.relative(root, f) + '：' + win.replace(/\s+/g, ' ').slice(0, 56))
         }
         for (const m of src.matchAll(/template: `([\s\S]*?)`\n\}/g)) {
           tpls.push([path.relative(root, f), m[1]]);
@@ -1536,7 +1541,7 @@ if (SPLIT) {
   // 计数以页面列出的条目为准（全局 clipSel 只增不减会把旧 id 算进去）；条目可单条删除
   const clipDel = /function clipRemove/.test(src) && /\/api\/clip\/remove/.test(src)
     && /class="clipdel"/.test(src) && /function clipDelSel/.test(src)
-    && /已选 /.test(src) && /clipSel = keep/.test(src);
+    && /已选 /.test(src) && /CLIP\.sel = keep/.test(src);
   sig('剪贴板计数按页面条目算 + 单条/批量删除', clipDel);
 
   // 监控到变化要主动发通知，不是等用户下拉界面；常驻通知兼作条数状态条

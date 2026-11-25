@@ -19,7 +19,7 @@
    所以全量名单写在下面这行注释里；运行时每个组件仍各自注册自己模板里用到的那些。
    components: { Ico, SrcChip, StatusChip, CdChip, RemindBtns, TodoDue, TodoPriChips,
                  NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoTx, TodoRowCompact,
-                 KvRow, OcrReady, FileStrip, AttachGlyph, AttachMeta, ClipCount } */
+                 KvRow, OcrReady, FileStrip, AttachGlyph, AttachMeta } */
 import { H, live } from '../vue.js'
 
 /* 图标：sprite 引用。cls 不传时 class="ic"，传 's' 时 class="ic s"，与 ic(n, cls) 一致。 */
@@ -247,14 +247,3 @@ export const AttachMeta = {
 }
 
 /* 剪贴板弹层底部的计数条（#clipFoot 这个 id 是 test.sh 夹具与 CSS 的定位点，不能改） */
-export const ClipCount = {
-  name: 'ClipCount',
-  setup(){
-    return {
-      sel: live(() => { var n = 0; H.clipList.forEach(function(c){ if(H.clipSel[c.id]) n++ }); return n }),
-      total: live(() => H.clipList.length)
-    }
-  },
-  template: `
-<div class="count" id="clipFoot" style="margin-bottom:var(--s2)"><b>{{ sel }}</b> 条已选<template v-if="total"> · 共 {{ total }} 条</template></div>`
-}
