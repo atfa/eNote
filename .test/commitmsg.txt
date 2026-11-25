@@ -1,18 +1,24 @@
-P14 S6 步骤 33：我的页统计那一簇搬进 js/statsflow.js（app.js 1400 → 1389）
+P14 S6 步骤 34：倒计时 / 提醒 / 常驻后台那一簇搬进 js/remindflow.js（app.js 1389 → 1280）
 
-第五簇：我的页（R5）统计 —— ST 盒子、stBusy/stSince 超时兜底、stErr、statsNow、statCls，
-搬成 go/ui/js/statsflow.js（34 行），app.js 1400 → 1389 行。
+第六簇，也是目前最大的一簇：到期倒计时（R11）+ 自研到期提醒（R13-E）+ 常驻后台（P6.5）——
+spanText/cdText/cdCls/tickCD（含 setInterval(tickCD, 20000)）、remindPending/syncReminders、
+精确闹钟与通知权限四件套（exactGranted/askExact/notifyGranted/askNotify/notifyResult）、
+常驻后台五件套（keepAliveOn/batteryIgnoring/toggleKeepAlive/applyKeepAlive/askBattery），
+16 个顶层定义，搬成 go/ui/js/remindflow.js（130 行），app.js 1389 → 1280 行。
 
-新坑：模块顶层跑在 app.js 求值之前
-- 原来那句是 var ST = Vue.reactive({ v: null }), stBusy = false, stSince = 0, stErr = STERR.v;
-  STERR 是 app.js 的 var，而 statsflow.js 被 app.js import，它的顶层先执行 —— 那时
-  var STERR 还是 undefined，读它的 .v 直接 TypeError: Cannot read properties of undefined
-  (reading 'v')，整份脚本不执行、页面空白。
-- 初值改成字面量 stErr = ''（STERR 的初值本来就是 ''，语义逐字不变）。「模块顶层只碰 vue.js
-  与自己新建的盒子」这条契约现在有了第二个实例，写进模块文件头。
-- 闸门⑰ 的函数体查找源列表加上 statsflow.js（步骤 31 已经教过一次：闸门要跟着代码搬家）。
-- app.js 导出表加了 statCls REQ_TIMEOUT_MS syncBox STERR；ST / statsNow 改成从 statsflow.js
-  再导出，settingsflow.js / shotflow.js 的 import 一行没动。
+- 新出现一条模块 → 模块的边：notifyResult() 与 applyKeepAlive() 要重画设置页，所以
+  remindflow.js 直接 import { settingsRefresh } from './settingsflow.js'，不再绕 app.js。
+  求值顺序 app.js → settingsflow.js → remindflow.js，两个模块顶层都不读对方，环是安全的。
+- 顶层读 app.js 的坑第三次出现：var remindPending = REMIND.v; —— remindflow.js 的顶层跑在
+  app.js 求值之前，那时 var REMIND 还是 undefined，读它的 .v 直接 TypeError、整份脚本不执行。
+  初值改成字面量 0（REMIND 的初值本来就是 0，语义逐字不变）。这个变量本身只写不读（读侧走
+  get remindPending(){ return REMIND.v }），和步骤 33 的 stErr 一模一样。
+- app.js 导出表加了 dueMs REMIND；syncReminders() 在 app.js 的 afterPaint() 里被调，
+  所以它也在簇的导出名单里。
+
+探针（物理屏）：cdText=逾期6小时 | cdCls=cd over | keepAliveOn=false | exactGranted=true |
+notifyGranted=true | batteryIgnoring=true | loads=1。
 
 验收：ui_test.js **122 项全绿**、GO_TEST=1 ./build.sh 绿、./install.sh Success、
-./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（我的页 hero 469 B 逐字未动）。
+./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致（待办行 651 B、
+设置页保活长说明 236 B 逐字未动）。

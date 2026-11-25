@@ -1374,6 +1374,27 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 倒计时 / 提醒 / 常驻后台那一簇搬进 js/remindflow.js（P14 S6 步骤 34）
+
+第六簇，也是目前最大的一簇：到期倒计时（R11）+ 自研到期提醒（R13-E）+ 常驻后台（P6.5）——
+`spanText`/`cdText`/`cdCls`/`tickCD`（含 `setInterval(tickCD, 20000)`）、`remindPending`/
+`syncReminders`、精确闹钟与通知权限四件套、常驻后台五件套，16 个顶层定义，搬成
+`go/ui/js/remindflow.js`（121 行），**app.js 1389 → 1281 行**。
+
+* 新出现一条**模块 → 模块**的边：`notifyResult()` 与 `applyKeepAlive()` 要重画设置页，所以
+  remindflow.js 直接 `import { settingsRefresh } from './settingsflow.js'`，不再绕 app.js。
+* **顶层读 app.js 的坑第三次出现**：`var remindPending = REMIND.v;` —— remindflow.js 的顶层跑在
+  app.js 求值之前，那时 `var REMIND` 还是 `undefined`，读它的 `.v` 直接 `TypeError`、整份脚本不
+  执行。初值改成字面量 `0`（`REMIND` 的初值本来就是 `0`）。这个变量本身只写不读（读侧走
+  `get remindPending(){ return REMIND.v }`），和步骤 33 的 `stErr` 一模一样。
+* app.js 的导出表加了 `dueMs REMIND`；`syncReminders()` 在 app.js 的 `afterPaint()` 里被调，
+  所以它也在簇的导出名单里。
+* 探针（物理屏）：`cdText=逾期6小时 | cdCls=cd over | keepAliveOn=false | exactGranted=true |
+  notifyGranted=true | batteryIgnoring=true | loads=1`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致
+  （待办行 651 B、设置页保活长说明 236 B 逐字未动）。
+
 ### 我的页统计那一簇搬进 js/statsflow.js（P14 S6 步骤 33）
 
 第五簇：我的页（R5）统计——`ST` 盒子、`stBusy`/`stSince` 超时兜底、`stErr`、`statsNow`、

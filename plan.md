@@ -3270,3 +3270,28 @@ statsflow.js 再导出（settingsflow.js / shotflow.js 的 import 不用改）�
 
 验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL /
 PASS**、三套 DOM 等价工具全部一致（我的页 hero 469 B 逐字未动）。
+
+## 9.56 P14 S6：倒计时 / 提醒 / 常驻后台那一簇搬进 js/remindflow.js（步骤 34）
+
+第六簇，也是目前最大的一簇：**到期倒计时（R11）+ 自研到期提醒（R13-E）+ 常驻后台（P6.5）**——
+`spanText`/`cdText`/`cdCls`/`tickCD`（含那个 `setInterval(tickCD, 20000)`）、`remindPending`/
+`syncReminders`、精确闹钟与通知权限四件套（`exactGranted`/`askExact`/`notifyGranted`/`askNotify`/
+`notifyResult`）、常驻后台五件套（`keepAliveOn`/`batteryIgnoring`/`toggleKeepAlive`/
+`applyKeepAlive`/`askBattery`），16 个顶层定义，搬成 `go/ui/js/remindflow.js`（130 行），
+**app.js 1389 → 1280 行**。
+
+* 新出现一条**模块 → 模块**的边：`notifyResult()` 与 `applyKeepAlive()` 要重画设置页，
+  所以 remindflow.js 直接 `import { settingsRefresh } from './settingsflow.js'`，不再绕 app.js。
+  求值顺序是 app.js → settingsflow.js → remindflow.js，两个模块的顶层都不读对方，环是安全的。
+* **顶层读 app.js 的坑第三次出现**：`var remindPending = REMIND.v;`。remindflow.js 的顶层跑在
+  app.js 求值之前，那时 `var REMIND` 还是 `undefined` → `TypeError`，整份脚本不执行。
+  初值改成字面量 `0`（`REMIND` 的初值本来就是 `0`，语义逐字不变）。这个变量本身是只写不读的
+  （读侧一律走 `get remindPending(){ return REMIND.v }`），和步骤 33 的 `stErr` 一模一样。
+* app.js 的导出表加了 `dueMs REMIND`；`syncReminders()` 在 app.js 的 `afterPaint()` 里被调，
+  所以它是簇要导出的名字之一。
+
+探针（物理屏）：`cdText=逾期6小时 | cdCls=cd over | keepAliveOn=false | exactGranted=true |
+notifyGranted=true | batteryIgnoring=true | loads=1`。
+
+验收：122 闸门、`GO_TEST=1 ./build.sh`、`./install.sh`、`./test.sh --vd` **164 ok / 0 FAIL /
+PASS**、三套 DOM 等价工具全部一致（待办行 651 B、设置页保活长说明 236 B 逐字未动）。
