@@ -1627,7 +1627,9 @@ if (SPLIT) {
 
   // 交互入口用到的状态表必须真的声明过（expand 曾因 expAnim 未声明而静默失效）
   const decl = /var expAnim = \{\}/.test(src)
-    && /var tab = 'notes', open = \{\}/.test(src)
+    /* 步骤 17f：tab / open 改成从 reactive 盒子取初值，闸门认两种写法
+       （这条闸门要的是「声明过」，不是初值字面量）。 */
+    && /var tab = ('notes'|TAB\.v), open = (\{\}|OPENB\.v)/.test(src)
     && /var seen = \{\}/.test(src);
   sig('expAnim / open / seen 都有声明（点击不再静默失效）', decl);
 
@@ -1772,7 +1774,8 @@ if (SPLIT) {
   sig('错过的提醒面板：每行可完成 + 「这批我知道了」', missedOps);
 
   // 面板里的跳转必须用真存在的函数：goTab/goNote 不存在，点了没反应（用户反馈）
-  const missedJump = /function missedGoTodos\(\)\{\s*closeSheet\(\); tab = 'todos'; setTab\(true\)/.test(src)
+  /* 步骤 17f：tab 的赋值走 syncBox 镜像，签名两种写法都认。 */
+  const missedJump = /function missedGoTodos\(\)\{\s*closeSheet\(\); tab = (?:syncBox\(TAB, )?'todos'\)?; setTab\(true\)/.test(src)
     && /@click\.prevent="H\.jump\(t\.nid\)"/.test(src) && !/function goTab\(/.test(src) && !/function goNote\(/.test(src);
   sig('错过的提醒面板：跳转用真存在的函数（setTab / jump）', missedJump);
 
@@ -1824,7 +1827,7 @@ if (SPLIT) {
   else {
     if (!/apiTimeout\(/.test(statsBody)) bad('闸门⑰ statsNow 没走 apiTimeout', 'fetch 卡死 = 我的页永久骨架屏');
     if (!/stSince/.test(statsBody)) bad('闸门⑰ stBusy 没有超时兜底', '一次永不返回的请求把我的页永久钉在骨架屏');
-    if (!/stErr = errText\(e\)/.test(statsBody)) bad('闸门⑰ statsNow 失败没记 stErr', '同上：要给出可点的重试');
+    if (!/stErr = (?:syncBox\(STERR, )?errText\(e\)\)?/.test(statsBody)) bad('闸门⑰ statsNow 失败没记 stErr', '同上：要给出可点的重试');
     else ok('闸门⑰ statsNow：stBusy 带超时 + 失败可重试');
   }
   if (searchBody && !/apiTimeout\(/.test(searchBody)) bad('闸门⑰ searchNow 没走 apiTimeout', '首页列表同样会永久停在骨架屏');

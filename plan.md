@@ -2413,4 +2413,18 @@ dev `vue.global.js` / `__VUE_DEV__=true` / 4 个 tab，dev 启动时 testlog 出
   `node --input-type=module --check` 是最快的兜底（比跑真机快两个数量级）。
 - 闸门 mock 跟着换形状：轮询指纹用例里的 `SHOTFLAGS` mock 改成 `{v:{…}}`，三处 mutation 同步。
 - 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿（视图仍走 tick，行为零变化）。
+### 9.32 步骤 17f：`H` 暴露的标量接上响应式（镜像盒子）（2026-11-25）
+
+- `tab` / `q` / `open` / `remindPending` / `stErr` / `srErr` / `SHEETARG` 是普通模块变量，
+  组件通过 `H.tab` 读它们时 Vue 追踪不到（整包赋值换的是引用）。`tab` 有 64 处引用、`q` 32 处，
+  整词改名的风险大于收益，所以用**镜像盒子**：原变量照旧用，赋值处走 `syncBox(盒子, 值)` 同步一份，
+  组件读盒子。同步只有一条路（手写第二遍迟早漏一处，漏了就是「数据换了界面不动」）。
+- 对象型的 `open` 让原变量直接指向盒子里的 proxy（`var open = OPENB.v`），逐键改也追踪得到。
+- **声明顺序是硬要求**：盒子必须在第一次读它之前建好。踩过：盒子放在文件中部，而
+  `var tab = TAB.v` 在第 32 行，`var` 提升让 `TAB` 那一刻是 undefined → 整份 app.js 抛
+  TypeError → 页面全白（真机日志 `Cannot read properties of undefined (reading 'v')`）。
+  这类错静态闸门全绿、真机整页空白，只有 `node --input-type=module --check` + 真机探针能兜住。
+- 闸门签名跟着改 4 处（都保留旧写法兼容）：错过的提醒跳转、statsNow 的 stErr、
+  `var tab = 'notes', open = {}` 的声明断言、轮询指纹 mock。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿。
 

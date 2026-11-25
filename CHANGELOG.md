@@ -1374,6 +1374,20 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### 镜像盒子（P14 S4 步骤 17f）：`H` 暴露的标量接上响应式
+
+- `tab`/`q`/`open`/`remindPending`/`stErr`/`srErr`/`SHEETARG` 是普通模块变量，组件读 `H.tab`
+  追踪不到（整包赋值换的是引用）。`tab` 64 处引用、`q` 32 处，整词改名风险大于收益，
+  所以用镜像盒子：原变量照旧用，赋值走 `syncBox(盒子,值)`，组件读盒子。
+- 对象型的 `open` 让原变量直接指向盒子里的 proxy（`var open = OPENB.v`），逐键改也追踪得到。
+- **声明顺序是硬要求**：盒子放在文件中部而 `var tab = TAB.v` 在第 32 行时，`var` 提升让
+  `TAB` 那一刻是 undefined → 整份 app.js 抛 TypeError → 页面全白。静态闸门全绿，
+  真机整页空白：这类错只有 `node --input-type=module --check` + 真机探针兜得住。
+- 闸门签名 4 处跟着改（都保留旧写法兼容）：错过的提醒跳转、statsNow 的 stErr、
+  `var tab = 'notes', open = {}` 声明断言、轮询指纹 mock。
+- 验收：122 静态检查、build/install、`./test.sh --vd` 166 项全绿。
+
+
 ### 状态层 reactive 化（P14 S4 步骤 17e）：视图还没摘 tick，依赖先接上
 
 - `prefs`/`SR`/`FA` 用**原地 reassign**（`reassign(box,v)`：同一个 proxy 上先删键再写键，读侧零改动）；

@@ -29,11 +29,27 @@ import SettingsSheetView from './views/settings.js'
    运行日志 / AI 调用记录。它们以前是 app.js 里拼 HTML 字符串 + 内联 onclick。 */
 import { SortSheetView, MissedSheetView, AddSheetView, AddTodoSheetView,
          LogSheetView, DebugSheetView } from './views/sheets.js'
-var tab = 'notes', open = {}, busy = {};
+/* 步骤 17f：H 暴露的「整包赋值的标量」接上响应式。tab / q 在 app.js 里被引用几十次，
+   整词改名风险大于收益，所以用镜像：原变量照旧用，赋值处同步一份进 reactive 盒子，组件读盒子。
+   同步只走 syncBox()，不手写第二遍（手写第二遍迟早漏一处，漏了就是「数据换了界面不动」）。
+   对象型的（open）让原变量直接指向盒子里的 proxy，逐键改也追踪得到。 */
+function syncBox(box, v){ box.v = v; return v }
+var TAB = Vue.reactive({ v: 'notes' });
+var QB = Vue.reactive({ v: '' });
+var OPENB = Vue.reactive({ v: {} });
+var REMIND = Vue.reactive({ v: 0 });
+var STERR = Vue.reactive({ v: '' });
+var SRERR = Vue.reactive({ v: '' });
+var SHEETARGB = Vue.reactive({ v: '' });
+
+/* 声明顺序是硬要求：盒子必须在第一次读它之前建好。踩过：盒子放在文件中部，
+   而 `var tab = TAB.v` 在第 32 行 —— var 提升让 TAB 在那一刻是 undefined，
+   整份 app.js 抛 TypeError，页面全白（真机日志：Cannot read properties of undefined (reading 'v')）。 */
+var tab = TAB.v, open = OPENB.v, busy = {};
 var seen = {};   // 已经出现过的卡片 id：只有新出现的才带入场动画（P7c）
 var expAnim = {}; // 正在播放展开动画的笔记 id（P7c 加动效时忘了声明，展开详情点了没反应就是这个）
 var curTheme = '';
-var q = '';
+var q = QB.v;
 /* 每个页签自己的搜索/排序/筛选条件（P3 会持久化到服务端） */
 var prefs = Vue.reactive({
   notes:{sort:'new', src:'all', status:'all'},
@@ -81,14 +97,14 @@ var SRK = ''; // 上次搜索结果的指纹，内容一样就不重建 DOM
 /* 步骤 13：首页搜索也走 apiTimeout —— fetch 没有超时会永久挂起（WebView 进后台
    再回来，在飞的 fetch 永不 resolve），症状是首页永久停在上一份数据上。失败退回
    本地过滤（原有行为）并记 srErr，首页顶部给一条可重试的错误条。 */
-var srErr = '';
+var srErr = SRERR.v;
 async function searchNow(force){
   if(tab==='files'){ filesNow(); return; }
   var my = ++searchSeq;
   try{
     var d = await apiTimeout('/api/search?'+prefQS());
     if(my !== searchSeq) return;
-    srErr = '';
+    srErr = syncBox(SRERR, '');
     var k = JSON.stringify(d);
     reassign(SR, {notes:d.notes||[], todoIds:d.todoIds||null, where:d.where||{}, total:d.total||0, scanned:d.scanned||0});
     // 顶部横幅（剪贴板暂存 / 新截图 / 错过的提醒）不在搜索结果里：搜索结果没变、
@@ -96,7 +112,7 @@ async function searchNow(force){
     // 回到首页都看不到横幅 —— 这两处的 bug 都是这里短路掉的。
     if(k === SRK && !force){ paintStatus(); return }
     SRK = k;
-  }catch(e){ reassign(SR, {notes:null, todoIds:null, where:{}, total:0, scanned:0}); SRK = ''; srErr = errText(e) }
+  }catch(e){ reassign(SR, {notes:null, todoIds:null, where:{}, total:0, scanned:0}); SRK = ''; srErr = syncBox(SRERR, errText(e)) }
   render();
 }
 
@@ -212,7 +228,7 @@ setInterval(tickCD, 20000);
 // ---- R13-E / P6.5：自研到期提醒（AlarmManager + 通知渠道，纯标准 API）----
 // Java 那边不存状态：每次渲染后把「未完成且到期时间在将来」的待办整份推过去，
 // 它自己 diff 出要新排/要取消的 alarm。id 里带 dueMs，改了时间就是新 id，旧的自然取消。
-var remindPending = 0;
+var remindPending = REMIND.v;
 function syncReminders(){
   if(!window.Android || !Android.syncReminders) return;
   var list = [];
@@ -225,7 +241,7 @@ function syncReminders(){
                  text:t.text, note:n.title||'', dueMs:ms});
     });
   });
-  try { remindPending = Android.syncReminders(JSON.stringify(list)) || 0; } catch(e){ remindPending = 0; }
+  try { remindPending = syncBox(REMIND, Android.syncReminders(JSON.stringify(list)) || 0); } catch(e){ remindPending = syncBox(REMIND, 0); }
 }
 function exactGranted(){
   try { return !!(window.Android && Android.exactGranted && Android.exactGranted()); } catch(e){ return true }
@@ -338,7 +354,7 @@ function missedDone(ev, nid, tid, el){
     if(MISSED.v.items.length) missedSheet(); else closeSheet();
   }, 900);
 }
-function missedGoTodos(){ closeSheet(); tab = 'todos'; setTab(true); }
+function missedGoTodos(){ closeSheet(); tab = syncBox(TAB, 'todos'); setTab(true); }
 function missedDismiss(){
   MISSED.v = null;
   if(S) S.missed = null;
@@ -1122,12 +1138,12 @@ function pickFile(){
 /* 步骤 13：stBusy 以前没有超时 —— 一次永不返回的 /api/stats 把我的页永久钉在骨架屏
    （`if(stBusy) return` 之后再也没有第二次机会）。现在请求带超时，stBusy 带时间戳，
    超过 REQ_TIMEOUT_MS + 宽限期就允许新的请求进入；失败记 stErr，骨架屏上给「重试」按钮。 */
-var ST = Vue.reactive({ v: null }), stBusy = false, stSince = 0, stErr = '';
+var ST = Vue.reactive({ v: null }), stBusy = false, stSince = 0, stErr = STERR.v;
 async function statsNow(){
   if(stBusy && (Date.now() - stSince) < REQ_TIMEOUT_MS + 2000) return;
   stBusy = true; stSince = Date.now();
-  try{ ST.v = await apiTimeout('/api/stats'); stErr = '' }
-  catch(e){ ST.v = null; stErr = errText(e) }
+  try{ ST.v = await apiTimeout('/api/stats'); stErr = syncBox(STERR, '') }
+  catch(e){ ST.v = null; stErr = syncBox(STERR, errText(e)) }
   stBusy = false;
   if(tab==='mine') render();
 }
@@ -1242,7 +1258,7 @@ function setPref(k, v){ P()[k] = v; closeSheet(); searchNow(); savePrefs(); }
 function resetPrefs(){
   prefs[tab] = tab==='todos' ? {sort:'due',done:'open',pri:'all'}
              : tab==='files' ? {sort:'new',kind:'all'} : {sort:'new',src:'all',status:'all',file:'all'};
-  q = ''; shell.q = ''; shell.has = false;
+  q = syncBox(QB, ''); shell.q = ''; shell.has = false;
   closeSheet(); searchNow(); savePrefs();
 }
 /* ---------- 轮询：只在数据真的变了才重绘（避免秒级闪烁 ----------
@@ -1280,7 +1296,7 @@ async function refresh(quiet){
          Object.keys(fp).forEach(function(k){
            prefs[k] = Object.assign(prefs[k]||{}, fp[k]);
          });
-         q = P().q || '';
+         q = syncBox(QB, P().q || '');
          shell.q = q; shell.has = !!q;
          dirty = true;
        }
@@ -1420,7 +1436,7 @@ window.uiDialog = function(title, msg, id){
 window.uiBack = function(){
   if(shell.dlg.on){ closeDlg(false); return 1; }
   if(shell.sheet.on){ closeSheet(); return 1; }
-  if(tab !== 'notes'){ tab = 'notes'; setTab(true); return 1; }
+  if(tab !== 'notes'){ tab = syncBox(TAB, 'notes'); setTab(true); return 1; }
   return 0;
 };
 function addSheet(){
@@ -1440,9 +1456,9 @@ function pickImage(){
 }
 /* 给哪条笔记加待办：弹层组件不接 props（mountSheet 只挂不传），所以存进模块变量，
    组件挂载时读一次（见 views/sheets.js 的 AddTodoSheetView）。 */
-var SHEETARG = '';
+var SHEETARG = SHEETARGB.v;
 function addTodoSheet(nid){
-  SHEETARG = nid;
+  SHEETARG = syncBox(SHEETARGB, nid);
   return sheetVue('addtodo');
 }
 async function addTodo(nid){
@@ -1453,7 +1469,7 @@ async function addTodo(nid){
 }
 /* reset=true 表示明确要回到顶部（打开某条笔记、返回键回首页），否则恢复上次的位置 */
 function setTab(reset){
-  tab = tab || 'notes';
+  tab = syncBox(TAB, tab || 'notes');
   if(lastTab !== tab) tabScroll[lastTab] = window.scrollY;   // 记住离开时看到哪儿
   /* 步骤 15：页签高亮、fab 图标/文案、搜索框占位符、顶栏显隐（我的页无顶栏）以前是
      五处命令式 DOM 写，漏一处就是「切了页签按钮没变」。现在只写 shell 这张表，
@@ -1463,7 +1479,7 @@ function setTab(reset){
   var f = FABS[tab] || FABS.notes;
   shell.fab = { icon: f.icon, label: f.label, hidden: false };
   shell.placeholder = tab==='todos' ? '搜索待办' : tab==='files' ? '搜索附件' : '搜索笔记与待办';
-  q = P().q || '';
+  q = syncBox(QB, P().q || '');
   shell.q = q;
   shell.has = !!q;
   var fresh = !paneBuilt[tab] || paneDirty[tab];
@@ -1519,15 +1535,15 @@ document.addEventListener('pointerdown', function(e){
    剪贴板按钮与排序按钮直接复用 importClip / sortSheet，模板里调的就是它们本名。 */
 function tabPick(t){
   if(tab === t){ window.scrollTo({top:0, behavior:'smooth'}); return; }
-  tab = t; setTab();
+  tab = syncBox(TAB, t); setTab();
 }
-function brandGo(){ tab = 'mine'; setTab(true) }
+function brandGo(){ tab = syncBox(TAB, 'mine'); setTab(true) }
 function fabAct(){ (FABS[tab] || FABS.notes).fn() }
 var searchT = 0;
 /* 搜索框：shell.q 是输入框里的原文（v-model 双向绑的就是它），真发给服务端的是 trim
    过的 q。服务端搜索：等用户停手再发，避免每敲一个字就重建一次列表。 */
 function searchInput(v){
-  q = v.trim();
+  q = syncBox(QB, v.trim());
   P().q = q;
   shell.has = !!q;
   clearTimeout(searchT);
@@ -1547,7 +1563,8 @@ window.addEventListener('resize', moveInd);
    组件 setup() 里就要读 H。 */
 var HOST = setHost({
   V: V,
-  get S(){ return S }, get SR(){ return SR }, get tab(){ return tab },
+  /* 步骤 17f：tab 是字符串，读原变量追踪不到（整包赋值换的是引用），必须读盒子。 */
+  get S(){ return S }, get SR(){ return SR }, get tab(){ return TAB.v },
   get open(){ return open }, get MISSED(){ return MISSED.v }, get SHOTFLAGS(){ return SHOTFLAGS.v },
   notesFiltered: notesFiltered, enterCls: enterCls, ic: ic, esc: esc, fmtTime: fmtTime,
   /* 步骤 16：叶子 HTML 函数（srcChip / statusChip / factsInner / factsBlock / todoRow /
@@ -1576,7 +1593,7 @@ var HOST = setHost({
   /* 步骤 7 加：FilesView 的宿主函数（同上，漏一个就是静默回退字符串渲染器）。
      FA / q 是模块状态，必须走 getter：直接传值的话 Vue 拿到的是装配时那份快照，
      2s 轮询换掉 FA 后视图不会动（症状是「附件页永远停在首屏数据」）。 */
-  get FA(){ return FA }, get q(){ return q },
+  get FA(){ return FA }, get q(){ return QB.v },
   attachCardCls: attachCardCls, attachGlyphName: attachGlyphName,
   openAttach: openAttach, delAttach: delAttach, filesNow: filesNow,
   /* 步骤 8 加：ShotsView / FoldersView / ShotProgress 的宿主接口。漏一个的症状同步骤 6：
@@ -1603,9 +1620,9 @@ var HOST = setHost({
   /* 步骤 10 加：StatsView / SettingsSheetView 的宿主接口（同上，漏一个就是静默回退字符串渲染器，
      闸门⑮ 静态扇模板里的 H.xxx 钉住它）。
      ST.v / remindPending 会被整体赋值（statsNow / refresh），必须走 getter；SHOTFLAGS.v 步骤 8 已有。 */
-  get ST(){ return ST.v }, get remindPending(){ return remindPending },
-  get stErr(){ return stErr }, statsNow: statsNow,
-  get srErr(){ return srErr },
+  get ST(){ return ST.v }, get remindPending(){ return REMIND.v },
+  get stErr(){ return STERR.v }, statsNow: statsNow,
+  get srErr(){ return SRERR.v },
   /* 步骤 13 加：真机竞态回归用例要能在附件页请求在飞时开一次笔记页搜索（抢占
      searchSeq），没有它只能靠 refresh() 间接抢，抢不中就是空跑。 */
   searchNow: searchNow,
@@ -1617,7 +1634,7 @@ var HOST = setHost({
   missedDone: missedDone, missedGoTodos: missedGoTodos, missedDismiss: missedDismiss,
   addNote: addNote, pickImage: pickImage, addTodo: addTodo, clipText: clip,
   get logData(){ return LOGDATA.v }, get debugData(){ return DEBUGDATA.v },
-  get sheetArg(){ return SHEETARG },
+  get sheetArg(){ return SHEETARGB.v },
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
   askNotify: askNotify, askExact: askExact, askBattery: askBattery,
@@ -1738,10 +1755,10 @@ Object.assign(window, window.__enoteActions);
 window.__enote = window.__enote || {};
 window.__enote.actions = window.__enoteActions;
 window.__enote.state = {
-  get tab(){ return tab }, set tab(v){ tab = v },
+  get tab(){ return TAB.v }, set tab(v){ tab = syncBox(TAB, v) },
   get S(){ return S }, set S(v){ S = v },
   get MISSED(){ return MISSED.v }, set MISSED(v){ MISSED.v = v },
-  get open(){ return open }, set open(v){ open = v },
+  get open(){ return OPENB.v }, set open(v){ open = OPENB.v = v },
   get shotSel(){ return SHOTS.sel }, set shotSel(v){ SHOTS.sel = v },
   get shotList(){ return SHOTS.list }, set shotList(v){ SHOTS.list = v },
   /* 步骤 8 加：文件夹页夹具要整体注入 FOLD.all / FOLD.sel（Android.shotFolders() 在
