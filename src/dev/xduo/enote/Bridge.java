@@ -86,16 +86,28 @@ public class Bridge {
 
     static String enqueueImage(String id, String path, String name, String ocr,
                                long ocrMs, String ocrError, String source) {
+        return enqueueImageInternal(id, path, name, ocr, ocrMs, ocrError, source, false);
+    }
+
+    /** 手动选图“先入队后 OCR”：占位入队（无 OCR 文本、不进 LLM 队列），
+     *  卡片立刻显「排队中」；返回的 note id 交给调用方，OCR 完成后用它 reingest。 */
+    static String enqueueImageDeferred(String path, String name, String source) {
+        return enqueueImageInternal(null, path, name, "", 0, "", source, true);
+    }
+
+    private static String enqueueImageInternal(String id, String path, String name, String ocr,
+                                               long ocrMs, String ocrError, String source, boolean defer) {
         JSONObject o = new JSONObject();
         try {
             o.put("kind", "image");
             if (id != null && !id.isEmpty()) o.put("id", id);
-            o.put("path", path);
-            o.put("name", name);
+            o.put("path", path == null ? "" : path);
+            o.put("name", name == null ? "" : name);
             o.put("ocr", ocr == null ? "" : ocr);
             o.put("ocrMs", ocrMs);
             o.put("ocrError", ocrError == null ? "" : ocrError);
             o.put("source", source);
+            if (defer) o.put("defer", true);
         } catch (Exception e) {
             return "{\"error\":\"" + e + "\"}";
         }

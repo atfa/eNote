@@ -5049,3 +5049,21 @@ cancelGone 撤销。）
 全套闸门（最终 build）：`ui_test.js` 122 全绿、`GO_TEST=1 ./build.sh` 绿、
 `./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具
 全部一致。
+
+## 9.93 手动选图「先入队后 OCR」+ 进度层浮岛小卡（步骤 71）
+
+1. **手动选图先入队后 OCR（`REQ_IMG` 与 `pickDocument` 图片分支）**：
+   * `go/pipeline.go`：`ingestReq` 新增 `Defer bool \`json:"defer"\``。`enqueue` 在 `r.Defer` 为 true 时仅落库不推 `jobs` 队列；`fillImage` 在 `r.Defer` 为 true 时保持 `stQueued`（「排队中」），不误落成 `stRaw`（「图片里没有识别到文字」）。等 OCR 完成后由 Java 侧带同一 `id` 再调 `enqueue` 走 `reingest` 补文本并推进 LLM（空文本/出错各自原地落位 `stRaw`/`stError`）。新增 `go/pipeline_test.go`（`TestEnqueueDeferredImageThenReingest`）覆盖 defer 占位、reingest、空 OCR 与报错分支。
+   * `src/dev/xduo/enote/Bridge.java`：抽出 `enqueueImageInternal` 共用入队构造逻辑，新增 `enqueueImageDeferred(path, name, source)`（`defer:true`）。
+   * `src/dev/xduo/enote/MainActivity.java`：抽出 `ingestPickedImage` 与 `noteIdOf`，统一 `onActivityResult`（`REQ_IMG`）与 `pickDocument`（`mime.startsWith("image/")`）两处手动选图入口：拷贝入库后立刻 `enqueueImageDeferred` 占位拿到 `id`，卡片即时显「排队中」；后台 `OcrHelper.recognizeFile` 完成后带 `id` 调 `Bridge.enqueueImage` reingest，失败则原地更新占位为 `stError`（不另起一条）。分享（`ShareActivity`）、剪贴板（`clip.go`）与截图批量导入流程保持原样。
+   * Java 方法有效行：`onActivityResult` 21、`ingestPickedImage` 18、`noteIdOf` 6、`pickDocument` 22、`enqueueImageInternal` 17（全部 ≤29 有效行）。
+
+2. **全屏遮罩 `.ovl` → 右上角非阻塞浮岛小卡**：
+   * `go/ui/css/components.css`：将 `.ovl` 从 `inset:0` 全屏灰底毛玻璃改为右上角浮岛定位（`position:fixed;top:calc(var(--s3) + env(safe-area-inset-top));right:var(--s3);z-index:9000;width:min(88vw,320px);pointer-events:none` + `ovlIn` 进场动画）；`.ovlcard` 改为 flex 横排（`pointer-events:auto`、`text-align:left`、`var(--s3)` 内边距、细边框）；`.orw` 缩至 `34px`（`margin-top:var(--s0)`，避免裸 `px` 门禁）；新增 `.ovlcard .otx{flex:1;min-width:0}`，收紧 `.osub`/`.owarn` 排版。
+   * `go/ui/js/views/shots.js`：`ShotProgress` 模板用 `<div class="otx">` 包裹标题、`#shotOvlSub`、`.owarn` 常亮警示与底部提示，保留 `#shotOvlRoot` / `#shotOvl` / `#shotOvlSub` 与 `.ovl` / `.ovlcard` / `.orw` / `.osub` / `.owarn` 全部测试契约与「保持屏幕常亮」提示文案。
+
+探针（物理屏）：
+* 浮岛挂载：`ovl=true card=true sub="OCR 完成，AI 正在解析 · 已用 0s" pointerEvents=none pos=fixed top=12 right=12 width=320`；常亮警示可见；`closeSheet()` 后浮岛存活（`true`）；`shotOverlay(false)` 完全卸载（`true`）。
+* 选图占位：`hook enqueue` 传 `defer:true` 立即生成 `status="queued"` 记录，列表卡片 `#n<id>` 即时显示 `"未命名笔记"` + `["图片","排队中"]`；随后带 `id` reingest 经 LLM 完成为 `["图片","✦ AI exec · 5365ms","购物","提醒"]`。
+
+全套闸门：`GO_TEST=1 ./build.sh` 绿（`go test` 1.196s，`TestEnqueueDeferredImageThenReingest` 0.032s）、`./install.sh` Success、`node tools/ui_test.js` **122 ok / 0 FAIL**、`./test.sh --vd` **166 ok / 0 FAIL / PASS**（`.test/logs/test_s71.log`）、三套 DOM 等价工具（`dom_equiv.js` / `dom_equiv2.js` / `dom_equiv3.js`）全部一致。

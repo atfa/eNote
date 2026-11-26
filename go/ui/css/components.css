@@ -103,22 +103,29 @@
 .fcb .ic{width:12px;height:12px;opacity:0}
 .frow.on .fcb .ic{opacity:1}
 /* 长任务进度层：不可点掉，顶部是要求用户"别黑屏/别退出"的醒目提示 */
-/* z-index 9000：截图导入进度层要压在弹层之上（步骤 17j 之前是 80 > sheet 40）。
-   步骤 18d 之后弹层是 Vant 的 popup，z-index 从 2000 起每开一个弹层 +1，
-   固定层级的东西只能站到它上面去，不能混着排。 */
-.ovl{position:fixed;inset:0;z-index:9000;background:rgba(8,12,20,.55);backdrop-filter:blur(3px);
-  display:flex;align-items:center;justify-content:center;padding:var(--s5)}
-.ovlcard{width:100%;max-width:340px;background:var(--card);border-radius:var(--r3);padding:var(--s4) var(--s4);
-  box-shadow:var(--sh3,0 18px 48px rgba(0,0,0,.28));text-align:center}
-.ovlcard .orw{width:44px;height:44px;margin:var(--s0) auto var(--s3);border-radius:50%;
+/* 步骤 71：截图导入进度层从「全屏遮罩 + 居中大卡」改为右上角浮岛小卡 ——
+   不再盖住整屏（用户要求：长任务进度要看得见，但不能挡住主界面）。
+   .ovl 只定位不截点击（pointer-events:none），卡片自己接事件；
+   保留 .ovl/.ovlcard/.orw/.osub/.owarn 类名与 #shotOvlRoot/#shotOvl/#shotOvlSub DOM
+   钩子（test.sh SIT 脚本按它们断言出现/消失/存活）。
+   z-index 9000 不变：浮岛要压在弹层之上（步骤 18d 之后弹层是 Vant popup，
+   z-index 从 2000 起每开一个弹层 +1，固定层级的东西只能站到它上面去）。 */
+.ovl{position:fixed;top:calc(var(--s3) + env(safe-area-inset-top));right:var(--s3);z-index:9000;
+  width:min(88vw,320px);pointer-events:none;animation:ovlIn var(--d2) var(--ease)}
+@keyframes ovlIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.ovlcard{display:flex;align-items:flex-start;gap:var(--s3);width:100%;background:var(--card);
+  border:var(--hair) solid var(--line);border-radius:var(--r3);padding:var(--s3);
+  box-shadow:var(--sh3,0 18px 48px rgba(0,0,0,.28));text-align:left;pointer-events:auto}
+.ovlcard .orw{width:34px;height:34px;flex:0 0 auto;margin-top:var(--s0);border-radius:50%;
   border:3px solid var(--acc-s);border-top-color:var(--acc);animation:spin 900ms linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.ovlcard .otx{flex:1;min-width:0}
 .ovlcard b{font-size:var(--fs-base)}
-.ovlcard .osub{font-size:var(--fs-sm);color:var(--dim);margin-top:var(--s2);min-height:16px}
-.owarn{margin-top:var(--s3);padding:var(--s2) var(--s3);border-radius:var(--r2);text-align:left;
-  background:var(--warn-s);border:var(--hair) solid var(--warn);font-size:var(--fs-sm);font-weight:700;
+.ovlcard .osub{font-size:var(--fs-sm);color:var(--dim);margin-top:var(--s1);min-height:16px}
+.owarn{margin-top:var(--s2);padding:var(--s1) var(--s2);border-radius:var(--r2);text-align:left;
+  background:var(--warn-s);border:var(--hair) solid var(--warn);font-size:var(--fs-xs);font-weight:700;
   color:var(--warn);line-height:1.55}
-.owarn .ic{width:14px;height:14px;vertical-align:-2px;margin-right:var(--s1)}
+.owarn .ic{width:13px;height:13px;vertical-align:-2px;margin-right:var(--s1)}
 .msrow{display:flex;gap:var(--s2);align-items:flex-start;padding:var(--s2) var(--s0);border-bottom:var(--hair) solid var(--line);font-size:var(--fs-md)}
 .msrow:last-child{border-bottom:0}
 /* 步骤 24 删掉 .msrow 的四个子元素规则（.mt/.mtt/.mts/.mcd）：错过的提醒页转 Vue 组件后

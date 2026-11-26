@@ -6,6 +6,12 @@
 
 ## 0.1（当前）
 
+### 手动选图「先入队后 OCR」+ 进度层浮岛小卡（步骤 71）
+
+* **手动选图先入队后 OCR**：`go/pipeline.go` 新增 `ingestReq.Defer`（`defer=true` 时占位入队保持 `stQueued`、跳过 `jobs` 且不误落 `stRaw`，OCR 完成后带 `id` `reingest` 推进；新增 `go/pipeline_test.go` `TestEnqueueDeferredImageThenReingest`）。`Bridge.java` 抽出 `enqueueImageInternal` 并新增 `enqueueImageDeferred`；`MainActivity.java` 抽出 `ingestPickedImage` 与 `noteIdOf`，统一 `onActivityResult`（`REQ_IMG`）与 `pickDocument` 图片分支：选图后立刻占位显「排队中」，后台跑 OCR 再带 `id` reingest（异常原地置 `stError`）。分享、剪贴板与截图批量导入流程不变。
+* **进度层 `.ovl` 全屏盖 → 右上角非阻塞浮岛小卡**：`go/ui/css/components.css` 将 `.ovl` 改为右上角固定定位（`pointer-events:none`、`width:min(88vw,320px)`、`z-index:9000`），`.ovlcard` 为 flex 横排（`pointer-events:auto`）并新增 `.otx`；`go/ui/js/views/shots.js` 的 `ShotProgress` 用 `.otx` 包裹文本与 `.owarn` 常亮警示，完整保留 `#shotOvlRoot`/`#shotOvl`/`#shotOvlSub` 等 DOM/CSS 契约。
+* **探针与验收**：物理屏探针确认浮岛 `top=12 right=12 width=320 pointerEvents=none`、常亮警示可见、`closeSheet()` 后存活、`shotOverlay(false)` 完全卸载；`defer:true` 入队即时渲染「未命名笔记 + 排队中」卡片并于 reingest 后完成解析。`GO_TEST=1 ./build.sh` 绿（`go test` 1.196s）、`./install.sh` Success、`ui_test.js` **122 ok / 0 FAIL**、`./test.sh --vd` **166 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Java 侧第十批长函数拆开：Reminders.arm 34（P14 S6 步骤 70）——长函数清零收官
 
 * **`Reminders.arm` 34 → 8 行 + `resolveIds` 11 + `scheduleAlarm` 20**：老格式兼容（`"<noteId>|<todoId>"` 拆字段）逐字搬进 `resolveIds`（返回 `String[]{noteId, todoId}`）；排闹钟整段（setAlarmClock 优先 → SDK 分支 → scheduled.add，SecurityException 兜底 setAndAllowWhileIdle）搬进 `scheduleAlarm`（`due` 由调用处实参算出）。`arm` 只剩 keyOf → 去重早退 → resolveIds → pending → scheduleAlarm 五步。

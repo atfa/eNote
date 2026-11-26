@@ -428,11 +428,7 @@ public class MainActivity extends Activity {
                 try {
                     File f = copyIn(uri);
                     note("picked image -> " + f);
-                    OcrHelper.Out o = OcrHelper.get(MainActivity.this).recognizeFile(
-                            f.getAbsolutePath());
-                    String r = Bridge.enqueueImage(null, f.getAbsolutePath(), f.getName(),
-                            o.text, o.ms, o.error, "manual-image");
-                    note("enqueue manual-image -> " + r);
+                    ingestPickedImage(f, f.getName());
                 } catch (Throwable t) {
                     Log.e("enote", "pick failed", t);
                     Bridge.enqueueImage(null, "", String.valueOf(uri), "", 0,
@@ -440,6 +436,39 @@ public class MainActivity extends Activity {
                 }
             }
         }).start();
+    }
+
+    /** 手动选图“先入队后 OCR”（步骤 71）：先以 defer=true 占位入队拿回 note id，
+     *  卡片立刻显「排队中」，再在后台跑 OCR 并带 id reingest 补文本进 LLM；
+     *  异常时若占位已落库则原地改成失败态，不另起一条。 */
+    void ingestPickedImage(File f, String name) {
+        String id = "";
+        try {
+            String r0 = Bridge.enqueueImageDeferred(
+                    f.getAbsolutePath(), name, "manual-image");
+            note("enqueue manual-image (deferred) -> " + r0);
+            id = noteIdOf(r0);
+            OcrHelper.Out o = OcrHelper.get(MainActivity.this)
+                    .recognizeFile(f.getAbsolutePath());
+            String r = Bridge.enqueueImage(id, f.getAbsolutePath(), name,
+                    o.text, o.ms, o.error, "manual-image");
+            note("reingest manual-image -> " + r);
+        } catch (Throwable t) {
+            Log.e("enote", "pick image failed", t);
+            String r = Bridge.enqueueImage(id, "", "", "", 0,
+                    "图片处理失败: " + t, "manual-image");
+            note("reingest manual-image FAIL -> " + r);
+        }
+    }
+
+    /** nativeEnqueue / enqueueImage 的返回 JSON 里取 note id（空串 = 占位失败或没拿到）。 */
+    static String noteIdOf(String res) {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(res == null ? "{}" : res);
+            return o.optString("id", "");
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     /** The 附件页 "添加附件" path: images go through OCR, everything else is stored as a file. */
@@ -452,10 +481,7 @@ public class MainActivity extends Activity {
                     String name = displayName(uri, f.getName());
                     note("picked file -> " + f + " (" + mime + ")");
                     if (mime.startsWith("image/")) {
-                        OcrHelper.Out o = OcrHelper.get(MainActivity.this)
-                                .recognizeFile(f.getAbsolutePath());
-                        note("enqueue manual-image -> " + Bridge.enqueueImage(null,
-                                f.getAbsolutePath(), name, o.text, o.ms, o.error, "manual-image"));
+                        ingestPickedImage(f, name);
                         return;
                     }
                     note("enqueue manual-file -> " + Bridge.enqueueFile(

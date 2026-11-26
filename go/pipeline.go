@@ -25,6 +25,9 @@ type ingestReq struct {
 	FileError string `json:"fileError"` // kind=file: the copy failed, keep the reason
 	Raw       bool   `json:"raw"`       // true = store as-is, no LLM call
 	Source    string `json:"source"`    // share-text | share-image | manual-text | manual-image | share-file | manual-file | clipboard-*
+	// Defer 是「手动选图先占位」的开关（Java 占位入队设 true）：图片立刻进列表显「排队中」，
+	// 但不推 LLM 队列，等 Java OCR 完成后带同一 id reingest 才推进（重 OCR → 空文本/失败各自落位）。
+	Defer     bool   `json:"defer"`
 	// Images 只在 kind=images 时用：一次导入的多张截图（合并成一条笔记，P11）。
 	Images []ingestImage `json:"images,omitempty"`
 }
@@ -88,7 +91,7 @@ func enqueue(r ingestReq) enqueueResult {
 	store.add(n)
 	logf("enqueue %s kind=%s source=%s len=%d ocrMs=%d status=%s",
 		n.ID, r.Kind, r.Source, len(n.RawText), n.OCRMs, n.Status)
-	if n.Status == stQueued {
+	if n.Status == stQueued && !r.Defer {
 		jobs <- n.ID
 	}
 	return enqueueResult{ID: n.ID, Kind: r.Kind}
@@ -131,7 +134,9 @@ func fillImage(n *Note, r ingestReq) {
 	n.OCRMs = r.OCRMs
 	n.RawText = n.OCRText
 	n.Content = n.OCRText
-	if n.Status != stError && n.OCRText == "" {
+	// 占位入队（defer）时 OCR 还没跑：保持 stQueued「排队中」，不能落成 stRaw「仅原文」
+	// —— 那会把「正在识别」误画成「识别完了没字」。空文本的落位由 reingest 负责。
+	if n.Status != stError && n.OCRText == "" && !r.Defer {
 		n.Status = stRaw
 		n.Error = "图片里没有识别到文字"
 	}

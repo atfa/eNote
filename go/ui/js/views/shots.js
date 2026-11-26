@@ -139,10 +139,12 @@ export const ShotProgress = {
 <div class="ovl" id="shotOvl" v-if="P.on">
   <div class="ovlcard">
     <div class="orw"></div>
-    <b>{{ '正在处理 ' + P.total + ' 张截图' }}</b>
-    <div class="osub" id="shotOvlSub">{{ P.what + ' · 已用 ' + P.secs + 's' }}</div>
-    <div class="owarn"><ico n="alert"/>请保持屏幕常亮：不要锁屏、不要让手机黑屏，也不要退出 App 或切到别的应用，否则解析会中断。</div>
-    <div style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s2)">完成后会自动回到列表，不用一直盯着</div>
+    <div class="otx">
+      <b>{{ '正在处理 ' + P.total + ' 张截图' }}</b>
+      <div class="osub" id="shotOvlSub">{{ P.what + ' · 已用 ' + P.secs + 's' }}</div>
+      <div class="owarn"><ico n="alert"/>请保持屏幕常亮：不要锁屏、不要让手机黑屏，也不要退出 App 或切到别的应用，否则解析会中断。</div>
+      <div style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s1)">完成后会自动回到列表，不用一直盯着</div>
+    </div>
   </div>
 </div>`
 };
