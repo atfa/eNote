@@ -4565,3 +4565,76 @@ hook shotimport（空 shots）: {"ok":false,"error":"没有选择截图"}
 `./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致
 （第一次 dom_equiv2 报「剪贴板 计数条」不一致，是探针写进剪贴板的条数让快照与状态 dump 不同步，
 清空后重抓即一致）。
+## 9.85 P14 S6：Java 侧第三批长函数拆开（Shots.importShots 66 / MainActivity.drainClipboard 59，步骤 63）
+
+**`Shots.importShots` 66 → 19 行 + 三个方法 + 三个结果类**
+
+原来一个函数里干完四件事：解析参数、逐张 OCR、按 mode 入队、拼返回串，中间量
+（`mode` / `raw` / `shots` / `imgs` / `failed` / `notes` / `noteIds` / `firstErr`）全靠局部变量传到底。
+
+```java
+ImportReq in = ImportReq.parse(json);
+if (in == null) return "{\"ok\":false,\"error\":\"参数解析失败\"}";
+if (in.shots == null || in.shots.length() == 0) return "…没有选择截图";
+OcrBatch batch = ocrShots(c, in.shots);
+if (batch.imgs.length() == 0) return "…没有可用的截图文件";
+String source = "merge".equals(in.mode) ? "shot-merge" : "shot-single";
+ImportRes res = enqueueImgs(batch.imgs, in.mode, source, in.raw);
+Log.i(TAG, "shots: import mode=" + in.mode + …);
+```
+
+- `ImportReq.parse`：参数解析（失败返回 null，调用方回「参数解析失败」）
+- `ocrShots`：逐张 OCR，识别文本 / 耗时 / 错误跟着图走，一张失败不拖垮整批
+- `enqueueImgs`：merge = 全部图合成一条（N 附件 + 一次 LLM），split = 一张一条
+- `ImportReq` / `OcrBatch` / `ImportRes`：三个结果类，把原来要传到底的局部变量收进来
+
+**`MainActivity.drainClipboard` 59 → 20 行 + 两个方法 + 一个结果类**
+
+```java
+ClipData cd = cm.getPrimaryClip();
+if (cd == null) { clipMiss(cm); return; }        // 排一次重试 + 把现场写进日志
+…
+ClipText ct = clipText(cd, it);                  // 取文字（text / coerce）
+if (ct == null) return;                          // 为什么没拿到，clipText 里已经 note 过了
+boolean added = Bridge.clipAdd("text", ct.text, "", "", "", ct.app);
+```
+
+- `clipMiss`：读到 null 的整段（空剪贴板和「无焦点被拒」分不开，只走一条重试链）
+- `clipText`：一条剪贴板项 → 文字，浏览器复制的 `content://` URI 走 `coerceToText`
+- `ClipText`：正文 + 取到它的方式（text / coerce）+ 来源应用 label
+
+逐字核对（`git show HEAD:` 语句多重集双向，新侧先做变量名归一）：
+`importShots` 原 66 有效行 → 新 90，原句只少 4 行，都是字段化改写
+（`JSONArray noteIds = new JSONArray();` → `final JSONArray noteIds = …`、
+`boolean raw = false;` → 字段 `boolean raw;`、`int failed = 0;` → 字段 `int failed;`、
+`JSONObject in = new JSONObject(…)` → 改名 `o`）；新句没有原句对应的只有三个结果类、
+两个方法签名、四个调用点、四个 return。
+`drainClipboard` 原 89 有效行 → 新 104，原句只少 4 行（`if (cd == null) {` 压平、
+两处 `return;` → `return null;`），新句只多 `ClipText` 类、两个方法签名、两个调用点。
+
+探针（物理屏）：
+
+```
+G63 暂存截图=2 名称=s63-a.png,s63-b.png
+G63 split 结果={"ok":true,"notes":2,"ocrFailed":2,"noteIds":[…,…]}
+G63 split 后新笔记=2 来源=shot-single,shot-single 状态=error,error 附件=1,1
+G63 merge 结果={"ok":true,"notes":1,"ocrFailed":2,"noteIds":[…]}
+G63 merge 后新笔记=1 来源=shot-merge 附件=2
+G63 空 shots → {"ok":false,"error":"没有选择截图"}
+G63B 空串参数 → {"ok":false,"error":"参数解析失败"}      G63B 数组参数 → {"ok":false,"error":"参数解析失败"}
+G63 清理笔记 3 条 → true,true,true   G63 清暂存 → {"ok":true,"removed":2}
+```
+
+（`ocrFailed=2` 是造的测试图里没有文字，OCR 认不出东西；`raw:true` 不调 LLM，
+笔记照样出，来源分别是 `shot-single` / `shot-merge`，附件数 1 / 2 也对。）
+
+剪贴板读取（`clipset` 钩子写剪贴板 → 监听器 → `drainClipboard`）：
+
+```
+clip 暂存文字 10 字（text, label=hook）：步骤六三新剪贴板文字
+clip 重复，未暂存 10 字（text, label=hook）：步骤六三新剪贴板文字
+clip 只有空白字符        ← 三个空格与空串各命中一次
+```
+
+验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

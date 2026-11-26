@@ -1374,6 +1374,27 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Java 侧第三批长函数拆开：Shots.importShots 66 / MainActivity.drainClipboard 59（P14 S6 步骤 63）
+
+* **`Shots.importShots` 66 → 19 行 + 三个方法 + 三个结果类**：原来一个函数里干完四件事（解析参数、逐张
+  OCR、按 mode 入队、拼返回串），中间量 `mode` / `raw` / `shots` / `imgs` / `failed` / `notes` / `noteIds` /
+  `firstErr` 全靠局部变量传到底。现在 `ImportReq.parse`（参数解析，失败返回 null）、`ocrShots`（逐张 OCR，
+  识别文本 / 耗时 / 错误跟着图走，一张失败不拖垮整批）、`enqueueImgs`（merge = 全部图合成一条笔记，
+  split = 一张一条）各管一段，`ImportReq` / `OcrBatch` / `ImportRes` 把要传到底的量收进来。
+* **`MainActivity.drainClipboard` 59 → 20 行 + 两个方法 + 一个结果类**：`clipMiss`（读到 null 的整段——
+  空剪贴板和「无焦点被拒」分不开，只走一条重试链，并把现场写进日志）、`clipText`（一条剪贴板项 → 文字，
+  浏览器复制的 `content://` URI 走 `coerceToText`）、`ClipText`（正文 + 取到它的方式 + 来源应用 label）。
+* 逐字核对（`git show HEAD:` 语句多重集双向，新侧先做变量名归一）：`importShots` 原 66 有效行 → 新 90，
+  原句只少 4 行，都是字段化改写（`JSONArray noteIds = new JSONArray();` → `final JSONArray noteIds = …`、
+  `boolean raw = false;` → 字段 `boolean raw;`、`int failed = 0;` → 字段 `int failed;`、局部 `in` 改名 `o`）；
+  `drainClipboard` 原 89 → 新 104，原句只少 4 行（`if (cd == null) {` 压平、两处 `return;` → `return null;`）。
+* 探针（物理屏）：`split` → `{"ok":true,"notes":2,"ocrFailed":2,…}` 出两条 `shot-single` 笔记（附件 1,1）、
+  `merge` → `{"ok":true,"notes":1,…}` 出一条 `shot-merge` 笔记（附件 2）、空 shots → 「没有选择截图」、
+  空串与数组参数 → 「参数解析失败」；`clipset` 钩子写剪贴板后依次看到 `clip 暂存文字 10 字（text, label=hook）`、
+  `clip 重复，未暂存 10 字`、`clip 只有空白字符`（三个空格与空串各一次）。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Java 侧第二批长函数拆开：runHook 125 / Reminders.sync 74（P14 S6 步骤 62）
 
 * **`MainActivity.runHook` 125 → 38 行 + 十个 `hook*` 方法**：十四个验收钩子原来平铺在一条 `if/else` 链里，

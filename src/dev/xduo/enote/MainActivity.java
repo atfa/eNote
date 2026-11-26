@@ -276,65 +276,87 @@ public class MainActivity extends Activity {
                     ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                     if (cm == null) { note("clip 拿不到 ClipboardManager"); return; }
                     ClipData cd = cm.getPrimaryClip();
-                    if (cd == null) {
-                        boolean has = cm.hasPrimaryClip();
-                        // 空剪贴板和「无焦点被拒」都返回 null，分不开，所以只要还在等焦点就继续
-                        // 重试（上限 20 秒）；焦点到了 onWindowFocusChanged 也会立刻叫一次。
-                        // 重试只走一条链：监听器、焦点回调、上一次重试会同时叫，不排队的话
-                        // 一次复制能刷出几十个线程。
-                        long waited = SystemClock.uptimeMillis() - clipWaitStart;
-                        boolean keep = clipWaitingFocus && clipTries < 40 && waited < 20000L;
-                        if (keep && web != null) {
-                            // 只排一次：post 到同一个 Runnable，重复 post 会先撤掉上一次，
-                            // 所以监听器/焦点回调/上一次重试一起叫也只有一条链。
-                            clipTries++;
-                            web.postDelayed(clipRetry, Math.min(1200L, 250L * clipTries));
-                        }
-                        note("clip drain#" + clipTries + " 读不到（hasPrimaryClip=" + has
-                                + ", windowFocus=" + (web != null && web.hasWindowFocus())
-                                + ", resumed=" + resumedNow + ", 已等 " + (waited / 1000)
-                                + "s, 继续重试=" + keep + "）"
-                                + (KeepAlive.clipHint(Bridge.appCtx != null ? Bridge.appCtx : getApplicationContext()) ? " · 后台看到过变化" : ""));
-                        return;
-                    }
+                    if (cd == null) { clipMiss(cm); return; }
                     clipTries = 0;
                     clipWaitingFocus = false;
                     if (cd.getItemCount() == 0) { note("clip 剪贴板为空"); return; }
                     ClipData.Item it = cd.getItemAt(0);
-                    String app = "";
-                    try {
-                        CharSequence l = cd.getDescription() != null ? cd.getDescription().getLabel() : null;
-                        if (l != null) app = l.toString();
-                    } catch (Throwable ignored) {}
-                    CharSequence cs = null;
-                    String via = "text";
-                    try { cs = it.getText(); } catch (Throwable ignored) {}
-                    if (cs == null || cs.toString().trim().isEmpty()) {
-                        // 浏览器复制常常是 content:// URI（Chrome / vivo 浏览器都这样），
-                        // getText() 就是 null；coerceToText 是官方给的标准做法，会去读那个 provider。
-                        via = "coerce";
-                        try {
-                            cs = it.coerceToText(getApplicationContext());
-                        } catch (Throwable t) {
-                            note("clip coerceToText 失败: " + t);
-                        }
-                    }
-                    if (cs == null) {
-                        note("clip 没有文字项（label=" + app + ", uri="
-                                + (it.getUri() == null ? "无" : it.getUri().getScheme()) + "）");
-                        return;
-                    }
-                    String text = cs.toString();
-                    if (text.trim().isEmpty()) { note("clip 只有空白字符"); return; }
-                    boolean added = Bridge.clipAdd("text", text, "", "", "", app);
-                    note("clip " + (added ? "暂存文字 " : "重复，未暂存 ") + text.length()
-                            + " 字（" + via + ", label=" + app + "）："
-                            + text.substring(0, Math.min(24, text.length())).replace("\n", "\\n"));
+                    ClipText ct = clipText(cd, it);
+                    if (ct == null) return;   // 为什么没拿到文字，clipText 里已经 note 过了
+                    boolean added = Bridge.clipAdd("text", ct.text, "", "", "", ct.app);
+                    note("clip " + (added ? "暂存文字 " : "重复，未暂存 ") + ct.text.length()
+                            + " 字（" + ct.via + ", label=" + ct.app + "）："
+                            + ct.text.substring(0, Math.min(24, ct.text.length())).replace("\n", "\\n"));
                 } catch (Throwable t) {
                     Log.w("enote", "clip: " + t);
                 }
             }
         }, "clip-front").start();
+    }
+
+    /** 读到 null：排一次重试（只走一条链），并把现场写进日志。 */
+    private void clipMiss(ClipboardManager cm) {
+        boolean has = cm.hasPrimaryClip();
+        // 空剪贴板和「无焦点被拒」都返回 null，分不开，所以只要还在等焦点就继续
+        // 重试（上限 20 秒）；焦点到了 onWindowFocusChanged 也会立刻叫一次。
+        // 重试只走一条链：监听器、焦点回调、上一次重试会同时叫，不排队的话
+        // 一次复制能刷出几十个线程。
+        long waited = SystemClock.uptimeMillis() - clipWaitStart;
+        boolean keep = clipWaitingFocus && clipTries < 40 && waited < 20000L;
+        if (keep && web != null) {
+            // 只排一次：post 到同一个 Runnable，重复 post 会先撤掉上一次，
+            // 所以监听器/焦点回调/上一次重试一起叫也只有一条链。
+            clipTries++;
+            web.postDelayed(clipRetry, Math.min(1200L, 250L * clipTries));
+        }
+        note("clip drain#" + clipTries + " 读不到（hasPrimaryClip=" + has
+                + ", windowFocus=" + (web != null && web.hasWindowFocus())
+                + ", resumed=" + resumedNow + ", 已等 " + (waited / 1000)
+                + "s, 继续重试=" + keep + "）"
+                + (KeepAlive.clipHint(Bridge.appCtx != null ? Bridge.appCtx : getApplicationContext()) ? " · 后台看到过变化" : ""));
+    }
+
+    /** 一条剪贴板项 → 文字。取不到就返回 null，原因已经 note 出去了。 */
+    private ClipText clipText(ClipData cd, ClipData.Item it) {
+        String app = "";
+        try {
+            CharSequence l = cd.getDescription() != null ? cd.getDescription().getLabel() : null;
+            if (l != null) app = l.toString();
+        } catch (Throwable ignored) {}
+        CharSequence cs = null;
+        String via = "text";
+        try { cs = it.getText(); } catch (Throwable ignored) {}
+        if (cs == null || cs.toString().trim().isEmpty()) {
+            // 浏览器复制常常是 content:// URI（Chrome / vivo 浏览器都这样），
+            // getText() 就是 null；coerceToText 是官方给的标准做法，会去读那个 provider。
+            via = "coerce";
+            try {
+                cs = it.coerceToText(getApplicationContext());
+            } catch (Throwable t) {
+                note("clip coerceToText 失败: " + t);
+            }
+        }
+        if (cs == null) {
+            note("clip 没有文字项（label=" + app + ", uri="
+                    + (it.getUri() == null ? "无" : it.getUri().getScheme()) + "）");
+            return null;
+        }
+        String text = cs.toString();
+        if (text.trim().isEmpty()) { note("clip 只有空白字符"); return null; }
+        return new ClipText(text, via, app);
+    }
+
+    /** 一条剪贴板文字项的三样东西：正文、取到它的方式（text / coerce）、来源应用 label。 */
+    static final class ClipText {
+        final String text;
+        final String via;
+        final String app;
+
+        ClipText(String text, String via, String app) {
+            this.text = text;
+            this.via = via;
+            this.app = app;
+        }
     }
 
     // ---------------------------------------------------------------- image picker

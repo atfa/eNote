@@ -533,23 +533,35 @@ public final class Shots {
      * 返回 {"ok":true,"notes":N} 或 {"ok":false,"error":…}。
      */
     static String importShots(Context c, String json) {
-        String mode = "merge";
-        boolean raw = false;
-        JSONArray shots;
-        try {
-            JSONObject in = new JSONObject(json == null ? "{}" : json);
-            mode = in.optString("mode", "merge");
-            raw = in.optBoolean("raw", false);
-            shots = in.optJSONArray("shots");
-        } catch (Throwable t) {
+        ImportReq in = ImportReq.parse(json);
+        if (in == null) {
             return "{\"ok\":false,\"error\":\"参数解析失败\"}";
         }
-        if (shots == null || shots.length() == 0) {
+        if (in.shots == null || in.shots.length() == 0) {
             return "{\"ok\":false,\"error\":\"没有选择截图\"}";
         }
+        OcrBatch batch = ocrShots(c, in.shots);
+        if (batch.imgs.length() == 0) {
+            return "{\"ok\":false,\"error\":\"没有可用的截图文件\"}";
+        }
+        String source = "merge".equals(in.mode) ? "shot-merge" : "shot-single";
+        ImportRes res = enqueueImgs(batch.imgs, in.mode, source, in.raw);
+        Log.i(TAG, "shots: import mode=" + in.mode + " raw=" + in.raw + " shots=" + batch.imgs.length()
+                + " notes=" + res.notes + " ocrFailed=" + batch.failed);
+        if (res.notes == 0) {
+            return "{\"ok\":false,\"error\":\"" + (res.firstErr.isEmpty() ? "导入失败" : res.firstErr) + "\"}";
+        }
+        return "{\"ok\":true,\"notes\":" + res.notes + ",\"ocrFailed\":" + batch.failed
+                + ",\"noteIds\":" + res.noteIds + "}";
+    }
+
+    /**
+     * 逐张跑本地 OCR。识别文本 / 耗时 / 错误都跟着图走，一张失败不拖垮整批：
+     * 失败只记进 failed（日志与返回值用），图本身照样交给 Go。
+     */
+    private static OcrBatch ocrShots(Context c, JSONArray shots) {
+        OcrBatch b = new OcrBatch();
         OcrHelper ocr = OcrHelper.get(c);
-        JSONArray imgs = new JSONArray();
-        int failed = 0;
         for (int i = 0; i < shots.length(); i++) {
             JSONObject sh = shots.optJSONObject(i);
             if (sh == null) continue;
@@ -564,39 +576,66 @@ public final class Shots {
                 o.put("ocr", out == null || out.text == null ? "" : out.text);
                 o.put("ocrMs", out == null ? 0L : out.ms);
                 o.put("err", out == null || out.error == null ? "" : out.error);
-                if (out == null || (out.text != null && out.text.isEmpty() && out.error != null)) failed++;
+                if (out == null || (out.text != null && out.text.isEmpty() && out.error != null)) b.failed++;
             } catch (Throwable t) {
-                failed++;
+                b.failed++;
                 try { o.put("err", String.valueOf(t)); } catch (Throwable ignored) {}
             }
-            imgs.put(o);
+            b.imgs.put(o);
         }
-        if (imgs.length() == 0) {
-            return "{\"ok\":false,\"error\":\"没有可用的截图文件\"}";
-        }
-        String source = "merge".equals(mode) ? "shot-merge" : "shot-single";
-        int notes = 0;
-        String firstErr = "";
-        JSONArray noteIds = new JSONArray();
+        return b;
+    }
+
+    /** merge = 全部图合成一条笔记（N 个附件 + 一次 LLM）；split = 一张一条，单张失败只记第一条原因。 */
+    private static ImportRes enqueueImgs(JSONArray imgs, String mode, String source, boolean raw) {
+        ImportRes r = new ImportRes();
         if ("merge".equals(mode)) {
             String id = enqueuePayload(imgs, source, raw);
-            if (!id.isEmpty()) { notes = 1; noteIds.put(id); }
+            if (!id.isEmpty()) { r.notes = 1; r.noteIds.put(id); }
         } else {
             for (int i = 0; i < imgs.length(); i++) {
                 JSONArray one = new JSONArray();
                 one.put(imgs.opt(i));
                 String id = enqueuePayload(one, source, raw);
-                if (!id.isEmpty()) { notes++; noteIds.put(id); }
-                else if (firstErr.isEmpty()) firstErr = "第 " + (i + 1) + " 张入队失败";
+                if (!id.isEmpty()) { r.notes++; r.noteIds.put(id); }
+                else if (r.firstErr.isEmpty()) r.firstErr = "第 " + (i + 1) + " 张入队失败";
             }
         }
-        Log.i(TAG, "shots: import mode=" + mode + " raw=" + raw + " shots=" + imgs.length()
-                + " notes=" + notes + " ocrFailed=" + failed);
-        if (notes == 0) {
-            return "{\"ok\":false,\"error\":\"" + (firstErr.isEmpty() ? "导入失败" : firstErr) + "\"}";
+        return r;
+    }
+
+    /** 导入请求：mode=merge|split、raw=原样存为笔记（不调 LLM）、shots=选中的截图。 */
+    static final class ImportReq {
+        String mode = "merge";
+        boolean raw;
+        JSONArray shots;
+
+        /** 参数解析失败返回 null（调用方回「参数解析失败」）。 */
+        static ImportReq parse(String json) {
+            ImportReq in = new ImportReq();
+            try {
+                JSONObject o = new JSONObject(json == null ? "{}" : json);
+                in.mode = o.optString("mode", "merge");
+                in.raw = o.optBoolean("raw", false);
+                in.shots = o.optJSONArray("shots");
+            } catch (Throwable t) {
+                return null;
+            }
+            return in;
         }
-        return "{\"ok\":true,\"notes\":" + notes + ",\"ocrFailed\":" + failed
-                + ",\"noteIds\":" + noteIds + "}";
+    }
+
+    /** 一批截图的 OCR 结果：imgs = 交给 Go 的图（每张带 ocr/ocrMs/err），failed = 识别失败张数。 */
+    static final class OcrBatch {
+        final JSONArray imgs = new JSONArray();
+        int failed;
+    }
+
+    /** 导入结果：出了几条笔记、笔记 id、第一条入队失败原因（空串 = 没有）。 */
+    static final class ImportRes {
+        int notes;
+        final JSONArray noteIds = new JSONArray();
+        String firstErr = "";
     }
 
     /** 一组图 → 一条 kind=images 的入队请求（N 个附件 + 一次 LLM）。返回新笔记 id。 */
