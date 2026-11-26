@@ -207,13 +207,7 @@ public class OcrEngine {
             lastError = "not inited";
             return res;
         }
-        SaveWordsResults[] r;
-        try {
-            r = VivoOCRGeneral.runDetRecDireDel(bmp);
-        } catch (Throwable t) {
-            lastError = "runDetRecDireDel threw " + t;
-            return res;
-        }
+        SaveWordsResults[] r = detect(bmp);
         res.ms = System.currentTimeMillis() - t0;
         if (r == null) {
             lastError = "runDetRecDireDel returned null";
@@ -221,37 +215,52 @@ public class OcrEngine {
         }
         for (SaveWordsResults s : r) {
             if (s == null) continue;
-            if (s.errorCode != 0) {
-                lastError = "errorCode=" + s.errorCode;
-                res.errorCode = s.errorCode;
-            }
-            final int lineIdx = res.lines.size();
-            if (s.mRec != null && s.mRec.trim().length() > 0) {
-                Line l = new Line();
-                l.text = s.mRec;
-                l.raw = s.mDet;
-                l.rot = (int) s.mRot;
-                l.directFlag = s.directFlag;
-                Word tmp = new Word();
-                box(s.mDet, tmp);
-                l.x = tmp.x; l.y = tmp.y; l.w = tmp.w; l.h = tmp.h;
-                res.lines.add(l);
-            }
-            int order = 0;
-            if (s.mWords != null) {
-                for (WordResult wr : s.mWords) {
-                    if (wr == null || wr.wRec == null || wr.wRec.trim().length() == 0) continue;
-                    Word w = new Word();
-                    w.text = wr.wRec;
-                    w.raw = wr.wDet;
-                    box(wr.wDet, w);
-                    w.line = s.mRec != null && s.mRec.trim().length() > 0 ? lineIdx : -1;
-                    w.order = order++;
-                    res.words.add(w);
-                }
-            }
+            absorb(res, s);
         }
         return res;
+    }
+
+    /** 跑一次 vivo 的识别；抛异常时把原因写进 lastError 并返回 null。 */
+    private SaveWordsResults[] detect(Bitmap bmp) {
+        try {
+            return VivoOCRGeneral.runDetRecDireDel(bmp);
+        } catch (Throwable t) {
+            lastError = "runDetRecDireDel threw " + t;
+            return null;
+        }
+    }
+
+    /** 一条识别结果 → 一行文字 + 逐词坐标（行下标在加行之前取，词的 line 才指得对）。 */
+    private void absorb(Result res, SaveWordsResults s) {
+        if (s.errorCode != 0) {
+            lastError = "errorCode=" + s.errorCode;
+            res.errorCode = s.errorCode;
+        }
+        final int lineIdx = res.lines.size();
+        if (s.mRec != null && s.mRec.trim().length() > 0) {
+            Line l = new Line();
+            l.text = s.mRec;
+            l.raw = s.mDet;
+            l.rot = (int) s.mRot;
+            l.directFlag = s.directFlag;
+            Word tmp = new Word();
+            box(s.mDet, tmp);
+            l.x = tmp.x; l.y = tmp.y; l.w = tmp.w; l.h = tmp.h;
+            res.lines.add(l);
+        }
+        int order = 0;
+        if (s.mWords != null) {
+            for (WordResult wr : s.mWords) {
+                if (wr == null || wr.wRec == null || wr.wRec.trim().length() == 0) continue;
+                Word w = new Word();
+                w.text = wr.wRec;
+                w.raw = wr.wDet;
+                box(wr.wDet, w);
+                w.line = s.mRec != null && s.mRec.trim().length() > 0 ? lineIdx : -1;
+                w.order = order++;
+                res.words.add(w);
+            }
+        }
     }
 
     /** vivo hands back a flat int[] per line/word; dump it raw and map the common shapes. */

@@ -150,41 +150,10 @@ public final class Shots {
     static String foldersJson(Context c) {
         if (!mediaGranted(c)) return "[]";
         JSONArray out = new JSONArray();
-        Cursor cur = null;
         try {
-            Uri uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-            boolean newApi = Build.VERSION.SDK_INT >= 29;
-            String[] proj = newApi
-                    ? new String[]{MediaStore.Images.Media.RELATIVE_PATH, MediaStore.Images.Media.SIZE}
-                    : new String[]{MediaStore.Images.Media.DATA, MediaStore.Images.Media.SIZE};
-            int iRel = newApi ? 0 : -1;
-            int iData = newApi ? -1 : 0;
-            cur = c.getContentResolver().query(uri, proj, null, null, null);
-            if (cur == null) return "[]";
-            // 目录 -> [张数, 字节]
-            java.util.HashMap<String, long[]> agg = new java.util.HashMap<String, long[]>();
-            while (cur.moveToNext()) {
-                String p = relPathOf(cur, iRel, iData);
-                if (p.isEmpty()) continue;
-                long[] a = agg.get(p);
-                if (a == null) {
-                    a = new long[]{0L, 0L};
-                    agg.put(p, a);
-                }
-                a[0]++;
-                a[1] += Math.max(0L, cur.getLong(1));
-            }
-            // 按张数降序；同张数按路径字母序（稳定，不依赖 HashMap 的遍历顺序）
-            List<java.util.Map.Entry<String, long[]>> rows =
-                    new ArrayList<java.util.Map.Entry<String, long[]>>(agg.entrySet());
-            Collections.sort(rows, new Comparator<java.util.Map.Entry<String, long[]>>() {
-                public int compare(java.util.Map.Entry<String, long[]> a,
-                                   java.util.Map.Entry<String, long[]> b) {
-                    long cx = a.getValue()[0], cy = b.getValue()[0];
-                    return cx == cy ? a.getKey().compareTo(b.getKey()) : (cx < cy ? 1 : -1);
-                }
-            });
-            for (java.util.Map.Entry<String, long[]> row : rows) {
+            java.util.HashMap<String, long[]> agg = queryFolders(c);
+            if (agg == null) return "[]";
+            for (java.util.Map.Entry<String, long[]> row : sortedFolders(agg)) {
                 String k = row.getKey();
                 long[] a = row.getValue();
                 JSONObject o = new JSONObject();
@@ -196,10 +165,56 @@ public final class Shots {
             }
         } catch (Throwable t) {
             Log.w(TAG, "shots: foldersJson failed " + t);
+        }
+        return out.toString();
+    }
+
+    /** 扫一遍 MediaStore 图片表，聚成 目录 -> [张数, 字节]；查询本身没拿到就返回 null。 */
+    private static java.util.HashMap<String, long[]> queryFolders(Context c) {
+        java.util.HashMap<String, long[]> agg = new java.util.HashMap<String, long[]>();
+        Cursor cur = null;
+        try {
+            Uri uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+            boolean newApi = Build.VERSION.SDK_INT >= 29;
+            String[] proj = newApi
+                    ? new String[]{MediaStore.Images.Media.RELATIVE_PATH, MediaStore.Images.Media.SIZE}
+                    : new String[]{MediaStore.Images.Media.DATA, MediaStore.Images.Media.SIZE};
+            int iRel = newApi ? 0 : -1;
+            int iData = newApi ? -1 : 0;
+            cur = c.getContentResolver().query(uri, proj, null, null, null);
+            if (cur == null) return null;
+            while (cur.moveToNext()) {
+                String p = relPathOf(cur, iRel, iData);
+                if (p.isEmpty()) continue;
+                long[] a = agg.get(p);
+                if (a == null) {
+                    a = new long[]{0L, 0L};
+                    agg.put(p, a);
+                }
+                a[0]++;
+                a[1] += Math.max(0L, cur.getLong(1));
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "shots: foldersJson failed " + t);
         } finally {
             if (cur != null) try { cur.close(); } catch (Throwable ignored) {}
         }
-        return out.toString();
+        return agg;
+    }
+
+    /** 按张数降序；同张数按路径字母序（稳定，不依赖 HashMap 的遍历顺序）。 */
+    private static List<java.util.Map.Entry<String, long[]>> sortedFolders(
+            java.util.HashMap<String, long[]> agg) {
+        List<java.util.Map.Entry<String, long[]>> rows =
+                new ArrayList<java.util.Map.Entry<String, long[]>>(agg.entrySet());
+        Collections.sort(rows, new Comparator<java.util.Map.Entry<String, long[]>>() {
+            public int compare(java.util.Map.Entry<String, long[]> a,
+                               java.util.Map.Entry<String, long[]> b) {
+                long cx = a.getValue()[0], cy = b.getValue()[0];
+                return cx == cy ? a.getKey().compareTo(b.getKey()) : (cx < cy ? 1 : -1);
+            }
+        });
+        return rows;
     }
 
     /** 便宜版状态（不扫 MediaStore）：首页横幅和我的页每帧都能调。 */

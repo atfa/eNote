@@ -85,19 +85,34 @@ public class MainActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled")
     void openWeb(String url) {
         web = new WebView(this);
-        web.getSettings().setJavaScriptEnabled(true);
-        web.getSettings().setDomStorageEnabled(true);
+        configureWeb(web);
+        web.setWebViewClient(pageClient());
+        web.setWebChromeClient(chromeClient());
+        setContentView(web);
+        note("web: loading " + url);
+        web.loadUrl(url);
+    }
+
+    /** 开页面前的一次性开关：JS / DOM storage / 不用缓存 / 自动播放 / 远程调试 / 桥 / 拉伸。 */
+    @SuppressLint("SetJavaScriptEnabled")
+    private void configureWeb(WebView w) {
+        w.getSettings().setJavaScriptEnabled(true);
+        w.getSettings().setDomStorageEnabled(true);
         // UI 内嵌在二进制里，装新版后不能拿到旧页面
-        web.getSettings().setCacheMode(android.webkit.WebSettings.LOAD_NO_CACHE);
-        web.getSettings().setMediaPlaybackRequiresUserGesture(false);
+        w.getSettings().setCacheMode(android.webkit.WebSettings.LOAD_NO_CACHE);
+        w.getSettings().setMediaPlaybackRequiresUserGesture(false);
         // Chrome 远程调试（chrome://inspect）+ Vue Devtools 的入口：WebView 被标记为可调试。
         // 页面里 ?vue=dev 换到 Vue 的 dev 构建就能看到组件树（README §5.2）。
         // 开着不改变用户可见行为，代价是设备上的 Chrome 能检查这个本地页面。
         WebView.setWebContentsDebuggingEnabled(true);
-        web.addJavascriptInterface(new Bridge(), "Android");
+        w.addJavascriptInterface(new Bridge(), "Android");
         // 页面没有横向滚动，但 WebView 自己的滑动拉伸效果还在：在“我的”页左滑会拉伸半个屏再弹回
-        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        web.setWebViewClient(new WebViewClient() {
+        w.setOverScrollMode(View.OVER_SCROLL_NEVER);
+    }
+
+    /** 页面加载完了才算就绪，把排队要开的页放出去；加载失败只记日志（页面自己有重试）。 */
+    private WebViewClient pageClient() {
+        return new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String u) {
                 note("web: page finished " + u);
@@ -109,8 +124,12 @@ public class MainActivity extends Activity {
             public void onReceivedError(WebView view, int code, String desc, String u) {
                 note("web: ERROR " + code + " " + desc + " " + u);
             }
-        });
-        web.setWebChromeClient(new WebChromeClient() {
+        };
+    }
+
+    /** 控制台转发到日志；原生弹框全部转发给页面自绘的对话框。 */
+    private WebChromeClient chromeClient() {
+        return new WebChromeClient() {
             @Override
             public boolean onConsoleMessage(ConsoleMessage m) {
                 note("web console: " + m.message());
@@ -131,10 +150,7 @@ public class MainActivity extends Activity {
                 v.evaluateJavascript("window.uiDialog && uiDialog('确认', " + quote(message) + ", 'js')", null);
                 return true;
             }
-        });
-        setContentView(web);
-        note("web: loading " + url);
-        web.loadUrl(url);
+        };
     }
 
     @Override

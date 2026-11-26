@@ -34,9 +34,10 @@ def grab(src, names):
             if (re.search(r'\b'+re.escape(n)+r'\s*\(', l) or re.search(r'\bclass\s+'+re.escape(n)+r'\b', l)) and not l.strip().startswith('//'):
                 st=i; dd=0; started=False
                 for k in range(i,len(L)):
+                    if not started and '{' not in L[k]: continue
+                    started=True
                     dd+=L[k].count('{')-L[k].count('}')
-                    if '{' in L[k]: started=True
-                    if started and dd<=0:
+                    if dd<=0:
                         res+=L[st:k+1]; i=k; break
                 break
         i+=1

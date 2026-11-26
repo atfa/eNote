@@ -4638,3 +4638,77 @@ clip 只有空白字符        ← 三个空格与空串各命中一次
 
 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
 `./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+## 9.86 P14 S6：Java 侧第四批长函数拆开（OcrEngine.recognizeFull 53 / Shots.foldersJson 52 / MainActivity.openWeb 45，步骤 64）
+
+**`OcrEngine.recognizeFull` 53 → 19 行 + `detect` 8 + `absorb` 31**
+
+```java
+SaveWordsResults[] r = detect(bmp);          // 跑一次识别，抛异常写进 lastError 并返回 null
+res.ms = System.currentTimeMillis() - t0;
+if (r == null) { lastError = "runDetRecDireDel returned null"; return res; }
+for (SaveWordsResults s : r) {
+    if (s == null) continue;
+    absorb(res, s);                          // 一条结果 → 一行文字 + 逐词坐标
+}
+```
+
+`absorb` 里 `lineIdx` 必须在加行之前取（词的 `line` 字段才指得对），这段整段搬过去没动。
+
+**`Shots.foldersJson` 52 → 21 行 + `queryFolders` 31 + `sortedFolders` 13**
+
+三段各管一件事：`queryFolders` 扫 MediaStore 聚成 `目录 -> [张数, 字节]`（游标归它关，
+查询没拿到返回 null）；`sortedFolders` 按张数降序、同张数按路径字母序（稳定，不依赖
+HashMap 的遍历顺序）；`foldersJson` 只剩拼 JSON。
+
+**`MainActivity.openWeb` 45 → 9 行 + `configureWeb` 14 + `pageClient` 15 + `chromeClient` 24**
+
+```java
+web = new WebView(this);
+configureWeb(web);            // JS / DOM storage / 不用缓存 / 自动播放 / 远程调试 / 桥 / 拉伸
+web.setWebViewClient(pageClient());
+web.setWebChromeClient(chromeClient());
+setContentView(web);
+note("web: loading " + url);
+web.loadUrl(url);
+```
+
+两个回调对象整段搬走（`web.` → `w.` 是 `configureWeb` 里的形参名），页面就绪置
+`pageReady` + 放行排队页、控制台转日志、原生弹框转页面自绘对话框，全部原样。
+
+逐字核对（`git show HEAD:` 语句多重集双向，新侧先做变量名归一；核对脚本
+`.test/verb63.py` 这轮修了一个抓取 bug：函数签名之前若有配平的 `}`，旧版会把
+`dd` 抵成负数、在签名行就收工，只抓到 3 行）：
+
+| 函数 | 原有效行 | 新有效行 | 原句没找到 |
+|---|---|---|---|
+| `recognizeFull` | 55 | 60 | 2（`SaveWordsResults[] r;` 并进 `= detect(bmp)`、一处 `return res;` → `return null;`） |
+| `foldersJson` | 60 | 73 | 0 |
+| `openWeb` | 47 | 56 | 2（两处 `});` → `};`，回调对象改成方法返回） |
+
+新句没有原句对应的只有方法签名、调用点、`return` 与闭合括号；`foldersJson` 那侧多出的
+一行是 `catch (Throwable t) { Log.w(TAG, "shots: foldersJson failed " + t); }` 现在在
+`foldersJson` 与 `queryFolders` 各有一份（原来只有一处，日志文案没变）。
+
+探针（物理屏）：
+
+```
+hook shotscan: {"ok":true,"added":1,"granted":true,"watermark":1795662874}
+hook shotfolders: {"enabled":true,"granted":true,"perm":"android.permission.READ_MEDIA_IMAGES",
+  "folders":[{"path":"DCIM/Screenshots/","count":5,"bytes":3927558,"shot":true}],"total":5}
+G64 暂存截图=1 名称=ocr64.png
+G64 split 结果={"ok":true,"notes":1,"ocrFailed":0,"noteIds":["1795662907390563dh14"]}
+G64 新笔记=1 来源=shot-single 状态=raw
+G64 笔记0 ocrText=取快递|图片文字搜索断言用唯一随机串|GGEAMNCG 含GGEAMNCG=1 附件=1
+```
+
+（`ocr64.png` 是测试套件现造的含字图，`ocrFailed=0` + 笔记正文逐字含随机串
+`GGEAMNCG`，说明 `detect` / `absorb` / `box` 整条识别链没坏；`foldersJson` 的聚合 +
+排序 + `shot` 标记由 `hook shotfolders` 证明。）
+
+`openWeb` 的 `onJsAlert` 转发顺带暴露一个探针坑：探针 JS 里调 `window.alert(...)` 会
+**阻塞渲染线程**，页面自绘对话框要等 `JsResult` 被确认才放行，`hook jseval` 排进去的
+脚本（`hook jseval: {"ok":true,"queued":385}`）永远轮不到执行，只能 force-stop 恢复。
+探针里不要调 `window.alert`。
+
+验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

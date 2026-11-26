@@ -1374,6 +1374,30 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Java 侧第四批长函数拆开：OcrEngine.recognizeFull 53 / Shots.foldersJson 52 / MainActivity.openWeb 45（P14 S6 步骤 64）
+
+* **`OcrEngine.recognizeFull` 53 → 19 行 + `detect` 8 + `absorb` 31**：`detect` 跑一次 vivo 识别（抛异常
+  写进 `lastError` 并返回 null），`absorb` 把一条结果变成一行文字 + 逐词坐标（`lineIdx` 必须在加行之前取，
+  词的 `line` 字段才指得对）。
+* **`Shots.foldersJson` 52 → 21 行 + `queryFolders` 31 + `sortedFolders` 13**：扫 MediaStore 聚成
+  `目录 -> [张数, 字节]`（游标归它关）、排序（张数降序、同张数按路径字母序，稳定，不依赖 HashMap 遍历顺序）、
+  拼 JSON 各管一段。
+* **`MainActivity.openWeb` 45 → 9 行 + `configureWeb` 14 + `pageClient` 15 + `chromeClient` 24**：一次性开关
+  （JS / DOM storage / 不用缓存 / 自动播放 / 远程调试 / 桥 / 拉伸）、页面加载回调、控制台与原生弹框转发
+  三个回调对象整段搬走。
+* 逐字核对（`git show HEAD:` 语句多重集双向，新侧先做变量名归一）：`recognizeFull` 原 55 有效行 → 新 60，
+  原句只少 2 行（`SaveWordsResults[] r;` 并进 `= detect(bmp)`、一处 `return res;` → `return null;`）；
+  `foldersJson` 原 60 → 新 73，**原句全部找到**；`openWeb` 原 47 → 新 56，原句只少 2 行（两处 `});` → `};`）。
+  核对脚本 `.test/verb63.py` 修了一个抓取 bug：函数签名之前若有配平的 `}`，旧版会把深度抵成负数、
+  在签名行就收工（只抓到 3 行）。
+* 探针（物理屏）：`hook shotfolders` 出 `folders:[{"path":"DCIM/Screenshots/","count":5,"bytes":3927558,
+  "shot":true}]`（聚合 + 排序 + 截图目录标记）；导入测试套件现造的含字图 → `{"ok":true,"notes":1,
+  "ocrFailed":0,…}`，笔记 `来源=shot-single 状态=raw`、正文逐字含随机串 `GGEAMNCG`（`detect` / `absorb` /
+  `box` 整条识别链没坏）。顺带记一个探针坑：探针 JS 里调 `window.alert(...)` 会阻塞渲染线程，页面自绘对话框
+  要等 `JsResult` 确认才放行，之后排进去的脚本永远轮不到，只能 force-stop 恢复。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Java 侧第三批长函数拆开：Shots.importShots 66 / MainActivity.drainClipboard 59（P14 S6 步骤 63）
 
 * **`Shots.importShots` 66 → 19 行 + 三个方法 + 三个结果类**：原来一个函数里干完四件事（解析参数、逐张
