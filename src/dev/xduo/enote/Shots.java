@@ -15,6 +15,7 @@ import android.provider.MediaStore;
 import android.util.Log;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -243,41 +244,50 @@ public final class Shots {
             o.put("granted", mediaGranted(c));
             o.put("watermark", watermark(c));
             o.put("perm", permName());
-            Set<String> want = folders(c);
             JSONArray arr = new JSONArray();
-            int total = 0;
-            if (mediaGranted(c)) {
-                JSONArray all = new JSONArray(foldersJson(c));
-                for (int i = 0; i < all.length(); i++) {
-                    JSONObject f = all.getJSONObject(i);
-                    String path = f.optString("path");
-                    if (!want.contains(path)) continue;
-                    arr.put(f);
-                    total += f.optInt("count");
-                }
-                // 配置里写了但媒体库里已经没有的目录，标 missing
-                for (String w : want) {
-                    boolean found = false;
-                    for (int i = 0; i < arr.length(); i++) {
-                        if (arr.getJSONObject(i).optString("path").equals(w)) { found = true; break; }
-                    }
-                    if (!found) {
-                        JSONObject f = new JSONObject();
-                        f.put("path", w);
-                        f.put("count", 0);
-                        f.put("bytes", 0);
-                        f.put("shot", looksLikeShot(w));
-                        f.put("missing", true);
-                        arr.put(f);
-                    }
-                }
-            }
+            if (mediaGranted(c)) arr = pickedFolders(new JSONArray(foldersJson(c)), folders(c));
             o.put("folders", arr);
-            o.put("total", total);
+            o.put("total", sumFolderCount(arr));
             return o.toString();
         } catch (Throwable t) {
             return "{\"error\":\"" + t + "\"}";
         }
+    }
+
+    /** 已选目录：媒体库里有的照拄，配置里写了但媒体库没有的补一条 missing。 */
+    private static JSONArray pickedFolders(JSONArray all, Set<String> want) throws JSONException {
+        JSONArray arr = new JSONArray();
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject f = all.getJSONObject(i);
+            if (!want.contains(f.optString("path"))) continue;
+            arr.put(f);
+        }
+        // 配置里写了但媒体库里已经没有的目录，标 missing
+        for (String w : want) {
+            if (folderHasPath(arr, w)) continue;
+            JSONObject f = new JSONObject();
+            f.put("path", w);
+            f.put("count", 0);
+            f.put("bytes", 0);
+            f.put("shot", looksLikeShot(w));
+            f.put("missing", true);
+            arr.put(f);
+        }
+        return arr;
+    }
+
+    private static boolean folderHasPath(JSONArray arr, String path) throws JSONException {
+        for (int i = 0; i < arr.length(); i++) {
+            if (arr.getJSONObject(i).optString("path").equals(path)) return true;
+        }
+        return false;
+    }
+
+    /** 目录卡里的张数合计（missing 的目录张数是 0，不影响合计）。 */
+    private static int sumFolderCount(JSONArray arr) throws JSONException {
+        int total = 0;
+        for (int i = 0; i < arr.length(); i++) total += arr.getJSONObject(i).optInt("count");
+        return total;
     }
 
     // ------------------------------------------------------------------ 已经见过的图（sha1）
@@ -411,45 +421,48 @@ public final class Shots {
     static List<Hit> queryHits(ContentResolver cr, Set<String> want, long since) {
         List<Hit> hits = new ArrayList<Hit>();
         boolean newApi = Build.VERSION.SDK_INT >= 29;
-        for (String folder : want) {
-            Cursor cur = null;
-            try {
-                Uri uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-                String relCol = newApi ? MediaStore.Images.Media.RELATIVE_PATH : MediaStore.Images.Media.DATA;
-                String[] proj = newApi
-                        ? new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME,
-                        MediaStore.Images.Media.MIME_TYPE, MediaStore.Images.Media.DATE_ADDED,
-                        MediaStore.Images.Media.SIZE, relCol}
-                        : new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME,
-                        MediaStore.Images.Media.MIME_TYPE, MediaStore.Images.Media.DATE_ADDED,
-                        MediaStore.Images.Media.SIZE, relCol};
-                String sel = newApi
-                        ? MediaStore.Images.Media.RELATIVE_PATH + " LIKE ? AND "
-                        + MediaStore.Images.Media.DATE_ADDED + " >= ?"
-                        : MediaStore.Images.Media.DATA + " LIKE ? AND "
-                        + MediaStore.Images.Media.DATE_ADDED + " >= ?";
-                String arg = newApi ? folder + "%" : "%/" + folder + "%";
-                // 不能在 sortOrder 里拼 LIMIT：这台机器的 MediaProvider 会抛
-                // IllegalArgumentException: Invalid token LIMIT。自己数到上限就停。
-                String order = MediaStore.Images.Media.DATE_ADDED + " ASC";
-                cur = cr.query(uri, proj, sel, new String[]{arg, String.valueOf(since)}, order);
-                if (cur == null) continue;
-                while (cur.moveToNext() && hits.size() < MAX_PER_SCAN) {
-                    Hit h = new Hit();
-                    h.uri = ContentUris.withAppendedId(uri, cur.getLong(0));
-                    h.name = cur.getString(1);
-                    h.mime = cur.getString(2);
-                    h.dateAdded = cur.getLong(3);
-                    h.size = cur.getLong(4);
-                    hits.add(h);
-                }
-            } catch (Throwable t) {
-                Log.w(TAG, "shots: query " + folder + " failed " + t);
-            } finally {
-                if (cur != null) try { cur.close(); } catch (Throwable ignored) {}
-            }
-        }
+        Uri uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+        for (String folder : want) queryFolder(cr, uri, newApi, folder, since, hits);
         return hits;
+    }
+
+    /** 一个目录的查询：命中的图追加到 hits 尾部，数到 MAX_PER_SCAN 就停；这个目录查不动只记日志。 */
+    private static void queryFolder(ContentResolver cr, Uri uri, boolean newApi,
+                                    String folder, long since, List<Hit> hits) {
+        Cursor cur = null;
+        try {
+            String relCol = newApi ? MediaStore.Images.Media.RELATIVE_PATH : MediaStore.Images.Media.DATA;
+            String[] proj = new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME,
+                    MediaStore.Images.Media.MIME_TYPE, MediaStore.Images.Media.DATE_ADDED,
+                    MediaStore.Images.Media.SIZE, relCol};
+            String sel = newApi
+                    ? MediaStore.Images.Media.RELATIVE_PATH + " LIKE ? AND "
+                    + MediaStore.Images.Media.DATE_ADDED + " >= ?"
+                    : MediaStore.Images.Media.DATA + " LIKE ? AND "
+                    + MediaStore.Images.Media.DATE_ADDED + " >= ?";
+            String arg = newApi ? folder + "%" : "%/" + folder + "%";
+            // 不能在 sortOrder 里拼 LIMIT：这台机器的 MediaProvider 会抛
+            // IllegalArgumentException: Invalid token LIMIT。自己数到上限就停。
+            String order = MediaStore.Images.Media.DATE_ADDED + " ASC";
+            cur = cr.query(uri, proj, sel, new String[]{arg, String.valueOf(since)}, order);
+            if (cur == null) return;
+            while (cur.moveToNext() && hits.size() < MAX_PER_SCAN) hits.add(hitFrom(cur, uri));
+        } catch (Throwable t) {
+            Log.w(TAG, "shots: query " + folder + " failed " + t);
+        } finally {
+            if (cur != null) try { cur.close(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /** 游标当前行 → 一条候选（列下标就是上面 proj 的顺序）。 */
+    private static Hit hitFrom(Cursor cur, Uri uri) {
+        Hit h = new Hit();
+        h.uri = ContentUris.withAppendedId(uri, cur.getLong(0));
+        h.name = cur.getString(1);
+        h.mime = cur.getString(2);
+        h.dateAdded = cur.getLong(3);
+        h.size = cur.getLong(4);
+        return h;
     }
 
     /** 多文件夹合并后按时间升序，最早的排前面（合并笔记里附件顺序 = 时间顺序）。 */
@@ -480,39 +493,49 @@ public final class Shots {
         for (Hit h : hits) {
             if (s.copied >= MAX_PER_SCAN) break;
             if (h.dateAdded > s.maxAdded) s.maxAdded = h.dateAdded;
-            String ext = extOf(h.name, h.mime);
-            File dst = new File(inbox, "shot-" + h.dateAdded + "-tmp" + ext);
-            String sha1 = copyFrom(cr, h.uri, dst);
-            if (sha1 == null) {
-                Log.w(TAG, "shots: copy failed " + h.name);
-                continue;
-            }
-            if (s.seen.contains(sha1)) {
-                dst.delete();
-                Log.i(TAG, "shots: duplicate sha1 " + sha1.substring(0, 8) + " (" + h.name + ")");
-                continue;
-            }
-            File finalFile = new File(inbox, "shot-" + h.dateAdded + "-" + sha1.substring(0, 8) + ext);
-            if (finalFile.exists()) finalFile.delete();
-            if (!dst.renameTo(finalFile)) {
-                Log.w(TAG, "shots: rename failed " + dst);
-                dst.delete();
-                continue;
-            }
-            s.seen.add(sha1);
-            s.shaByPath.put(finalFile.getAbsolutePath(), sha1);
-            s.copied++;
-            try {
-                JSONObject o = new JSONObject();
-                o.put("path", finalFile.getAbsolutePath());
-                o.put("name", h.name == null ? finalFile.getName() : h.name);
-                o.put("mime", h.mime == null ? "" : h.mime);
-                o.put("size", finalFile.length());
-                o.put("dateAdded", h.dateAdded);
-                s.added.put(o);
-            } catch (Throwable ignored) {}
+            copyOne(cr, inbox, h, s);
         }
         return s;
+    }
+
+    /** 一张图：复制 → sha1 去重 → 改名成 shot-<时间>-<sha1 前 8 位> → 记进清单；没成只记日志。 */
+    private static void copyOne(ContentResolver cr, File inbox, Hit h, Scan s) {
+        String ext = extOf(h.name, h.mime);
+        File dst = new File(inbox, "shot-" + h.dateAdded + "-tmp" + ext);
+        String sha1 = copyFrom(cr, h.uri, dst);
+        if (sha1 == null) {
+            Log.w(TAG, "shots: copy failed " + h.name);
+            return;
+        }
+        if (s.seen.contains(sha1)) {
+            dst.delete();
+            Log.i(TAG, "shots: duplicate sha1 " + sha1.substring(0, 8) + " (" + h.name + ")");
+            return;
+        }
+        File finalFile = new File(inbox, "shot-" + h.dateAdded + "-" + sha1.substring(0, 8) + ext);
+        if (finalFile.exists()) finalFile.delete();
+        if (!dst.renameTo(finalFile)) {
+            Log.w(TAG, "shots: rename failed " + dst);
+            dst.delete();
+            return;
+        }
+        s.seen.add(sha1);
+        s.shaByPath.put(finalFile.getAbsolutePath(), sha1);
+        s.copied++;
+        s.added.put(addedJson(finalFile, h));
+    }
+
+    /** 交给 Go 的一条清单：名字 / 类型缺了就用落盘的文件名兜底。 */
+    private static JSONObject addedJson(File finalFile, Hit h) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("path", finalFile.getAbsolutePath());
+            o.put("name", h.name == null ? finalFile.getName() : h.name);
+            o.put("mime", h.mime == null ? "" : h.mime);
+            o.put("size", finalFile.length());
+            o.put("dateAdded", h.dateAdded);
+        } catch (Throwable ignored) {}
+        return o;
     }
 
     /** Go 侧忽略表命中的图：删掉刚复制的副本 + 记进 seen，否则每次扫描都白复制一遍。 */

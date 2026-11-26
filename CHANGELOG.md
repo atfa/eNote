@@ -1374,6 +1374,28 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Java 侧第五批长函数拆开：Shots.copyHits 43 / Shots.stateJson 42 / Shots.queryHits 41（P14 S6 步骤 65）
+
+* **`Shots.queryHits` 41 → 7 行 + `queryFolder` 26 + `hitFrom` 9**：一个目录的查询（游标归它关、查不动只记日志）
+  与游标行 → 候选各成一段；顺带去掉一处假分支 —— 原来 `proj` 写成 `newApi ? new String[]{…} : new String[]{…}`，
+  **两个分支一模一样**，现在是一份数组 + `relCol` 变列名。`if (cur == null) continue;` → `return;`。
+* **`Shots.copyHits` 43 → 13 行 + `copyOne` 25 + `addedJson` 11**：循环只剩上限与水位，`copyOne` 管一张图
+  （复制 → sha1 去重 → 改名成 `shot-<时间>-<sha1 前 8 位>` → 记进清单，三处 `continue` 变 `return`），
+  `addedJson` 管交给 Go 的清单项（名字/类型缺了用落盘文件名兜底）。
+* **`Shots.stateJson` 42 → 16 行 + `pickedFolders` 20 + `folderHasPath` 6 + `sumFolderCount` 5**：命中媒体库的
+  照抄、配置里写了但媒体库没有的补一条 `missing`、张数合计各成一段；`total` 原来只累加命中的目录，现在对
+  结果数组求和（`missing` 的 `count` 就是 0，结果一样）。
+* 逐字核对（`git show HEAD:` 语句多重集双向，新侧先做变量名归一）：`queryHits` 原 46 有效行 → 新 45，原句少 7 行
+  （proj 假分支两行合一 5 行、`for (…){` → 单行调用、`hits.add(h)` → `hitFrom`）；`copyHits` 原 50 → 新 56，
+  **原句全部找到**；`stateJson` 原 42 → 新 46，原句少 7 行（局部变量内联、`found` 标记 → `folderHasPath`、
+  `if (mediaGranted(c)) {` → 单行、`total` 累加 → `sumFolderCount`）。
+* 探针（物理屏）：第一次扫描走 `copyOne` 的复制 + 改名 + `addedJson` → `added=2`；同一批图第二次扫描走 sha1
+  去重分支 → 两条 `shots: duplicate sha1 …` + `added=0`。`stateJson` 三条分支全打到：
+  `DCIM/Screenshots/`（`shot=true` count=5）、`Pictures/enote-test/`（`shot=false` count=2）、配置里写了但媒体库
+  没有的 `NoSuch/Dir/`（`missing=true` count=0），`total=7` = 5+2（missing 不贡献张数）。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Java 侧第四批长函数拆开：OcrEngine.recognizeFull 53 / Shots.foldersJson 52 / MainActivity.openWeb 45（P14 S6 步骤 64）
 
 * **`OcrEngine.recognizeFull` 53 → 19 行 + `detect` 8 + `absorb` 31**：`detect` 跑一次 vivo 识别（抛异常

@@ -4712,3 +4712,69 @@ G64 笔记0 ocrText=取快递|图片文字搜索断言用唯一随机串|GGEAMNC
 
 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
 `./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+## 9.87 P14 S6：Java 侧第五批长函数拆开（Shots.copyHits 43 / Shots.stateJson 42 / Shots.queryHits 41，步骤 65）
+
+**`Shots.queryHits` 41 → 7 行 + `queryFolder` 26 + `hitFrom` 9**
+
+```java
+for (String folder : want) queryFolder(cr, uri, newApi, folder, since, hits);
+```
+
+`queryFolder` 管一个目录的查询（游标归它关，查不动只记日志），`hitFrom` 把游标当前行变成
+一条候选（列下标就是 `proj` 的顺序）。顺带去掉一处假分支：原来 `proj` 写成
+`newApi ? new String[]{…} : new String[]{…}`，**两个分支一模一样**，现在是一份数组 +
+`relCol` 变列名。`if (cur == null) continue;` → `return;`（循环体变成方法）。
+
+**`Shots.copyHits` 43 → 13 行 + `copyOne` 25 + `addedJson` 11**
+
+`copyHits` 只剩循环（上限、水位），`copyOne` 管一张图（复制 → sha1 去重 → 改名成
+`shot-<时间>-<sha1 前 8 位>` → 记进清单），三处 `continue` 变成 `return`；
+`addedJson` 管交给 Go 的一条清单项（名字/类型缺了用落盘文件名兜底）。原来
+`s.added.put(o)` 包在 `try { … } catch (Throwable ignored) {}` 里，现在 try 收进
+`addedJson`（`JSONArray.put` 不抛检查异常，放外面等价）。
+
+**`Shots.stateJson` 42 → 16 行 + `pickedFolders` 20 + `folderHasPath` 6 + `sumFolderCount` 5**
+
+```java
+JSONArray arr = new JSONArray();
+if (mediaGranted(c)) arr = pickedFolders(new JSONArray(foldersJson(c)), folders(c));
+o.put("folders", arr);
+o.put("total", sumFolderCount(arr));
+```
+
+`pickedFolders` = 命中媒体库的照抄 + 配置里写了但媒体库没有的补一条 `missing`；
+`folderHasPath` 是原来那段内层 `found` 双循环查找。`total` 原来只累加命中的目录，
+现在对 `arr` 求和 —— `missing` 的目录 `count` 就是 0，结果一样（`sumFolderCount` 的注释写明了）。
+
+逐字核对（`git show HEAD:` 语句多重集双向，新侧先做变量名归一）：
+
+| 函数 | 原有效行 | 新有效行 | 原句没找到 |
+|---|---|---|---|
+| `queryHits` | 46 | 45 | 7（proj 假分支两行合一 5 行、`for (…){` → 单行调用、`hits.add(h)` → `hitFrom`） |
+| `copyHits` | 50 | 56 | 0 |
+| `stateJson` | 42 | 46 | 7（`want`/`all` 局部变量内联、`found` 标记 → `folderHasPath`、`if (mediaGranted(c)) {` → 单行、`total` 累加 → `sumFolderCount`） |
+
+新句没有原句对应的只有方法签名、调用点、`return` 与闭合括号。
+
+探针（物理屏）：
+
+```
+hook shotscan: {"ok":true,"added":2,"granted":true,"watermark":1795664249}
+shots: duplicate sha1 a0df98cd (s65-1.png)
+shots: duplicate sha1 e1a6df3e (s65-2.png)
+hook shotscan: {"ok":true,"added":0,"granted":true,"watermark":1795664249}
+G65 shotState enabled=true granted=true total=5 watermark=1795664249
+G65 目录=1 明细=DCIM/Screenshots/#5
+G65 暂存=2 名称=s65-1.png,s65-2.png
+hook shotfolders: {"folders":[{"path":"DCIM/Screenshots/","count":5,"bytes":3927558,"shot":true},
+  {"path":"Pictures/enote-test/","count":2,"bytes":31247,"shot":false},
+  {"path":"NoSuch/Dir/","count":0,"bytes":0,"shot":false,"missing":true}],"total":7}
+```
+
+（第一次扫描走 `copyOne` 的复制 + 改名 + `addedJson`，`added=2`；第二次同一批图走 sha1
+去重分支，两条 `duplicate sha1` + `added=0`。`stateJson` 三条分支全打到：命中媒体库的
+`DCIM/Screenshots/`（`shot=true`）、`Pictures/enote-test/`（`shot=false`）、配置里写了但
+媒体库没有的 `NoSuch/Dir/`（`missing=true`，`count=0`），`total=7` = 5+2，missing 不贡献张数。）
+
+验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
