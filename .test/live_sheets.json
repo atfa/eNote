@@ -27,7 +27,7 @@
  "add_cls": "panel|kind=",
  "addtodo": "<h2>添加待办</h2><label>事项</label><input id=\"tText\" placeholder=\"要做什么\" value=\"\"><div class=\"grid2\"><div><label>日期</label><input type=\"date\" id=\"tDate\" value=\"\"></div><div><label>时间</label><input type=\"time\" id=\"tTime\" value=\"\"></div></div><label>优先级</label><select id=\"tPri\" value=\"normal\"><option value=\"normal\">普通</option><option value=\"high\">重要</option><option value=\"low\">低</option></select><div class=\"acts\"><button class=\"btn pri\">添加</button></div>",
  "addtodo_cls": "panel|kind=",
- "log": "<h2>运行日志</h2><div class=\"meta\"><span class=\"chip\">OCR ready</span><span class=\"chip\">http://127.0.0.1:39987/</span></div><pre>2026-11-26 11:56:09.687 enqueue 1795665369686296p9t8 kind=text source=manual-text len=49 ocrMs=0 status=queued\n2026-11-26 11:56:13.764 llm: ok 338 chars in 4074ms (finish=stop)\n2026-11-26 11:56:13.766 note 1795665369686296p9t8 parsed: title=\"产品组评审会安排\" todos=1 in 4074ms\n2026-11-26 11:56:14.481 llm: ok 555 chars in 4776ms (finish=stop)\n2026-11-26 11:56:15.722 enqueue 1795665375720955876e kind=text source=share-text len=78 ocrMs=0 status=queued\n2026-11-26 11:56:19.393 llm: ok 602 chars in 3670ms (finish=stop)\n2026-11-26 11:56:19.396 note 1795665375720955876e parsed: title=\"购物、取快递及周会测试提醒\" todos=3 in 3670ms\n2026-11-26 11:56:21.589 enqueue 1795665381588010k5fk kind=image source=share-image len=261 ocrMs=568 status=queued\n2026-11-26 11:56:25.656 llm: ok 709 chars in 4066ms (finish=stop)\n2026-11-26 11:56:25.659 note 1795665381588010k5fk parsed: title=\"设计组原型评审及快递待办\" todos=2 in 4066ms\n2026-11-26 11:56:29.676 enqueue 17956653896735699f29 kind=image source=share-image len=60 ocrMs=286 status=queued\n2026-11-26 11:56:31.988 llm: ok 275 chars in 2310ms (finish=stop)\n2026-11-26 11:56:31.988 note 17956653896735699f29 parsed: title=\"图片文字搜索断言用唯一随机串\" todos=0 in 2310ms\n2026-11-26 11:56:37.016 llm: ok 886 chars in 4726ms (finish=stop)\n2026-11-26 11:56:37.017 note 1795665381588010k5fk parsed: title=\"设计组原型评审及快递待办\" todos=2 in 4726ms\n2026-11-26 11:56:39.976 llm: ok 72 chars in 946ms (finish=stop)\n2026-11-26 11:56:41.793 llm: ok 72 chars in 865ms (finish=stop)\n2026-11-26 11:56:47.628 enqueue 17956654076283453co3 kind=file source=share-file len=0 ocrMs=0 status=raw\n2026-11-26 11:56:50.974 attach delete 1795665407628356ngcn (att-test.pdf)\n2026-11-26 11:57:01.312 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 11:57:01.325 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 11:57:01.325 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）\n2026-11-26 11:57:01.620 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 11:57:01.620 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）\n2026-11-26 11:57:01.661 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 11:57:01.661 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）\n2026-11-26 11:59:03.374 missed: 2 条到点提醒在上次打开之后错过（since=2020-01-01T00:00:00+08:00）\n2026-11-26 11:59:03.902 missed: 4 条到点提醒在上次打开之后错过（since=2020-01-01T00:00:00+08:00）\n2026-11-26 11:59:13.393 shot add: 新增 2，忽略 0，重复 0，当前 2\n2026-11-26 11:59:14.946 enqueue 17956655549409440iy4 kind=images source=shot-merge len=0 ocrMs=484 status=error\n2026-11-26 11:59:23.218 shot: 保留 shot-1795665549-278309c8.png（已有笔记在用）\n2026-11-26 11:59:23.218 shot: 保留 shot-1795665549-8860753c.png（已有笔记在用）\n2026-11-26 11:59:23.218 shot remove: 2 条\n2026-11-26 11:59:24.001 enqueue 1795665564000824dmh2 kind=images source=shot-single len=0 ocrMs=219 status=error\n2026-11-26 11:59:24.001 enqueue 17956655640015233dzz kind=images source=shot-single len=0 ocrMs=157 status=error\n2026-11-26 11:59:48.141 shot add: 新增 1，忽略 0，重复 0，当前 1\n2026-11-26 11:59:50.226 shot remove: 1 条\n2026-11-26 11:59:50.767 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:50.902 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:50.903 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 11:59:50.910 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:50.910 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 11:59:56.631 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:56.647 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:56.648 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 11:59:56.649 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:56.649 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 11:59:56.746 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:56.746 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:02.767 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:02.773 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:02.773 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:02.811 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:02.811 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:02.904 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:02.904 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:03.410 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:03.410 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:03.546 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:03.546 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:14.158 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:14.177 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:14.177 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:14.281 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:14.281 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:20.285 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:20.295 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:20.295 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:20.297 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:20.297 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:20.433 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:20.433 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:20.937 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:20.937 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:21.049 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:21.049 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:21.989 enqueue 17956656219885082c49 kind=text source=clipboard-text len=25 ocrMs=0 status=raw\n2026-11-26 12:00:21.990 enqueue 1795665621989574eeu3 kind=text source=clipboard-text len=25 ocrMs=0 status=raw\n2026-11-26 12:00:24.339 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:24.440 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:24.440 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:24.556 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:24.556 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:24.560 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:24.560 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:30.368 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:30.368 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:30.385 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:30.417 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:30.417 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:30.517 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:30.517 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:31.082 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:31.082 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:31.213 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:31.213 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:33.019 enqueue 1795665633018532c09f kind=text source=clipboard-text len=25 ocrMs=0 status=queued\n2026-11-26 12:00:33.021 enqueue 1795665633020058npz9 kind=text source=clipboard-text len=25 ocrMs=0 status=queued\n2026-11-26 12:00:37.032 llm: ok 344 chars in 4008ms (finish=stop)\n2026-11-26 12:00:37.035 note 1795665633018532c09f parsed: title=\"一键解析任务\" todos=1 in 4008ms\n2026-11-26 12:00:40.411 llm: ok 324 chars in 3374ms (finish=stop)\n2026-11-26 12:00:40.415 note 1795665633020058npz9 parsed: title=\"一键解析任务\" todos=1 in 3374ms\n2026-11-26 12:00:41.751 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:41.755 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:41.756 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:41.854 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:41.854 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:42.080 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:42.080 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:43.415 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:43.415 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:43.572 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:43.572 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:01:00.577 shot add: 新增 2，忽略 0，重复 0，当前 2\n2026-11-26 12:01:02.811 shot remove: 2 条\n2026-11-26 12:01:03.842 enqueue 1795665663842437jjy8 kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.846 enqueue 17956656638465065lqy kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.850 enqueue 179566566385057765xv kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.857 enqueue 179566566385739275xm kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.861 enqueue 1795665663861237a3k6 kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.865 enqueue 1795665663865124o1w4 kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.871 enqueue 1795665663870485n7py kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.875 enqueue 1795665663874834dr0v kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:05.603 llm: ok 73 chars in 1759ms (finish=stop)\n2026-11-26 12:01:05.604 note 1795665663842437jjy8 parsed: title=\"标题 0\" todos=0 in 1759ms\n2026-11-26 12:01:06.750 llm: ok 73 chars in 1146ms (finish=stop)\n2026-11-26 12:01:06.751 note 17956656638465065lqy parsed: title=\"标题 1\" todos=0 in 1146ms\n2026-11-26 12:01:08.162 llm: ok 73 chars in 1410ms (finish=stop)\n2026-11-26 12:01:08.163 note 179566566385057765xv parsed: title=\"标题 2\" todos=0 in 1410ms\n2026-11-26 12:01:09.494 llm: ok 73 chars in 1329ms (finish=stop)\n2026-11-26 12:01:09.494 note 179566566385739275xm parsed: title=\"标题 3\" todos=0 in 1329ms\n2026-11-26 12:01:10.823 llm: ok 73 chars in 1328ms (finish=stop)\n2026-11-26 12:01:10.824 note 1795665663861237a3k6 parsed: title=\"标题 4\" todos=0 in 1328ms\n2026-11-26 12:01:12.155 llm: ok 73 chars in 1330ms (finish=stop)\n2026-11-26 12:01:12.156 note 1795665663865124o1w4 parsed: title=\"标题 5\" todos=0 in 1330ms\n2026-11-26 12:01:13.913 llm: ok 73 chars in 1756ms (finish=stop)\n2026-11-26 12:01:13.914 note 1795665663870485n7py parsed: title=\"标题 6\" todos=0 in 1756ms\n2026-11-26 12:01:24.623 enqueue 1795665684622724si91 kind=file source=share-file len=0 ocrMs=0 status=raw\n2026-11-26 12:01:27.231 attach delete 1795665684622748czy8 (vue-files-fixture.pdf)\n2026-11-26 12:04:54.909 enqueue 1795665894909385maxh kind=image source=share-image len=0 ocrMs=0 status=error\n2026-11-26 12:04:54.913 enqueue 1795665894911797badf kind=text source=share-text len=39 ocrMs=0 status=queued\n2026-11-26 12:04:58.176 llm: ok 257 chars in 3261ms (finish=stop)\n2026-11-26 12:04:58.176 note 1795665894911797badf parsed: title=\"步骤六六分享附注：记得带伞\" todos=1 in 3261ms\n2026-11-26 12:05:35.926 enqueue 1795665935925405g1ny kind=image source=share-image len=261 ocrMs=714 status=queued\n2026-11-26 12:05:35.927 enqueue 17956659359262668vmp kind=text source=share-text len=39 ocrMs=0 status=queued\n2026-11-26 12:05:40.964 llm: ok 828 chars in 5034ms (finish=stop)\n2026-11-26 12:05:40.967 note 1795665935925405g1ny parsed: title=\"设计评审与快递待办\" todos=2 in 5034ms\n2026-11-26 12:05:43.415 llm: ok 209 chars in 2446ms (finish=stop)\n2026-11-26 12:05:43.417 note 17956659359262668vmp parsed: title=\"步骤六六分享附注：记得带伞\" todos=1 in 2446ms\n2026-11-26 12:09:17.460 enqueue 1795666157459475fiuh kind=file source=share-file len=0 ocrMs=0 status=raw</pre>",
+ "log": "<h2>运行日志</h2><div class=\"meta\"><span class=\"chip\">OCR ready</span><span class=\"chip\">http://127.0.0.1:38219/</span></div><pre>2026-11-26 12:55:02.477 http server on http://127.0.0.1:38219/\n2026-11-26 12:55:02.616 ocr state: ready=true cpu, v8.4.1.77\n2026-11-26 12:55:03.679 shot remove: 0 条\n2026-11-26 12:55:06.788 llm: ok 84 chars in 2589ms (finish=stop)\n2026-11-26 12:55:06.886 enqueue 1795668906884459z2wh kind=text source=manual-text len=49 ocrMs=0 status=queued\n2026-11-26 12:55:11.808 llm: ok 335 chars in 4920ms (finish=stop)\n2026-11-26 12:55:11.808 note 1795668906884459z2wh parsed: title=\"产品评审会安排\" todos=1 in 4920ms\n2026-11-26 12:55:12.118 llm: ok 544 chars in 5225ms (finish=stop)\n2026-11-26 12:55:12.953 enqueue 17956689129533725uw3 kind=text source=share-text len=77 ocrMs=0 status=queued\n2026-11-26 12:55:16.607 llm: ok 572 chars in 3652ms (finish=stop)\n2026-11-26 12:55:16.610 note 17956689129533725uw3 parsed: title=\"购物、取快递及周会测试安排\" todos=3 in 3652ms\n2026-11-26 12:55:18.577 enqueue 1795668918576937x6a1 kind=image source=share-image len=261 ocrMs=473 status=queued\n2026-11-26 12:55:23.072 llm: ok 709 chars in 4494ms (finish=stop)\n2026-11-26 12:55:23.073 note 1795668918576937x6a1 parsed: title=\"设计评审与快递取件提醒\" todos=2 in 4494ms\n2026-11-26 12:55:27.015 enqueue 1795668927015035chu3 kind=image source=share-image len=60 ocrMs=325 status=queued\n2026-11-26 12:55:29.421 llm: ok 296 chars in 2404ms (finish=stop)\n2026-11-26 12:55:29.424 note 1795668927015035chu3 parsed: title=\"取快递取件码\" todos=1 in 2404ms\n2026-11-26 12:55:33.821 llm: ok 703 chars in 4172ms (finish=stop)\n2026-11-26 12:55:33.822 note 1795668918576937x6a1 parsed: title=\"设计评审与快递待办\" todos=2 in 4172ms\n2026-11-26 12:55:35.465 llm: ok 84 chars in 1286ms (finish=stop)\n2026-11-26 12:55:38.424 llm: ok 84 chars in 2058ms (finish=stop)\n2026-11-26 12:55:44.713 enqueue 1795668944712902846w kind=file source=share-file len=0 ocrMs=0 status=raw\n2026-11-26 12:55:48.044 attach delete 17956689447129361nco (att-test.pdf)\n2026-11-26 12:55:58.868 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 12:55:58.904 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 12:55:58.905 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）\n2026-11-26 12:55:59.219 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 12:55:59.219 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）\n2026-11-26 12:58:00.724 missed: 2 条到点提醒在上次打开之后错过（since=2020-01-01T00:00:00+08:00）\n2026-11-26 12:58:01.346 missed: 4 条到点提醒在上次打开之后错过（since=2020-01-01T00:00:00+08:00）\n2026-11-26 12:58:10.314 shot add: 新增 2，忽略 0，重复 0，当前 2\n2026-11-26 12:58:11.759 enqueue 1795669091758029roul kind=images source=shot-merge len=0 ocrMs=448 status=error\n2026-11-26 12:58:20.223 shot: 保留 shot-1795669086-2125e155.png（已有笔记在用）\n2026-11-26 12:58:20.223 shot: 保留 shot-1795669086-efe566d2.png（已有笔记在用）\n2026-11-26 12:58:20.223 shot remove: 2 条\n2026-11-26 12:58:21.000 enqueue 1795669101000365xt5e kind=images source=shot-single len=0 ocrMs=244 status=error\n2026-11-26 12:58:21.001 enqueue 1795669101001041dgl2 kind=images source=shot-single len=0 ocrMs=165 status=error\n2026-11-26 12:58:45.517 shot add: 新增 1，忽略 0，重复 0，当前 1\n2026-11-26 12:58:47.708 shot remove: 1 条\n2026-11-26 12:58:48.123 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:48.221 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:48.221 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:58:48.304 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:48.304 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:58:48.355 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:48.355 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:58:54.141 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:54.141 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:58:54.159 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:54.176 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:54.176 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:58:54.260 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:54.261 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:00.258 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:00.258 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:00.260 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:00.269 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:00.269 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:00.414 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:00.414 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:00.934 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:00.935 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:01.082 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:01.083 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:12.543 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:12.556 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:12.556 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:12.560 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:12.560 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:12.658 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:12.658 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:18.649 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:18.663 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:18.663 clip add: 同来源 5s 内 → 覆盖最新一条\n2026-11-26 12:59:18.675 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:18.675 clip add: 同来源 5s 内 → 覆盖最新一条\n2026-11-26 12:59:18.837 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:18.837 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:19.226 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:19.226 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:19.987 enqueue 17956691599870710cd1 kind=text source=clipboard-text len=25 ocrMs=0 status=raw\n2026-11-26 12:59:19.988 enqueue 1795669159987609ssw8 kind=text source=clipboard-text len=25 ocrMs=0 status=raw\n2026-11-26 12:59:22.393 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:22.517 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:22.518 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:22.618 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:22.618 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:22.683 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:22.683 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:28.457 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:28.469 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:28.469 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:28.494 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:28.494 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:28.589 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:28.589 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:29.140 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:29.140 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:29.274 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:29.274 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:31.030 enqueue 1795669171027265xs61 kind=text source=clipboard-text len=25 ocrMs=0 status=queued\n2026-11-26 12:59:31.033 enqueue 1795669171030440au2a kind=text source=clipboard-text len=25 ocrMs=0 status=queued\n2026-11-26 12:59:37.434 llm: ok 325 chars in 6398ms (finish=stop)\n2026-11-26 12:59:37.436 note 1795669171027265xs61 parsed: title=\"一键解析 1795669152 b\" todos=0 in 6398ms\n2026-11-26 12:59:41.124 llm: ok 220 chars in 3687ms (finish=stop)\n2026-11-26 12:59:41.125 note 1795669171030440au2a parsed: title=\"一键解析记录\" todos=0 in 3687ms\n2026-11-26 12:59:42.023 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:42.120 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:42.121 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:42.255 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:42.255 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:42.288 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:42.288 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:44.069 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:44.069 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:44.186 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:44.186 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 13:00:00.845 shot add: 新增 2，忽略 0，重复 0，当前 2\n2026-11-26 13:00:03.132 shot remove: 2 条\n2026-11-26 13:00:04.173 enqueue 1795669204172719zlvu kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.177 enqueue 1795669204176644gb7r kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.183 enqueue 1795669204182889ttnk kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.186 enqueue 1795669204186585pj44 kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.190 enqueue 1795669204190225ervl kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.194 enqueue 1795669204194274t219 kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.201 enqueue 1795669204201285h06n kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.205 enqueue 1795669204204949bmae kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:05.915 llm: ok 73 chars in 1741ms (finish=stop)\n2026-11-26 13:00:05.916 note 1795669204172719zlvu parsed: title=\"标题 0\" todos=0 in 1741ms\n2026-11-26 13:00:08.384 llm: ok 73 chars in 2467ms (finish=stop)\n2026-11-26 13:00:08.385 note 1795669204176644gb7r parsed: title=\"标题 1\" todos=0 in 2467ms\n2026-11-26 13:00:10.715 llm: ok 73 chars in 2329ms (finish=stop)\n2026-11-26 13:00:10.716 note 1795669204182889ttnk parsed: title=\"标题 2\" todos=0 in 2329ms\n2026-11-26 13:00:13.073 llm: ok 73 chars in 2355ms (finish=stop)\n2026-11-26 13:00:13.073 note 1795669204186585pj44 parsed: title=\"标题 3\" todos=0 in 2355ms\n2026-11-26 13:00:14.735 llm: ok 73 chars in 1661ms (finish=stop)\n2026-11-26 13:00:14.735 note 1795669204190225ervl parsed: title=\"标题 4\" todos=0 in 1661ms\n2026-11-26 13:00:17.391 llm: ok 73 chars in 2654ms (finish=stop)\n2026-11-26 13:00:17.392 note 1795669204194274t219 parsed: title=\"标题 5\" todos=0 in 2654ms\n2026-11-26 13:00:18.749 llm: ok 73 chars in 1356ms (finish=stop)\n2026-11-26 13:00:18.750 note 1795669204201285h06n parsed: title=\"标题 6\" todos=0 in 1356ms\n2026-11-26 13:00:29.700 enqueue 1795669229699923e9ga kind=file source=share-file len=0 ocrMs=0 status=raw\n2026-11-26 13:00:32.500 attach delete 1795669229699934cbxv (vue-files-fixture.pdf)\n2026-11-26 13:04:36.999 shot add: 新增 2，忽略 0，重复 0，当前 2\n2026-11-26 13:08:52.238 enqueue 17956697322372513uw8 kind=image source=share-image len=0 ocrMs=421 status=error\n2026-11-26 13:09:12.610 enqueue 1795669752606922emzm kind=image source=share-image len=261 ocrMs=614 status=queued\n2026-11-26 13:09:19.071 llm: ok 831 chars in 6455ms (finish=stop)\n2026-11-26 13:09:19.073 note 1795669752606922emzm parsed: title=\"设计评审与快递待办\" todos=2 in 6455ms\n2026-11-26 13:29:29.019 shot remove: 2 条\n2026-11-26 13:34:36.532 enqueue 1795671276532334yy5n kind=file source=share-file len=0 ocrMs=0 status=raw</pre>",
  "log_cls": "panel|kind=",
  "logData": {
   "app": {
@@ -39,92 +39,51 @@
    "open": 0,
    "overdue": 0,
    "queue": 0,
-   "server": "http://127.0.0.1:39987/",
+   "server": "http://127.0.0.1:38219/",
    "shot": 0,
    "todos": 0,
    "tz": "Asia/Shanghai (UTC+8:00)",
-   "uptimeS": 863
+   "uptimeS": 2445
   },
-  "log": "2026-11-26 11:56:09.687 enqueue 1795665369686296p9t8 kind=text source=manual-text len=49 ocrMs=0 status=queued\n2026-11-26 11:56:13.764 llm: ok 338 chars in 4074ms (finish=stop)\n2026-11-26 11:56:13.766 note 1795665369686296p9t8 parsed: title=\"产品组评审会安排\" todos=1 in 4074ms\n2026-11-26 11:56:14.481 llm: ok 555 chars in 4776ms (finish=stop)\n2026-11-26 11:56:15.722 enqueue 1795665375720955876e kind=text source=share-text len=78 ocrMs=0 status=queued\n2026-11-26 11:56:19.393 llm: ok 602 chars in 3670ms (finish=stop)\n2026-11-26 11:56:19.396 note 1795665375720955876e parsed: title=\"购物、取快递及周会测试提醒\" todos=3 in 3670ms\n2026-11-26 11:56:21.589 enqueue 1795665381588010k5fk kind=image source=share-image len=261 ocrMs=568 status=queued\n2026-11-26 11:56:25.656 llm: ok 709 chars in 4066ms (finish=stop)\n2026-11-26 11:56:25.659 note 1795665381588010k5fk parsed: title=\"设计组原型评审及快递待办\" todos=2 in 4066ms\n2026-11-26 11:56:29.676 enqueue 17956653896735699f29 kind=image source=share-image len=60 ocrMs=286 status=queued\n2026-11-26 11:56:31.988 llm: ok 275 chars in 2310ms (finish=stop)\n2026-11-26 11:56:31.988 note 17956653896735699f29 parsed: title=\"图片文字搜索断言用唯一随机串\" todos=0 in 2310ms\n2026-11-26 11:56:37.016 llm: ok 886 chars in 4726ms (finish=stop)\n2026-11-26 11:56:37.017 note 1795665381588010k5fk parsed: title=\"设计组原型评审及快递待办\" todos=2 in 4726ms\n2026-11-26 11:56:39.976 llm: ok 72 chars in 946ms (finish=stop)\n2026-11-26 11:56:41.793 llm: ok 72 chars in 865ms (finish=stop)\n2026-11-26 11:56:47.628 enqueue 17956654076283453co3 kind=file source=share-file len=0 ocrMs=0 status=raw\n2026-11-26 11:56:50.974 attach delete 1795665407628356ngcn (att-test.pdf)\n2026-11-26 11:57:01.312 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 11:57:01.325 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 11:57:01.325 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）\n2026-11-26 11:57:01.620 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 11:57:01.620 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）\n2026-11-26 11:57:01.661 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 11:57:01.661 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）\n2026-11-26 11:59:03.374 missed: 2 条到点提醒在上次打开之后错过（since=2020-01-01T00:00:00+08:00）\n2026-11-26 11:59:03.902 missed: 4 条到点提醒在上次打开之后错过（since=2020-01-01T00:00:00+08:00）\n2026-11-26 11:59:13.393 shot add: 新增 2，忽略 0，重复 0，当前 2\n2026-11-26 11:59:14.946 enqueue 17956655549409440iy4 kind=images source=shot-merge len=0 ocrMs=484 status=error\n2026-11-26 11:59:23.218 shot: 保留 shot-1795665549-278309c8.png（已有笔记在用）\n2026-11-26 11:59:23.218 shot: 保留 shot-1795665549-8860753c.png（已有笔记在用）\n2026-11-26 11:59:23.218 shot remove: 2 条\n2026-11-26 11:59:24.001 enqueue 1795665564000824dmh2 kind=images source=shot-single len=0 ocrMs=219 status=error\n2026-11-26 11:59:24.001 enqueue 17956655640015233dzz kind=images source=shot-single len=0 ocrMs=157 status=error\n2026-11-26 11:59:48.141 shot add: 新增 1，忽略 0，重复 0，当前 1\n2026-11-26 11:59:50.226 shot remove: 1 条\n2026-11-26 11:59:50.767 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:50.902 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:50.903 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 11:59:50.910 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:50.910 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 11:59:56.631 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:56.647 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:56.648 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 11:59:56.649 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:56.649 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 11:59:56.746 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 11:59:56.746 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:02.767 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:02.773 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:02.773 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:02.811 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:02.811 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:02.904 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:02.904 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:03.410 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:03.410 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:03.546 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:00:03.546 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:00:14.158 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:14.177 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:14.177 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:14.281 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:14.281 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:20.285 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:20.295 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:20.295 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:20.297 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:20.297 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:20.433 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:20.433 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:20.937 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:20.937 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:21.049 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:21.049 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:21.989 enqueue 17956656219885082c49 kind=text source=clipboard-text len=25 ocrMs=0 status=raw\n2026-11-26 12:00:21.990 enqueue 1795665621989574eeu3 kind=text source=clipboard-text len=25 ocrMs=0 status=raw\n2026-11-26 12:00:24.339 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:24.440 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:24.440 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:24.556 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:24.556 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:24.560 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:24.560 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:30.368 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:30.368 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:30.385 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:30.417 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:30.417 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:30.517 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:30.517 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:31.082 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:31.082 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:31.213 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:31.213 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:33.019 enqueue 1795665633018532c09f kind=text source=clipboard-text len=25 ocrMs=0 status=queued\n2026-11-26 12:00:33.021 enqueue 1795665633020058npz9 kind=text source=clipboard-text len=25 ocrMs=0 status=queued\n2026-11-26 12:00:37.032 llm: ok 344 chars in 4008ms (finish=stop)\n2026-11-26 12:00:37.035 note 1795665633018532c09f parsed: title=\"一键解析任务\" todos=1 in 4008ms\n2026-11-26 12:00:40.411 llm: ok 324 chars in 3374ms (finish=stop)\n2026-11-26 12:00:40.415 note 1795665633020058npz9 parsed: title=\"一键解析任务\" todos=1 in 3374ms\n2026-11-26 12:00:41.751 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:41.755 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:41.756 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:41.854 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:41.854 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:42.080 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:42.080 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:43.415 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:43.415 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:00:43.572 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:00:43.572 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:01:00.577 shot add: 新增 2，忽略 0，重复 0，当前 2\n2026-11-26 12:01:02.811 shot remove: 2 条\n2026-11-26 12:01:03.842 enqueue 1795665663842437jjy8 kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.846 enqueue 17956656638465065lqy kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.850 enqueue 179566566385057765xv kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.857 enqueue 179566566385739275xm kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.861 enqueue 1795665663861237a3k6 kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.865 enqueue 1795665663865124o1w4 kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.871 enqueue 1795665663870485n7py kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:03.875 enqueue 1795665663874834dr0v kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 12:01:05.603 llm: ok 73 chars in 1759ms (finish=stop)\n2026-11-26 12:01:05.604 note 1795665663842437jjy8 parsed: title=\"标题 0\" todos=0 in 1759ms\n2026-11-26 12:01:06.750 llm: ok 73 chars in 1146ms (finish=stop)\n2026-11-26 12:01:06.751 note 17956656638465065lqy parsed: title=\"标题 1\" todos=0 in 1146ms\n2026-11-26 12:01:08.162 llm: ok 73 chars in 1410ms (finish=stop)\n2026-11-26 12:01:08.163 note 179566566385057765xv parsed: title=\"标题 2\" todos=0 in 1410ms\n2026-11-26 12:01:09.494 llm: ok 73 chars in 1329ms (finish=stop)\n2026-11-26 12:01:09.494 note 179566566385739275xm parsed: title=\"标题 3\" todos=0 in 1329ms\n2026-11-26 12:01:10.823 llm: ok 73 chars in 1328ms (finish=stop)\n2026-11-26 12:01:10.824 note 1795665663861237a3k6 parsed: title=\"标题 4\" todos=0 in 1328ms\n2026-11-26 12:01:12.155 llm: ok 73 chars in 1330ms (finish=stop)\n2026-11-26 12:01:12.156 note 1795665663865124o1w4 parsed: title=\"标题 5\" todos=0 in 1330ms\n2026-11-26 12:01:13.913 llm: ok 73 chars in 1756ms (finish=stop)\n2026-11-26 12:01:13.914 note 1795665663870485n7py parsed: title=\"标题 6\" todos=0 in 1756ms\n2026-11-26 12:01:24.623 enqueue 1795665684622724si91 kind=file source=share-file len=0 ocrMs=0 status=raw\n2026-11-26 12:01:27.231 attach delete 1795665684622748czy8 (vue-files-fixture.pdf)\n2026-11-26 12:04:54.909 enqueue 1795665894909385maxh kind=image source=share-image len=0 ocrMs=0 status=error\n2026-11-26 12:04:54.913 enqueue 1795665894911797badf kind=text source=share-text len=39 ocrMs=0 status=queued\n2026-11-26 12:04:58.176 llm: ok 257 chars in 3261ms (finish=stop)\n2026-11-26 12:04:58.176 note 1795665894911797badf parsed: title=\"步骤六六分享附注：记得带伞\" todos=1 in 3261ms\n2026-11-26 12:05:35.926 enqueue 1795665935925405g1ny kind=image source=share-image len=261 ocrMs=714 status=queued\n2026-11-26 12:05:35.927 enqueue 17956659359262668vmp kind=text source=share-text len=39 ocrMs=0 status=queued\n2026-11-26 12:05:40.964 llm: ok 828 chars in 5034ms (finish=stop)\n2026-11-26 12:05:40.967 note 1795665935925405g1ny parsed: title=\"设计评审与快递待办\" todos=2 in 5034ms\n2026-11-26 12:05:43.415 llm: ok 209 chars in 2446ms (finish=stop)\n2026-11-26 12:05:43.417 note 17956659359262668vmp parsed: title=\"步骤六六分享附注：记得带伞\" todos=1 in 2446ms\n2026-11-26 12:09:17.460 enqueue 1795666157459475fiuh kind=file source=share-file len=0 ocrMs=0 status=raw",
+  "log": "2026-11-26 12:55:02.477 http server on http://127.0.0.1:38219/\n2026-11-26 12:55:02.616 ocr state: ready=true cpu, v8.4.1.77\n2026-11-26 12:55:03.679 shot remove: 0 条\n2026-11-26 12:55:06.788 llm: ok 84 chars in 2589ms (finish=stop)\n2026-11-26 12:55:06.886 enqueue 1795668906884459z2wh kind=text source=manual-text len=49 ocrMs=0 status=queued\n2026-11-26 12:55:11.808 llm: ok 335 chars in 4920ms (finish=stop)\n2026-11-26 12:55:11.808 note 1795668906884459z2wh parsed: title=\"产品评审会安排\" todos=1 in 4920ms\n2026-11-26 12:55:12.118 llm: ok 544 chars in 5225ms (finish=stop)\n2026-11-26 12:55:12.953 enqueue 17956689129533725uw3 kind=text source=share-text len=77 ocrMs=0 status=queued\n2026-11-26 12:55:16.607 llm: ok 572 chars in 3652ms (finish=stop)\n2026-11-26 12:55:16.610 note 17956689129533725uw3 parsed: title=\"购物、取快递及周会测试安排\" todos=3 in 3652ms\n2026-11-26 12:55:18.577 enqueue 1795668918576937x6a1 kind=image source=share-image len=261 ocrMs=473 status=queued\n2026-11-26 12:55:23.072 llm: ok 709 chars in 4494ms (finish=stop)\n2026-11-26 12:55:23.073 note 1795668918576937x6a1 parsed: title=\"设计评审与快递取件提醒\" todos=2 in 4494ms\n2026-11-26 12:55:27.015 enqueue 1795668927015035chu3 kind=image source=share-image len=60 ocrMs=325 status=queued\n2026-11-26 12:55:29.421 llm: ok 296 chars in 2404ms (finish=stop)\n2026-11-26 12:55:29.424 note 1795668927015035chu3 parsed: title=\"取快递取件码\" todos=1 in 2404ms\n2026-11-26 12:55:33.821 llm: ok 703 chars in 4172ms (finish=stop)\n2026-11-26 12:55:33.822 note 1795668918576937x6a1 parsed: title=\"设计评审与快递待办\" todos=2 in 4172ms\n2026-11-26 12:55:35.465 llm: ok 84 chars in 1286ms (finish=stop)\n2026-11-26 12:55:38.424 llm: ok 84 chars in 2058ms (finish=stop)\n2026-11-26 12:55:44.713 enqueue 1795668944712902846w kind=file source=share-file len=0 ocrMs=0 status=raw\n2026-11-26 12:55:48.044 attach delete 17956689447129361nco (att-test.pdf)\n2026-11-26 12:55:58.868 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 12:55:58.904 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 12:55:58.905 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）\n2026-11-26 12:55:59.219 clip add: kind=text runes=15 app=\"hook\" path=\"\"\n2026-11-26 12:55:59.219 clip add: 与最新一条完全相同 → 丢弃（最新 15 字）\n2026-11-26 12:58:00.724 missed: 2 条到点提醒在上次打开之后错过（since=2020-01-01T00:00:00+08:00）\n2026-11-26 12:58:01.346 missed: 4 条到点提醒在上次打开之后错过（since=2020-01-01T00:00:00+08:00）\n2026-11-26 12:58:10.314 shot add: 新增 2，忽略 0，重复 0，当前 2\n2026-11-26 12:58:11.759 enqueue 1795669091758029roul kind=images source=shot-merge len=0 ocrMs=448 status=error\n2026-11-26 12:58:20.223 shot: 保留 shot-1795669086-2125e155.png（已有笔记在用）\n2026-11-26 12:58:20.223 shot: 保留 shot-1795669086-efe566d2.png（已有笔记在用）\n2026-11-26 12:58:20.223 shot remove: 2 条\n2026-11-26 12:58:21.000 enqueue 1795669101000365xt5e kind=images source=shot-single len=0 ocrMs=244 status=error\n2026-11-26 12:58:21.001 enqueue 1795669101001041dgl2 kind=images source=shot-single len=0 ocrMs=165 status=error\n2026-11-26 12:58:45.517 shot add: 新增 1，忽略 0，重复 0，当前 1\n2026-11-26 12:58:47.708 shot remove: 1 条\n2026-11-26 12:58:48.123 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:48.221 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:48.221 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:58:48.304 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:48.304 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:58:48.355 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:48.355 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:58:54.141 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:54.141 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:58:54.159 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:54.176 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:54.176 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:58:54.260 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:58:54.261 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:00.258 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:00.258 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:00.260 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:00.269 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:00.269 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:00.414 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:00.414 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:00.934 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:00.935 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:01.082 clip add: kind=text runes=14 app=\"hook\" path=\"\"\n2026-11-26 12:59:01.083 clip add: 与最新一条完全相同 → 丢弃（最新 14 字）\n2026-11-26 12:59:12.543 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:12.556 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:12.556 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:12.560 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:12.560 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:12.658 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:12.658 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:18.649 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:18.663 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:18.663 clip add: 同来源 5s 内 → 覆盖最新一条\n2026-11-26 12:59:18.675 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:18.675 clip add: 同来源 5s 内 → 覆盖最新一条\n2026-11-26 12:59:18.837 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:18.837 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:19.226 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:19.226 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:19.987 enqueue 17956691599870710cd1 kind=text source=clipboard-text len=25 ocrMs=0 status=raw\n2026-11-26 12:59:19.988 enqueue 1795669159987609ssw8 kind=text source=clipboard-text len=25 ocrMs=0 status=raw\n2026-11-26 12:59:22.393 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:22.517 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:22.518 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:22.618 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:22.618 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:22.683 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:22.683 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:28.457 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:28.469 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:28.469 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:28.494 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:28.494 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:28.589 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:28.589 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:29.140 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:29.140 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:29.274 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:29.274 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:31.030 enqueue 1795669171027265xs61 kind=text source=clipboard-text len=25 ocrMs=0 status=queued\n2026-11-26 12:59:31.033 enqueue 1795669171030440au2a kind=text source=clipboard-text len=25 ocrMs=0 status=queued\n2026-11-26 12:59:37.434 llm: ok 325 chars in 6398ms (finish=stop)\n2026-11-26 12:59:37.436 note 1795669171027265xs61 parsed: title=\"一键解析 1795669152 b\" todos=0 in 6398ms\n2026-11-26 12:59:41.124 llm: ok 220 chars in 3687ms (finish=stop)\n2026-11-26 12:59:41.125 note 1795669171030440au2a parsed: title=\"一键解析记录\" todos=0 in 3687ms\n2026-11-26 12:59:42.023 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:42.120 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:42.121 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:42.255 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:42.255 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:42.288 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:42.288 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:44.069 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:44.069 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 12:59:44.186 clip add: kind=text runes=17 app=\"hook\" path=\"\"\n2026-11-26 12:59:44.186 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）\n2026-11-26 13:00:00.845 shot add: 新增 2，忽略 0，重复 0，当前 2\n2026-11-26 13:00:03.132 shot remove: 2 条\n2026-11-26 13:00:04.173 enqueue 1795669204172719zlvu kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.177 enqueue 1795669204176644gb7r kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.183 enqueue 1795669204182889ttnk kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.186 enqueue 1795669204186585pj44 kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.190 enqueue 1795669204190225ervl kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.194 enqueue 1795669204194274t219 kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.201 enqueue 1795669204201285h06n kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:04.205 enqueue 1795669204204949bmae kind=text source=manual-text len=8 ocrMs=0 status=queued\n2026-11-26 13:00:05.915 llm: ok 73 chars in 1741ms (finish=stop)\n2026-11-26 13:00:05.916 note 1795669204172719zlvu parsed: title=\"标题 0\" todos=0 in 1741ms\n2026-11-26 13:00:08.384 llm: ok 73 chars in 2467ms (finish=stop)\n2026-11-26 13:00:08.385 note 1795669204176644gb7r parsed: title=\"标题 1\" todos=0 in 2467ms\n2026-11-26 13:00:10.715 llm: ok 73 chars in 2329ms (finish=stop)\n2026-11-26 13:00:10.716 note 1795669204182889ttnk parsed: title=\"标题 2\" todos=0 in 2329ms\n2026-11-26 13:00:13.073 llm: ok 73 chars in 2355ms (finish=stop)\n2026-11-26 13:00:13.073 note 1795669204186585pj44 parsed: title=\"标题 3\" todos=0 in 2355ms\n2026-11-26 13:00:14.735 llm: ok 73 chars in 1661ms (finish=stop)\n2026-11-26 13:00:14.735 note 1795669204190225ervl parsed: title=\"标题 4\" todos=0 in 1661ms\n2026-11-26 13:00:17.391 llm: ok 73 chars in 2654ms (finish=stop)\n2026-11-26 13:00:17.392 note 1795669204194274t219 parsed: title=\"标题 5\" todos=0 in 2654ms\n2026-11-26 13:00:18.749 llm: ok 73 chars in 1356ms (finish=stop)\n2026-11-26 13:00:18.750 note 1795669204201285h06n parsed: title=\"标题 6\" todos=0 in 1356ms\n2026-11-26 13:00:29.700 enqueue 1795669229699923e9ga kind=file source=share-file len=0 ocrMs=0 status=raw\n2026-11-26 13:00:32.500 attach delete 1795669229699934cbxv (vue-files-fixture.pdf)\n2026-11-26 13:04:36.999 shot add: 新增 2，忽略 0，重复 0，当前 2\n2026-11-26 13:08:52.238 enqueue 17956697322372513uw8 kind=image source=share-image len=0 ocrMs=421 status=error\n2026-11-26 13:09:12.610 enqueue 1795669752606922emzm kind=image source=share-image len=261 ocrMs=614 status=queued\n2026-11-26 13:09:19.071 llm: ok 831 chars in 6455ms (finish=stop)\n2026-11-26 13:09:19.073 note 1795669752606922emzm parsed: title=\"设计评审与快递待办\" todos=2 in 6455ms\n2026-11-26 13:29:29.019 shot remove: 2 条\n2026-11-26 13:34:36.532 enqueue 1795671276532334yy5n kind=file source=share-file len=0 ocrMs=0 status=raw",
   "ocrInfo": "cpu, v8.4.1.77",
   "ocrReady": true,
   "ok": true,
-  "server": "http://127.0.0.1:39987/"
+  "server": "http://127.0.0.1:38219/"
  },
- "debug": "<h2>AI 调用记录</h2><!----><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">2446ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：步骤六六分享附注：记得带伞</div><pre>{\"title\":\"步骤六六分享附注：记得带伞\",\"content\":\"步骤六六分享附注：记得带伞。\",\"facts\":[],\"tags\":[\"提醒\",\"天气\"],\"todos\":[{\"text\":\"记得带伞\",\"due\":null,\"priority\":\"normal\"}]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">5034ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：以下内容识别自图片《1795665935183.png》：\n\n与设计组评审原型\n与设计组评审原型\n下午三点与设计组评审原型\n周五下班后取快递\n11/2009:00\n11/21 15:00\n9\n逾期2天\n逾期2天\n逾期3天\n查看笔记\nや 11/2115:00\n9\n查看笔记\n查看笔记\n9\n金甘日つ\n本毛企门\n11171\n1</div><pre>{\n  \"title\": \"设计评审与快递待办\",\n  \"content\": \"记录两项主要事项：1. 与设计组评审原型，定于11月21日（周五）下午15:00；2. 周五下班后取快递。系统显示部分事项已逾期（逾期2-3天），需关注处理。\",\n  \"facts\": [\n    {\n      \"q\": \"何事\",\n      \"a\": \"与设计组评审原型\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 15:00\"\n    },\n    {\n      \"q\": \"何事\",\n      \"a\": \"取快递\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 下班后\"\n    }\n  ],\n  \"tags\": [\n    \"工作\",\n    \"待办\",\n    \"设计\"\n  ],\n  \"todos\": [\n    {\n      \"text\": \"与设计组评审原型\",\n      \"due\": \"2026-11-21T15:00\",\n      \"priority\": \"high\"\n    },\n    {\n      \"text\": \"取快递\",\n      \"due\": \"2026-11-21T18:00\",\n      \"priority\": \"normal\"\n    }\n  ]\n}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">3261ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：步骤六六分享附注：记得带伞</div><pre>{\"title\":\"步骤六六分享附注：记得带伞\",\"content\":\"用户分享了一条附注提醒：记得带伞。\",\"facts\":[{\"q\":\"何事\",\"a\":\"提醒记得带伞\"}],\"tags\":[\"提醒\",\"天气\"],\"todos\":[{\"text\":\"记得带伞\",\"due\":null,\"priority\":\"normal\"}]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">1756ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 6</div><pre>{\"title\":\"标题 6\",\"content\":\"标题 6\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">1330ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 5</div><pre>{\"title\":\"标题 5\",\"content\":\"标题 5\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">1328ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 4</div><pre>{\"title\":\"标题 4\",\"content\":\"标题 4\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">1329ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 3</div><pre>{\"title\":\"标题 3\",\"content\":\"标题 3\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">1410ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 2</div><pre>{\"title\":\"标题 2\",\"content\":\"标题 2\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">1146ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 1</div><pre>{\"title\":\"标题 1\",\"content\":\"标题 1\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">1759ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 0</div><pre>{\"title\":\"标题 0\",\"content\":\"标题 0\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div>",
+ "debug": "<h2>AI 调用记录</h2><!----><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">6455ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：以下内容识别自图片《1795669751970.png》：\n\n与设计组评审原型\n与设计组评审原型\n下午三点与设计组评审原型\n周五下班后取快递\n11/2009:00\n11/21 15:00\n9\n逾期2天\n逾期2天\n逾期3天\n查看笔记\nや 11/2115:00\n9\n查看笔记\n查看笔记\n9\n金甘日つ\n本毛企门\n11171\n1</div><pre>{\n  \"title\": \"设计评审与快递待办\",\n  \"content\": \"记录了两项主要待办事项：一是与设计组评审原型，定于11月21日（周五）下午15:00；二是周五下班后取快递。系统显示部分事项已逾期2-3天，需关注处理。\",\n  \"facts\": [\n    {\n      \"q\": \"何事\",\n      \"a\": \"与设计组评审原型\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 15:00\"\n    },\n    {\n      \"q\": \"何事\",\n      \"a\": \"取快递\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 下班后\"\n    }\n  ],\n  \"tags\": [\n    \"工作\",\n    \"待办\",\n    \"提醒\"\n  ],\n  \"todos\": [\n    {\n      \"text\": \"与设计组评审原型\",\n      \"due\": \"2026-11-21T15:00\",\n      \"priority\": \"high\"\n    },\n    {\n      \"text\": \"取快递\",\n      \"due\": \"2026-11-21T18:00\",\n      \"priority\": \"normal\"\n    }\n  ]\n}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">1356ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 6</div><pre>{\"title\":\"标题 6\",\"content\":\"标题 6\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">2654ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 5</div><pre>{\"title\":\"标题 5\",\"content\":\"标题 5\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">1661ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 4</div><pre>{\"title\":\"标题 4\",\"content\":\"标题 4\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">2355ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 3</div><pre>{\"title\":\"标题 3\",\"content\":\"标题 3\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">2329ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 2</div><pre>{\"title\":\"标题 2\",\"content\":\"标题 2\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">2467ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 1</div><pre>{\"title\":\"标题 1\",\"content\":\"标题 1\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">1741ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：标题 0</div><pre>{\"title\":\"标题 0\",\"content\":\"标题 0\",\"facts\":[],\"tags\":[],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">3687ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：一键解析 1795669152 a</div><pre>{\"title\":\"一键解析记录\",\"content\":\"记录了一键解析操作，标识符为 1795669152 a。\",\"facts\":[{\"q\":\"何事\",\"a\":\"执行一键解析操作，标识符 1795669152 a\"}],\"tags\":[\"解析\",\"记录\"],\"todos\":[]}</pre></div><div class=\"card\"><div class=\"meta\"><span class=\"chip\">exec</span><span class=\"chip\">6398ms</span><span class=\"chip\">HTTP 200</span></div><div class=\"body\" style=\"font-size: var(--fs-sm);\">输入：一键解析 1795669152 b</div><pre>{\"title\":\"一键解析 1795669152 b\",\"content\":\"用户分享了一串代码/标识符：1795669152 b，并标注“一键解析”。无具体上下文，可能为订单号、验证码、ID 或测试数据。\",\"facts\":[{\"q\":\"何事\",\"a\":\"用户请求解析标识符 1795669152 b\"}],\"tags\":[\"解析\",\"ID\",\"测试\"],\"todos\":[]}</pre></div>",
  "debug_cls": "panel|kind=",
  "debugData": {
   "calls": [
    {
-    "ts": "2026-11-26T12:05:40.969258832+08:00",
+    "ts": "2026-11-26T13:09:12.616155452+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:05（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "步骤六六分享附注：记得带伞",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 13:09（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "user": "以下内容识别自图片《1795669751970.png》：\n\n与设计组评审原型\n与设计组评审原型\n下午三点与设计组评审原型\n周五下班后取快递\n11/2009:00\n11/21 15:00\n9\n逾期2天\n逾期2天\n逾期3天\n查看笔记\nや 11/2115:00\n9\n查看笔记\n查看笔记\n9\n金甘日つ\n本毛企门\n11171\n1",
     "httpCode": 200,
-    "raw": "{\"title\":\"步骤六六分享附注：记得带伞\",\"content\":\"步骤六六分享附注：记得带伞。\",\"facts\":[],\"tags\":[\"提醒\",\"天气\"],\"todos\":[{\"text\":\"记得带伞\",\"due\":null,\"priority\":\"normal\"}]}",
+    "raw": "{\n  \"title\": \"设计评审与快递待办\",\n  \"content\": \"记录了两项主要待办事项：一是与设计组评审原型，定于11月21日（周五）下午15:00；二是周五下班后取快递。系统显示部分事项已逾期2-3天，需关注处理。\",\n  \"facts\": [\n    {\n      \"q\": \"何事\",\n      \"a\": \"与设计组评审原型\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 15:00\"\n    },\n    {\n      \"q\": \"何事\",\n      \"a\": \"取快递\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 下班后\"\n    }\n  ],\n  \"tags\": [\n    \"工作\",\n    \"待办\",\n    \"提醒\"\n  ],\n  \"todos\": [\n    {\n      \"text\": \"与设计组评审原型\",\n      \"due\": \"2026-11-21T15:00\",\n      \"priority\": \"high\"\n    },\n    {\n      \"text\": \"取快递\",\n      \"due\": \"2026-11-21T18:00\",\n      \"priority\": \"normal\"\n    }\n  ]\n}",
     "reason": "",
-    "ms": 2446,
+    "ms": 6455,
     "usage": {
-     "completion_tokens": 55,
-     "completion_tokens_details": {
-      "reasoning_tokens": 0
-     },
-     "prompt_tokens": 504,
-     "prompt_tokens_details": {
-      "cached_tokens": 448
-     },
-     "total_tokens": 559
-    }
-   },
-   {
-    "ts": "2026-11-26T12:05:35.92818922+08:00",
-    "url": "https://llama.8bao.info/chat/completions",
-    "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:05（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "以下内容识别自图片《1795665935183.png》：\n\n与设计组评审原型\n与设计组评审原型\n下午三点与设计组评审原型\n周五下班后取快递\n11/2009:00\n11/21 15:00\n9\n逾期2天\n逾期2天\n逾期3天\n查看笔记\nや 11/2115:00\n9\n查看笔记\n查看笔记\n9\n金甘日つ\n本毛企门\n11171\n1",
-    "httpCode": 200,
-    "raw": "{\n  \"title\": \"设计评审与快递待办\",\n  \"content\": \"记录两项主要事项：1. 与设计组评审原型，定于11月21日（周五）下午15:00；2. 周五下班后取快递。系统显示部分事项已逾期（逾期2-3天），需关注处理。\",\n  \"facts\": [\n    {\n      \"q\": \"何事\",\n      \"a\": \"与设计组评审原型\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 15:00\"\n    },\n    {\n      \"q\": \"何事\",\n      \"a\": \"取快递\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 下班后\"\n    }\n  ],\n  \"tags\": [\n    \"工作\",\n    \"待办\",\n    \"设计\"\n  ],\n  \"todos\": [\n    {\n      \"text\": \"与设计组评审原型\",\n      \"due\": \"2026-11-21T15:00\",\n      \"priority\": \"high\"\n    },\n    {\n      \"text\": \"取快递\",\n      \"due\": \"2026-11-21T18:00\",\n      \"priority\": \"normal\"\n    }\n  ]\n}",
-    "reason": "",
-    "ms": 5034,
-    "usage": {
-     "completion_tokens": 338,
+     "completion_tokens": 335,
      "completion_tokens_details": {
       "reasoning_tokens": 0
      },
      "prompt_tokens": 619,
-     "total_tokens": 957
+     "total_tokens": 954
     }
    },
    {
-    "ts": "2026-11-26T12:04:54.913892249+08:00",
+    "ts": "2026-11-26T13:00:17.392649104+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:04（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "步骤六六分享附注：记得带伞",
-    "httpCode": 200,
-    "raw": "{\"title\":\"步骤六六分享附注：记得带伞\",\"content\":\"用户分享了一条附注提醒：记得带伞。\",\"facts\":[{\"q\":\"何事\",\"a\":\"提醒记得带伞\"}],\"tags\":[\"提醒\",\"天气\"],\"todos\":[{\"text\":\"记得带伞\",\"due\":null,\"priority\":\"normal\"}]}",
-    "reason": "",
-    "ms": 3261,
-    "usage": {
-     "completion_tokens": 67,
-     "completion_tokens_details": {
-      "reasoning_tokens": 0
-     },
-     "prompt_tokens": 504,
-     "total_tokens": 571
-    }
-   },
-   {
-    "ts": "2026-11-26T12:01:12.157273639+08:00",
-    "url": "https://llama.8bao.info/chat/completions",
-    "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:01（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 13:00（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
     "user": "标题 6",
     "httpCode": 200,
     "raw": "{\"title\":\"标题 6\",\"content\":\"标题 6\",\"facts\":[],\"tags\":[],\"todos\":[]}",
     "reason": "",
-    "ms": 1756,
+    "ms": 1356,
     "usage": {
      "completion_tokens": 23,
      "completion_tokens_details": {
@@ -138,15 +97,15 @@
     }
    },
    {
-    "ts": "2026-11-26T12:01:10.82511914+08:00",
+    "ts": "2026-11-26T13:00:14.736180413+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:01（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 13:00（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
     "user": "标题 5",
     "httpCode": 200,
     "raw": "{\"title\":\"标题 5\",\"content\":\"标题 5\",\"facts\":[],\"tags\":[],\"todos\":[]}",
     "reason": "",
-    "ms": 1330,
+    "ms": 2654,
     "usage": {
      "completion_tokens": 23,
      "completion_tokens_details": {
@@ -160,15 +119,15 @@
     }
    },
    {
-    "ts": "2026-11-26T12:01:09.495034295+08:00",
+    "ts": "2026-11-26T13:00:13.074030684+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:01（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 13:00（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
     "user": "标题 4",
     "httpCode": 200,
     "raw": "{\"title\":\"标题 4\",\"content\":\"标题 4\",\"facts\":[],\"tags\":[],\"todos\":[]}",
     "reason": "",
-    "ms": 1328,
+    "ms": 1661,
     "usage": {
      "completion_tokens": 23,
      "completion_tokens_details": {
@@ -182,15 +141,15 @@
     }
    },
    {
-    "ts": "2026-11-26T12:01:08.163920258+08:00",
+    "ts": "2026-11-26T13:00:10.717677647+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:01（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 13:00（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
     "user": "标题 3",
     "httpCode": 200,
     "raw": "{\"title\":\"标题 3\",\"content\":\"标题 3\",\"facts\":[],\"tags\":[],\"todos\":[]}",
     "reason": "",
-    "ms": 1329,
+    "ms": 2355,
     "usage": {
      "completion_tokens": 23,
      "completion_tokens_details": {
@@ -204,15 +163,15 @@
     }
    },
    {
-    "ts": "2026-11-26T12:01:06.751262297+08:00",
+    "ts": "2026-11-26T13:00:08.385503879+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:01（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 13:00（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
     "user": "标题 2",
     "httpCode": 200,
     "raw": "{\"title\":\"标题 2\",\"content\":\"标题 2\",\"facts\":[],\"tags\":[],\"todos\":[]}",
     "reason": "",
-    "ms": 1410,
+    "ms": 2329,
     "usage": {
      "completion_tokens": 23,
      "completion_tokens_details": {
@@ -226,15 +185,15 @@
     }
    },
    {
-    "ts": "2026-11-26T12:01:05.604411913+08:00",
+    "ts": "2026-11-26T13:00:05.916439189+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:01（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 13:00（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
     "user": "标题 1",
     "httpCode": 200,
     "raw": "{\"title\":\"标题 1\",\"content\":\"标题 1\",\"facts\":[],\"tags\":[],\"todos\":[]}",
     "reason": "",
-    "ms": 1146,
+    "ms": 2467,
     "usage": {
      "completion_tokens": 23,
      "completion_tokens_details": {
@@ -248,15 +207,15 @@
     }
    },
    {
-    "ts": "2026-11-26T12:01:03.843197107+08:00",
+    "ts": "2026-11-26T13:00:04.173488767+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:01（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 13:00（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
     "user": "标题 0",
     "httpCode": 200,
     "raw": "{\"title\":\"标题 0\",\"content\":\"标题 0\",\"facts\":[],\"tags\":[],\"todos\":[]}",
     "reason": "",
-    "ms": 1759,
+    "ms": 1741,
     "usage": {
      "completion_tokens": 23,
      "completion_tokens_details": {
@@ -267,17 +226,17 @@
     }
    },
    {
-    "ts": "2026-11-26T12:00:37.036929972+08:00",
+    "ts": "2026-11-26T12:59:37.436729555+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:00（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "一键解析 1795665614 a",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:59（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "user": "一键解析 1795669152 a",
     "httpCode": 200,
-    "raw": "{\"title\":\"一键解析任务\",\"content\":\"用户输入指令“一键解析”，附带参数 1795665614 和 a。\",\"facts\":[{\"q\":\"何事\",\"a\":\"执行一键解析操作，参数为 1795665614 a\"}],\"tags\":[\"指令\",\"解析\"],\"todos\":[{\"text\":\"执行一键解析操作，参数为 1795665614 a\",\"due\":null,\"priority\":\"normal\"}]}",
+    "raw": "{\"title\":\"一键解析记录\",\"content\":\"记录了一键解析操作，标识符为 1795669152 a。\",\"facts\":[{\"q\":\"何事\",\"a\":\"执行一键解析操作，标识符 1795669152 a\"}],\"tags\":[\"解析\",\"记录\"],\"todos\":[]}",
     "reason": "",
-    "ms": 3374,
+    "ms": 3687,
     "usage": {
-     "completion_tokens": 104,
+     "completion_tokens": 72,
      "completion_tokens_details": {
       "reasoning_tokens": 0
      },
@@ -285,40 +244,40 @@
      "prompt_tokens_details": {
       "cached_tokens": 448
      },
-     "total_tokens": 612
+     "total_tokens": 580
     }
    },
    {
-    "ts": "2026-11-26T12:00:33.023129552+08:00",
+    "ts": "2026-11-26T12:59:31.035587406+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:00（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "一键解析 1795665614 b",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:59（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "user": "一键解析 1795669152 b",
     "httpCode": 200,
-    "raw": "{\"title\":\"一键解析任务\",\"content\":\"用户发送指令“一键解析”，附带参数 1795665614 和 b。\",\"facts\":[{\"q\":\"何事\",\"a\":\"用户请求执行一键解析操作，参数为 1795665614 和 b\"}],\"tags\":[\"指令\",\"解析\"],\"todos\":[{\"text\":\"执行一键解析操作，参数为 1795665614 和 b\",\"due\":null,\"priority\":\"normal\"}]}",
+    "raw": "{\"title\":\"一键解析 1795669152 b\",\"content\":\"用户分享了一串代码/标识符：1795669152 b，并标注“一键解析”。无具体上下文，可能为订单号、验证码、ID 或测试数据。\",\"facts\":[{\"q\":\"何事\",\"a\":\"用户请求解析标识符 1795669152 b\"}],\"tags\":[\"解析\",\"ID\",\"测试\"],\"todos\":[]}",
     "reason": "",
-    "ms": 4008,
+    "ms": 6398,
     "usage": {
-     "completion_tokens": 110,
+     "completion_tokens": 105,
      "completion_tokens_details": {
       "reasoning_tokens": 0
      },
      "prompt_tokens": 508,
-     "total_tokens": 618
+     "total_tokens": 613
     }
    },
    {
-    "ts": "2026-11-26T11:56:40.927330103+08:00",
+    "ts": "2026-11-26T12:55:36.365903689+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
     "system": "你是一个连接测试助手，按要求简短回答。",
     "user": "你好，请用一句话介绍你自己。",
     "httpCode": 200,
-    "raw": "我是连接测试助手，旨在为您提供简短、精准的回答。",
+    "raw": "我是你的连接测试助手，旨在通过简短的回答协助你完成测试。",
     "reason": "",
-    "ms": 865,
+    "ms": 2058,
     "usage": {
-     "completion_tokens": 13,
+     "completion_tokens": 16,
      "completion_tokens_details": {
       "reasoning_tokens": 0
      },
@@ -326,156 +285,11 @@
      "prompt_tokens_details": {
       "cached_tokens": 33
      },
-     "total_tokens": 46
+     "total_tokens": 49
     }
    },
    {
-    "ts": "2026-11-26T11:56:39.028253719+08:00",
-    "url": "https://llama.8bao.info/chat/completions",
-    "model": "exec",
-    "system": "你是一个连接测试助手，按要求简短回答。",
-    "user": "你好，请用一句话介绍你自己。",
-    "httpCode": 200,
-    "raw": "我是连接测试助手，旨在为您提供简短、精准的回答。",
-    "reason": "",
-    "ms": 946,
-    "usage": {
-     "completion_tokens": 13,
-     "completion_tokens_details": {
-      "reasoning_tokens": 0
-     },
-     "prompt_tokens": 33,
-     "total_tokens": 46
-    }
-   },
-   {
-    "ts": "2026-11-26T11:56:32.289735763+08:00",
-    "url": "https://llama.8bao.info/chat/completions",
-    "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 11:56（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "以下内容识别自图片《1795665380971.png》：\n\n与设计组评审原型\n与设计组评审原型\n下午三点与设计组评审原型\n周五下班后取快递\n11/2009:00\n11/21 15:00\n9\n逾期2天\n逾期2天\n逾期3天\n查看笔记\nや 11/2115:00\n9\n查看笔记\n查看笔记\n9\n金甘日つ\n本毛企门\n11171\n1",
-    "httpCode": 200,
-    "raw": "{\n  \"title\": \"设计组原型评审及快递待办\",\n  \"content\": \"记录两项主要事项：1. 与设计组评审原型，定于11月21日（周五）下午15:00进行；2. 周五下班后取快递。当前时间为2026年11月26日，上述两项任务均已逾期（分别逾期2天和3天），需尽快处理。\",\n  \"facts\": [\n    {\n      \"q\": \"何事\",\n      \"a\": \"与设计组评审原型\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 15:00\"\n    },\n    {\n      \"q\": \"何事\",\n      \"a\": \"取快递\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 下班后\"\n    }\n  ],\n  \"tags\": [\n    \"工作\",\n    \"待办\",\n    \"逾期\"\n  ],\n  \"todos\": [\n    {\n      \"text\": \"与设计组评审原型\",\n      \"due\": \"2026-11-21T15:00\",\n      \"priority\": \"high\"\n    },\n    {\n      \"text\": \"取快递\",\n      \"due\": \"2026-11-21T18:00\",\n      \"priority\": \"normal\"\n    }\n  ]\n}",
-    "reason": "",
-    "ms": 4726,
-    "usage": {
-     "completion_tokens": 355,
-     "completion_tokens_details": {
-      "reasoning_tokens": 0
-     },
-     "prompt_tokens": 619,
-     "prompt_tokens_details": {
-      "cached_tokens": 448
-     },
-     "total_tokens": 974
-    }
-   },
-   {
-    "ts": "2026-11-26T11:56:29.677400841+08:00",
-    "url": "https://llama.8bao.info/chat/completions",
-    "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 11:56（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "以下内容识别自图片《1795665389372.png》：\n\n图片文字搜索断言用唯一随机串\n取快递YKDEHUL4",
-    "httpCode": 200,
-    "raw": "{\"title\":\"图片文字搜索断言用唯一随机串\",\"content\":\"图片文字搜索断言用唯一随机串\\n取快递YKDEHUL4\",\"facts\":[{\"q\":\"何事\",\"a\":\"图片文字搜索断言用唯一随机串，内容为取快递YKDEHUL4\"}],\"tags\":[\"OCR\",\"测试\",\"快递\"],\"todos\":[]}",
-    "reason": "",
-    "ms": 2310,
-    "usage": {
-     "completion_tokens": 76,
-     "completion_tokens_details": {
-      "reasoning_tokens": 0
-     },
-     "prompt_tokens": 534,
-     "prompt_tokens_details": {
-      "cached_tokens": 448
-     },
-     "total_tokens": 610
-    }
-   },
-   {
-    "ts": "2026-11-26T11:56:21.589993924+08:00",
-    "url": "https://llama.8bao.info/chat/completions",
-    "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 11:56（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "以下内容识别自图片《1795665380971.png》：\n\n与设计组评审原型\n与设计组评审原型\n下午三点与设计组评审原型\n周五下班后取快递\n11/2009:00\n11/21 15:00\n9\n逾期2天\n逾期2天\n逾期3天\n查看笔记\nや 11/2115:00\n9\n查看笔记\n查看笔记\n9\n金甘日つ\n本毛企门\n11171\n1",
-    "httpCode": 200,
-    "raw": "{\n  \"title\": \"设计组原型评审及快递待办\",\n  \"content\": \"记录两项主要事项：1. 与设计组评审原型，定于11月21日（周五）下午15:00进行；2. 周五下班后需取快递。系统显示部分事项已逾期2-3天，需关注处理。\",\n  \"facts\": [\n    {\n      \"q\": \"何事\",\n      \"a\": \"与设计组评审原型\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 15:00\"\n    }\n  ],\n  \"tags\": [\n    \"工作\",\n    \"日程\",\n    \"提醒\"\n  ],\n  \"todos\": [\n    {\n      \"text\": \"与设计组评审原型\",\n      \"due\": \"2026-11-21T15:00\",\n      \"priority\": \"high\"\n    },\n    {\n      \"text\": \"取快递\",\n      \"due\": \"2026-11-20T18:00\",\n      \"priority\": \"normal\"\n    }\n  ]\n}",
-    "reason": "",
-    "ms": 4066,
-    "usage": {
-     "completion_tokens": 281,
-     "completion_tokens_details": {
-      "reasoning_tokens": 0
-     },
-     "prompt_tokens": 619,
-     "prompt_tokens_details": {
-      "cached_tokens": 448
-     },
-     "total_tokens": 900
-    }
-   },
-   {
-    "ts": "2026-11-26T11:56:15.722507197+08:00",
-    "url": "https://llama.8bao.info/chat/completions",
-    "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 11:56（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "买牛奶和鸡蛋；周五下班后取快递；晚上8点开周会测试19633",
-    "httpCode": 200,
-    "raw": "{\"title\":\"购物、取快递及周会测试提醒\",\"content\":\"1. 购买牛奶和鸡蛋。\\n2. 周五下班后取快递。\\n3. 晚上8点开周会，测试编号19633。\",\"facts\":[{\"q\":\"何事\",\"a\":\"购买牛奶和鸡蛋；取快递；开周会测试19633\"},{\"q\":\"何时\",\"a\":\"周五下班后取快递；晚上8点开周会\"}],\"tags\":[\"购物\",\"快递\",\"会议\"],\"todos\":[{\"text\":\"购买牛奶和鸡蛋\",\"due\":null,\"priority\":\"normal\"},{\"text\":\"周五下班后取快递\",\"due\":\"2026-11-27T18:00\",\"priority\":\"normal\"},{\"text\":\"晚上8点开周会测试19633\",\"due\":\"2026-11-26T20:00\",\"priority\":\"high\"}]}",
-    "reason": "",
-    "ms": 3670,
-    "usage": {
-     "completion_tokens": 193,
-     "completion_tokens_details": {
-      "reasoning_tokens": 0
-     },
-     "prompt_tokens": 516,
-     "prompt_tokens_details": {
-      "cached_tokens": 448
-     },
-     "total_tokens": 709
-    }
-   },
-   {
-    "ts": "2026-11-26T11:56:09.703731779+08:00",
-    "url": "https://llama.8bao.info/chat/completions",
-    "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 11:56（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "下周三下午两点半和小李在会议室B过一版设计稿，会前把原型图发群里",
-    "httpCode": 200,
-    "raw": "{\"title\":\"下周三设计稿评审会议\",\"content\":\"计划于下周三下午 14:30 与小李在会议室 B 进行设计稿评审。需在会议开始前将原型图发送至群聊。\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-12-02 14:30\"},{\"q\":\"何人\",\"a\":\"我、小李\"},{\"q\":\"何地\",\"a\":\"会议室 B\"},{\"q\":\"何事\",\"a\":\"过一版设计稿\"}],\"tags\":[\"会议\",\"设计\",\"工作\"],\"todos\":[{\"text\":\"将原型图发群里\",\"due\":\"2026-12-02T14:00\",\"priority\":\"high\"},{\"text\":\"与小李在会议室 B 过设计稿\",\"due\":\"2026-12-02T14:30\",\"priority\":\"normal\"}]}",
-    "reason": "",
-    "ms": 4776,
-    "usage": {
-     "completion_tokens": 183,
-     "completion_tokens_details": {
-      "reasoning_tokens": 0
-     },
-     "prompt_tokens": 517,
-     "total_tokens": 700
-    }
-   },
-   {
-    "ts": "2026-11-26T11:56:09.688820202+08:00",
-    "url": "https://llama.8bao.info/chat/completions",
-    "model": "exec",
-    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 11:56（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
-    "user": "自测：明天下午3点和产品组开评审会",
-    "httpCode": 200,
-    "raw": "{\"title\":\"产品组评审会安排\",\"content\":\"计划于明天下午3点与产品组召开评审会。\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-27 15:00\"},{\"q\":\"何人\",\"a\":\"产品组\"},{\"q\":\"何事\",\"a\":\"召开评审会\"}],\"tags\":[\"会议\",\"产品\"],\"todos\":[{\"text\":\"参加产品组评审会\",\"due\":\"2026-11-27T15:00\",\"priority\":\"normal\"}]}",
-    "reason": "",
-    "ms": 4074,
-    "usage": {
-     "completion_tokens": 113,
-     "completion_tokens_details": {
-      "reasoning_tokens": 0
-     },
-     "prompt_tokens": 506,
-     "total_tokens": 619
-    }
-   },
-   {
-    "ts": "2026-11-26T11:56:07.532281742+08:00",
+    "ts": "2026-11-26T12:55:34.177922537+08:00",
     "url": "https://llama.8bao.info/chat/completions",
     "model": "exec",
     "system": "你是一个连接测试助手，按要求简短回答。",
@@ -483,7 +297,155 @@
     "httpCode": 200,
     "raw": "我是连接测试助手，旨在通过简短的回答协助您完成连接测试。",
     "reason": "",
-    "ms": 2031,
+    "ms": 1286,
+    "usage": {
+     "completion_tokens": 16,
+     "completion_tokens_details": {
+      "reasoning_tokens": 0
+     },
+     "prompt_tokens": 33,
+     "total_tokens": 49
+    }
+   },
+   {
+    "ts": "2026-11-26T12:55:29.648719771+08:00",
+    "url": "https://llama.8bao.info/chat/completions",
+    "model": "exec",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:55（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "user": "以下内容识别自图片《1795668918064.png》：\n\n与设计组评审原型\n与设计组评审原型\n下午三点与设计组评审原型\n周五下班后取快递\n11/2009:00\n11/21 15:00\n9\n逾期2天\n逾期2天\n逾期3天\n查看笔记\nや 11/2115:00\n9\n查看笔记\n查看笔记\n9\n金甘日つ\n本毛企门\n11171\n1",
+    "httpCode": 200,
+    "raw": "{\n  \"title\": \"设计评审与快递待办\",\n  \"content\": \"记录两项主要事项：1. 与设计组评审原型，定于11月21日（周五）下午15:00；2. 周五下班后取快递。图片显示部分事项已逾期（逾期2-3天），需关注处理。\",\n  \"facts\": [\n    {\n      \"q\": \"何事\",\n      \"a\": \"与设计组评审原型\"\n    },\n    {\n      \"q\": \"何时\",\n      \"a\": \"2026-11-21 15:00\"\n    }\n  ],\n  \"tags\": [\n    \"工作\",\n    \"待办\",\n    \"设计\"\n  ],\n  \"todos\": [\n    {\n      \"text\": \"与设计组评审原型\",\n      \"due\": \"2026-11-21T15:00\",\n      \"priority\": \"high\"\n    },\n    {\n      \"text\": \"取快递\",\n      \"due\": \"2026-11-21T18:00\",\n      \"priority\": \"normal\"\n    }\n  ]\n}",
+    "reason": "",
+    "ms": 4172,
+    "usage": {
+     "completion_tokens": 280,
+     "completion_tokens_details": {
+      "reasoning_tokens": 0
+     },
+     "prompt_tokens": 619,
+     "prompt_tokens_details": {
+      "cached_tokens": 448
+     },
+     "total_tokens": 899
+    }
+   },
+   {
+    "ts": "2026-11-26T12:55:27.015965657+08:00",
+    "url": "https://llama.8bao.info/chat/completions",
+    "model": "exec",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:55（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "user": "以下内容识别自图片《1795668926664.png》：\n\n取快递WF6KJVYU\n图片文字搜索断言用唯一随机串",
+    "httpCode": 200,
+    "raw": "{\"title\":\"取快递取件码\",\"content\":\"取快递取件码：WF6KJVYU。图片文字搜索断言用唯一随机串。\",\"facts\":[{\"q\":\"何事\",\"a\":\"取快递取件码为WF6KJVYU\"}],\"tags\":[\"快递\",\"取件码\"],\"todos\":[{\"text\":\"使用取件码WF6KJVYU取快递\",\"due\":null,\"priority\":\"normal\"}]}",
+    "reason": "",
+    "ms": 2404,
+    "usage": {
+     "completion_tokens": 93,
+     "completion_tokens_details": {
+      "reasoning_tokens": 0
+     },
+     "prompt_tokens": 534,
+     "prompt_tokens_details": {
+      "cached_tokens": 448
+     },
+     "total_tokens": 627
+    }
+   },
+   {
+    "ts": "2026-11-26T12:55:18.57775574+08:00",
+    "url": "https://llama.8bao.info/chat/completions",
+    "model": "exec",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:55（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "user": "以下内容识别自图片《1795668918064.png》：\n\n与设计组评审原型\n与设计组评审原型\n下午三点与设计组评审原型\n周五下班后取快递\n11/2009:00\n11/21 15:00\n9\n逾期2天\n逾期2天\n逾期3天\n查看笔记\nや 11/2115:00\n9\n查看笔记\n查看笔记\n9\n金甘日つ\n本毛企门\n11171\n1",
+    "httpCode": 200,
+    "raw": "{\n  \"title\": \"设计评审与快递取件提醒\",\n  \"content\": \"1. 与设计组评审原型：定于 11月21日 15:00。\\n2. 取快递：定于 11月20日 09:00（当前显示逾期2天，需尽快处理）。\",\n  \"facts\": [\n    {\n      \"q\": \"何时\",\n      \"a\": \"设计评审：2026-11-21 15:00；取快递：2026-11-20 09:00\"\n    },\n    {\n      \"q\": \"何事\",\n      \"a\": \"与设计组评审原型；取快递\"\n    }\n  ],\n  \"tags\": [\n    \"工作\",\n    \"日程\",\n    \"提醒\"\n  ],\n  \"todos\": [\n    {\n      \"text\": \"与设计组评审原型\",\n      \"due\": \"2026-11-21T15:00\",\n      \"priority\": \"high\"\n    },\n    {\n      \"text\": \"取快递\",\n      \"due\": \"2026-11-20T09:00\",\n      \"priority\": \"high\"\n    }\n  ]\n}",
+    "reason": "",
+    "ms": 4494,
+    "usage": {
+     "completion_tokens": 305,
+     "completion_tokens_details": {
+      "reasoning_tokens": 0
+     },
+     "prompt_tokens": 619,
+     "prompt_tokens_details": {
+      "cached_tokens": 448
+     },
+     "total_tokens": 924
+    }
+   },
+   {
+    "ts": "2026-11-26T12:55:12.95515886+08:00",
+    "url": "https://llama.8bao.info/chat/completions",
+    "model": "exec",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:55（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "user": "买牛奶和鸡蛋；周五下班后取快递；晚上8点开周会测试4741",
+    "httpCode": 200,
+    "raw": "{\"title\":\"购物、取快递及周会测试安排\",\"content\":\"1. 购买牛奶和鸡蛋。\\n2. 周五下班后取快递。\\n3. 晚上8点开周会，进行测试4741。\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-27（周五）下班后；2026-11-26 20:00\"},{\"q\":\"何事\",\"a\":\"买牛奶和鸡蛋；取快递；开周会测试4741\"}],\"tags\":[\"待办\",\"工作\",\"购物\"],\"todos\":[{\"text\":\"买牛奶和鸡蛋\",\"due\":null,\"priority\":\"normal\"},{\"text\":\"取快递\",\"due\":\"2026-11-27T18:00\",\"priority\":\"normal\"},{\"text\":\"开周会测试4741\",\"due\":\"2026-11-26T20:00\",\"priority\":\"high\"}]}",
+    "reason": "",
+    "ms": 3652,
+    "usage": {
+     "completion_tokens": 206,
+     "completion_tokens_details": {
+      "reasoning_tokens": 0
+     },
+     "prompt_tokens": 515,
+     "prompt_tokens_details": {
+      "cached_tokens": 448
+     },
+     "total_tokens": 721
+    }
+   },
+   {
+    "ts": "2026-11-26T12:55:06.889510172+08:00",
+    "url": "https://llama.8bao.info/chat/completions",
+    "model": "exec",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:55（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "user": "下周三下午两点半和小李在会议室B过一版设计稿，会前把原型图发群里",
+    "httpCode": 200,
+    "raw": "{\"title\":\"下周三设计稿评审会\",\"content\":\"计划于下周三下午 14:30 与小李在会议室 B 进行设计稿评审。需在会议开始前将原型图发送至群内。\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-12-02 14:30\"},{\"q\":\"何人\",\"a\":\"小李\"},{\"q\":\"何地\",\"a\":\"会议室 B\"},{\"q\":\"何事\",\"a\":\"过一版设计稿\"}],\"tags\":[\"会议\",\"设计\",\"工作\"],\"todos\":[{\"text\":\"将原型图发群里\",\"due\":\"2026-12-02T14:00\",\"priority\":\"high\"},{\"text\":\"与小李在会议室 B 过设计稿\",\"due\":\"2026-12-02T14:30\",\"priority\":\"high\"}]}",
+    "reason": "",
+    "ms": 5225,
+    "usage": {
+     "completion_tokens": 181,
+     "completion_tokens_details": {
+      "reasoning_tokens": 0
+     },
+     "prompt_tokens": 517,
+     "total_tokens": 698
+    }
+   },
+   {
+    "ts": "2026-11-26T12:55:06.88739971+08:00",
+    "url": "https://llama.8bao.info/chat/completions",
+    "model": "exec",
+    "system": "你是笔记与待办整理助手。用户把一段内容分享给你（来自聊天、网页、截图 OCR），你要把它整理成一条笔记：关键事实 + 正文 + 待办。\n\n只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字。结构：\n{\"title\":\"不超过20字的标题\",\"content\":\"整理后的笔记正文\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-19\"}],\"tags\":[\"标签\"],\"todos\":[{\"text\":\"待办事项\",\"due\":\"YYYY-MM-DDTHH:MM\",\"priority\":\"high|normal|low\"}]}\n\n规则：\n1. 现在是 2026-11-26 12:55（本地时区，星期四）。文中的相对时间（明天、下周三、晚上8点、半小时后）按此换算成绝对时间。\n2. due 精确到分钟；只说了日期就写 \"YYYY-MM-DDT09:00\"；没有时间就写 null。\n3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。\n4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。\n5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。\n6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。\n7. tags 0-3 个，短词。\n8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。\n   q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；\n   a 是一句话答案，带具体日期、数字、机构名、指标名。只写原文里有的，推不出来的就省略这一问；\n   六问全都没有信息时 facts 为 []。体检报告、证书、合同、发票、通知这类记录尤其要把时间、主体、关键数值提干净。",
+    "user": "自测：明天下午3点和产品组开评审会",
+    "httpCode": 200,
+    "raw": "{\"title\":\"产品评审会安排\",\"content\":\"计划于明天下午3点与产品组召开评审会。\",\"facts\":[{\"q\":\"何时\",\"a\":\"2026-11-27 15:00\"},{\"q\":\"何人\",\"a\":\"产品组\"},{\"q\":\"何事\",\"a\":\"召开评审会\"}],\"tags\":[\"会议\",\"产品\"],\"todos\":[{\"text\":\"参加产品组评审会\",\"due\":\"2026-11-27T15:00\",\"priority\":\"normal\"}]}",
+    "reason": "",
+    "ms": 4920,
+    "usage": {
+     "completion_tokens": 112,
+     "completion_tokens_details": {
+      "reasoning_tokens": 0
+     },
+     "prompt_tokens": 506,
+     "prompt_tokens_details": {
+      "cached_tokens": 448
+     },
+     "total_tokens": 618
+    }
+   },
+   {
+    "ts": "2026-11-26T12:55:04.197510558+08:00",
+    "url": "https://llama.8bao.info/chat/completions",
+    "model": "exec",
+    "system": "你是一个连接测试助手，按要求简短回答。",
+    "user": "你好，请用一句话介绍你自己。",
+    "httpCode": 200,
+    "raw": "我是你的连接测试助手，旨在通过简短的回答协助你完成测试。",
+    "reason": "",
+    "ms": 2589,
     "usage": {
      "completion_tokens": 16,
      "completion_tokens_details": {
@@ -522,5 +484,5 @@
  "owarn": "<div class=\"owarn\"><svg class=\"ic\"><use href=\"#i-alert\"></use></svg>请保持屏幕常亮：不要锁屏、不要让手机黑屏，也不要退出 App 或切到别的应用，否则解析会中断。</div>",
  "ovlcard": "<div class=\"ovlcard\"><div class=\"orw\"></div><b>正在处理 3 张截图</b><div class=\"osub\" id=\"shotOvlSub\">合并成一条笔记 · 已用 5s</div><div class=\"owarn\"><svg class=\"ic\"><use href=\"#i-alert\"></use></svg>请保持屏幕常亮：不要锁屏、不要让手机黑屏，也不要退出 App 或切到别的应用，否则解析会中断。</div><div style=\"font-size: var(--fs-xs); color: var(--dim2); margin-top: var(--s2);\">完成后会自动回到列表，不用一直盯着</div></div>",
  "fab_files": "<span class=\"fico\"><svg class=\"ic l\"><use href=\"#i-clip\"></use></svg></span>",
- "now": 1795666233649
+ "now": 1795671352570
 }

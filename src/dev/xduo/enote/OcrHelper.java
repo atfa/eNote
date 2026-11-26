@@ -133,16 +133,7 @@ public class OcrHelper {
             return o;
         }
         try {
-            OcrEngine.Result r = engine.recognizeFull(bmp);
-            o.ms = r.ms;
-            o.lines = r.lines.size();
-            o.text = r.fullText();
-            if (o.text.trim().isEmpty()) {
-                o.error = "图片里没有识别到文字"
-                        + (engine.getLastError().isEmpty() ? "" : " (" + engine.getLastError() + ")");
-            }
-            Log.i(TAG_, "ocr " + path + " -> " + o.text.length() + " chars, " + o.lines
-                    + " lines, " + o.ms + " ms");
+            readText(o, path, bmp);
         } catch (Throwable t) {
             o.error = "识别失败: " + t;
             Log.e(TAG_, "recognize", t);
@@ -150,6 +141,20 @@ public class OcrHelper {
             bmp.recycle();
         }
         return o;
+    }
+
+    /** 跑一次识别，把字数 / 行数 / 全文写进出参；没识别到字也写 error。 */
+    private void readText(Out o, String path, Bitmap bmp) {
+        OcrEngine.Result r = engine.recognizeFull(bmp);
+        o.ms = r.ms;
+        o.lines = r.lines.size();
+        o.text = r.fullText();
+        if (o.text.trim().isEmpty()) {
+            o.error = "图片里没有识别到文字"
+                    + (engine.getLastError().isEmpty() ? "" : " (" + engine.getLastError() + ")");
+        }
+        Log.i(TAG_, "ocr " + path + " -> " + o.text.length() + " chars, " + o.lines
+                + " lines, " + o.ms + " ms");
     }
 
     /** Decode with downscaling (the engine is quadratic-ish in pixels) + EXIF rotation. */

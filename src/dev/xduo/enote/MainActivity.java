@@ -681,17 +681,7 @@ public class MainActivity extends Activity {
             public void run() {
                 final String msg;
                 try {
-                    String url = Bridge.serverUrl;
-                    if (url == null || url.isEmpty()) url = Bridge.startServer();
-                    if (url == null || url.isEmpty()) throw new IllegalStateException("Go 服务未启动");
-                    byte[] body = readAll(getContentResolver().openInputStream(uri), 64 << 20);
-                    String res = post(url + "api/import", body);
-                    note("import -> " + res);
-                    org.json.JSONObject o = new org.json.JSONObject(res);
-                    msg = o.optBoolean("ok")
-                            ? ("导入完成：新增 " + o.optInt("imported") + " 条，跳过 "
-                               + o.optInt("skipped") + " 条已存在")
-                            : ("导入失败：" + o.optString("error"));
+                    msg = runImport(uri);
                 } catch (Throwable t) {
                     note("import failed: " + t);
                     toast("导入失败：" + t);
@@ -705,6 +695,26 @@ public class MainActivity extends Activity {
                 });
             }
         }).start();
+    }
+
+    /** 读导出文件 → POST 给 Go 的 /api/import → 把结果写成人话。 */
+    private String runImport(Uri uri) throws Exception {
+        String url = Bridge.serverUrl;
+        if (url == null || url.isEmpty()) url = Bridge.startServer();
+        if (url == null || url.isEmpty()) throw new IllegalStateException("Go 服务未启动");
+        byte[] body = readAll(getContentResolver().openInputStream(uri), 64 << 20);
+        String res = post(url + "api/import", body);
+        note("import -> " + res);
+        return importMessage(res);
+    }
+
+    /** Go 的导入结果 → Toast 文案。 */
+    private static String importMessage(String res) throws Exception {
+        org.json.JSONObject o = new org.json.JSONObject(res);
+        return o.optBoolean("ok")
+                ? ("导入完成：新增 " + o.optInt("imported") + " 条，跳过 "
+                   + o.optInt("skipped") + " 条已存在")
+                : ("导入失败：" + o.optString("error"));
     }
 
     void toast(final String msg) {
@@ -814,6 +824,8 @@ public class MainActivity extends Activity {
                     out = Shots.importShots(MainActivity.this, arg == null ? "{}" : arg);
                 } else if ("clipnotify".equals(hook)) {
                     out = hookClipNotify();
+                } else if ("import".equals(hook)) {
+                    out = hookImport(arg);
                 } else {
                     out = Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
                 }
@@ -975,6 +987,14 @@ public class MainActivity extends Activity {
     }
 
     /** 验收用：直接发一条剪贴板通知。 */
+    /** 验收用：把一份导出 JSON 走一遍导入链路（等价于用户在文件选择器里选中它）。 */
+    private String hookImport(String arg) {
+        File f = new File(arg == null ? "" : arg);
+        if (!f.isFile()) return "{\"ok\":false,\"error\":\"文件不存在\"}";
+        importJSON(Uri.fromFile(f));
+        return "{\"ok\":true,\"path\":\"" + f.getAbsolutePath() + "\"}";
+    }
+
     private String hookClipNotify() {
         // 验收用：直接发一条剪贴板通知（这台 ROM 后台不投递监听，靠这条测通知本身）
         KeepAlive.notifyClip(MainActivity.this, Bridge.clipCount());

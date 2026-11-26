@@ -716,23 +716,13 @@ public final class Shots {
             if (in == null) return null;
             MessageDigest md = MessageDigest.getInstance("SHA-1");
             out = new FileOutputStream(dst);
-            byte[] buf = new byte[64 * 1024];
-            int n;
-            long total = 0;
-            while ((n = in.read(buf)) > 0) {
-                md.update(buf, 0, n);
-                out.write(buf, 0, n);
-                total += n;
-                if (total > 64L * 1024 * 1024) break;   // 单张 64MB 以上不当截图处理
-            }
+            long total = streamCopy(in, out, md);
             out.flush();
             if (total == 0) {
                 dst.delete();
                 return null;
             }
-            StringBuilder sb = new StringBuilder();
-            for (byte b : md.digest()) sb.append(String.format("%02x", b));
-            return sb.toString();
+            return sha1Hex(md);
         } catch (Throwable t) {
             Log.w(TAG, "shots: copyFrom failed " + t);
             dst.delete();
@@ -741,6 +731,26 @@ public final class Shots {
             if (in != null) try { in.close(); } catch (Throwable ignored) {}
             if (out != null) try { out.close(); } catch (Throwable ignored) {}
         }
+    }
+
+    /** 边写边算 sha1，返回写了多少字节。 */
+    private static long streamCopy(InputStream in, OutputStream out, MessageDigest md) throws java.io.IOException {
+        byte[] buf = new byte[64 * 1024];
+        int n;
+        long total = 0;
+        while ((n = in.read(buf)) > 0) {
+            md.update(buf, 0, n);
+            out.write(buf, 0, n);
+            total += n;
+            if (total > 64L * 1024 * 1024) break;   // 单张 64MB 以上不当截图处理
+        }
+        return total;
+    }
+
+    private static String sha1Hex(MessageDigest md) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : md.digest()) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 
     // ---------------------------------------------------------------- 实时监听（P11 用户反馈）

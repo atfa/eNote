@@ -4841,3 +4841,62 @@ G66 清理分享笔记 4 条 → true,true,true,true
 
 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
 `./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+## 9.89 P14 S6：Java 侧第七批长函数拆开（Shots.copyFrom 34 / OcrHelper.doFile 30 / MainActivity.importJSON 30，步骤 67）
+
+**`Shots.copyFrom` 34 → 24 行 + `streamCopy` 12 + `sha1Hex` 5**
+
+```java
+long total = streamCopy(in, out, md);   // 边写边算 sha1，返回写了多少字节
+out.flush();
+if (total == 0) { dst.delete(); return null; }
+return sha1Hex(md);
+```
+
+资源获取/释放（`in`/`out` 的 close、`dst.delete()`、日志）留在 `copyFrom`，复制循环与
+sha1 十六进制各自成段。`streamCopy` 声明 `throws java.io.IOException`，抛出来由原有的
+`catch (Throwable t)` 接手，行为不变。
+
+**`OcrHelper.doFile` 30 → 21 行 + `readText` 12**
+
+`doFile` 只剩三段前置（引擎就绪 / 解码 / try-finally 回收 Bitmap），识别 + 填 `Out` +
+空文本判定进 `readText`。
+
+**`MainActivity.importJSON` 30 → 20 行 + `runImport` 9 + `importMessage` 7**
+
+线程包装与 Toast/刷新留在 `importJSON`；读文件 + POST 进 `runImport`；Go 的导入结果 →
+人话进 `importMessage`（`msg = o.optBoolean(…)` → `return o.optBoolean(…)`）。
+
+**新增验收钩子 `hook import`**（`hookImport` 6 行）：`--es hook import --es arg <路径>` 把一份
+导出 JSON 走一遍导入链路，等价于用户在文件选择器里选中它。之前这条链路只能靠手点 SAF，
+测试套件覆盖不到。README §验收 同步加了一行。
+
+逐字核对（`git show HEAD:` 语句多重集双向，新侧先做变量名归一）：
+
+| 函数 | 原有效行 | 新有效行 | 原句没找到 |
+|---|---|---|---|
+| `copyFrom` | 39 | 46 | 0 |
+| `doFile` | 35 | 38 | 0 |
+| `importJSON` | 31 | 37 | 1（`msg = o.optBoolean(…)` → `return o.optBoolean(…)`） |
+
+新句没有原句对应的只有方法签名、调用点、`return` 与闭合括号。
+
+探针（物理屏）：
+
+```
+shots: copy failed s67-empty.png
+shots: scanned 3 candidate(s), copied 2, staged 2, go resp={"added":2,"dupes":[],"ok":true,"skipped":[]}
+enote-ocr: ocr …/1795669731786.png -> 0 chars, 0 lines, 421 ms
+enote-ocr: ocr …/1795669751970.png -> 129 chars, 20 lines, 614 ms
+hook import: {"ok":true,"path":"…/s67-import.json"}
+import -> {"ok":true,"imported":1,"skipped":0,"invalid":0,"total":1}
+import -> {"ok":true,"imported":0,"skipped":1,"invalid":0,"total":1}
+import -> {"ok":false,…,"error":"不是合法的笔记 JSON：invalid character 'è' …"}
+hook import: {"ok":false,"error":"文件不存在"}
+```
+
+（0 字节文件打到 `copyFrom` 的 `total == 0` 分支；无字噪点图打到 `readText` 的
+「图片里没有识别到文字」，含字图 129 字 / 20 行；导入三条出口全打到：新增 1 条、
+重复跳过 1 条、Go 返回 `ok:false` → 「导入失败：…」，文件不存在由钩子守卫挡下。）
+
+验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

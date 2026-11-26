@@ -214,6 +214,8 @@ su -c "am start -n dev.xduo.enote/.ShareActivity -a android.intent.action.SEND \
   -t 'image/*' --eu android.intent.extra.STREAM file:///sdcard/Android/data/dev.xduo.enote/files/ocr-test.png"
 # 自测 hook（文本模式：selftest / status / enqueue）
 su -c "am start -n dev.xduo.enote/.MainActivity --es hook selftest --es arg '{\"mode\":\"all\"}'"
+# 导入验收 hook：把一份导出 JSON 走一遍导入链路（等价于用户在文件选择器里选中它）
+su -c "am start -n dev.xduo.enote/.MainActivity --es hook import --es arg /data/data/dev.xduo.enote/files/enote/export.json"
 ```
 
 注意：`am` 的 extra 键名必须大写（`android.intent.extra.TEXT`）；读 App 数据要用
