@@ -84,40 +84,27 @@ type chatResp struct {
 }
 
 // callLLM posts one chat completion to the configured OpenAI-compatible endpoint.
+/* 步骤 58：callLLM 原来 69 行，六条失败出口每条都要「写 c.Err → remember(c) → 造 error」
+   三件套，中间还夹着建请求、发请求、读响应、解响应四段。现在四段各自成函数，六条出口
+   收敛成 c.fail(...) / c.failErr(err) / c.failNet(...) / c.failLogged() 一行；语句逐字搬。 */
+
 func callLLM(system, user string) (*LLMCall, error) {
 	s := config.get()
+	c := &LLMCall{TS: time.Now(), Model: s.Model, System: system, User: user}
 	if strings.TrimSpace(s.BaseURL) == "" {
-		c := &LLMCall{TS: time.Now(), Model: s.Model, System: system, User: user,
-			Err: "未配置大模型地址：在设置里填 OpenAI 兼容的 API Base URL"}
-		remember(c)
-		return c, fmt.Errorf("%s", c.Err)
+		return c.fail("未配置大模型地址：在设置里填 OpenAI 兼容的 API Base URL")
 	}
-	c := &LLMCall{TS: time.Now(), URL: s.BaseURL + "/chat/completions", Model: s.Model,
-		System: system, User: user}
-	body, _ := json.Marshal(chatReq{
-		Model: s.Model, MaxTokens: s.MaxTok, Temperature: s.Temp, Stream: false,
-		Messages: []chatMsg{{Role: "system", Content: system}, {Role: "user", Content: user}},
-	})
-	req, err := http.NewRequest("POST", c.URL, bytes.NewReader(body))
+	c.URL = s.BaseURL + "/chat/completions"
+	req, err := chatRequest(c, s, system, user)
 	if err != nil {
-		c.Err = err.Error()
-		remember(c)
-		return c, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+s.APIKey)
+		return c.failErr(err)
 	}
 	cli := *httpCli
 	cli.Timeout = time.Duration(s.TimeoutS) * time.Second
 	t0 := time.Now()
 	resp, err := cli.Do(req)
 	if err != nil {
-		c.MS = time.Since(t0).Milliseconds()
-		c.Err = err.Error()
-		logf("llm: %s (%dms)", err, c.MS)
-		remember(c)
-		return c, err
+		return c.failNet(err, t0)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -126,32 +113,86 @@ func callLLM(system, user string) (*LLMCall, error) {
 	if resp.StatusCode != 200 {
 		c.Err = "HTTP " + fmt.Sprint(resp.StatusCode) + ": " + clip(string(raw), 400)
 		c.Raw = string(raw)
-		logf("llm: %s (%dms)", c.Err, c.MS)
-		remember(c)
-		return c, fmt.Errorf("%s", c.Err)
+		return c.failLogged()
 	}
+	finish, err := c.readChatBody(raw)
+	if err != nil {
+		return c, err
+	}
+	logf("llm: ok %d chars in %dms (finish=%s)", len(c.Raw), c.MS, finish)
+	remember(c)
+	return c, nil
+}
+
+// fail / failErr / failNet / failLogged 是六条失败出口的共同收尾：写 Err、进日志环、造 error。
+// failErr 与 failNet 原样返回底层 error（上层要拿它判类型），failNet 多记一次耗时与一行日志，
+// failLogged 给「已经自己写好 Err」的出口（HTTP 非 200）用。
+func (c *LLMCall) fail(msg string) (*LLMCall, error) {
+	c.Err = msg
+	remember(c)
+	return c, fmt.Errorf("%s", c.Err)
+}
+
+func (c *LLMCall) failErr(err error) (*LLMCall, error) {
+	c.Err = err.Error()
+	remember(c)
+	return c, err
+}
+
+func (c *LLMCall) failNet(err error, t0 time.Time) (*LLMCall, error) {
+	c.MS = time.Since(t0).Milliseconds()
+	c.Err = err.Error()
+	logf("llm: %s (%dms)", err, c.MS)
+	remember(c)
+	return c, err
+}
+
+func (c *LLMCall) failLogged() (*LLMCall, error) {
+	logf("llm: %s (%dms)", c.Err, c.MS)
+	remember(c)
+	return c, fmt.Errorf("%s", c.Err)
+}
+
+// chatRequest 拼 OpenAI 兼容的 chat/completions 请求体与请求头。
+func chatRequest(c *LLMCall, s Settings, system, user string) (*http.Request, error) {
+	body, _ := json.Marshal(chatReq{
+		Model: s.Model, MaxTokens: s.MaxTok, Temperature: s.Temp, Stream: false,
+		Messages: []chatMsg{{Role: "system", Content: system}, {Role: "user", Content: user}},
+	})
+	req, err := http.NewRequest("POST", c.URL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+s.APIKey)
+	}
+	return req, nil
+}
+
+// readChatBody 解响应：不是 JSON、endpoint 自己报错、choices 为空都是失败；成功时把正文与
+// 思考过程写回 c，并把 finish reason 交回调用方打日志。
+func (c *LLMCall) readChatBody(raw []byte) (string, error) {
 	var cr chatResp
 	if err := json.Unmarshal(raw, &cr); err != nil {
 		c.Err = "bad json from endpoint: " + clip(string(raw), 300)
 		remember(c)
-		return c, fmt.Errorf("%s", c.Err)
+		return "", fmt.Errorf("%s", c.Err)
 	}
 	c.Usage = cr.Usage
 	if cr.Error != nil {
 		c.Err = cr.Error.Message
 		remember(c)
-		return c, fmt.Errorf("%s", c.Err)
+		return "", fmt.Errorf("%s", c.Err)
 	}
 	if len(cr.Choices) == 0 {
 		c.Err = "no choices in response"
 		remember(c)
-		return c, fmt.Errorf("%s", c.Err)
+		return "", fmt.Errorf("%s", c.Err)
 	}
 	c.Raw = cr.Choices[0].Message.Content
 	c.Reason = cr.Choices[0].Message.ReasoningContent
-	logf("llm: ok %d chars in %dms (finish=%s)", len(c.Raw), c.MS, cr.Choices[0].FinishReason)
-	remember(c)
-	return c, nil
+	return cr.Choices[0].FinishReason, nil
 }
 
 // ---------------------------------------------------------------------------

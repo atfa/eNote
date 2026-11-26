@@ -4278,3 +4278,74 @@ POST /api/todo delete（todoDelete）：ok=true 条数=1（原来 1）
 验收：`ui_test.js` **122 项全绿**（未改闸门）、`gofmt -l go` 空、`go vet ./...` 干净、`go test ./...` ok、
 `GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**（一次过）、
 三套 DOM 等价工具全部一致。
+
+## 9.80 P14 S6：Go 侧第二批长函数拆开（callLLM / shots.add / clipAdd，步骤 58）
+
+步骤 57 之后最长的是 `callLLM` 69、`ShotStore.add` 68、`clipAdd` 68，三个都是「一个函数里
+混着判定、执行和收尾」，逐个拆。
+
+**① `callLLM` 69 → 33 行 + 四个收尾方法 + 两个步骤函数**
+
+六条失败出口每条都要「写 `c.Err` → `remember(c)` → 造 error」三件套，中间还夹着建请求、
+发请求、读响应、解响应四段。现在：
+
+```go
+func callLLM(system, user string) (*LLMCall, error) {
+	s := config.get()
+	c := &LLMCall{TS: time.Now(), Model: s.Model, System: system, User: user}
+	if strings.TrimSpace(s.BaseURL) == "" {
+		return c.fail("未配置大模型地址：…")
+	}
+	c.URL = s.BaseURL + "/chat/completions"
+	req, err := chatRequest(c, s, system, user)   // 请求体 + 头
+	…
+	resp, err := cli.Do(req)
+	if err != nil { return c.failNet(err, t0) }
+	…
+	finish, err := c.readChatBody(raw)            // 解 JSON / endpoint 报错 / 空 choices
+	…
+}
+```
+
+`fail` / `failErr` / `failNet` / `failLogged` 四个收尾的差别写进注释：`failErr`、`failNet`
+**原样返回底层 error**（上层要拿它判类型），`failNet` 多记一次耗时与一行日志，`failLogged`
+给「已经自己写好 `Err`」的出口（HTTP 非 200）。
+只有 3 处改写（都记录在案）：两处 `&LLMCall{…}` 构造合并成一个 + `c.URL = …`；
+`logf("llm: ok … finish=%s")` 的实参改由 `readChatBody` 返回的 `finish` 提供。其余语句逐字保留。
+
+**② `ShotStore.add` 68 → 34 行 + `verdict` / `accept` / `trimToKeepMax`**
+
+原来一个循环里塞六条准入检查（空路径、文件坏、太大、忽略表、路径重复），每条都要
+「打日志 → 记进 `skipped`/`dupes` → `continue`」。现在判定归 `verdict`（返回
+`shotVerdict{kind, reason}`，kind ∈ `silent`/`skip`/`drop`/空=收下），收下归 `accept`，
+上限裁剪归 `trimToKeepMax`，`add` 只剩「判定 → 记账 → 收下」。两个细节：
+`verdict` 传 `*Shot`（不是值）—— 原来 `in.Size` 的补全会一路带进收下的记录；
+守卫顺序原样保留（`Size` 补全必须在 `isIgnored` 之前）。
+
+**③ `clipAdd` 68 → 15 行 + `clipIn` + `normalize` / `dedupe` / `append`**
+
+六个参数（kind/text/path/name/mime/app）加 `now` 在校验、去重、追加三段之间穿来穿去，
+先归成 `clipIn{kind,text,path,name,mime,app,at}`，三段各自成方法；本地 `sig` 变量换成
+`clipIn.sig()`（与 `Clip.sig` 同一套算法）。`dedupe` 返回 `(JSON, 是否已处理完)`。
+
+**闸门 ⑯ 跟着换一处匹配式**（契约不变）：剪贴板去重的恒真式回归护栏原来匹配
+`last.sig() == sig`，现在是 `last.sig() == in.sig()`，左边仍是「存储项自己的字段」。
+`go test ./...` 里 `TestClipAddKeepsDistinctCopies` / `TestClipAddDedupRules` 直接覆盖两条去重规则。
+
+探针（物理屏，`.test/probe_go58.js`）：
+
+```
+就绪 loads=1
+POST /api/llm/test（callLLM 拆分后）：ok=true ms=4251 http=200 error="" 回复="你好呀朋友" 日志条数=19
+POST /api/shots/add（verdict/accept）：首次 added=1 重复 dupes=1 坏图 dupes=1 skipped=0 暂存=1 命中=1795652377315405bqh2
+POST /api/shots/remove：removed=1 暂存=0
+clipSync ×2（clipAdd 去重）：暂存=1 命中=1 kind=text text="步骤五八探针甲文本"
+清理 loads=1 卡片=13
+```
+
+（shots 那条是临时造的 6 字节文件：首次收下、第二次路径重复判 dupes、不存在的图判 dupes、
+空路径静默跳过；remove 连文件一起删，`ls` 确认文件已不存在。）
+
+验收：`ui_test.js` **122 项全绿**（闸门数未变，⑯ 换匹配式）、`gofmt -l go` 空、`go vet ./...` 干净、
+`go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

@@ -1849,8 +1849,10 @@ if (SPLIT) {
 
   // 恒真式去重签名（kindSig 忽略 c 自己）让第一条之后的复制全被当重复丢弃：
   // 签名必须用存储项自己的字段，并且有「三次不同复制存三条」的回归护栏。
+  // 步骤 58：clipAdd 拆成 clipIn 方法之后，比较式从 `last.sig() == sig` 变成 `last.sig() == in.sig()`，
+  // 契约没变（左边仍是存储项自己的字段），这里跟着换匹配式。
   const clipSig = /func \(c \*Clip\) sig\(\) string/.test(goclip)
-    && /last\.sig\(\) == sig/.test(goclip) && !/kindSig\(kind, text, path\) == sig/.test(goclip);
+    && /last\.sig\(\) == in\.sig\(\)/.test(goclip) && !/kindSig\(kind, text, path\) == sig/.test(goclip);
   const clipSigTest = /TestClipAddKeepsDistinctCopies/.test(read('go/clip_test.go'));
   sig('剪贴板去重签名用存储项自己的字段（恒真式回归）', clipSig && clipSigTest);
 

@@ -1,27 +1,28 @@
-P14 S6 步骤 57：Go 侧三个长函数拆开（stats / runSearch / handleTodo）
+P14 S6 步骤 58：Go 侧第二批长函数拆开（callLLM / shots.add / clipAdd）
 
-步骤 56 之后 Go 侧最长的三个函数是 stats 81 行、runSearch 64 行、handleTodo 61 行，三个都是
-「一个函数里干完两三件不同的事」，逐个拆。
+步骤 57 之后最长的是 callLLM 69、ShotStore.add 68、clipAdd 68，三个都是「一个函数里混着判定、执行和收尾」，逐个拆。
 
-- stats() 81 → 12 行 + 一个小聚合器：原来一个循环里同时干四件事（笔记计数、待办计数、附件计数、近 7 天分桶），
-  res / dayIdx / tags 三个累加器在四段之间穿来穿去。现在累加器挂到 statsAgg{res, dayIdx, tags, today, now} 上，
-  stats() 只剩「建聚合器 → 逐条喂 → 收尾」，四段各自成方法（note / todos / attachments / finish）。脚本核对：
-  原循环体 49 行 vs 三个方法体 49 行，剔缩进、剔 a. 前缀、附件段循环变量 att→a 之后逐字一致（附件段那个 a
-  跟新接收者撞名，只能改名）。
-- runSearch 64 → 17 行 + searchTodos / searchNotes：runSearch 只做参数归一化（q 小写、待办页补默认 done=open、
-  limit 夹到 1..1000）+ 分流；待办页命中的是「某条笔记里的某个待办」（返回项带 NoteID/NoteTitle，TodoIDs 给全量
-  给 UI 分组用），笔记页/附件页整条笔记匹配（命中位置记进 res.Where）。原两分支 44 行 vs 新两函数体 44 行逐字一致。
-- handleTodo 61 → 20 行 + todoAdd / todoToggle / todoDelete：请求体原来是函数内的匿名 struct，三个 action 各占
-  15 行，拆函数就得给它起名 todoReq（json tag 一个没动，/api/todo 的对外契约不变）。原三个 case 体 40 行 vs
-  新三个函数体 40 行逐字一致。
-- 拆完之后 Go 侧最长的函数变成 callLLM 69、add（shots）68、clipAdd 68、selfTest 63、apiMux 59。
+- callLLM 69 → 33 行：六条失败出口每条都要「写 c.Err → remember(c) → 造 error」三件套，中间还夹着建请求、
+  发请求、读响应、解响应四段。现在四段各自成函数（chatRequest / readChatBody），六条出口收敛成
+  c.fail(...) / c.failErr(err) / c.failNet(err, t0) / c.failLogged() 一行。failErr 与 failNet 原样返回底层
+  error（上层要拿它判类型），failNet 多记一次耗时与一行日志，failLogged 给「已经自己写好 Err」的出口（HTTP 非 200）。
+  只有 3 处改写（都记录在案）：两处 &LLMCall{…} 构造合并成一个 + c.URL = …；logf 的 finish 实参改由
+  readChatBody 返回。其余语句逐字保留。
+- ShotStore.add 68 → 34 行：六条准入检查（空路径、文件坏、太大、忽略表、路径重复）归 verdict（返回
+  shotVerdict{kind, reason}，kind ∈ silent/skip/drop/空=收下），收下归 accept，上限裁剪归 trimToKeepMax，
+  add 只剩「判定 → 记账 → 收下」。verdict 传 *Shot 而不是值 —— 原来 in.Size 的补全会一路带进收下的记录；
+  守卫顺序原样保留（Size 补全必须在 isIgnored 之前）。
+- clipAdd 68 → 15 行：六个参数（kind/text/path/name/mime/app）加 now 在校验、去重、追加三段之间穿来穿去，
+  先归成 clipIn{kind,text,path,name,mime,app,at}，三段各自成方法（normalize / dedupe / append）；本地 sig
+  变量换成 clipIn.sig()（与 Clip.sig 同一套算法）。dedupe 返回 (JSON, 是否已处理完)。
+- 闸门 ⑯ 跟着换一处匹配式（契约不变）：剪贴板去重的恒真式回归护栏原来匹配 last.sig() == sig，现在是
+  last.sig() == in.sig()，左边仍是「存储项自己的字段」。go test ./... 的 TestClipAddKeepsDistinctCopies /
+  TestClipAddDedupRules 直接覆盖两条去重规则。
 
-探针（物理屏 .test/probe_go57.js，三个改动点全打一遍）：GET /api/stats（notes.total=8 notes.done=7 days=7
-tags=0 attach.count=1 ai.calls=0 bytes=4684 sources=2）→ GET /api/search 两条分支（notes total=8 scanned=8 返回=5 |
-todos total=0 返回=0 todoIds=0）→ POST /api/add → /api/note（状态=done 标题="整理书架待办" 待办=1）→
-todoAdd（ok=true 条数=2 命中 pri=high due=2026-01-01T10:00）→ todoToggle（done=true doneAt="2026-11-26T07:59"）→
-todoDelete（条数回到 1）→ 未知 action：ok=false error="unknown action" → 清理 loads=1 卡片=8。
+探针（物理屏 .test/probe_go58.js）：POST /api/llm/test 走完整 callLLM（ok=true ms=4251 http=200 error=""
+回复="你好呀朋友" 日志条数=19）→ POST /api/shots/add（verdict/accept）首次 added=1 重复 dupes=1 坏图 dupes=1
+skipped=0 暂存=1 → POST /api/shots/remove removed=1 暂存=0（连文件一起删，ls 确认文件不存在）→
+clipSync ×2（clipAdd 去重）暂存=1 命中=1 kind=text text="步骤五八探针甲文本" → 清理 loads=1。
 
-验收：ui_test.js **122 项全绿**（未改闸门）、gofmt -l go 空、go vet ./... 干净、go test ./... ok、
-GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd **164 ok / 0 FAIL / PASS**（一次过）、
-三套 DOM 等价工具全部一致。
+验收：ui_test.js **122 项全绿**（闸门数未变，⑯ 换匹配式）、gofmt -l go 空、go vet ./... 干净、go test ./... ok、
+GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

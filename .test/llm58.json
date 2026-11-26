@@ -1,0 +1,58 @@
+{
+"req": [
+"\tbody, _ := json.Marshal(chatReq{",
+"\t\tModel: s.Model, MaxTokens: s.MaxTok, Temperature: s.Temp, Stream: false,",
+"\t\tMessages: []chatMsg{{Role: \"system\", Content: system}, {Role: \"user\", Content: user}},",
+"\t})",
+"\treq, err := http.NewRequest(\"POST\", c.URL, bytes.NewReader(body))",
+"\tif err != nil {",
+"\t\tc.Err = err.Error()",
+"\t\tremember(c)",
+"\t\treturn c, err",
+"\t}",
+"\treq.Header.Set(\"Content-Type\", \"application/json\")",
+"\tif s.APIKey != \"\" {",
+"\t\treq.Header.Set(\"Authorization\", \"Bearer \"+s.APIKey)",
+"\t}"
+],
+"net": [
+"\tif err != nil {",
+"\t\tc.MS = time.Since(t0).Milliseconds()",
+"\t\tc.Err = err.Error()",
+"\t\tlogf(\"llm: %s (%dms)\", err, c.MS)",
+"\t\tremember(c)",
+"\t\treturn c, err",
+"\t}"
+],
+"bad": [
+"\tif resp.StatusCode != 200 {",
+"\t\tc.Err = \"HTTP \" + fmt.Sprint(resp.StatusCode) + \": \" + clip(string(raw), 400)",
+"\t\tc.Raw = string(raw)",
+"\t\tlogf(\"llm: %s (%dms)\", c.Err, c.MS)",
+"\t\tremember(c)",
+"\t\treturn c, fmt.Errorf(\"%s\", c.Err)",
+"\t}"
+],
+"parse": [
+"\tvar cr chatResp",
+"\tif err := json.Unmarshal(raw, &cr); err != nil {",
+"\t\tc.Err = \"bad json from endpoint: \" + clip(string(raw), 300)",
+"\t\tremember(c)",
+"\t\treturn c, fmt.Errorf(\"%s\", c.Err)",
+"\t}",
+"\tc.Usage = cr.Usage",
+"\tif cr.Error != nil {",
+"\t\tc.Err = cr.Error.Message",
+"\t\tremember(c)",
+"\t\treturn c, fmt.Errorf(\"%s\", c.Err)",
+"\t}",
+"\tif len(cr.Choices) == 0 {",
+"\t\tc.Err = \"no choices in response\"",
+"\t\tremember(c)",
+"\t\treturn c, fmt.Errorf(\"%s\", c.Err)",
+"\t}",
+"\tc.Raw = cr.Choices[0].Message.Content",
+"\tc.Reason = cr.Choices[0].Message.ReasoningContent",
+"\tlogf(\"llm: ok %d chars in %dms (finish=%s)\", len(c.Raw), c.MS, cr.Choices[0].FinishReason)"
+]
+}

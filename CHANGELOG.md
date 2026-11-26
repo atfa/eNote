@@ -1374,6 +1374,31 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Go 侧第二批长函数拆开：callLLM / shots.add / clipAdd（P14 S6 步骤 58）
+
+* **`callLLM` 69 → 33 行**：六条失败出口每条都要「写 `c.Err` → `remember(c)` → 造 error」三件套，
+  中间还夹着建请求、发请求、读响应、解响应四段。现在四段各自成函数（`chatRequest` / `readChatBody`），
+  六条出口收敛成 `c.fail(...)` / `c.failErr(err)` / `c.failNet(err, t0)` / `c.failLogged()` 一行。
+  `failErr` 与 `failNet` **原样返回底层 error**（上层要拿它判类型），`failNet` 多记一次耗时与一行日志。
+  只有 3 处改写：两处 `&LLMCall{…}` 构造合并成一个 + `c.URL = …`；finish reason 改由 `readChatBody` 返回。
+* **`ShotStore.add` 68 → 34 行**：六条准入检查（空路径、文件坏、太大、忽略表、路径重复）归
+  `verdict`（返回 `shotVerdict{kind, reason}`，kind ∈ `silent`/`skip`/`drop`/空=收下），收下归 `accept`，
+  上限裁剪归 `trimToKeepMax`，`add` 只剩「判定 → 记账 → 收下」。`verdict` 传 `*Shot` 而不是值 ——
+  原来 `in.Size` 的补全会一路带进收下的记录；守卫顺序原样保留（`Size` 补全必须在 `isIgnored` 之前）。
+* **`clipAdd` 68 → 15 行**：六个参数加 `now` 在校验、去重、追加三段之间穿来穿去，先归成
+  `clipIn{kind,text,path,name,mime,app,at}`，三段各自成方法（`normalize` / `dedupe` / `append`）；
+  本地 `sig` 变量换成 `clipIn.sig()`（与 `Clip.sig` 同一套算法）。
+* 闸门 ⑯ 跟着换一处匹配式（契约不变）：剪贴板去重的恒真式回归护栏从 `last.sig() == sig` 改成
+  `last.sig() == in.sig()`，左边仍是「存储项自己的字段」。`go test ./...` 的
+  `TestClipAddKeepsDistinctCopies` / `TestClipAddDedupRules` 直接覆盖两条去重规则。
+* 探针（`.test/probe_go58.js`）：`/api/llm/test` 走完整 callLLM（`ok=true ms=4251 http=200 回复="你好呀朋友"
+  日志条数=19`）→ `/api/shots/add` 首次 added=1、重复 dupes=1、坏图 dupes=1、空路径静默 skipped=0 →
+  `/api/shots/remove` removed=1（连文件一起删，`ls` 确认文件不存在）→ `clipSync ×2` 第二次判为重复
+  （暂存=1 命中=1）→ 清理 `loads=1`。
+* 验收：`ui_test.js` **122 项全绿**（闸门数未变，⑯ 换匹配式）、`gofmt -l go` 空、`go vet ./...` 干净、
+  `go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd`
+  **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Go 侧三个长函数拆开：stats / runSearch / handleTodo（P14 S6 步骤 57）
 
 * **`stats()` 81 → 12 行 + 小聚合器**：原来一个循环里同时干四件事（笔记计数、待办计数、附件计数、近 7 天分桶），

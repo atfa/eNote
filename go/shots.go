@@ -9,6 +9,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -132,6 +133,72 @@ func (s *ShotStore) isIgnored(name string, size int64) bool {
 
 // addShots 把 Java 扫到的图收进暂存区。返回 (新增, 被忽略的路径, 重复的路径)。
 // 忽略/重复的路径要让 Java 把刚复制过来的副本删掉，否则 inbox 里会留垃圾。
+/* 步骤 58：add 原来 68 行，一个循环里塞了六条准入检查（空路径、文件坏、太大、忽略表、
+   路径重复），每条都要「打日志 → 记进 skipped/dupes → continue」，收下那张图的动作又跟在
+   后面。现在判定归 verdict、收下归 accept、上限裁剪归 trimToKeepMax，add 只剩记账。
+   条件与日志文案逐字搬，只把 logf 的文案交给调用方打。 */
+
+// shotVerdict 是一张图进暂存区前的判定：kind 为 "silent" 空路径直接跳过（不记账不打日志），
+// "skip" 在忽略表里（记 skipped，副本留着），"drop" 坏图/太大/路径重复（记 dupes，让 Java 删副本），
+// 空串表示收下。reason 是日志文案，由 add 统一打。
+type shotVerdict struct {
+	kind   string
+	reason string
+}
+
+// verdict 六条准入检查，顺序跟原来一模一样（Size 的补全必须在 isIgnored 之前）。
+// 传指针是因为 in.Size 的补全会一路带进收下的记录里。
+func (s *ShotStore) verdict(in *Shot, byPath map[string]*Shot) shotVerdict {
+	if in.Path == "" {
+		return shotVerdict{kind: "silent"}
+	}
+	if st, err := os.Stat(in.Path); err != nil || st.IsDir() || st.Size() == 0 {
+		return shotVerdict{kind: "drop", reason: fmt.Sprintf("跳过 %s（文件不存在或为空）", in.Path)}
+	}
+	if in.Size == 0 {
+		if st, err := os.Stat(in.Path); err == nil {
+			in.Size = st.Size()
+		}
+	}
+	if in.Size > maxShotBytes {
+		return shotVerdict{kind: "drop", reason: fmt.Sprintf("跳过 %s（%d 字节，太大）", in.Name, in.Size)}
+	}
+	if s.isIgnored(in.Name, in.Size) {
+		return shotVerdict{kind: "skip", reason: fmt.Sprintf("%s 在忽略表里", in.Name)}
+	}
+	if _, ok := byPath[in.Path]; ok {
+		return shotVerdict{kind: "drop"}
+	}
+	return shotVerdict{}
+}
+
+// accept 收下这张图：补 id / 时间 / 文件名，进表与 byPath。
+func (s *ShotStore) accept(in *Shot, byPath map[string]*Shot) {
+	in.ID = newID()
+	if in.CreatedAt.IsZero() {
+		in.CreatedAt = time.Now()
+	}
+	if in.Name == "" {
+		in.Name = filepath.Base(in.Path)
+	}
+	x := *in
+	s.Shots = append(s.Shots, &x)
+	byPath[in.Path] = &x
+}
+
+// trimToKeepMax 硬上限：丢最老的（连文件一起删，否则暂存只剩 record 没有实际意义）。
+func (s *ShotStore) trimToKeepMax() {
+	if len(s.Shots) > shotKeepMax {
+		keep := s.referenced()
+		s.sortNewest()
+		for _, old := range s.Shots[shotKeepMax:] {
+			s.dropUnlessKept(keep, old.Path)
+			logf("shot add: 超过上限，丢掉最老的 %s", old.Name)
+		}
+		s.Shots = s.Shots[:shotKeepMax]
+	}
+}
+
 func (s *ShotStore) add(shots []Shot) (int, []string, []string) {
 	if len(shots) == 0 {
 		return 0, nil, nil
@@ -145,55 +212,24 @@ func (s *ShotStore) add(shots []Shot) (int, []string, []string) {
 	added := 0
 	var skipped, dupes []string
 	for _, in := range shots {
-		if in.Path == "" {
+		v := s.verdict(&in, byPath)
+		if v.reason != "" {
+			logf("shot add: %s", v.reason)
+		}
+		switch v.kind {
+		case "silent":
 			continue
-		}
-		if st, err := os.Stat(in.Path); err != nil || st.IsDir() || st.Size() == 0 {
-			logf("shot add: 跳过 %s（文件不存在或为空）", in.Path)
-			dupes = append(dupes, in.Path)
-			continue
-		}
-		if in.Size == 0 {
-			if st, err := os.Stat(in.Path); err == nil {
-				in.Size = st.Size()
-			}
-		}
-		if in.Size > maxShotBytes {
-			logf("shot add: 跳过 %s（%d 字节，太大）", in.Name, in.Size)
-			dupes = append(dupes, in.Path)
-			continue
-		}
-		if s.isIgnored(in.Name, in.Size) {
-			logf("shot add: %s 在忽略表里", in.Name)
+		case "skip":
 			skipped = append(skipped, in.Path)
 			continue
-		}
-		if _, ok := byPath[in.Path]; ok {
+		case "drop":
 			dupes = append(dupes, in.Path)
 			continue
 		}
-		in.ID = newID()
-		if in.CreatedAt.IsZero() {
-			in.CreatedAt = time.Now()
-		}
-		if in.Name == "" {
-			in.Name = filepath.Base(in.Path)
-		}
-		x := in
-		s.Shots = append(s.Shots, &x)
-		byPath[in.Path] = &x
+		s.accept(&in, byPath)
 		added++
 	}
-	// 硬上限：丢最老的（连文件一起删，否则暂存只剩 record 没有实际意义）
-	if len(s.Shots) > shotKeepMax {
-		keep := s.referenced()
-		s.sortNewest()
-		for _, old := range s.Shots[shotKeepMax:] {
-			s.dropUnlessKept(keep, old.Path)
-			logf("shot add: 超过上限，丢掉最老的 %s", old.Name)
-		}
-		s.Shots = s.Shots[:shotKeepMax]
-	}
+	s.trimToKeepMax()
 	if err := s.save(); err != nil {
 		logf("shot: save failed %v", err)
 	}

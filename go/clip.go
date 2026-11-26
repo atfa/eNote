@@ -67,67 +67,99 @@ func clipCount() int {
 // clipAdd is the single entry point for the clipboard watcher (JNI nativeClipAdd) and the
 // web UI. It de-dupes: an exact repeat of the last item is dropped, and the same source
 // within 5s just replaces the last item (a fast double-copy of the same thing).
+/* 步骤 58：clipAdd 原来 68 行，六个参数（kind/text/path/name/mime/app）在校验、去重、
+   追加三段之间穿来穿去，`now` 也要一路带着。现在先归成一个 clipIn，三段各自成方法：
+   normalize 校验归一化、dedupe 去重（完全相同丢弃 / 同来源 5s 内覆盖）、append 收下。
+   语句逐字搬，只把裸参数换成 in. 前缀，本地 sig 换成 in.sig()。 */
+
+// clipIn 是 Java 递过来的一条剪贴板内容（kind=text/image，text 可以是 dataURL）。
+type clipIn struct {
+	kind, text, path, name, mime, app string
+	at                                time.Time
+}
+
+// sig 是这条内容的去重指纹，跟 Clip.sig 同一套算法。
+func (in *clipIn) sig() string { return in.kind + "\x00" + in.text + "\x00" + in.path }
+
 func clipAdd(kind, text, path, name, mime, app string) string {
 	if clipStore == nil {
 		return `{"error":"clip store 未初始化"}`
 	}
-	kind = strings.TrimSpace(kind)
-	if kind == "" {
-		kind = "text"
+	in := &clipIn{kind: kind, text: text, path: path, name: name, mime: mime, app: app, at: time.Now()}
+	if bad := in.normalize(); bad != "" {
+		return bad
 	}
-	if kind == "text" {
-		text = strings.TrimSpace(text)
-		text = clip(text, maxClipText)
-		if text == "" {
+	logf("clip add: kind=%s runes=%d app=%q path=%q", in.kind, len([]rune(in.text)), in.app, in.path)
+	clipStore.mu.Lock()
+	defer clipStore.mu.Unlock()
+	if r, done := in.dedupe(); done {
+		return r
+	}
+	return in.append()
+}
+
+// normalize 校验并归一化：text 去空白再截断，image 要有路径或 dataURL，未知类型直接拒。
+// 返回空串表示通过，否则是要直接回给 Java 的 JSON 错误。
+func (in *clipIn) normalize() string {
+	in.kind = strings.TrimSpace(in.kind)
+	if in.kind == "" {
+		in.kind = "text"
+	}
+	if in.kind == "text" {
+		in.text = strings.TrimSpace(in.text)
+		in.text = clip(in.text, maxClipText)
+		if in.text == "" {
 			return `{"ok":false,"error":"内容为空"}`
 		}
-	} else if kind == "image" {
-		if path == "" && text == "" {
+	} else if in.kind == "image" {
+		if in.path == "" && in.text == "" {
 			return `{"ok":false,"error":"图片为空"}`
 		}
 	} else {
-		return `{"ok":false,"error":"未知类型 ` + kind + `"}`
+		return `{"ok":false,"error":"未知类型 ` + in.kind + `"}`
 	}
+	return ""
+}
 
-	now := time.Now()
-	sig := kind + "\x00" + text + "\x00" + path
-	logf("clip add: kind=%s runes=%d app=%q path=%q", kind, len([]rune(text)), app, path)
-
-	clipStore.mu.Lock()
-	defer clipStore.mu.Unlock()
-
+// dedupe 去重：跟最新一条完全相同就丢弃；同来源 5 秒内则覆盖最新一条（快速连抄两次
+// 同一个东西）。返回 (要回给 Java 的 JSON, 是否已处理完)。
+func (in *clipIn) dedupe() (string, bool) {
 	// exact repeat of the newest item -> drop
 	if n := len(clipStore.Clips); n > 0 {
 		last := clipStore.Clips[n-1]
-		if last.sig() == sig {
+		if last.sig() == in.sig() {
 			logf("clip add: 与最新一条完全相同 → 丢弃（最新 %d 字）", len([]rune(last.Text)))
-			return `{"ok":true,"duplicate":true}`
+			return `{"ok":true,"duplicate":true}`, true
 		}
 		// same source within 5s -> replace the newest
-		if last.App == app && now.Sub(last.CreatedAt) <= 5*time.Second {
+		if last.App == in.app && in.at.Sub(last.CreatedAt) <= 5*time.Second {
 			logf("clip add: 同来源 5s 内 → 覆盖最新一条")
-			last.Text = text
-			last.Path = path
-			last.Name = name
-			last.MIME = mime
-			last.Kind = kind
-			last.CreatedAt = now
+			last.Text = in.text
+			last.Path = in.path
+			last.Name = in.name
+			last.MIME = in.mime
+			last.Kind = in.kind
+			last.CreatedAt = in.at
 			if err := clipStore.save(); err != nil {
 				logf("clip add(replace): %v", err)
 			}
-			return `{"ok":true}`
+			return `{"ok":true}`, true
 		}
 	}
+	return "", false
+}
 
+// append 收下这条：进表 + 落盘。
+func (in *clipIn) append() string {
 	c := &Clip{
 		ID:        newID(),
-		Kind:      kind,
-		Text:      text,
-		Path:      path,
-		Name:      name,
-		MIME:      mime,
-		App:       app,
-		CreatedAt: now,
+		Kind:      in.kind,
+		Text:      in.text,
+		Path:      in.path,
+		Name:      in.name,
+		MIME:      in.mime,
+		App:       in.app,
+		CreatedAt: in.at,
 	}
 	clipStore.Clips = append(clipStore.Clips, c)
 	if err := clipStore.save(); err != nil {
