@@ -71,44 +71,63 @@ func searchableFields(n *Note) [][2]string {
 
 // matchNote returns the labels of the fields that contain q (empty q matches
 // everything) and whether the note passes the source/status filters.
+/* 步骤 60：matchNote 原来 49 行，三个下拉筛选器和关键词命中挤在一个函数里，
+   每条不匹配的路径都要写两值的 return。现在筛选归 notePassesFilters（单值 bool），
+   关键词命中归 noteWhere，matchNote 只剩「先筛后搜」。语句逐字搬，
+   只把筛选分支里的 return nil, false 换成 return false。 */
+
 func matchNote(n *Note, q string, f map[string]string) ([]string, bool) {
+	if !notePassesFilters(n, f) {
+		return nil, false
+	}
+	if q == "" {
+		return nil, true
+	}
+	return noteWhere(n, q)
+}
+
+// notePassesFilters 是三个下拉筛选器：来源（图片 / 文字）、有没有附件、状态。
+// 空值 = 没筛，全过。
+func notePassesFilters(n *Note, f map[string]string) bool {
 	switch f["src"] {
 	case "image":
 		if !strings.HasSuffix(n.Source, "image") {
-			return nil, false
+			return false
 		}
 	case "text":
 		if strings.HasSuffix(n.Source, "image") {
-			return nil, false
+			return false
 		}
 	}
 	switch f["file"] {
 	case "yes":
 		if len(n.Attachments) == 0 {
-			return nil, false
+			return false
 		}
 	case "no":
 		if len(n.Attachments) > 0 {
-			return nil, false
+			return false
 		}
 	}
 	switch f["status"] {
 	case "done":
 		if n.Status != stDone {
-			return nil, false
+			return false
 		}
 	case "raw":
 		if n.Status != stRaw && n.Status != stQueued && n.Status != stParsing {
-			return nil, false
+			return false
 		}
 	case "error":
 		if n.Status != stError {
-			return nil, false
+			return false
 		}
 	}
-	if q == "" {
-		return nil, true
-	}
+	return true
+}
+
+// noteWhere 返回命中关键词的字段名（界面按它画高亮）；一个都没命中就不算匹配。
+func noteWhere(n *Note, q string) ([]string, bool) {
 	var where []string
 	for _, fl := range searchableFields(n) {
 		if fl[1] == "" {

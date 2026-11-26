@@ -353,8 +353,28 @@ var (
 	bootStats = map[string]any{}
 )
 
+/* 步骤 60：appInit 原来 44 行，建目录、开四个存储、给暂存区挂「笔记引用了哪些文件」的回调、
+   起 worker、算启动快照，全平铺在一起。现在目录归 appDirs、开存储归 openStores、
+   保留名单归 noteReferencedPaths，appInit 只剩「按顺序装配，任一步失败就把原因回给 Java」。 */
+
 func appInit(dir string) map[string]any {
 	appDir = dir
+	if bad := appDirs(dir); bad != nil {
+		return bad
+	}
+	if bad := openStores(dir); bad != nil {
+		return bad
+	}
+	startWorker()
+	bootStats = map[string]any{"ok": true, "dir": dir, "notes": len(store.snapshot()),
+		"go": goVersion()}
+	logf("appInit dir=%s notes=%d model=%s tz=%s now=%s", dir, len(store.snapshot()),
+		config.get().Model, tzInfo(), nowStamp())
+	return bootStats
+}
+
+// appDirs 记下两个全局路径并把目录建出来。返回 nil 表示成功。
+func appDirs(dir string) map[string]any {
 	logDir = filepath.Join(dir, "enote")
 	inboxDir = filepath.Join(dir, "enote", "inbox")
 	for _, d := range []string{logDir, inboxDir} {
@@ -362,6 +382,11 @@ func appInit(dir string) map[string]any {
 			return map[string]any{"ok": false, "error": "mkdir: " + err.Error()}
 		}
 	}
+	return nil
+}
+
+// openStores 依次打开四个存储，任一失败就把原因回给 Java（返回 nil 表示全开成功）。
+func openStores(dir string) map[string]any {
 	var err error
 	if config, err = openConfig(dir + "/enote"); err != nil {
 		return map[string]any{"ok": false, "error": "config: " + err.Error()}
@@ -376,26 +401,24 @@ func appInit(dir string) map[string]any {
 		return map[string]any{"ok": false, "error": "shot store: " + err.Error()}
 	}
 	// 笔记已经引用的文件不归暂存区管：导入成功后清理暂存时不能把附件删掉
-	shotStore.setKeep(func() map[string]bool {
-		keep := map[string]bool{}
-		for _, n := range store.snapshot() {
-			if n.ImagePath != "" {
-				keep[n.ImagePath] = true
-			}
-			for _, a := range n.Attachments {
-				if a.Path != "" {
-					keep[a.Path] = true
-				}
+	shotStore.setKeep(noteReferencedPaths)
+	return nil
+}
+
+// noteReferencedPaths 是笔记已经用上的文件清单（正文图 + 附件），给截图暂存区当保留名单。
+func noteReferencedPaths() map[string]bool {
+	keep := map[string]bool{}
+	for _, n := range store.snapshot() {
+		if n.ImagePath != "" {
+			keep[n.ImagePath] = true
+		}
+		for _, a := range n.Attachments {
+			if a.Path != "" {
+				keep[a.Path] = true
 			}
 		}
-		return keep
-	})
-	startWorker()
-	bootStats = map[string]any{"ok": true, "dir": dir, "notes": len(store.snapshot()),
-		"go": goVersion()}
-	logf("appInit dir=%s notes=%d model=%s tz=%s now=%s", dir, len(store.snapshot()),
-		config.get().Model, tzInfo(), nowStamp())
-	return bootStats
+	}
+	return keep
 }
 
 func appInfo() map[string]any {

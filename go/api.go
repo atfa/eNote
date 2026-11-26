@@ -186,6 +186,10 @@ type settingsPatch struct {
 	UI       map[string]ViewPrefs `json:"ui"`
 }
 
+/* 步骤 60：handleSettings 原来 52 行，九行「patch 里有这项就盖上去」加四行「空值退回旧配置」
+   平铺在 handler 里。现在盖归 settingsPatch.applyTo、兜底归 Settings.fillDefaults，
+   handler 只剩「读 body → 盖 → 兜 → 存」。语句逐字搬，只把 config.get() 的快照提成参数 cur。 */
+
 func handleSettings(w http.ResponseWriter, r *http.Request) {
 	var p settingsPatch
 	if err := readBody(r, &p); err != nil {
@@ -193,6 +197,18 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s := config.get()
+	p.applyTo(&s)
+	s.fillDefaults(config.get())
+	if err := config.set(s); err != nil {
+		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	jsonOut(w, map[string]any{"ok": true, "settings": maskedSettings()})
+}
+
+// applyTo 把 patch 里出现过的字段盖到 s 上（指针非空 = 界面这一项提交了）。
+// 没提交的字段保持 s 里的原值。
+func (p settingsPatch) applyTo(s *Settings) {
 	if p.BaseURL != nil {
 		s.BaseURL = *p.BaseURL
 	}
@@ -220,23 +236,23 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 	if p.UI != nil {
 		s.UI = p.UI
 	}
+}
+
+// fillDefaults 兜住空值：地址 / 模型 / 主题 / UI 提交成空不等于要清空，退回当前配置。
+// cur 是改动前的配置快照（原来四处各自 config.get()，中间没人改过，等价）。
+func (s *Settings) fillDefaults(cur Settings) {
 	if s.BaseURL == "" {
-		s.BaseURL = config.get().BaseURL
+		s.BaseURL = cur.BaseURL
 	}
 	if s.Model == "" {
-		s.Model = config.get().Model
+		s.Model = cur.Model
 	}
 	if s.Theme == "" {
-		s.Theme = config.get().Theme
+		s.Theme = cur.Theme
 	}
 	if s.UI == nil {
-		s.UI = config.get().UI
+		s.UI = cur.UI
 	}
-	if err := config.set(s); err != nil {
-		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
-		return
-	}
-	jsonOut(w, map[string]any{"ok": true, "settings": maskedSettings()})
 }
 
 // handleTheme switches the palette: the WebView repaints from settings.theme and calls

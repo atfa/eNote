@@ -1374,6 +1374,31 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Go 侧第四批长函数拆开：handleSettings / matchNote / appInit（P14 S6 步骤 60）
+
+* **`handleSettings` 52 → 17 行**：五十行里四十九行是「九行 patch 覆盖 + 四行空值兜底」。现在 handler
+  只剩「读 body → 盖 → 兜 → 存」：`applyTo` 是「patch 里出现过的字段才盖」（指针非空 = 界面提交了这一项，
+  APIKey 的打码守卫原样保留），`fillDefaults` 是「空串不等于清空，退回当前配置」。唯一改写：四处
+  `config.get().X` 提成参数 `cur.X` —— 原来四次 `config.get()` 中间没人改过配置，取一次快照等价。
+* **`matchNote` 49 → 8 行**：三个下拉筛选器（来源 / 有没有附件 / 状态）归 `notePassesFilters`（返回单值 bool），
+  关键词命中归 `noteWhere`（返回命中字段名，界面按它画高亮）。改写只有筛选分支里的 `return nil, false` →
+  `return false`（7 处）。
+* **`appInit` 44 → 14 行**：「建目录、开四个存储、给暂存区挂保留名单、起 worker、算启动快照」原来全平铺。
+  现在只剩「按顺序装配，任一步失败就把原因回给 Java」；`appDirs` / `openStores` 返回 `map[string]any`
+  （nil = 成功），内联的 `setKeep(func() map[string]bool {…})` 闭包变成具名函数 `noteReferencedPaths`。
+* 闸门 ⑯ 跟着换一处匹配式（契约变强）：暂存清理的保留名单护栏原来只认 `shotStore.setKeep(func() map[string]bool`，
+  现在两种写法都认，并额外要求存在 `func noteReferencedPaths() map[string]bool`。
+* 逐字核对（`git show HEAD:go/x.go` 语句多重集双向对比）：handleSettings 原 50 有效行 → 新 52、matchNote 47 → 52、
+  appInit 42 → 49，除上面列出的改写外原句逐字保留，新代码里没有一句没有原句对应。
+* 探针（`.test/probe_go60.js`）：设置基线 `base=… key="sk-local-litellm" model=exec timeout=90 maxTok=2048
+  temp=0.2 useAI=true theme=light ui项=4` → 空 patch / 打码 apiKey / 逐字段同值 / 空串 patch 四项全部
+  `一致=true`（提交完配置一个字节都没变，这正是 `settingsPatch` 那圈指针字段存在的理由）→
+  `/api/search` q="att" total=1 命中字段={"…":["标题","正文","附件名"]}、src=text 8 / src=image 0 /
+  file=yes 1 / status=done 7 / status=error 0 → `/api/log` appInit 行数=5 → 清理 `loads=1`。
+* 验收：`ui_test.js` **122 项全绿**（闸门数未变，⑯ 换匹配式）、`gofmt -l go` 空、`go vet ./...` 干净、
+  `go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd`
+  **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Go 侧第三批长函数拆开：selfTest / listAttachments / runNote（P14 S6 步骤 59）
 
 * **`selfTest` 63 → 17 行**：四个 mode 的分支挤在一起，每个分支都要自己写进 `out`。现在一个 mode

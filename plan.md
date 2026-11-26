@@ -4398,3 +4398,64 @@ body，所有过滤器都变成「没过滤」，正好反证过滤器分支真�
 验收：`ui_test.js` **122 项全绿**（闸门数未变）、`gofmt -l go` 空、`go vet ./...` 干净、
 `go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+## 9.82 P14 S6：Go 侧第四批长函数拆开（handleSettings / matchNote / appInit，步骤 60）
+
+步骤 59 之后最长的是 `handleSettings` 52、`matchNote` 49、`appInit` 44。
+
+**① `handleSettings` 52 → 17 行 + `applyTo` / `fillDefaults`**
+
+五十行里四十九行是「九行 patch 覆盖 + 四行空值兜底」。现在 handler 只剩
+「读 body → 盖 → 兜 → 存」：
+
+```go
+s := config.get()
+p.applyTo(&s)
+s.fillDefaults(config.get())
+if err := config.set(s); err != nil { … }
+```
+
+`applyTo` 是「patch 里出现过的字段才盖」（指针非空 = 界面提交了这一项，APIKey 的打码守卫
+原样保留）；`fillDefaults` 是「空串不等于清空，退回当前配置」。
+唯一改写：四处 `config.get().X` 提成参数 `cur.X` —— 原来四次 `config.get()` 中间没人改过配置，
+取一次快照等价。
+
+**② `matchNote` 49 → 8 行 + `notePassesFilters` / `noteWhere`**
+
+三个下拉筛选器（来源 / 有没有附件 / 状态）归 `notePassesFilters`（返回单值 bool），
+关键词命中归 `noteWhere`（返回命中字段名，界面按它画高亮）。改写只有筛选分支里的
+`return nil, false` → `return false`（7 处）。
+
+**③ `appInit` 44 → 14 行 + `appDirs` / `openStores` / `noteReferencedPaths`**
+
+「建目录、开四个存储、给暂存区挂保留名单、起 worker、算启动快照」原来全平铺。现在
+`appInit` 只剩「按顺序装配，任一步失败就把原因回给 Java」；`appDirs` / `openStores` 返回
+`map[string]any`（nil = 成功），内联的 `setKeep(func() map[string]bool {…})` 闭包变成具名函数
+`noteReferencedPaths`（注释跟着搬过去）。
+
+**闸门 ⑯ 跟着换一处匹配式**（契约变强）：暂存清理的保留名单护栏原来只认
+`shotStore.setKeep(func() map[string]bool`，现在两种写法都认，并额外要求存在
+`func noteReferencedPaths() map[string]bool`。
+
+逐字核对（`git show HEAD:go/x.go` 语句多重集双向对比）：handleSettings 原 50 有效行 → 新 52、
+matchNote 47 → 52、appInit 42 → 49，除上面列出的改写外原句逐字保留，新代码里没有一句没有原句对应。
+
+探针（物理屏，`.test/probe_go60.js`）：
+
+```
+设置基线：base=https://llama.8bao.info key="sk-local-litellm" model=exec timeout=90 maxTok=2048 temp=0.2 useAI=true theme=light ui项=4
+POST /api/settings 空 patch（applyTo 全不盖 + fillDefaults 兜底）：ok=true 一致=true
+POST apiKey 带省略号（打码守卫）：ok=true key="sk-local-litellm" 一致=true
+POST 逐字段同值 patch：ok=true 一致=true
+POST 空串 patch（fillDefaults 退回旧值）：ok=true base=https://llama.8bao.info model=exec theme=light 一致=true
+GET /api/search（matchNote 拆分后）：q="att" total=1 scanned=8 命中字段={"1795654276117890f2su":["标题","正文","附件名"]} src=text total=8 src=image total=0 file=yes total=1 status=done total=7 status=error limit=2 total=0
+GET /api/log（appInit 装配痕迹）：appInit 行数=5 最新="2026-11-26 09:23:29.285 appInit dir=/data/user/0/dev.xduo.enote/files notes=8 model=ex"
+清理 loads=1 卡片=8
+```
+
+（设置四项全部「一致=true」= 提交空 patch、打码 key、同值字段、空串字段之后配置一个字节都没变，
+这正是 `settingsPatch` 那圈指针字段存在的理由；`/api/settings` 与 `/api/search` 的参数分别走
+body 和 query string。）
+
+验收：`ui_test.js` **122 项全绿**（闸门数未变，⑯ 换匹配式）、`gofmt -l go` 空、`go vet ./...` 干净、
+`go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

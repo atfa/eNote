@@ -2063,9 +2063,12 @@ if (SPLIT) {
   sig('只选一张时只显示「创建笔记」一个按钮', oneBtn);
 
   // 清理暂存不能删掉笔记正在用的文件（缩略图 404 的根因）
+  // 步骤 60：appInit 拆开后保留名单从内联闭包变成具名函数 noteReferencedPaths，两种写法都认。
   const keepGuard = /func \(s \*ShotStore\) dropUnlessKept/.test(goweb)
     && /keepFn func\(\) map\[string\]bool/.test(goweb)
-    && /shotStore\.setKeep\(func\(\) map\[string\]bool/.test(gopipe)
+    && (/shotStore\.setKeep\(func\(\) map\[string\]bool/.test(gopipe)
+        || /shotStore\.setKeep\(noteReferencedPaths\)/.test(gopipe))
+    && /func noteReferencedPaths\(\) map\[string\]bool/.test(gopipe)
     && /dropUnlessKept\(keep, x\.Path\)/.test(goweb);
   sig('清理/忽略/裁剪暂存时不删笔记在用的文件', keepGuard);
 
