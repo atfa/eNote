@@ -148,29 +148,11 @@ public class OcrEngine {
      */
     public boolean init(String device, int threads, int power, int logFlag, Log_ log) {
         lastError = "";
-        if (!VivoOCRGeneral.loadLibs()) {
-            lastError = "loadLibrary: " + VivoOCRGeneral.loadError();
-            log.log("FAIL " + lastError);
-            return false;
-        }
-        log.log("libraries loaded");
-        InitParamsOCRGPU p = new InitParamsOCRGPU();
-        p.modelDir = new File(modelRoot(ctx), "ocr_det/6").getAbsolutePath();
-        p.modelDirectDir = new File(modelRoot(ctx), "ocr_rec/4").getAbsolutePath();
-        p.cachePath = new File(ctx.getFilesDir(), "vcap/gpu/mdl_ocr").getAbsolutePath();
-        p.device = device;
-        p.threadNumsVCAP = threads;
-        p.powerVCAP = power;
-        p.logFlag = logFlag;
+        if (!loadLibs(log)) return false;
+        InitParamsOCRGPU p = initParams(device, threads, power, logFlag);
         long t0 = System.currentTimeMillis();
-        int ret;
-        try {
-            ret = VivoOCRGeneral.InitOCR(p);
-        } catch (Throwable t) {
-            lastError = "InitOCR threw " + t;
-            log.log("FAIL " + lastError);
-            return false;
-        }
+        Integer ret = runInit(p, log);
+        if (ret == null) return false;
         long ms = System.currentTimeMillis() - t0;
         version = safe(VivoOCRGeneral.GetOCRVersion());
         log.log("InitOCR(device=" + device + ", threads=" + threads + ", power=" + power
@@ -181,6 +163,41 @@ public class OcrEngine {
         }
         inited = true;
         return true;
+    }
+
+    /** 加载厂商 so；没加载起来写 lastError 并记一条 FAIL。 */
+    private boolean loadLibs(Log_ log) {
+        if (VivoOCRGeneral.loadLibs()) {
+            log.log("libraries loaded");
+            return true;
+        }
+        lastError = "loadLibrary: " + VivoOCRGeneral.loadError();
+        log.log("FAIL " + lastError);
+        return false;
+    }
+
+    /** 模型目录 + GPU 缓存路径 + 线程 / 功耗 / 日志开关。 */
+    private InitParamsOCRGPU initParams(String device, int threads, int power, int logFlag) {
+        InitParamsOCRGPU p = new InitParamsOCRGPU();
+        p.modelDir = new File(modelRoot(ctx), "ocr_det/6").getAbsolutePath();
+        p.modelDirectDir = new File(modelRoot(ctx), "ocr_rec/4").getAbsolutePath();
+        p.cachePath = new File(ctx.getFilesDir(), "vcap/gpu/mdl_ocr").getAbsolutePath();
+        p.device = device;
+        p.threadNumsVCAP = threads;
+        p.powerVCAP = power;
+        p.logFlag = logFlag;
+        return p;
+    }
+
+    /** 跑一次 InitOCR；抛异常写 lastError 并记 FAIL，返回 null（跟 ret != 0 区分开）。 */
+    private Integer runInit(InitParamsOCRGPU p, Log_ log) {
+        try {
+            return VivoOCRGeneral.InitOCR(p);
+        } catch (Throwable t) {
+            lastError = "InitOCR threw " + t;
+            log.log("FAIL " + lastError);
+            return null;
+        }
     }
 
     public void release() {

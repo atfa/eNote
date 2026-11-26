@@ -66,36 +66,42 @@ public class OcrHelper {
     private synchronized boolean ensure() {
         if (ready && engine != null && engine.isInited()) return true;
         try {
-            if (engine == null) {
-                info = "解包模型…";
-                OcrEngine.unpackModels(ctx, logcb);
-                engine = new OcrEngine(ctx);
-            }
-            info = "初始化引擎…";
-            if (!engine.init("cpu", 3, 1, 1, logcb)) {
-                Log.w(TAG_, "cpu init failed (" + engine.getLastError() + "), trying opencl");
-                if (!engine.init("opencl", 3, 1, 1, logcb)) {
-                    info = "初始化失败: " + engine.getLastError();
-                    ready = false;
-                    Bridge.nativeSetOcr(false, info);
-                    return false;
-                }
-            }
+            if (!prepareEngine()) return false;
             info = "cpu, v" + engine.getVersion();
             ready = true;
             Bridge.nativeSetOcr(true, info);
             Log.i(TAG_, "OCR ready: " + info);
             return true;
         } catch (Throwable t) {
-            info = "初始化异常: " + t;
-            ready = false;
-            try {
-                Bridge.nativeSetOcr(false, info);
-            } catch (Throwable ignored) {
-            }
+            boolean r = fail("初始化异常: " + t);
             Log.e(TAG_, "ocr init failed", t);
-            return false;
+            return r;
         }
+    }
+
+    /** 第一次先解包模型；引擎先试 cpu，不行再试 opencl。抛出来由 ensure 的 catch 接手。 */
+    private boolean prepareEngine() throws Exception {
+        if (engine == null) {
+            info = "解包模型…";
+            OcrEngine.unpackModels(ctx, logcb);
+            engine = new OcrEngine(ctx);
+        }
+        info = "初始化引擎…";
+        if (engine.init("cpu", 3, 1, 1, logcb)) return true;
+        Log.w(TAG_, "cpu init failed (" + engine.getLastError() + "), trying opencl");
+        if (engine.init("opencl", 3, 1, 1, logcb)) return true;
+        return fail("初始化失败: " + engine.getLastError());
+    }
+
+    /** 引擎没起来：info 写原因，同步给页面，固定返回 false。 */
+    private boolean fail(String why) {
+        info = why;
+        ready = false;
+        try {
+            Bridge.nativeSetOcr(false, info);
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     /** Blocking OCR of a file; only call from a worker thread. */

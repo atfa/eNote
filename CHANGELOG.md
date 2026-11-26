@@ -1374,6 +1374,28 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Java 侧第六批长函数拆开：ShareActivity.handle 39 / OcrEngine.init 36 / OcrHelper.ensure 34（P14 S6 步骤 66）
+
+* **`ShareActivity.handle` 39 → 32 行 + `shareMultiple` 5 + `shareImageWithText` 6 + `shareText` 5**：`handle`
+  只剩分发（读 action/type、四条分支各调一个方法，try/catch 与日志位置不动）；非图附件直接调
+  `processFile`，不套空壳。`if (uris != null) { … }` → `if (uris == null) return;`。
+* **`OcrEngine.init` 36 → 18 行 + `loadLibs` 9 + `initParams` 11 + `runInit` 9**：`runInit` 返回 `Integer`，
+  `null` 表示 `InitOCR` 抛异常（跟 `ret != 0` 区分开，和步骤 61 的 `scanSince` 返回 `Long` 同一个套路）；
+  `version`、计时与日志行原样留在 `init`。
+* **`OcrHelper.ensure` 34 → 15 行 + `prepareEngine` 12 + `fail` 9**：解包模型 + 先试 cpu 再试 opencl 成一段，
+  两个失败出口的 `info = …; ready = false; Bridge.nativeSetOcr(false, info); return false;` 四连收进 `fail`；
+  `prepareEngine` 声明 `throws Exception`（`unpackModels` 抛检查异常），抛出来由 `ensure` 原有的 catch 接手。
+* 逐字核对（`git show HEAD:` 语句多重集双向，新侧先做变量名归一）：`handle` 原 55 有效行 → 新 63，原句只少 1 行；
+  `init` 原 36 → 新 47，原句少 2 行（`int ret;` 并进 `Integer ret = runInit(…)`、一处 `return false;` 移进
+  `runInit`）；`ensure` 原 42 → 新 44，原句少 3 行（失败出口四连收进 `fail`）。
+* 探针（物理屏）：`InitOCR(device=cpu, threads=3, power=1) -> 0 in 391 ms, ocr version=8.4.1.77` +
+  `OCR ready: cpu, v8.4.1.77` 证明 `loadLibs`/`initParams`/`runInit`/`prepareEngine`/`ensure`；分享四条分支全打到
+  （SEND_MULTIPLE 证明分发 + `uris == null` 守卫，图 + 文字 → `share-image` 与 `share-text` 各一条，空分享
+  → `text=null` 且无 stream，pdf 附件由测试套件证明）。图分享故意用 root 建的 0600 文件跑通 `image failed`
+  的 catch 分支：`来源=share-image 状态=error 附件=0`。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Java 侧第五批长函数拆开：Shots.copyHits 43 / Shots.stateJson 42 / Shots.queryHits 41（P14 S6 步骤 65）
 
 * **`Shots.queryHits` 41 → 7 行 + `queryFolder` 26 + `hitFrom` 9**：一个目录的查询（游标归它关、查不动只记日志）

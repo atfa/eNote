@@ -84,26 +84,18 @@ public class ShareActivity extends Activity {
         String type = it.getType() == null ? "" : it.getType();
         try {
             if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
-                ArrayList<Uri> uris = it.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
-                if (uris != null) {
-                    for (Uri u : uris) processImage(u);
-                }
+                shareMultiple(it);
                 return;
             }
             String text = it.getStringExtra(Intent.EXTRA_TEXT);
             String subject = it.getStringExtra(Intent.EXTRA_SUBJECT);
             Uri stream = it.getParcelableExtra(Intent.EXTRA_STREAM);
             if (stream != null && (type.startsWith("image/") || type.equals("*/*"))) {
-                processImage(stream);
-                if (text != null && text.trim().length() > 0) {
-                    Bridge.enqueueText(text, subject, "share-text");
-                }
+                shareImageWithText(stream, text, subject);
                 return;
             }
             if (text != null && text.trim().length() > 0) {
-                String r = Bridge.enqueueText(text, subject, "share-text");
-                note("enqueueText -> " + r);
-                ui("已保存文字，AI 解析中…");
+                shareText(text, subject);
                 return;
             }
             if (stream != null) {
@@ -116,6 +108,28 @@ public class ShareActivity extends Activity {
             Log.e(TAG, "share failed", t);
             ui("处理失败: " + t);
         }
+    }
+
+    /** 一次分享多张图：逐张走图片链路。 */
+    private void shareMultiple(Intent it) {
+        ArrayList<Uri> uris = it.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+        if (uris == null) return;
+        for (Uri u : uris) processImage(u);
+    }
+
+    /** 一张图 + 附带文字：图走图片链路，文字另存一条。 */
+    private void shareImageWithText(Uri stream, String text, String subject) {
+        processImage(stream);
+        if (text != null && text.trim().length() > 0) {
+            Bridge.enqueueText(text, subject, "share-text");
+        }
+    }
+
+    /** 只有文字：直接入队，AI 解析在 Go 侧跑。 */
+    private void shareText(String text, String subject) {
+        String r = Bridge.enqueueText(text, subject, "share-text");
+        note("enqueueText -> " + r);
+        ui("已保存文字，AI 解析中…");
     }
 
     static final String TAG = "enote-share";

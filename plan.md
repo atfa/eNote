@@ -4778,3 +4778,66 @@ hook shotfolders: {"folders":[{"path":"DCIM/Screenshots/","count":5,"bytes":3927
 
 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
 `./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+## 9.88 P14 S6：Java 侧第六批长函数拆开（ShareActivity.handle 39 / OcrEngine.init 36 / OcrHelper.ensure 34，步骤 66）
+
+**`ShareActivity.handle` 39 → 32 行 + `shareMultiple` 5 + `shareImageWithText` 6 + `shareText` 5**
+
+`handle` 只剩分发：读 action/type，按四条分支各调一个方法，try/catch 与日志位置不动。
+四条分支 = 多图分享 / 图 + 附带文字 / 只有文字 / 非图附件（`processFile` 本来就是一个方法，
+不套一层空壳）。`if (uris != null) { … }` 变成 `if (uris == null) return;`。
+
+**`OcrEngine.init` 36 → 18 行 + `loadLibs` 9 + `initParams` 11 + `runInit` 9**
+
+```java
+if (!loadLibs(log)) return false;
+InitParamsOCRGPU p = initParams(device, threads, power, logFlag);
+long t0 = System.currentTimeMillis();
+Integer ret = runInit(p, log);
+if (ret == null) return false;      // InitOCR 抛异常，lastError 已写好
+```
+
+`runInit` 返回 `Integer`，`null` 表示抛异常（跟 `ret != 0` 区分开，和步骤 61 的
+`scanSince` 返回 `Long` 同一个套路）。`version` / 计时 / 日志行原样留在 `init`。
+
+**`OcrHelper.ensure` 34 → 15 行 + `prepareEngine` 12 + `fail` 9**
+
+`prepareEngine` = 第一次解包模型 + 先试 cpu 再试 opencl（两处 `if (!init(…)) {` 拉平成
+`if (init(…)) return true;`）；`fail(why)` 收掉两个失败出口的 `info = …; ready = false;
+Bridge.nativeSetOcr(false, info); return false;` 四连。`prepareEngine` 声明
+`throws Exception`（`unpackModels` 抛检查异常），抛出来由 `ensure` 原有的 catch 接手，
+顺序不变：先 `fail(...)` 再 `Log.e(TAG_, "ocr init failed", t)`。
+
+逐字核对（`git show HEAD:` 语句多重集双向，新侧先做变量名归一）：
+
+| 函数 | 原有效行 | 新有效行 | 原句没找到 |
+|---|---|---|---|
+| `handle` | 55 | 63 | 1（`if (uris != null) {` → `if (uris == null) return;`） |
+| `init` | 36 | 47 | 2（`int ret;` 并进 `Integer ret = runInit(…)`、一处 `return false;` 移进 `runInit`） |
+| `ensure` | 42 | 44 | 3（两个失败出口的 `info/ready/nativeSetOcr/return false` 四连收进 `fail`） |
+
+新句没有原句对应的只有方法签名、调用点、`return` 与闭合括号。
+
+探针（物理屏）：
+
+```
+enote-ocr: InitOCR(device=cpu, threads=3, power=1) -> 0 in 391 ms, ocr version=8.4.1.77
+enote-ocr: OCR ready: cpu, v8.4.1.77
+enote-share: handle action=android.intent.action.SEND_MULTIPLE type=image/* text=null
+enote-share: handle action=android.intent.action.SEND type=text/plain text=null
+enote-share: handle action=android.intent.action.SEND type=image/* text=yes
+G66 分享0 来源=share-text 状态=done 附件=0
+G66 分享1 来源=share-image 状态=done 附件=1
+G66 分享3 来源=share-image 状态=error 附件=0
+G66 清理分享笔记 4 条 → true,true,true,true
+```
+
+（`loadLibs` / `initParams` / `runInit` / `prepareEngine` / `ensure` 由 OCR 就绪日志证明；
+`handle` 四条分支里 `shareMultiple`（SEND_MULTIPLE，`am` 的 `--el` 在这台机器上被当成 long
+数组解析，只能证明分发 + `uris == null` 守卫）、`shareImageWithText`（图 + 文字 →
+`share-image` 与 `share-text` 各一条）、只有文字、空分享（`text=null` 且无 stream →
+`ui("没有可保存的内容")`，ShareActivity 1.2s 自动关，uiautomator 抢不到那一帧，按日志判定）
+全打到；`processFile` 由测试套件的 pdf 分享证明。图分享那次故意用 root 建的 0600 文件跑通
+了 `image failed` 的 catch 分支：`来源=share-image 状态=error 附件=0`。）
+
+验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
