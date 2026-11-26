@@ -254,29 +254,37 @@ public class OcrEngine {
             res.errorCode = s.errorCode;
         }
         final int lineIdx = res.lines.size();
-        if (s.mRec != null && s.mRec.trim().length() > 0) {
-            Line l = new Line();
-            l.text = s.mRec;
-            l.raw = s.mDet;
-            l.rot = (int) s.mRot;
-            l.directFlag = s.directFlag;
-            Word tmp = new Word();
-            box(s.mDet, tmp);
-            l.x = tmp.x; l.y = tmp.y; l.w = tmp.w; l.h = tmp.h;
-            res.lines.add(l);
-        }
+        absorbLine(res, s);
+        absorbWords(res, s, lineIdx);
+    }
+
+    /** 整行文字 + 行的外接框；整行没文字就不加行。 */
+    private void absorbLine(Result res, SaveWordsResults s) {
+        if (s.mRec == null || s.mRec.trim().length() == 0) return;
+        Line l = new Line();
+        l.text = s.mRec;
+        l.raw = s.mDet;
+        l.rot = (int) s.mRot;
+        l.directFlag = s.directFlag;
+        Word tmp = new Word();
+        box(s.mDet, tmp);
+        l.x = tmp.x; l.y = tmp.y; l.w = tmp.w; l.h = tmp.h;
+        res.lines.add(l);
+    }
+
+    /** 逐词坐标；整行没文字时 line = -1。 */
+    private void absorbWords(Result res, SaveWordsResults s, int lineIdx) {
+        if (s.mWords == null) return;
         int order = 0;
-        if (s.mWords != null) {
-            for (WordResult wr : s.mWords) {
-                if (wr == null || wr.wRec == null || wr.wRec.trim().length() == 0) continue;
-                Word w = new Word();
-                w.text = wr.wRec;
-                w.raw = wr.wDet;
-                box(wr.wDet, w);
-                w.line = s.mRec != null && s.mRec.trim().length() > 0 ? lineIdx : -1;
-                w.order = order++;
-                res.words.add(w);
-            }
+        for (WordResult wr : s.mWords) {
+            if (wr == null || wr.wRec == null || wr.wRec.trim().length() == 0) continue;
+            Word w = new Word();
+            w.text = wr.wRec;
+            w.raw = wr.wDet;
+            box(wr.wDet, w);
+            w.line = s.mRec != null && s.mRec.trim().length() > 0 ? lineIdx : -1;
+            w.order = order++;
+            res.words.add(w);
         }
     }
 

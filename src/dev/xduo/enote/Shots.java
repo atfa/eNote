@@ -172,33 +172,37 @@ public final class Shots {
 
     /** 扫一遍 MediaStore 图片表，聚成 目录 -> [张数, 字节]；查询本身没拿到就返回 null。 */
     private static java.util.HashMap<String, long[]> queryFolders(Context c) {
-        java.util.HashMap<String, long[]> agg = new java.util.HashMap<String, long[]>();
         Cursor cur = null;
         try {
-            Uri uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
             boolean newApi = Build.VERSION.SDK_INT >= 29;
             String[] proj = newApi
                     ? new String[]{MediaStore.Images.Media.RELATIVE_PATH, MediaStore.Images.Media.SIZE}
                     : new String[]{MediaStore.Images.Media.DATA, MediaStore.Images.Media.SIZE};
-            int iRel = newApi ? 0 : -1;
-            int iData = newApi ? -1 : 0;
-            cur = c.getContentResolver().query(uri, proj, null, null, null);
+            cur = c.getContentResolver().query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, proj, null, null, null);
             if (cur == null) return null;
-            while (cur.moveToNext()) {
-                String p = relPathOf(cur, iRel, iData);
-                if (p.isEmpty()) continue;
-                long[] a = agg.get(p);
-                if (a == null) {
-                    a = new long[]{0L, 0L};
-                    agg.put(p, a);
-                }
-                a[0]++;
-                a[1] += Math.max(0L, cur.getLong(1));
-            }
+            return countFolders(cur, newApi ? 0 : -1, newApi ? -1 : 0);
         } catch (Throwable t) {
             Log.w(TAG, "shots: foldersJson failed " + t);
         } finally {
             if (cur != null) try { cur.close(); } catch (Throwable ignored) {}
+        }
+        return new java.util.HashMap<String, long[]>();
+    }
+
+    /** 逐行累加：目录 → [张数, 字节]；iRel / iData 哪个不是 -1 就用哪个当目录。 */
+    private static java.util.HashMap<String, long[]> countFolders(Cursor cur, int iRel, int iData) {
+        java.util.HashMap<String, long[]> agg = new java.util.HashMap<String, long[]>();
+        while (cur.moveToNext()) {
+            String p = relPathOf(cur, iRel, iData);
+            if (p.isEmpty()) continue;
+            long[] a = agg.get(p);
+            if (a == null) {
+                a = new long[]{0L, 0L};
+                agg.put(p, a);
+            }
+            a[0]++;
+            a[1] += Math.max(0L, cur.getLong(1));
         }
         return agg;
     }

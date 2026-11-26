@@ -36,6 +36,12 @@ public class ShareActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(busyView());
+        startHandle(getIntent());
+    }
+
+    /** 转图 + 一行状态文字：分享处理期间屏幕上只有这一层。 */
+    private View busyView() {
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER);
@@ -54,9 +60,11 @@ public class ShareActivity extends Activity {
         col.addView(label, tp);
         ScrollView sc = new ScrollView(this);
         sc.addView(col);
-        setContentView(sc);
+        return sc;
+    }
 
-        final Intent it = getIntent();
+    /** 处理放后台线程（OCR + 网络不能卡主线程），完事留 1.2 秒给用户看结果。 */
+    private void startHandle(final Intent it) {
         new Thread(new Runnable() {
             public void run() {
                 handle(it);
@@ -69,12 +77,7 @@ public class ShareActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        new Thread(new Runnable() {
-            public void run() {
-                handle(getIntent());
-                finish(1200);
-            }
-        }).start();
+        startHandle(getIntent());
     }
 
     void handle(Intent it) {

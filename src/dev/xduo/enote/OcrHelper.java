@@ -164,21 +164,11 @@ public class OcrHelper {
             bo.inJustDecodeBounds = true;
             BitmapFactory.decodeFile(path, bo);
             int w = bo.outWidth, h = bo.outHeight;
-            int sample = 1;
-            while (Math.max(w, h) / sample > MAX_DIM) sample *= 2;
-            BitmapFactory.Options o = new BitmapFactory.Options();
-            o.inSampleSize = sample;
-            o.inPreferredConfig = Bitmap.Config.ARGB_8888;
-            Bitmap b = BitmapFactory.decodeFile(path, o);
+            int sample = sampleFor(w, h);
+            Bitmap b = BitmapFactory.decodeFile(path, sampleOpts(sample));
             if (b == null) return null;
             int rot = exifRotation(path);
-            if (rot != 0) {
-                Matrix m = new Matrix();
-                m.postRotate(rot);
-                Bitmap r = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), m, true);
-                if (r != b) b.recycle();
-                b = r;
-            }
+            b = rotated(b, rot);
             Log.i(TAG_, "decoded " + w + "x" + h + " sample=" + sample
                     + " rot=" + rot + " -> " + b.getWidth() + "x" + b.getHeight());
             return b;
@@ -186,6 +176,30 @@ public class OcrHelper {
             Log.e(TAG_, "decode " + path, t);
             return null;
         }
+    }
+
+    /** 长边控制在 MAX_DIM 以内所需的倍数（1, 2, 4, 8 …）。 */
+    private static int sampleFor(int w, int h) {
+        int sample = 1;
+        while (Math.max(w, h) / sample > MAX_DIM) sample *= 2;
+        return sample;
+    }
+
+    private static BitmapFactory.Options sampleOpts(int sample) {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inSampleSize = sample;
+        o.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        return o;
+    }
+
+    /** 按 EXIF 转正；转出来的新图才回收原图（createBitmap 可能原图返回）。 */
+    private static Bitmap rotated(Bitmap b, int rot) {
+        if (rot == 0) return b;
+        Matrix m = new Matrix();
+        m.postRotate(rot);
+        Bitmap r = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), m, true);
+        if (r != b) b.recycle();
+        return r;
     }
 
     static int exifRotation(String path) {

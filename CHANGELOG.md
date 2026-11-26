@@ -1374,6 +1374,33 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Java 侧第八批长函数拆开：MainActivity.runHook 40 / handleIntent 29 / Shots.queryFolders 31 / OcrHelper.decode 29 / OcrEngine.absorb 31 / ShareActivity.onCreate 29（P14 S6 步骤 68）
+
+* **`MainActivity.runHook` 40 → 10 行 + `hookDispatch` 33**：十四钩子的 if/else 链整段搬进 `hookDispatch`
+  （链上 `out = …` → `return …`），`runHook` 只剩线程包装 + `note`。
+* **`MainActivity.handleIntent` 29 → 20 行 + `openFromIntent` 17**：通知三件套（openNote / openTodo /
+  openClip）搬走，hook 与 shareText 两段留下。
+* **`Shots.queryFolders` 31 → 18 行 + `countFolders` 15**：取 Cursor + finally 关 + 日志留下（失败分支
+  原来返回 null，现在统一返回空图，两个出口压成一个），逐行累加搬走。
+* **`OcrHelper.decode` 29 → 19 行 + `sampleFor` 5 + `sampleOpts` 6 + `rotated` 8**：降采样倍数 / 解码参数 /
+  EXIF 转正（含新图回收旧图判定）各成一段，`decode` 只剩 try 壳 + 日志。
+* **`OcrEngine.absorb` 31 → 9 行 + `absorbLine` 12 + `absorbWords` 14**：`lineIdx` 在加行之前取，
+  拆开后调用顺序不变；早退顶替整块 if；`w.line`（整行无字时 -1）与 `order`（words 里的第几个词）
+  语义逐字核对确认迁移没变。
+* **`ShareActivity.onCreate` 29 → 5 行 + `busyView` 21 + `startHandle` 8**：UI 搭与后台线程（handle +
+  finish(1200)）各成一段，`onNewIntent` 共用 `startHandle`。
+* 逐字核对（`git show HEAD:` 语句多重集双向，新侧按「原函数 + 拆出函数」拼起来比）：`handleIntent`、
+  `absorb`、`onCreate` **旧句 0 缺失**；`runHook` 只缺 `} else {` 结构性行；`queryFolders` 缺 4 行全是
+  内联（`Uri` 行并进 `query(…)`、`iRel/iData` 变实参）；`decode` 缺 2 行落在合并改写里（语义等价）。
+* 探针（物理屏）：EXIF 图（canvas 现造 JPEG + 插 Orientation=6）`decoded 800x260 sample=1 rot=90 ->
+  260x800` 证明 `rotated`；4200×1200 现造 PNG `decoded 4200x1200 sample=2 rot=0 -> 2100x600` 且
+  `15 chars, 1 lines` 证明 `sampleFor/sampleOpts` 不破坏识别；`hook shotfolders/status/nosuchhook`
+  证明 `hookDispatch`（含默认分支落 selftest）；`absorb*` 由 `15 chars` + 既有 OCR 用例覆盖。
+* 套件外噪音一次：本窗口 session id 被终端写进系统剪贴板 → 首轮硬基线 clip=1 假红；按 test.sh:2259
+  既定顺序 clipset ' ' + clip/clear 清掉后重跑全绿，与本次改动无关。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Java 侧第七批长函数拆开：Shots.copyFrom 34 / OcrHelper.doFile 30 / MainActivity.importJSON 30（P14 S6 步骤 67）
 
 * **`Shots.copyFrom` 34 → 24 行 + `streamCopy` 12 + `sha1Hex` 5**：资源获取/释放（`in`/`out` 关闭、`dst.delete()`、

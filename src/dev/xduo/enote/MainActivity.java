@@ -174,6 +174,16 @@ public class MainActivity extends Activity {
             intent.removeExtra("arg");
             runHook(hook, hookArg);
         }
+        openFromIntent(intent);
+        String text = intent.getStringExtra("shareText");
+        if (text != null && text.length() > 0) {
+            note("hook: shareText " + text.length() + " chars");
+            Bridge.enqueueText(text, intent.getStringExtra("shareSubject"), "share-text");
+        }
+    }
+
+    /** 通知点进来：展开笔记 / 高亮待办 / 打开剪贴暂存弹层。 */
+    private void openFromIntent(Intent intent) {
         String open = intent.getStringExtra("openNote");
         if (open == null || open.isEmpty()) open = intent.getStringExtra("openTodo");
         if (open != null && open.length() > 0) {
@@ -188,11 +198,6 @@ public class MainActivity extends Activity {
             note("open clip from notification");
             pendingOpenClip = true;
             flushPendingOpen();
-        }
-        String text = intent.getStringExtra("shareText");
-        if (text != null && text.length() > 0) {
-            note("hook: shareText " + text.length() + " chars");
-            Bridge.enqueueText(text, intent.getStringExtra("shareSubject"), "share-text");
         }
     }
 
@@ -796,42 +801,45 @@ public class MainActivity extends Activity {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                String out;
-                if ("status".equals(hook)) {
-                    out = Bridge.statusStatic();
-                } else if ("enqueue".equals(hook)) {
-                    out = Bridge.nativeEnqueue(arg == null ? "{}" : arg);
-                } else if ("exact".equals(hook)) {
-                    out = hookExact();
-                } else if ("calendar".equals(hook)) {
-                    out = hookCalendar(arg);
-                } else if ("alarm".equals(hook)) {
-                    out = hookAlarm(arg);
-                } else if ("keepalive".equals(hook)) {
-                    out = hookKeepAlive(arg);
-                } else if ("cliphtml".equals(hook)) {
-                    out = hookClipHtml(arg);
-                } else if ("clipset".equals(hook)) {
-                    out = hookClipSet(arg);
-                } else if ("jseval".equals(hook)) {
-                    out = hookJsEval(arg);
-                } else if ("shotscan".equals(hook)) {
-                    out = hookShotScan(arg);
-                } else if ("shotfolders".equals(hook)) {
-                    out = hookShotFolders(arg);
-                } else if ("shotimport".equals(hook)) {
-                    // 验收用：{"mode":"merge","raw":false,"shots":[{path,name,mime}]}
-                    out = Shots.importShots(MainActivity.this, arg == null ? "{}" : arg);
-                } else if ("clipnotify".equals(hook)) {
-                    out = hookClipNotify();
-                } else if ("import".equals(hook)) {
-                    out = hookImport(arg);
-                } else {
-                    out = Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
-                }
+                String out = hookDispatch(hook, arg);
                 note("hook " + hook + ": " + out);
             }
         }).start();
+    }
+
+    /** 钩子名 → 对应方法；名字认不出来一律跑 selftest。 */
+    private String hookDispatch(String hook, String arg) {
+        if ("status".equals(hook)) {
+            return Bridge.statusStatic();
+        } else if ("enqueue".equals(hook)) {
+            return Bridge.nativeEnqueue(arg == null ? "{}" : arg);
+        } else if ("exact".equals(hook)) {
+            return hookExact();
+        } else if ("calendar".equals(hook)) {
+            return hookCalendar(arg);
+        } else if ("alarm".equals(hook)) {
+            return hookAlarm(arg);
+        } else if ("keepalive".equals(hook)) {
+            return hookKeepAlive(arg);
+        } else if ("cliphtml".equals(hook)) {
+            return hookClipHtml(arg);
+        } else if ("clipset".equals(hook)) {
+            return hookClipSet(arg);
+        } else if ("jseval".equals(hook)) {
+            return hookJsEval(arg);
+        } else if ("shotscan".equals(hook)) {
+            return hookShotScan(arg);
+        } else if ("shotfolders".equals(hook)) {
+            return hookShotFolders(arg);
+        } else if ("shotimport".equals(hook)) {
+            // 验收用：{"mode":"merge","raw":false,"shots":[{path,name,mime}]}
+            return Shots.importShots(MainActivity.this, arg == null ? "{}" : arg);
+        } else if ("clipnotify".equals(hook)) {
+            return hookClipNotify();
+        } else if ("import".equals(hook)) {
+            return hookImport(arg);
+        }
+        return Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
     }
 
     /* 步骤 62：runHook 原来 125 行，十四个验收钩子平铺在一条 if/else 链里。

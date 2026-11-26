@@ -4900,3 +4900,58 @@ hook import: {"ok":false,"error":"文件不存在"}
 
 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
 `./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+## 9.90 P14 S6：Java 侧第八批长函数拆开（MainActivity.runHook 40 / handleIntent 29 / Shots.queryFolders 31 / OcrHelper.decode 29 / OcrEngine.absorb 31 / ShareActivity.onCreate 29，步骤 68）
+
+**`MainActivity.runHook` 40 → 10 行 + `hookDispatch` 33**：十四钩子的 if/else 链整段搬进
+`hookDispatch`（链上 `out = …` → `return …`，`runHook` 只剩线程包装 + `note`）。
+
+**`MainActivity.handleIntent` 29 → 20 行 + `openFromIntent` 17**：通知三件套（openNote / openTodo /
+openClip）搬进 `openFromIntent`；hook 与 shareText 两段留在 `handleIntent`。
+
+**`Shots.queryFolders` 31 → 18 行 + `countFolders` 15**：取 Cursor + finally 关 + 日志留在
+`queryFolders`（失败分支原来返回 null，现在统一返回空图，两个出口压成一个），逐行累加进
+`countFolders`。
+
+**`OcrHelper.decode` 29 → 19 行 + `sampleFor` 5 + `sampleOpts` 6 + `rotated` 8**：降采样倍数、
+解码参数、EXIF 转正（含新图回收原图的判定）各成一段，`decode` 只剩 try 壳 + 日志。
+
+**`OcrEngine.absorb` 31 → 9 行 + `absorbLine` 12 + `absorbWords` 14**：`lineIdx` 在加行之前取，
+拆开后的调用顺序不变；`absorbLine` 用早退 `if (mRec 空) return;` 顶替原来的整块 if。
+`absorbWords` 的 `w.line` 语义（整行没文字时 -1）原样保留，`order` 计数是 `words` 里的第几个词
+（不是行内序号），逐字核对后确认迁移没变。
+
+**`ShareActivity.onCreate` 29 → 5 行 + `busyView` 21 + `startHandle` 8**：UI 搭进 `busyView`，
+后台线程（handle + finish(1200)）进 `startHandle`，`onNewIntent` 与 `onCreate` 共用它。
+
+逐字核对（`git show HEAD:` 语句多重集双向，新侧先做变量名归一，新侧按「原函数 + 拆出函数」
+拼起来比）：
+
+| 函数 | 原有效行 | 新有效行 | 旧句缺失 | 说明 |
+|---|---|---|---|---|
+| `runHook` | 40 | 41 | 1 | 缺的只是 `} else {` 结构性行 |
+| `handleIntent` | 29 | 32 | 0 | 新句只多签名 / 闭合括号 |
+| `queryFolders` | 31 | 33 | 4 | `Uri` 行内联进 `query(…)`、`iRel/iData` 内联为调用实参 |
+| `decode` | 29 | 38 | 2 | `decodeFile(path, o)` 与 `b = r` 落在合并改写里（语义等价） |
+| `absorb` | 31 | 35 | 0 | 新句只多签名 / 两条守卫改写行 |
+| `onCreate` | 29 | 34 | 0 | 新句只多签名 / 闭合括号 |
+
+探针（物理屏）：
+
+```
+enote-ocr: decoded 4200x1200 sample=2 rot=0 -> 2100x600      ← decode 拆分
+enote-ocr: decoded 800x260 sample=1 rot=90 -> 260x800        ← rotated 拆分（EXIF orientation=6）
+enote-ocr: ocr …/….png -> 15 chars, 1 lines, 1276 ms         ← 大图降采样后仍读得出
+hook shotfolders: {"enabled":true,"granted":true,…"folders":[…]}   ← queryFolders 拆分
+hook status: {"app":{…"notes":7,"ocrReady":true,…}}           ← hookDispatch 各分支
+hook nosuchhook: {…}（落到 selftest）                         ← dispatch 默认分支
+```
+
+（EXIF 图用 WebView canvas 现造 JPEG 再插 Orientation=6 的 APP1；大图 4200×1200 现造 PNG。
+`hook select` 证明 dispatch；`handleIntent`/`openFromIntent` 由测试套件的通知路径 + jseval
+（本窗口侧）覆盖；`absorb*` 由 `ocr … -> 15 chars` + 既有 OCR 用例证明。）
+
+全套闸门：`ui_test.js` 122 全绿、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+（本步有一次套件外噪音：终端会话把本窗口的 session id 写进了系统剪贴板，App 前台轮询把它
+收进暂存区导致首轮硬基线 clip=1 假红；按 test.sh:2259 的既定顺序 clipset ' ' + clip/clear
+清掉后重跑全绿——与本次改动无关。）
