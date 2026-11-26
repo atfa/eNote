@@ -6,6 +6,18 @@
 
 ## 0.1（当前）
 
+### Java 侧第九批长函数拆开：Shots.scan 34 / Reminders.onReceive 34 / MainActivity.copyIn 30 / ShareActivity.handle 31（P14 S6 步骤 69）
+
+* **`Shots.scan` 34 → 22 行 + `stageCopies` 11**：批量复制后收尾段（去重判定 `copy.copied == 0`、`Bridge.shotAdd`、`applyShotAddResp`、`saveSeen`、日志）搬进 `stageCopies`，`scan` 只剩扫候选 + 收集 Hit + 调它。
+* **`Reminders.onReceive` 34 → 9 行 + `dropFired` 3 + `fireNotification` 22**：receiver 只剩取 extra + 分发；持久化 key 清理（load / remove / save）进 `dropFired`；渠道 + Notification.Builder + PendingIntent（→ MainActivity `openNote` / `openTodoId`）+ `nm.notify` 进 `fireNotification`。判定守卫翻成早退 return（唯一的改写行，语义等价）。
+* **`MainActivity.copyIn` 30 → 13 行 + `pickDisplayName` 14 + `extFromPick` 6 + `streamTo` 3**：DISPLAY_NAME 查询逐字搬进 `pickDisplayName`（空 DISPLAY_NAME 保持 `""` 原语义 → `.jpg`）；扩展名推导进 `extFromPick`；65536 字节桶的流复制进 `streamTo`（`throws Exception`，异常归调用者 try/finally）。
+* **`ShareActivity.handle` 31 → 25 行 + `shareFileOrNothing` 5**：非图片流（`processFile`）与没内容（`ui("没有可保存的内容")`）两分支合并，文本 / 图片分支原样。
+* **`hookDispatch` 33 保持不拆**：纯分发表（十五钩子 → 方法），按 apiMux 约定路由表不算长函数。
+* 逐字核对（`git show HEAD:` 语句多重集双向，新侧按「原函数 + 拆出函数」拼起来比）：`scan` / `copyIn` / `handle` 旧句 **0 缺失**；`onReceive` 只缺守卫改写那 1 行；新句多余的全是签名 / 调用 / 闭合括号 / try-finally 结构。
+* **加 `hook copyin`**（步骤 67 `hook import` 先例：`copyIn` 只能经系统文件选择器触发，拆链需要端到端覆盖）：dispatch 加分支 → `hookCopyIn(arg)` → `copyIn(Uri.fromFile(f))` → `{"ok":true,"src","dst","size"}`；README §手工驱动补了一条。
+* 探针（物理屏）：`hook copyin: {"ok":true,"src":"s69final.txt","dst":"1795682999888.txt","size":18}`；显式组件广播 `reminder fired: step69-fire` + 两条 `NotificationRecord channel=reminder category=reminder defaults=ALL` + `scheduled` 注入 `s69keep@8\ns69drop@9` 响完只剩 `s69keep@8`（冷启动证明 `dropFired`）；空分享 `handle action=...SEND type=text/plain text=null` 进「没有可保存的内容」。
+* 验收（**hook copyin 加完后重跑**）：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### 测试基线（P13 S8 步骤 1，D18）
 
 * **`test.sh` 跑前重置数据**（默认开，`--no-reset` 关）：先删 `shot.json` / `shotseen.json` /

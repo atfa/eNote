@@ -101,16 +101,21 @@ public class ShareActivity extends Activity {
                 shareText(text, subject);
                 return;
             }
-            if (stream != null) {
-                // anything that is not an image (pdf, txt, office, ...) is stored as a file
-                processFile(stream);
-                return;
-            }
-            ui("没有可保存的内容");
+            shareFileOrNothing(stream);
         } catch (Throwable t) {
             Log.e(TAG, "share failed", t);
             ui("处理失败: " + t);
         }
+    }
+
+    /** 非图片流 → 按文件存（pdf/txt/office…）；啥都没有 → 提示用户。 */
+    private void shareFileOrNothing(Uri stream) {
+        if (stream != null) {
+            // anything that is not an image (pdf, txt, office, ...) is stored as a file
+            processFile(stream);
+            return;
+        }
+        ui("没有可保存的内容");
     }
 
     /** 一次分享多张图：逐张走图片链路。 */

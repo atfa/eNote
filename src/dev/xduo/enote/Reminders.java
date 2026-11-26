@@ -269,11 +269,21 @@ public final class Reminders {
             String todoId = intent.getStringExtra(EXTRA_TODO_ID);
             String key = intent.getStringExtra(EXTRA_ID);
             // 响过就不再排：把它从持久化的集合里摘掉，否则集合只增不减
-            if (key != null && !key.isEmpty()) {
-                Set<String> left = load(c);
-                if (left.remove(key)) save(c, left);
-            }
+            dropFired(c, key);
             if (text == null || text.isEmpty()) return;
+            fireNotification(c, text, note, noteId, todoId);
+        }
+
+        /** 从持久化的已排集合里摘掉这条（下次不再响）。 */
+        private static void dropFired(Context c, String key) {
+            if (key == null || key.isEmpty()) return;
+            Set<String> left = load(c);
+            if (left.remove(key)) save(c, left);
+        }
+
+        /** 建通知并弹出来：点通知打开对应笔记（待办高亮）。 */
+        private static void fireNotification(Context c, String text, String note,
+                                             String noteId, String todoId) {
             ensureChannel(c);
             NotificationManager nm = c.getSystemService(NotificationManager.class);
             if (nm == null) return;

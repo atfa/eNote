@@ -1,16 +1,14 @@
-P14 S6 步骤 68：Java 侧第八批长函数拆开（MainActivity.runHook 40 / handleIntent 29 / Shots.queryFolders 31 / OcrHelper.decode 29 / OcrEngine.absorb 31 / ShareActivity.onCreate 29）
+P14 S6 步骤 69：Java 侧第九批长函数拆开（Shots.scan 34 / Reminders.onReceive 34 / MainActivity.copyIn 30 / ShareActivity.handle 31）
 
-- MainActivity.runHook 40 → 10 行 + hookDispatch 33：十四钩子的 if/else 链整段搬进 hookDispatch（链上 out = … → return …），runHook 只剩线程包装 + note。
-- MainActivity.handleIntent 29 → 20 行 + openFromIntent 17：通知三件套（openNote / openTodo / openClip）搬走，hook 与 shareText 两段留下。
-- Shots.queryFolders 31 → 18 行 + countFolders 15：取 Cursor + finally 关 + 日志留下（失败分支原来返回 null，现在统一返回空图，两个出口压成一个），逐行累加搬走。
-- OcrHelper.decode 29 → 19 行 + sampleFor 5 + sampleOpts 6 + rotated 8：降采样倍数 / 解码参数 / EXIF 转正（含新图回收旧图判定）各成一段，decode 只剩 try 壳 + 日志。
-- OcrEngine.absorb 31 → 9 行 + absorbLine 12 + absorbWords 14：lineIdx 在加行之前取，拆开后调用顺序不变；早退顶替整块 if；w.line（整行无字时 -1）与 order（words 里的第几个词）语义逐字核对确认迁移没变。
-- ShareActivity.onCreate 29 → 5 行 + busyView 21 + startHandle 8：UI 搭与后台线程（handle + finish(1200)）各成一段，onNewIntent 共用 startHandle。
+- Shots.scan 34 → 22 行 + stageCopies 11：批量复制后收尾段（去重判定 copy.copied == 0、Bridge.shotAdd、applyShotAddResp、saveSeen、日志）搬进 stageCopies，scan 只剩扫候选 + 收集 Hit + 调它。
+- Reminders.onReceive 34 → 9 行 + dropFired 3 + fireNotification 22：receiver 只剩取 extra + 分发；持久化 key 清理（load/remove/save）进 dropFired；渠道 + Builder + PendingIntent（→ MainActivity openNote/openTodoId）+ nm.notify 进 fireNotification。判定守卫翻成早退 return。
+- MainActivity.copyIn 30 → 13 行 + pickDisplayName 14 + extFromPick 6 + streamTo 3：DISPLAY_NAME 查询逐字搬进 pickDisplayName（空 DISPLAY_NAME 保持 "" 原语义 → .jpg）；扩展名推导进 extFromPick；65536 字节桶流复制进 streamTo（throws Exception，异常归调用者 try/finally）。
+- ShareActivity.handle 31 → 25 行 + shareFileOrNothing 5：非图片流（processFile）与没内容（ui("没有可保存的内容")）两分支合并，文本/图片分支原样。
+- hookDispatch 33 保持不拆：纯分发表（十五钩子 → 方法），按 apiMux 约定路由表不算长函数。
+- 加 hook copyin（步骤 67 hook import 先例：copyIn 只能经系统文件选择器触发，拆链需要端到端覆盖）：dispatch 加分支 → hookCopyIn(arg) → copyIn(Uri.fromFile(f)) → {"ok":true,"src","dst","size"}；README §手工驱动补了一条。
 
-逐字核对（git show HEAD: 语句多重集双向，新侧按「原函数 + 拆出函数」拼起来比）：handleIntent、absorb、onCreate 旧句 0 缺失；runHook 只缺 } else { 结构性行；queryFolders 缺 4 行全是内联（Uri 行并进 query(…)、iRel/iData 变实参）；decode 缺 2 行落在合并改写里（语义等价）。
+逐字核对（git show HEAD: 语句多重集双向，新侧按「原函数 + 拆出函数」拼起来比，verb69.py 多行签名感知）：scan / copyIn / handle 旧句 0 缺失；onReceive 只缺守卫改写 1 行；新句多余的全是签名 / 调用 / 闭合括号 / try-finally 结构。
 
-探针（物理屏）：EXIF 图（canvas 现造 JPEG + 插 Orientation=6）decoded 800x260 sample=1 rot=90 -> 260x800 证明 rotated；4200×1200 现造 PNG decoded 4200x1200 sample=2 rot=0 -> 2100x600 且 15 chars, 1 lines 证明 sampleFor/sampleOpts 不破坏识别；hook shotfolders/status/nosuchhook 证明 hookDispatch（含默认分支落 selftest）；absorb* 由 15 chars + 既有 OCR 用例覆盖。
+探针（物理屏）：hook copyin: {"ok":true,"src":"s69final.txt","dst":"1795682999888.txt","size":18}（copyIn 链）；显式组件广播 reminder fired: step69-fire + 2 条 NotificationRecord channel=reminder category=reminder defaults=ALL（fireNotification）；scheduled 注入 s69keep@8\ns69drop@9 响完只剩 s69keep@8（冷启动证明 dropFired）；空分享 handle action=...SEND type=text/plain text=null 进「没有可保存的内容」（shareFileOrNothing 空分支）。
 
-套件外噪音一次：本窗口 session id 被终端写进系统剪贴板 → 首轮硬基线 clip=1 假红；按 test.sh:2259 既定顺序 clipset ' ' + clip/clear 清掉后重跑全绿，与本次改动无关。
-
-验收：ui_test.js **122 项全绿**（闸门数未变）、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+验收（hook copyin 加完后重跑）：ui_test.js 122 项全绿、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd 164 ok / 0 FAIL / PASS、三套 DOM 等价工具全部一致。

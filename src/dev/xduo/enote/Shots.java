@@ -379,6 +379,11 @@ public final class Shots {
         sortHits(hits);
         Scan copy = copyHits(c, cr, hits, last);
         if (copy.maxAdded > 0) setWatermark(c, copy.maxAdded);
+        return stageCopies(c, hits, copy);
+    }
+
+    /** 复制完的收尾：去重后一条没有 → 存 seen 空手返回；有 → 交给 Go + 处理忽略表 + 存 seen。 */
+    private static int stageCopies(Context c, List<Hit> hits, Scan copy) {
         if (copy.copied == 0) {
             saveSeen(c, copy.seen);
             Log.i(TAG, "shots: " + hits.size() + " candidate(s), nothing new after dedupe");

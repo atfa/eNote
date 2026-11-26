@@ -4955,3 +4955,63 @@ hook nosuchhook: {…}（落到 selftest）                         ← dispatch
 （本步有一次套件外噪音：终端会话把本窗口的 session id 写进了系统剪贴板，App 前台轮询把它
 收进暂存区导致首轮硬基线 clip=1 假红；按 test.sh:2259 的既定顺序 clipset ' ' + clip/clear
 清掉后重跑全绿——与本次改动无关。）
+
+## 9.91 P14 S6：Java 侧第九批长函数拆开（Shots.scan 34 / Reminders.onReceive 34 / MainActivity.copyIn 30 / ShareActivity.handle 31，步骤 69）
+
+**`Shots.scan` 34 → 22 行 + `stageCopies` 11**：批量复制后的收尾段（去重判定
+`copy.copied == 0`、`Bridge.shotAdd`、`applyShotAddResp`、`saveSeen`、日志）整段搬进
+`stageCopies`，`scan` 只剩「扫候选（内层 for 本身 13 行不变）→ 收集 Hit → 调
+stageCopies」。
+
+**`Reminders.onReceive` 34 → 9 行 + `dropFired` 3 + `fireNotification` 22**：
+`AlarmReceiver.onReceive` 只剩取出 extra + 分发；持久化 key 的清理（`load` 后
+`remove(key)` + `save`）进 `dropFired`；渠道建立 + Notification.Builder + PendingIntent
+（→ MainActivity `openNote` / `openTodoId`）+ `nm.notify` 进 `fireNotification`。
+判定守卫 `if (key != null && !key.isEmpty())` 翻成 `if (key == null || key.isEmpty()) return;`
+（逐字核对里唯一的改写行，语义等价）。
+
+**`MainActivity.copyIn` 30 → 13 行 + `pickDisplayName` 14 + `extFromPick` 6 + `streamTo` 3**：
+DISPLAY_NAME 查询进 `pickDisplayName`（**逐字搬出**，空 DISPLAY_NAME 保持 `""` 原语义 → 落
+`.jpg`，不能用 `displayName(uri, fallback)`——后者把空串当「用 fallback」，会丢 `.jpg` 分支）；
+扩展名推导（`.jpg` 默认 + 7 字符内 `lastIndexOf('.')`）进 `extFromPick`；65536 字节桶的
+InputStream→FileOutputStream 复制进 `streamTo`（声明 `throws Exception`，异常归调用者
+try/finally 管）。`copyIn` 调用点在 MainActivity.java:429 / 451（画面选图 / 附件页选文件）。
+
+**`ShareActivity.handle` 31 → 25 行 + `shareFileOrNothing` 5**：非图片流（`processFile`）
+与「没内容」（`ui("没有可保存的内容")`）两条分支合并进 `shareFileOrNothing`，`handle`
+主体文本 / 图片分支原样。
+
+**`hookDispatch` 33 保持不拆**：纯分发表（十五个钩子名 → 方法），按步 62 定的
+apiMux 约定路由表不算长函数。
+
+逐字核对（`git show HEAD:` 语句多重集双向，新侧按「原函数 + 拆出函数」拼起来比，
+`verb69.py` 是多行签名感知的抓取器）：
+
+| 函数 | 原有效行 | 新有效行 | 旧句缺失 | 说明 |
+|---|---|---|---|---|
+| `scan` | 34 | 37 | 0 | 新句只多签名 / 调用 / 闭合括号 |
+| `onReceive` | 34 | 40 | 1 | 缺的只是守卫改写 `if (key != null...)` → 早退 return |
+| `copyIn` | 30 | 44 | 0 | 新句只多签名 / 调用 / try-finally 结构行 |
+| `handle` | 31 | 34 | 0 | 新句只多签名 / 调用 / 闭合括号 |
+
+加 **`hook copyin`**（步骤 67 的 `hook import` 先例：`copyIn` 只能经系统文件选择器触发，
+拆链需要端到端覆盖）：dispatch 加 `"copyin"` 分支 → `hookCopyIn(arg)` →
+`copyIn(Uri.fromFile(f))` → `{"ok":true,"src","dst","size"}`；README §手工驱动补了一条。
+
+探针（物理屏）：
+
+```
+hook copyin: {"ok":true,"src":"s69final.txt","dst":"1795682999888.txt","size":18}   ← copyIn 链
+reminder fired: step69-fire                                              ← AlarmReceiver 分发（显式组件广播）
+2 条 NotificationRecord channel=reminder category=reminder defaults=ALL   ← fireNotification
+scheduled 注入 s69keep@8\ns69drop@9 → 响完只剩 s69keep@8                  ← dropFired 持久化清理（冷启动注入证明）
+enote-share: handle action=android.intent.action.SEND type=text/plain text=null   ← 空分享 → 没有可保存的内容
+```
+
+（AlarmReceiver 探测要点：广播必须显式组件 `-n dev.xduo.enote/.Reminders$AlarmReceiver` 且带
+`--user 0`，隐式广播到不了 `exported="false"` 的 receiver；`scheduled` 是换行分隔的 `<string>`，
+注 `<set>` 会 `ClassCastException`；App 启动 sync 会抹掉注入的 prefs，所以 dropFired 证明必须
+force-stop → 注入 → 冷启动广播，不能再拉起 Activity。）
+
+全套闸门（**hook copyin 加完后重跑**）：`ui_test.js` 122 全绿、`GO_TEST=1 ./build.sh` 绿、
+`./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

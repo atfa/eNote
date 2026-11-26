@@ -761,6 +761,23 @@ public class MainActivity extends Activity {
     }
 
     File copyIn(Uri uri) throws Exception {
+        String name = pickDisplayName(uri);
+        if (name == null) name = uri.getLastPathSegment();
+        String ext = extFromPick(name);
+        File out = new File(OcrHelper.inboxDir(this), System.currentTimeMillis() + ext);
+        InputStream in = getContentResolver().openInputStream(uri);
+        FileOutputStream fo = new FileOutputStream(out);
+        try {
+            streamTo(in, fo);
+        } finally {
+            fo.close();
+            in.close();
+        }
+        return out;
+    }
+
+    /** 问提供方要显示名；没查到 / 抛异常返回 null（调用方自己兑底）。 */
+    private String pickDisplayName(Uri uri) {
         String name = null;
         try {
             android.database.Cursor c = getContentResolver().query(uri,
@@ -774,21 +791,24 @@ public class MainActivity extends Activity {
             }
         } catch (Throwable ignored) {
         }
-        if (name == null) name = uri.getLastPathSegment();
+        return name;
+    }
+
+    /** 文件名里的扩展名（只认最后 6 个字符以内的 .xxx）；没有就默认 .jpg。 */
+    private static String extFromPick(String name) {
         String ext = ".jpg";
         if (name != null) {
             int dot = name.lastIndexOf('.');
             if (dot > 0 && dot > name.length() - 7) ext = name.substring(dot);
         }
-        File out = new File(OcrHelper.inboxDir(this), System.currentTimeMillis() + ext);
-        InputStream in = getContentResolver().openInputStream(uri);
-        FileOutputStream fo = new FileOutputStream(out);
+        return ext;
+    }
+
+    /** 整个输入流搬进输出流（65536 字节的桶，一次搬完）。 */
+    private static void streamTo(InputStream in, FileOutputStream fo) throws Exception {
         byte[] buf = new byte[65536];
         int n;
         while ((n = in.read(buf)) > 0) fo.write(buf, 0, n);
-        fo.close();
-        in.close();
-        return out;
     }
 
     // ---------------------------------------------------------------- headless hooks
@@ -838,6 +858,8 @@ public class MainActivity extends Activity {
             return hookClipNotify();
         } else if ("import".equals(hook)) {
             return hookImport(arg);
+        } else if ("copyin".equals(hook)) {
+            return hookCopyIn(arg);
         }
         return Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
     }
@@ -1001,6 +1023,19 @@ public class MainActivity extends Activity {
         if (!f.isFile()) return "{\"ok\":false,\"error\":\"文件不存在\"}";
         importJSON(Uri.fromFile(f));
         return "{\"ok\":true,\"path\":\"" + f.getAbsolutePath() + "\"}";
+    }
+
+    /** 验收用：走一遍 fromFile 的收集链路（copyIn + inbox）；等价于用户在文件选择器里选了个文件。 */
+    private String hookCopyIn(String arg) {
+        File f = new File(arg == null ? "" : arg);
+        if (!f.isFile()) return "{\"ok\":false,\"error\":\"文件不存在\"}";
+        try {
+            File out = copyIn(Uri.fromFile(f));
+            return "{\"ok\":true,\"src\":\"" + f.getName() + "\",\"dst\":\"" + out.getName()
+                    + "\",\"size\":" + out.length() + "}";
+        } catch (Throwable t) {
+            return "{\"ok\":false,\"error\":\"" + t + "\"}";
+        }
     }
 
     private String hookClipNotify() {

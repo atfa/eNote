@@ -216,6 +216,8 @@ su -c "am start -n dev.xduo.enote/.ShareActivity -a android.intent.action.SEND \
 su -c "am start -n dev.xduo.enote/.MainActivity --es hook selftest --es arg '{\"mode\":\"all\"}'"
 # 导入验收 hook：把一份导出 JSON 走一遍导入链路（等价于用户在文件选择器里选中它）
 su -c "am start -n dev.xduo.enote/.MainActivity --es hook import --es arg /data/data/dev.xduo.enote/files/enote/export.json"
+# 文件拷贝验收 hook：把系统文件管理器里的文件走一遍 copyIn 链路（等价于用户在文件选择器里选中它）
+su -c "am start -n dev.xduo.enote/.MainActivity --es hook copyin --es arg /data/data/dev.xduo.enote/files/enote/probe.txt"
 ```
 
 注意：`am` 的 extra 键名必须大写（`android.intent.extra.TEXT`）；读 App 数据要用
