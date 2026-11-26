@@ -4459,3 +4459,52 @@ body 和 query string。）
 验收：`ui_test.js` **122 项全绿**（闸门数未变，⑯ 换匹配式）、`gofmt -l go` 空、`go vet ./...` 干净、
 `go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+## 9.83 P14 S6：Java 侧第一个长函数拆开（Shots.scan 147，步骤 61）
+
+Go 侧到步骤 60 之后最长的是路由表 `apiMux` 57 行，其余都在 35 行以下——Go 的长函数拆完了。
+榜上第一变成 Java 的 `Shots.scan` **147 行**（全项目最长），它是截图导入的入口：
+权限 → 文件夹 → 水位 → MediaStore 查询 → 复制去重 → 交给 Go → 处理忽略表。
+
+**`scan` 147 → 33 行 + 六个函数 + 一个结果类**
+
+```java
+Set<String> want = wantFolders(c, overrideFolders);
+Long since = scanSince(c, rangeDays, last);
+if (since == null) return 0;                       // 首次启用：只记水位
+List<Hit> hits = queryHits(cr, want, since);
+sortHits(hits);
+Scan copy = copyHits(c, cr, hits, last);
+int staged = applyShotAddResp(resp, copy);
+```
+
+* `wantFolders`：override 优先（测试钩子用），否则用设置里的配置。
+* `scanSince`：返回 `Long`，**null = 首次启用**（只把「现在」记成水位、不回捞历史），
+  调用点 `if (since == null) return 0;`。
+* `queryHits`：一个文件夹一次 MediaStore 查询，含那条「不能在 sortOrder 里拼 LIMIT」的注释。
+* `sortHits`：多文件夹合并后按时间升序（合并笔记里附件顺序 = 时间顺序）。
+* `copyHits` + `Scan`：复制进暂存区、按 sha1 去重，返回 `{seen, added, shaByPath, copied, maxAdded}`
+  ——原来五个局部变量要同时穿过复制循环和响应处理两段，现在归一个结果类。
+* `applyShotAddResp`：Go 侧忽略表命中的图删副本 + 记进 seen。
+
+改写清单（逐字核对表）：五个局部变量加 `s.` / `copy.` 前缀；`since = …` → `return …`；
+`} else {` 平铺成顺序语句 + `return null`；`ContentResolver cr = c.getContentResolver()` 提成
+`queryHits` 的参数；`applyShotAddResp` 去掉没用到的 `Context` 参数。
+逐字核对（`git show HEAD:src/dev/xduo/enote/Shots.java` 语句多重集双向）：原 146 有效行 → 新 155
+（`Scan` 类 7 行另计），原句全部找到，新代码里没有原句对应的只有 14 行调用点与 return。
+
+探针（hook `shotscan` + 物理屏）：
+
+```
+shots: scan found nothing since 1795657696 → hook shotscan: {"ok":true,"added":0,"granted":true,"watermark":1795657996}
+造两张图后：shots: scanned 2 candidate(s), copied 2, staged 2, go resp={"added":2,"dupes":[],"ok":true,"skipped":[]}
+            → hook shotscan: {"ok":true,"added":2,"granted":true,"watermark":1795658177}
+再扫一次：  shots: duplicate sha1 c96bf8f6 (s61-1.png) / duplicate sha1 2c15eb8f (s61-2.png) → added=0
+GET /api/shots/list：暂存=2 名称=s61-1.png,s61-2.png → POST /api/shots/remove：removed=2 → 暂存=0 卡片=8
+```
+
+（三条分支各覆盖一次：没新图 = `queryHits` 空返回、有新图 = `copyHits` + `applyShotAddResp`、
+重复 = `copyHits` 的 sha1 去重。测试套件的截图块本来就覆盖同一条链路：造图 → 扫描 added=2 →
+再扫 added=0 → 合并导入。）
+
+验收：`ui_test.js` **122 项全绿**（闸门数未变）、`GO_TEST=1 ./build.sh` 绿（javac 全量重编）、
+`./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

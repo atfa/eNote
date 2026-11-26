@@ -1374,6 +1374,28 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Java 侧第一个长函数拆开：Shots.scan 147 行（P14 S6 步骤 61）
+
+* Go 侧到步骤 60 之后最长的是路由表 `apiMux` 57 行，其余都在 35 行以下——Go 的长函数拆完了。
+  榜上第一变成 Java 的 `Shots.scan` **147 行**（全项目最长）：权限 → 文件夹 → 水位 → MediaStore 查询 →
+  复制去重 → 交给 Go → 处理忽略表，全挤在一个函数里。
+* **`scan` 147 → 33 行 + 六个函数 + 一个结果类**：`wantFolders`（override 优先，测试钩子用）、
+  `scanSince`（返回 `Long`，**null = 首次启用**：只把「现在」记成水位、不回捞历史）、
+  `queryHits`（一个文件夹一次 MediaStore 查询，含「不能在 sortOrder 里拼 LIMIT」那条注释）、
+  `sortHits`（合并后按时间升序，合并笔记里附件顺序 = 时间顺序）、`copyHits` + `Scan`（复制进暂存区、
+  按 sha1 去重，返回 `{seen, added, shaByPath, copied, maxAdded}`——原来五个局部变量要同时穿过复制循环
+  和响应处理两段）、`applyShotAddResp`（Go 侧忽略表命中的图删副本 + 记进 seen）。
+* 改写清单：五个局部变量加 `s.` / `copy.` 前缀；`since = …` → `return …`；`} else {` 平铺成顺序语句 +
+  `return null`；`ContentResolver cr = …` 提成 `queryHits` 的参数；`applyShotAddResp` 去掉没用到的
+  `Context` 参数。逐字核对（`git show HEAD:src/dev/xduo/enote/Shots.java` 语句多重集双向）：原 146 有效行
+  → 新 155（`Scan` 类 7 行另计），原句全部找到，新代码里没有原句对应的只有 14 行调用点与 return。
+* 探针（hook `shotscan` + 物理屏）：没新图 → `scan found nothing since …` `added=0`；造两张图 →
+  `scanned 2 candidate(s), copied 2, staged 2, go resp={"added":2,"dupes":[],"ok":true,"skipped":[]}`；
+  再扫一次 → `duplicate sha1 c96bf8f6 (s61-1.png)` / `duplicate sha1 2c15eb8f (s61-2.png)` `added=0`；
+  `/api/shots/list` 暂存=2 → `shots/remove` removed=2 → 暂存=0。三条分支各覆盖一次。
+* 验收：`ui_test.js` **122 项全绿**（闸门数未变）、`GO_TEST=1 ./build.sh` 绿（javac 全量重编）、
+  `./install.sh` Success、`./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Go 侧第四批长函数拆开：handleSettings / matchNote / appInit（P14 S6 步骤 60）
 
 * **`handleSettings` 52 → 17 行**：五十行里四十九行是「九行 patch 覆盖 + 四行空值兜底」。现在 handler

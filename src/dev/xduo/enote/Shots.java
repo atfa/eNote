@@ -323,7 +323,6 @@ public final class Shots {
         Uri uri;
         long size;
     }
-
     /**
      * 扫一次。返回新增条数；-1 = 没权限；0 = 没新增。
      * foldersJson 非空时用它覆盖配置（测试用：{"folders":["Pictures/Screenshots"]}）。
@@ -334,6 +333,38 @@ public final class Shots {
             Log.i(TAG, "shots: scan skipped (no media permission)");
             return -1;
         }
+        Set<String> want = wantFolders(c, overrideFolders);
+        if (want.isEmpty()) {
+            Log.i(TAG, "shots: scan skipped (no folders configured)");
+            return 0;
+        }
+        long last = watermark(c);
+        Long since = scanSince(c, rangeDays, last);
+        if (since == null) return 0;
+        ContentResolver cr = c.getContentResolver();
+        List<Hit> hits = queryHits(cr, want, since);
+        if (hits.isEmpty()) {
+            Log.i(TAG, "shots: scan found nothing since " + since);
+            return 0;
+        }
+        sortHits(hits);
+        Scan copy = copyHits(c, cr, hits, last);
+        if (copy.maxAdded > 0) setWatermark(c, copy.maxAdded);
+        if (copy.copied == 0) {
+            saveSeen(c, copy.seen);
+            Log.i(TAG, "shots: " + hits.size() + " candidate(s), nothing new after dedupe");
+            return 0;
+        }
+        String resp = Bridge.shotAdd(copy.added.toString());
+        int staged = applyShotAddResp(resp, copy);
+        saveSeen(c, copy.seen);
+        Log.i(TAG, "shots: scanned " + hits.size() + " candidate(s), copied " + copy.copied
+                + ", staged " + staged + ", go resp=" + resp);
+        return staged;
+    }
+
+    /** 要扫哪些文件夹：override 优先（测试钩子用），否则用设置里的配置。 */
+    static Set<String> wantFolders(Context c, JSONArray overrideFolders) {
         Set<String> want = new LinkedHashSet<String>();
         if (overrideFolders != null) {
             for (int i = 0; i < overrideFolders.length(); i++) {
@@ -343,27 +374,27 @@ public final class Shots {
         } else {
             want.addAll(folders(c));
         }
-        if (want.isEmpty()) {
-            Log.i(TAG, "shots: scan skipped (no folders configured)");
-            return 0;
-        }
+        return want;
+    }
 
+    /** 从哪个时间点开始捞。返回 null = 首次启用：只把"现在"记成水位，不回捞历史。 */
+    static Long scanSince(Context c, int rangeDays, long last) {
         long now = System.currentTimeMillis() / 1000L;
-        long last = watermark(c);
-        long since;
         if (rangeDays > 0) {
-            since = now - (long) rangeDays * 86400L;
-        } else if (last > 0) {
-            since = Math.max(0L, last - OVERLAP_SEC);
-        } else {
-            // 首次启用：只把"现在"记成水位，不回捞历史
-            setWatermark(c, now);
-            Log.i(TAG, "shots: first run, watermark set to now (no backfill)");
-            return 0;
+            return now - (long) rangeDays * 86400L;
         }
+        if (last > 0) {
+            return Math.max(0L, last - OVERLAP_SEC);
+        }
+        // 首次启用：只把"现在"记成水位，不回捞历史
+        setWatermark(c, now);
+        Log.i(TAG, "shots: first run, watermark set to now (no backfill)");
+        return null;
+    }
 
+    /** 每个文件夹一次 MediaStore 查询；不能在 sortOrder 里拼 LIMIT，自己数到上限就停。 */
+    static List<Hit> queryHits(ContentResolver cr, Set<String> want, long since) {
         List<Hit> hits = new ArrayList<Hit>();
-        ContentResolver cr = c.getContentResolver();
         boolean newApi = Build.VERSION.SDK_INT >= 29;
         for (String folder : want) {
             Cursor cur = null;
@@ -403,27 +434,37 @@ public final class Shots {
                 if (cur != null) try { cur.close(); } catch (Throwable ignored) {}
             }
         }
-        if (hits.isEmpty()) {
-            Log.i(TAG, "shots: scan found nothing since " + since);
-            return 0;
-        }
-        // 多文件夹合并后按时间升序，最早的排前面（合并笔记里附件顺序 = 时间顺序）
+        return hits;
+    }
+
+    /** 多文件夹合并后按时间升序，最早的排前面（合并笔记里附件顺序 = 时间顺序）。 */
+    static void sortHits(List<Hit> hits) {
         Collections.sort(hits, new Comparator<Hit>() {
             public int compare(Hit a, Hit b) {
                 return a.dateAdded == b.dateAdded ? 0 : (a.dateAdded < b.dateAdded ? -1 : 1);
             }
         });
+    }
 
-        Set<String> seen = loadSeen(c);
+    /** 一次扫描复制下来的东西：交给 Go 的清单、seen 集合、sha1 索引、复制条数、最新时间。 */
+    static final class Scan {
+        Set<String> seen;
         JSONArray added = new JSONArray();
+        java.util.HashMap<String, String> shaByPath = new java.util.HashMap<String, String>();
+        int copied;
+        long maxAdded;
+    }
+
+    /** 逐个复制进暂存区，按 sha1 去重；复制成功的才交给 Go。 */
+    static Scan copyHits(Context c, ContentResolver cr, List<Hit> hits, long last) {
+        Scan s = new Scan();
+        s.seen = loadSeen(c);
         File inbox = new File(new File(c.getFilesDir(), "enote"), "inbox");
         if (!inbox.exists()) inbox.mkdirs();
-        long maxAdded = last;
-        int copied = 0;
-        java.util.HashMap<String, String> shaByPath = new java.util.HashMap<String, String>();
+        s.maxAdded = last;
         for (Hit h : hits) {
-            if (copied >= MAX_PER_SCAN) break;
-            if (h.dateAdded > maxAdded) maxAdded = h.dateAdded;
+            if (s.copied >= MAX_PER_SCAN) break;
+            if (h.dateAdded > s.maxAdded) s.maxAdded = h.dateAdded;
             String ext = extOf(h.name, h.mime);
             File dst = new File(inbox, "shot-" + h.dateAdded + "-tmp" + ext);
             String sha1 = copyFrom(cr, h.uri, dst);
@@ -431,7 +472,7 @@ public final class Shots {
                 Log.w(TAG, "shots: copy failed " + h.name);
                 continue;
             }
-            if (seen.contains(sha1)) {
+            if (s.seen.contains(sha1)) {
                 dst.delete();
                 Log.i(TAG, "shots: duplicate sha1 " + sha1.substring(0, 8) + " (" + h.name + ")");
                 continue;
@@ -443,9 +484,9 @@ public final class Shots {
                 dst.delete();
                 continue;
             }
-            seen.add(sha1);
-            shaByPath.put(finalFile.getAbsolutePath(), sha1);
-            copied++;
+            s.seen.add(sha1);
+            s.shaByPath.put(finalFile.getAbsolutePath(), sha1);
+            s.copied++;
             try {
                 JSONObject o = new JSONObject();
                 o.put("path", finalFile.getAbsolutePath());
@@ -453,27 +494,24 @@ public final class Shots {
                 o.put("mime", h.mime == null ? "" : h.mime);
                 o.put("size", finalFile.length());
                 o.put("dateAdded", h.dateAdded);
-                added.put(o);
+                s.added.put(o);
             } catch (Throwable ignored) {}
         }
-        if (maxAdded > 0) setWatermark(c, maxAdded);
-        if (copied == 0) {
-            saveSeen(c, seen);
-            Log.i(TAG, "shots: " + hits.size() + " candidate(s), nothing new after dedupe");
-            return 0;
-        }
-        String resp = Bridge.shotAdd(added.toString());
-        // Go 侧忽略表命中的图：删掉刚复制的副本 + 记进 seen，否则每次扫描都白复制一遍
-        int staged = copied;
+        return s;
+    }
+
+    /** Go 侧忽略表命中的图：删掉刚复制的副本 + 记进 seen，否则每次扫描都白复制一遍。 */
+    static int applyShotAddResp(String resp, Scan s) {
+        int staged = s.copied;
         try {
             JSONObject o = new JSONObject(resp == null ? "{}" : resp);
-            staged = o.optInt("added", copied);
+            staged = o.optInt("added", s.copied);
             JSONArray sk = o.optJSONArray("skipped");
             if (sk != null) {
                 for (int i = 0; i < sk.length(); i++) {
                     String path = sk.optString(i);
-                    String sha = shaByPath.get(path);
-                    if (sha != null) seen.add(sha);
+                    String sha = s.shaByPath.get(path);
+                    if (sha != null) s.seen.add(sha);
                     File f = new File(path);
                     if (f.exists() && f.delete()) Log.i(TAG, "shots: 忽略表命中，删副本 " + f.getName());
                 }
@@ -481,9 +519,6 @@ public final class Shots {
         } catch (Throwable t) {
             Log.w(TAG, "shots: parse shotAdd resp failed " + t);
         }
-        saveSeen(c, seen);
-        Log.i(TAG, "shots: scanned " + hits.size() + " candidate(s), copied " + copied
-                + ", staged " + staged + ", go resp=" + resp);
         return staged;
     }
 
