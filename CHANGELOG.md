@@ -1374,6 +1374,32 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Java 侧第二批长函数拆开：runHook 125 / Reminders.sync 74（P14 S6 步骤 62）
+
+* **`MainActivity.runHook` 125 → 38 行 + 十个 `hook*` 方法**：十四个验收钩子原来平铺在一条 `if/else` 链里，
+  每个钩子自己声明 `out`、自己拼返回值，最长的 `clipset` 一条就 30 行。现在链上只剩「按名字调对应方法」，
+  钩子体逐字搬进 `hookExact` / `hookCalendar` / `hookAlarm` / `hookKeepAlive` / `hookClipHtml` /
+  `hookClipSet` / `hookJsEval`（probe 脚本走的就是这条）/ `hookShotScan` / `hookShotFolders` /
+  `hookClipNotify`；唯一改写是钩子体里的 `out = …` 改成 `return …`。`status` / `enqueue` / `shotimport`
+  三条本来就是一行，留在链上。
+* **`Reminders.sync` 74 → 14 行 + 四个方法**：`migrateScheme`（换版清旧键，否则升级后同一条提醒响两遍）、
+  `parseWants`（只保留还没到点的）、`cancelGone`（完成 / 删除 / 改了时间 → 旧的取消）、
+  `arm`（一条一个方法，`continue` → `return`）。
+* 逐字核对（`git show HEAD:` 语句多重集双向）：`runHook` 原 131 有效行 → 新 175，原句全部找到，新代码里
+  没有原句对应的只有 10 个调用点、10 个方法签名 + javadoc、1 段说明注释；`sync` 原 62 → 93，原句只少
+  `if (scheduled.contains(key)) continue;`（→ `return`），新句只多四行 javadoc。
+* **顺手修掉测试套件的一处假红**：`弹层关了但 Vue 实例还在（mounted=1）：unmountSheet 没生效` 是竞态——
+  `#sheet.on` 在离场动画开始那一刻就摘掉，`unmountSheet` 是动画结束（`afterLeave`）才做的，轮询一看到
+  class 没了就立刻读 `mounted`，会拿到动画还没走完的 1。两处（原样存为笔记 / 一键解析）改成再轮询等卸载
+  （最多 3s）才断言，契约不变，只是不再抢跑。
+* 探针（物理屏 + hook）：`exact` `{"exact":true,"notify":true,"sdk":36}`、`keepalive` `pending=2` +
+  `syncReminders: want=2 pending=2 exact=true`、`clipset` `written=true`、`cliphtml` `len=31`、
+  `clipnotify` `clips=2`、`alarm` / `calendar` ok、`shotfolders` 状态、`shotimport` 空 shots →
+  `{"ok":false,"error":"没有选择截图"}`；删掉那条带两个未来待办的笔记后 `syncReminders: want=0 pending=0`
+  （`cancelGone` 把两条闹钟都取消了）。
+* 验收：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
+  `./test.sh --vd` **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Java 侧第一个长函数拆开：Shots.scan 147 行（P14 S6 步骤 61）
 
 * Go 侧到步骤 60 之后最长的是路由表 `apiMux` 57 行，其余都在 35 行以下——Go 的长函数拆完了。

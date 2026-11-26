@@ -1994,7 +1994,10 @@ js = r'''(async function(){
     L("tToast="+tToast); L("toast="+toastTxt());
     // 目标状态：弹层关掉且 Vue 实例卸载（clipParse 成功才 closeSheet）。
     var tClose=await poll(function(){ return !document.querySelector("#sheet.on") },30,200);
-    L("tClose="+tClose); L("mounted="+(E.vue.sheets.clip?1:0));
+    // #sheet.on 在离场动画开始那一刻就摘掉，unmountSheet 是动画结束（afterLeave）才做的。
+    // 立刻读 mounted 会拿到动画还没走完的 1（步骤 62 验收踩到一次，假红），所以轮询等卸载。
+    var tUn=await poll(function(){ return !E.vue.sheets.clip },15,200);
+    L("tClose="+tClose); L("tUn="+tUn); L("mounted="+(E.vue.sheets.clip?1:0));
     // 目标状态：服务端真的多出笔记（不是前端乐观更新）。
     var st1=null;
     var tNotes=await poll(async function(){ st1=await api("/api/state");
@@ -2099,7 +2102,10 @@ js = r'''(async function(){
     var tOk=await poll(function(){ return toastTxt().indexOf("已入队解析")>=0 },40,250);
     L("tOk="+tOk); L("toastOk="+toastTxt());
     var tClose=await poll(function(){ return !document.querySelector("#sheet.on") },30,200);
-    L("tClose="+tClose); L("mounted="+(E.vue.sheets.clip?1:0));
+    // #sheet.on 在离场动画开始那一刻就摘掉，unmountSheet 是动画结束（afterLeave）才做的。
+    // 立刻读 mounted 会拿到动画还没走完的 1（步骤 62 验收踩到一次，假红），所以轮询等卸载。
+    var tUn=await poll(function(){ return !E.vue.sheets.clip },15,200);
+    L("tClose="+tClose); L("tUn="+tUn); L("mounted="+(E.vue.sheets.clip?1:0));
     var st1=null;
     var tNotes=await poll(async function(){ st1=await api("/api/state");
       return ((st1.notes||[]).filter(function(n){ return had0.indexOf(n.id)<0 })).length>=2 },60,250);

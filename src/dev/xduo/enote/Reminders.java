@@ -103,85 +103,106 @@ public final class Reminders {
         ensureChannel(c);
         AlarmManager am = c.getSystemService(AlarmManager.class);
         if (am == null) return 0;
-        SharedPreferences sp = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (sp.getInt(KEY_SCHEME, 0) != SCHEME) {
-            // drop alarms armed by the previous scheme so they cannot fire as duplicates
-            for (String old : load(c)) {
-                try { am.cancel(pending(c, old, null, null, null, null)); } catch (Throwable ignored) {}
-            }
-            save(c, new LinkedHashSet<String>());
-            sp.edit().putInt(KEY_SCHEME, SCHEME).apply();
-            Log.i(TAG, "reminder scheme -> " + SCHEME);
-        }
-        List<JSONObject> want = new ArrayList<>();
-        try {
-            JSONArray a = new JSONArray(json == null || json.isEmpty() ? "[]" : json);
-            for (int i = 0; i < a.length(); i++) {
-                JSONObject o = a.optJSONObject(i);
-                if (o == null) continue;
-                String id = o.optString("id");
-                long due = o.optLong("dueMs");
-                // Only future alarms are useful; overdue ones would fire immediately.
-                if (id.isEmpty() || due <= System.currentTimeMillis() + 5000) continue;
-                want.add(o);
-            }
-        } catch (Throwable t) {
-            Log.w(TAG, "syncReminders parse: " + t);
-        }
+        migrateScheme(c, am);
+        List<JSONObject> want = parseWants(json);
         Set<String> scheduled = load(c);
-        // Cancel what disappeared (完成/删除/改了时间 → 由 want 重新覆盖)。
-        // key 里带上 dueMs，时间一改就是新 key，旧的自动取消。
-        Set<String> wantKeys = new LinkedHashSet<>();
-        for (JSONObject o : want) wantKeys.add(keyOf(o));
-        for (String key : new ArrayList<>(scheduled)) {
-            if (wantKeys.contains(key)) continue;
-            am.cancel(pending(c, key, null, null, null, null));
-            scheduled.remove(key);
-        }
+        cancelGone(c, am, scheduled, want);
         boolean exact = canExact(am);
-        for (JSONObject o : want) {
-            String key = keyOf(o);
-            if (scheduled.contains(key)) continue;
-            String noteId = o.optString("noteId");
-            String todoId = o.optString("todoId");
-            if (noteId.isEmpty() || todoId.isEmpty()) {
-                // older payload: "<noteId>|<todoId>"
-                String id = o.optString("id");
-                int bar = id.indexOf('|');
-                if (bar > 0) {
-                    noteId = id.substring(0, bar);
-                    todoId = id.substring(bar + 1);
-                }
-            }
-            PendingIntent pi = pending(c, key, o.optString("text"), o.optString("note"),
-                    noteId, todoId);
-            long due = o.optLong("dueMs");
-            try {
-                // setAlarmClock 是“必须响”的登记方式（系统时钟 app 自己的闹钟就是这么排的）：
-                // Doze / 应用待机 / 厂商冻结都不会静默丢弃它，到点还会唤醒进程。
-                // setExactAndAllowWhileIdle 在厂商冻结策略下会被无声吞掉（实测）。
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    am.setAlarmClock(new AlarmManager.AlarmClockInfo(due, showIntent(c, noteId, todoId)), pi);
-                } else if (exact) {
-                    am.setExact(AlarmManager.RTC_WAKEUP, due, pi);
-                } else {
-                    am.set(AlarmManager.RTC_WAKEUP, due, pi);
-                }
-                scheduled.add(key);
-            } catch (SecurityException se) {
-                Log.w(TAG, "setAlarmClock denied, retry idle-safe: " + se);
-                try {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, pi);
-                    scheduled.add(key);
-                } catch (Throwable t2) {
-                    Log.w(TAG, "alarm not scheduled: " + t2);
-                }
-            }
-        }
+        for (JSONObject o : want) arm(c, am, o, exact, scheduled);
         save(c, scheduled);
         int n = scheduled.size();
         Log.i(TAG, "syncReminders: want=" + want.size() + " pending=" + n + " exact=" + exact);
         return n;
+    }
+
+    /** 闹钟登记方式换版：旧方式排的键要清掉，否则升级后同一条提醒会响两遍。 */
+    private static void migrateScheme(Context c, AlarmManager am) {
+        SharedPreferences sp = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            if (sp.getInt(KEY_SCHEME, 0) != SCHEME) {
+                // drop alarms armed by the previous scheme so they cannot fire as duplicates
+                for (String old : load(c)) {
+                    try { am.cancel(pending(c, old, null, null, null, null)); } catch (Throwable ignored) {}
+                }
+                save(c, new LinkedHashSet<String>());
+                sp.edit().putInt(KEY_SCHEME, SCHEME).apply();
+                Log.i(TAG, "reminder scheme -> " + SCHEME);
+            }
+    }
+
+    /** 只保留还没到点的提醒（过期的排上去会立刻响）。 */
+    private static List<JSONObject> parseWants(String json) {
+                List<JSONObject> want = new ArrayList<>();
+                try {
+                    JSONArray a = new JSONArray(json == null || json.isEmpty() ? "[]" : json);
+                    for (int i = 0; i < a.length(); i++) {
+                        JSONObject o = a.optJSONObject(i);
+                        if (o == null) continue;
+                        String id = o.optString("id");
+                        long due = o.optLong("dueMs");
+                        // Only future alarms are useful; overdue ones would fire immediately.
+                        if (id.isEmpty() || due <= System.currentTimeMillis() + 5000) continue;
+                        want.add(o);
+                    }
+                } catch (Throwable t) {
+                    Log.w(TAG, "syncReminders parse: " + t);
+                }
+        return want;
+    }
+
+    /** 完成 / 删除 / 改了时间 → 由 want 重新覆盖，旧的取消。 */
+    private static void cancelGone(Context c, AlarmManager am, Set<String> scheduled,
+                                    List<JSONObject> want) {
+                // Cancel what disappeared (完成/删除/改了时间 → 由 want 重新覆盖)。
+                // key 里带上 dueMs，时间一改就是新 key，旧的自动取消。
+                Set<String> wantKeys = new LinkedHashSet<>();
+                for (JSONObject o : want) wantKeys.add(keyOf(o));
+                for (String key : new ArrayList<>(scheduled)) {
+                    if (wantKeys.contains(key)) continue;
+                    am.cancel(pending(c, key, null, null, null, null));
+                    scheduled.remove(key);
+                }
+    }
+
+    /** 排一条闹钟；setAlarmClock 被厂商策略拒了就退回 setAndAllowWhileIdle。 */
+    private static void arm(Context c, AlarmManager am, JSONObject o, boolean exact,
+                            Set<String> scheduled) {
+                String key = keyOf(o);
+                if (scheduled.contains(key)) return;
+                String noteId = o.optString("noteId");
+                String todoId = o.optString("todoId");
+                if (noteId.isEmpty() || todoId.isEmpty()) {
+                    // older payload: "<noteId>|<todoId>"
+                    String id = o.optString("id");
+                    int bar = id.indexOf('|');
+                    if (bar > 0) {
+                        noteId = id.substring(0, bar);
+                        todoId = id.substring(bar + 1);
+                    }
+                }
+                PendingIntent pi = pending(c, key, o.optString("text"), o.optString("note"),
+                        noteId, todoId);
+                long due = o.optLong("dueMs");
+                try {
+                    // setAlarmClock 是“必须响”的登记方式（系统时钟 app 自己的闹钟就是这么排的）：
+                    // Doze / 应用待机 / 厂商冻结都不会静默丢弃它，到点还会唤醒进程。
+                    // setExactAndAllowWhileIdle 在厂商冻结策略下会被无声吞掉（实测）。
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        am.setAlarmClock(new AlarmManager.AlarmClockInfo(due, showIntent(c, noteId, todoId)), pi);
+                    } else if (exact) {
+                        am.setExact(AlarmManager.RTC_WAKEUP, due, pi);
+                    } else {
+                        am.set(AlarmManager.RTC_WAKEUP, due, pi);
+                    }
+                    scheduled.add(key);
+                } catch (SecurityException se) {
+                    Log.w(TAG, "setAlarmClock denied, retry idle-safe: " + se);
+                    try {
+                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, pi);
+                        scheduled.add(key);
+                    } catch (Throwable t2) {
+                        Log.w(TAG, "alarm not scheduled: " + t2);
+                    }
+                }
     }
 
     private static String keyOf(JSONObject o) {

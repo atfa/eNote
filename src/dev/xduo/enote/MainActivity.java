@@ -754,140 +754,193 @@ public class MainActivity extends Activity {
                 } else if ("enqueue".equals(hook)) {
                     out = Bridge.nativeEnqueue(arg == null ? "{}" : arg);
                 } else if ("exact".equals(hook)) {
-                    out = "{\"exact\":" + Reminders.exactGranted(MainActivity.this)
-                        + ",\"notify\":" + notifyGranted(MainActivity.this)
-                        + ",\"sdk\":" + android.os.Build.VERSION.SDK_INT + "}";
+                    out = hookExact();
                 } else if ("calendar".equals(hook)) {
-                    final String t = arg == null ? "懒得记 hook 测试" : arg;
-                    runOnUiThread(new Runnable() {
-                        public void run() { addToCalendar(t, System.currentTimeMillis() + 3600000L); }
-                    });
-                    out = "{\"ok\":true,\"what\":\"calendar\"}";
+                    out = hookCalendar(arg);
                 } else if ("alarm".equals(hook)) {
-                    final String t = arg == null ? "懒得记 hook 测试" : arg;
-                    runOnUiThread(new Runnable() {
-                        public void run() { setAlarm(System.currentTimeMillis() + 3600000L, t); }
-                    });
-                    out = "{\"ok\":true,\"what\":\"alarm\"}";
+                    out = hookAlarm(arg);
                 } else if ("keepalive".equals(hook)) {
-                    // headless switch for the acceptance test: on|off, then report the state
-                    boolean on = !"off".equals(arg);
-                    KeepAlive.setEnabled(MainActivity.this, on);
-                    out = "{\"keepAlive\":" + KeepAlive.enabled(MainActivity.this)
-                        + ",\"batteryIgnoring\":" + KeepAlive.ignoringBattery(MainActivity.this)
-                        + ",\"pending\":" + Reminders.sync(MainActivity.this, Bridge.remindersFromStore())
-                        + "}";
+                    out = hookKeepAlive(arg);
                 } else if ("cliphtml".equals(hook)) {
-                    // 浏览器复制的真实形状：ClipData.newHtmlText("data", 文字, html)，
-                    // Chrome / vivo 浏览器都是这个，label 是 "data"，第一项带 text + html。
-                    final String t = arg == null ? "浏览器复制测试 https://example.com/a?b=1\n第二行" : arg;
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                            if (cm != null) {
-                                cm.setPrimaryClip(ClipData.newHtmlText("data", t,
-                                        "<html><body>" + t + "</body></html>"));
-                            }
-                            clipTries = 0;
-                            clipWaitingFocus = true;
-                            clipWaitStart = SystemClock.uptimeMillis();
-                            drainClipboard();
-                        }
-                    });
-                    out = "{\"ok\":true,\"len\":" + t.length() + "}";
+                    out = hookClipHtml(arg);
                 } else if ("clipset".equals(hook)) {
-                    // 模拟「在别的 app 里复制了一段文字」：写剪贴板，接下来的前台读走哪条路径跟真实场景一致
-                    final String t = arg == null ? "懒得记 剪贴板测试" : arg;
-                    final boolean[] written = {false};
-                    final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                            if (cm == null) { note("clipset 拿不到 ClipboardManager"); return; }
-                            try {
-                                cm.setPrimaryClip(ClipData.newPlainText("hook", t));
-                            } catch (Throwable e) {
-                                note("clipset setPrimaryClip 抛异常: " + e);
-                                return;
-                            }
-                            // 写完立刻回读：写不进去是系统不让写（无焦点的窗口连写都被拒），
-                            // 不是 app 的 bug，测试要能分辨这两件事
-                            ClipData back = cm.getPrimaryClip();
-                            written[0] = back != null && back.getItemCount() > 0;
-                            note("clipset 写完回读：" + (written[0]
-                                    ? "ok focus=" + (web != null && web.hasWindowFocus())
-                                    : "null（写入被系统忽略）focus=" + (web != null && web.hasWindowFocus())));
-                            clipTries = 0;
-                            clipWaitingFocus = true;
-                            clipWaitStart = SystemClock.uptimeMillis();
-                            drainClipboard();
-                            done.countDown();
-                        }
-                    });
-                    try { done.await(3, java.util.concurrent.TimeUnit.SECONDS); } catch (Throwable ignored) {}
-                    out = "{\"ok\":true,\"len\":" + t.length() + ",\"written\":" + written[0] + "}";
+                    out = hookClipSet(arg);
                 } else if ("jseval".equals(hook)) {
-                    // 验收专用：{"js":"表达式"} 直接在页面里跑，返回值用 console.log 打到 testlog.txt。
-                    // 虚拟显示上的 input tap 很不稳，脚本化的 UI 断言比截图点按可靠得多。
-                    // 只在私有目录里有 .devmode 时可用：否则任何 app 都能发 intent 借 WebView 读笔记。
-                    java.io.File dev = new java.io.File(getFilesDir(), "enote/.devmode");
-                    if (!dev.exists()) {
-                        out = "{\"ok\":false,\"error\":\"jseval disabled: no .devmode\"}";
-                    } else {
-                        String js = "";
-                        try {
-                            org.json.JSONObject o = new org.json.JSONObject(arg == null ? "{}" : arg);
-                            js = o.optString("js", "");
-                        } catch (Throwable ignored) {}
-                        if (js.isEmpty()) {
-                            out = "{\"ok\":false,\"error\":\"empty js\"}";
-                        } else {
-                            final String code = js;
-                            runJs(code);
-                            out = "{\"ok\":true,\"queued\":" + code.length() + "}";
-                        }
-                    }
+                    out = hookJsEval(arg);
                 } else if ("shotscan".equals(hook)) {
-                    // 验收用：{"force":true,"folders":["Pictures/Screenshots"],"rangeDays":1}
-                    boolean force = false;
-                    int rangeDays = 0;
-                    org.json.JSONArray fo = null;
-                    try {
-                        org.json.JSONObject o = new org.json.JSONObject(arg == null ? "{}" : arg);
-                        force = o.optBoolean("force", false);
-                        rangeDays = o.optInt("rangeDays", 0);
-                        if (o.has("folders")) fo = o.optJSONArray("folders");
-                    } catch (Throwable ignored) {}
-                    int n = Shots.scan(MainActivity.this, force, fo, rangeDays);
-                    out = "{\"ok\":" + (n >= 0) + ",\"added\":" + n
-                        + ",\"granted\":" + Shots.mediaGranted(MainActivity.this)
-                        + ",\"watermark\":" + Shots.watermark(MainActivity.this) + "}";
+                    out = hookShotScan(arg);
                 } else if ("shotfolders".equals(hook)) {
-                    // 验收用：{"folders":["Pictures/Screenshots"]}，不传就只打印状态
-                    try {
-                        org.json.JSONObject o = new org.json.JSONObject(arg == null ? "{}" : arg);
-                        if (o.has("folders")) {
-                            org.json.JSONArray a = o.optJSONArray("folders");
-                            java.util.Set<String> want = new java.util.LinkedHashSet<String>();
-                            for (int i = 0; i < a.length(); i++) want.add(a.optString(i));
-                            Shots.setFolders(MainActivity.this, want);
-                        }
-                        if (o.has("enabled")) Shots.setEnabled(MainActivity.this, o.optBoolean("enabled"));
-                    } catch (Throwable ignored) {}
-                    out = Shots.stateJson(MainActivity.this);
+                    out = hookShotFolders(arg);
                 } else if ("shotimport".equals(hook)) {
                     // 验收用：{"mode":"merge","raw":false,"shots":[{path,name,mime}]}
                     out = Shots.importShots(MainActivity.this, arg == null ? "{}" : arg);
                 } else if ("clipnotify".equals(hook)) {
-                    // 验收用：直接发一条剪贴板通知（这台 ROM 后台不投递监听，靠这条测通知本身）
-                    KeepAlive.notifyClip(MainActivity.this, Bridge.clipCount());
-                    out = "{\"ok\":true,\"clips\":" + Bridge.clipCount() + "}";
+                    out = hookClipNotify();
                 } else {
                     out = Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
                 }
                 note("hook " + hook + ": " + out);
             }
         }).start();
+    }
+
+    /* 步骤 62：runHook 原来 125 行，十四个验收钩子平铺在一条 if/else 链里。
+       现在链上只剩「按名字调对应方法」，钩子体逐字搬进 hook* 方法
+       （唯一改写：out = … 改成 return …，链上的 out 接住它）。 */
+    /** 验收用：精确闹钟 / 通知权限现状。 */
+    private String hookExact() {
+        return "{\"exact\":" + Reminders.exactGranted(MainActivity.this)
+            + ",\"notify\":" + notifyGranted(MainActivity.this)
+            + ",\"sdk\":" + android.os.Build.VERSION.SDK_INT + "}";
+    }
+
+    /** 验收用：往日历里加一条一小时后的事件（要日历写权限，弹框由用户点）。 */
+    private String hookCalendar(String arg) {
+        final String t = arg == null ? "懒得记 hook 测试" : arg;
+        runOnUiThread(new Runnable() {
+            public void run() { addToCalendar(t, System.currentTimeMillis() + 3600000L); }
+        });
+        return "{\"ok\":true,\"what\":\"calendar\"}";
+    }
+
+    /** 验收用：排一个一小时后的闹钟。 */
+    private String hookAlarm(String arg) {
+        final String t = arg == null ? "懒得记 hook 测试" : arg;
+        runOnUiThread(new Runnable() {
+            public void run() { setAlarm(System.currentTimeMillis() + 3600000L, t); }
+        });
+        return "{\"ok\":true,\"what\":\"alarm\"}";
+    }
+
+    /** 验收用：无界面开关保活，然后回报状态（on|off）。 */
+    private String hookKeepAlive(String arg) {
+        // headless switch for the acceptance test: on|off, then report the state
+        boolean on = !"off".equals(arg);
+        KeepAlive.setEnabled(MainActivity.this, on);
+        return "{\"keepAlive\":" + KeepAlive.enabled(MainActivity.this)
+            + ",\"batteryIgnoring\":" + KeepAlive.ignoringBattery(MainActivity.this)
+            + ",\"pending\":" + Reminders.sync(MainActivity.this, Bridge.remindersFromStore())
+            + "}";
+    }
+
+    /** 验收用：把剪贴板写成浏览器复制的真实形状。 */
+    private String hookClipHtml(String arg) {
+        // 浏览器复制的真实形状：ClipData.newHtmlText("data", 文字, html)，
+        // Chrome / vivo 浏览器都是这个，label 是 "data"，第一项带 text + html。
+        final String t = arg == null ? "浏览器复制测试 https://example.com/a?b=1\n第二行" : arg;
+        runOnUiThread(new Runnable() {
+            public void run() {
+                ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newHtmlText("data", t,
+                            "<html><body>" + t + "</body></html>"));
+                }
+                clipTries = 0;
+                clipWaitingFocus = true;
+                clipWaitStart = SystemClock.uptimeMillis();
+                drainClipboard();
+            }
+        });
+        return "{\"ok\":true,\"len\":" + t.length() + "}";
+    }
+
+    /** 验收用：模拟「在别的 app 里复制了一段文字」。 */
+    private String hookClipSet(String arg) {
+        // 模拟「在别的 app 里复制了一段文字」：写剪贴板，接下来的前台读走哪条路径跟真实场景一致
+        final String t = arg == null ? "懒得记 剪贴板测试" : arg;
+        final boolean[] written = {false};
+        final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        runOnUiThread(new Runnable() {
+            public void run() {
+                ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (cm == null) { note("clipset 拿不到 ClipboardManager"); return; }
+                try {
+                    cm.setPrimaryClip(ClipData.newPlainText("hook", t));
+                } catch (Throwable e) {
+                    note("clipset setPrimaryClip 抛异常: " + e);
+                    return;
+                }
+                // 写完立刻回读：写不进去是系统不让写（无焦点的窗口连写都被拒），
+                // 不是 app 的 bug，测试要能分辨这两件事
+                ClipData back = cm.getPrimaryClip();
+                written[0] = back != null && back.getItemCount() > 0;
+                note("clipset 写完回读：" + (written[0]
+                        ? "ok focus=" + (web != null && web.hasWindowFocus())
+                        : "null（写入被系统忽略）focus=" + (web != null && web.hasWindowFocus())));
+                clipTries = 0;
+                clipWaitingFocus = true;
+                clipWaitStart = SystemClock.uptimeMillis();
+                drainClipboard();
+                done.countDown();
+            }
+        });
+        try { done.await(3, java.util.concurrent.TimeUnit.SECONDS); } catch (Throwable ignored) {}
+        return "{\"ok\":true,\"len\":" + t.length() + ",\"written\":" + written[0] + "}";
+    }
+
+    /** 验收用：在页面里跑一段 JS（probe 脚本走的就是这条）。 */
+    private String hookJsEval(String arg) {
+        // 验收专用：{"js":"表达式"} 直接在页面里跑，返回值用 console.log 打到 testlog.txt。
+        // 虚拟显示上的 input tap 很不稳，脚本化的 UI 断言比截图点按可靠得多。
+        // 只在私有目录里有 .devmode 时可用：否则任何 app 都能发 intent 借 WebView 读笔记。
+        java.io.File dev = new java.io.File(getFilesDir(), "enote/.devmode");
+        if (!dev.exists()) {
+        return "{\"ok\":false,\"error\":\"jseval disabled: no .devmode\"}";
+        } else {
+            String js = "";
+            try {
+                org.json.JSONObject o = new org.json.JSONObject(arg == null ? "{}" : arg);
+                js = o.optString("js", "");
+            } catch (Throwable ignored) {}
+            if (js.isEmpty()) {
+        return "{\"ok\":false,\"error\":\"empty js\"}";
+            } else {
+                final String code = js;
+                runJs(code);
+        return "{\"ok\":true,\"queued\":" + code.length() + "}";
+            }
+        }
+    }
+
+    /** 验收用：立刻扫一次截图暂存目录。 */
+    private String hookShotScan(String arg) {
+        // 验收用：{"force":true,"folders":["Pictures/Screenshots"],"rangeDays":1}
+        boolean force = false;
+        int rangeDays = 0;
+        org.json.JSONArray fo = null;
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(arg == null ? "{}" : arg);
+            force = o.optBoolean("force", false);
+            rangeDays = o.optInt("rangeDays", 0);
+            if (o.has("folders")) fo = o.optJSONArray("folders");
+        } catch (Throwable ignored) {}
+        int n = Shots.scan(MainActivity.this, force, fo, rangeDays);
+        return "{\"ok\":" + (n >= 0) + ",\"added\":" + n
+            + ",\"granted\":" + Shots.mediaGranted(MainActivity.this)
+            + ",\"watermark\":" + Shots.watermark(MainActivity.this) + "}";
+    }
+
+    /** 验收用：改截图监听目录 / 开关，然后回报状态。 */
+    private String hookShotFolders(String arg) {
+        // 验收用：{"folders":["Pictures/Screenshots"]}，不传就只打印状态
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(arg == null ? "{}" : arg);
+            if (o.has("folders")) {
+                org.json.JSONArray a = o.optJSONArray("folders");
+                java.util.Set<String> want = new java.util.LinkedHashSet<String>();
+                for (int i = 0; i < a.length(); i++) want.add(a.optString(i));
+                Shots.setFolders(MainActivity.this, want);
+            }
+            if (o.has("enabled")) Shots.setEnabled(MainActivity.this, o.optBoolean("enabled"));
+        } catch (Throwable ignored) {}
+        return Shots.stateJson(MainActivity.this);
+    }
+
+    /** 验收用：直接发一条剪贴板通知。 */
+    private String hookClipNotify() {
+        // 验收用：直接发一条剪贴板通知（这台 ROM 后台不投递监听，靠这条测通知本身）
+        KeepAlive.notifyClip(MainActivity.this, Bridge.clipCount());
+        return "{\"ok\":true,\"clips\":" + Bridge.clipCount() + "}";
     }
 
     void note(String msg) {

@@ -1,0 +1,60 @@
+
+== build (go unit tests + apk)
+    package: name='dev.xduo.enote' versionCode='1' versionName='0.1' platformBuildVersionName='13' platformBuildVersionCode='33' compileSdkVersion='33' compileSdkVersionCodename='13'
+    application-label:'懒得记'
+    launchable-activity: name='dev.xduo.enote.MainActivity'  label='' icon=''
+
+== install + start
+  apk sha256=949c4429aca2bca2  head=457835e  branch=main  build=457835ee2591-dirty@2026-11-26T02:16:52Z
+  on background display 315
+  api: http://127.0.0.1:34299/
+
+== 跑前重置数据（确定基线）
+  baseline: notes=0 todos=0 clip=1 theme=light base=yes ai=yes att=0 shots=0
+--- go log ---
+  2026-11-26 10:15:33.121 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-26 10:15:33.121 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-26 10:15:36.272 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-26 10:15:36.272 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-26 10:15:39.193 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-26 10:15:39.193 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-26 10:15:39.202 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-26 10:15:39.207 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-26 10:15:39.207 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-26 10:15:39.353 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-26 10:15:39.353 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-26 10:15:39.845 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-26 10:15:39.845 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-26 10:15:39.939 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-26 10:15:39.939 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-26 10:15:40.029 enqueue 1795659340027779d5if kind=text source=clipboard-text len=25 ocrMs=0 status=raw
+  2026-11-26 10:15:40.030 enqueue 1795659340029206vcbs kind=text source=clipboard-text len=25 ocrMs=0 status=raw
+  2026-11-26 10:17:16.565 worker started
+  2026-11-26 10:17:16.565 appInit dir=/data/user/0/dev.xduo.enote/files notes=6 model=exec tz=Asia/Shanghai (UTC+8:00) now=2026-11-26T10:17
+  2026-11-26 10:17:16.634 http server on http://127.0.0.1:34299/
+  2026-11-26 10:17:17.108 ocr state: ready=true cpu, v8.4.1.77
+  2026-11-26 10:17:17.401 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-26 10:17:17.435 clip add: kind=text runes=17 app="hook" path=""
+  2026-11-26 10:17:17.435 clip add: 与最新一条完全相同 → 丢弃（最新 17 字）
+  2026-11-26 10:17:17.519 shot remove: 0 条
+--- app log ---
+  1795659341.004 web console: CPRAW done=1
+  1795659341.145 web console: SELFCHECK OK
+  1795659341.181 web console: SELFCHECK OK
+  1795659437.073 web: loading http://127.0.0.1:34299/
+  1795659437.131 clip drain#1 读不到（hasPrimaryClip=false, windowFocus=false, resumed=true, 已等 0s, 继续重试=true）
+  1795659437.191 shots: scan -> 0
+  1795659437.352 window focus: true → 补读剪贴板
+  1795659437.410 clip 暂存文字 17 字（text, label=hook）：原样导入 1795659332 b
+  1795659437.438 clip 重复，未暂存 17 字（text, label=hook）：原样导入 1795659332 b
+  1795659438.108 web: page finished http://127.0.0.1:34299/
+  FOREGROUND: yes
+      mCurrentFocus=Window{b96f6e0 u0 dev.xduo.enote/dev.xduo.enote.MainActivity}
+      mFocusedApp=ActivityRecord{251148018 u0 dev.xduo.enote/.MainActivity t3574}
+  --- crashes ---
+  (none)
+  --- per-display focus ---
+    display 315: Window{b96f6e0 u0 dev.xduo.enote/dev.xduo.enote.MainActivity}   <-- target
+    display 6: null
+    display 0: Window{55b8baf u0 com.termux/com.termux.app.TermuxActivity}
+ERROR: 重置后基线不对（应为 notes=0 todos=0 clip=0 theme=light base=yes ai=yes）：notes=0 todos=0 clip=1 theme=light base=yes ai=yes
