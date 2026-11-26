@@ -153,7 +153,15 @@ func fileSize(p string) int64 {
 }
 
 // save writes atomically (temp file + rename); caller holds the lock.
-func (s *Store) save() error { return writeJSONAtomic(s.path, s) }
+// 落盘成功后广播 data changed（步骤 73：UI 改成 SSE 事件推送，轮询降级为心跳）。
+// 广播是非阻塞的：没人订阅就白写一行 select，读写路径零阻塞。
+func (s *Store) save() error {
+	err := writeJSONAtomic(s.path, s)
+	if err == nil {
+		hub.broadcast("notes")
+	}
+	return err
+}
 
 // writeJSONAtomic 是三个 store 共用的原子写：先写 .tmp 再 rename。直接 WriteFile 写到一半被杀
 // 会留下半截 JSON，下次启动解析失败就回默认值（config.go 那边多一步 fsync + .bak，因为它丢的是

@@ -72,6 +72,7 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/clip/parse", handleClipParse)
 	m.HandleFunc("/api/clip/clear", handleClipClear)
 	m.HandleFunc("/api/prefs", handlePrefs)
+	m.HandleFunc("/api/events", handleEvents)
 	m.HandleFunc("/api/attachments", handleAttachments)
 	m.HandleFunc("/api/attach/delete", handleAttachDelete)
 	m.HandleFunc("/api/shots/list", handleShotsList)

@@ -131,7 +131,11 @@ func (c *Config) set(s Settings) error {
 		return err
 	}
 	_ = os.WriteFile(c.path+".bak", b, 0o600)
-	return os.Rename(tmp, c.path)
+	if err := os.Rename(tmp, c.path); err != nil {
+		return err
+	}
+	hub.broadcast("settings")
+	return nil
 }
 
 func trimSlash(s string) string {

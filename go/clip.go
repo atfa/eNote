@@ -49,7 +49,13 @@ func openClipStore(dir string) (*ClipStore, error) {
 	return s, nil
 }
 
-func (s *ClipStore) save() error { return writeJSONAtomic(s.path, s) }
+func (s *ClipStore) save() error {
+	err := writeJSONAtomic(s.path, s)
+	if err == nil {
+		hub.broadcast("clips")
+	}
+	return err
+}
 
 func (s *ClipStore) snapshot() []*Clip {
 	s.mu.Lock()

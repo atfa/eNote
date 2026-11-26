@@ -70,6 +70,10 @@ import { render, afterPaint, markReady, syncExpand, strip, paintStatus,
 import { refresh } from './pollflow.js'
 import { S, syncBox, TAB, QB, OPENB, REMIND, STERR, SRERR, SHEETARGB, reassign } from './statebox.js'
 import './selfcheck.js'
+/* 步骤 73：SSE 事件总线。side-effect import：模块求值时就连上 /api/events，
+   之后 Go 侧任一落盘点广播，onmessage → poke() → 150ms 合并 → refresh(true)。
+   轮询降级为 30s 心跳（见下方 setInterval）+ onAppResume 兜底。 */
+import './bus.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
 import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
@@ -327,7 +331,7 @@ window.__enote.vue = { app:null, views:VUE_VIEWS, apps:apps,
                           只服务内联 handler，加一个 key 就要动 Tony 的基线），测试要刷新
                           附件列表只能走这里。它是观测缝，不是生产门禁。 */
                        host: HOST };
-setInterval(function(){ if(!document.hidden) refresh(true); }, 2000);
+setInterval(function(){ if(!document.hidden) refresh(true); }, 30000);
 refresh();
 setTab();
 // 补看「不在的时候错过的提醒」：不挡首屏，拿到再重绘一次

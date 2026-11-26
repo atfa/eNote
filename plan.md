@@ -5085,3 +5085,22 @@ cancelGone 撤销。）
    两条都 <100ms，占位卡先于 reingest 出现、随后原地更新为解析结果。早前 `setInterval`（40ms）量到的 2.07s 被证伪：那是 WebView 节流定时器的假象。探针笔记经 `/api/delete` 清干净。
 
 5. **验收（最终 build）**：`GO_TEST=1 ./build.sh` 绿（`go test` 1.422s）、`./install.sh` Success、`node tools/ui_test.js` **122 ok / 0 FAIL**、`./test.sh --vd` **PASS**、三套 DOM 等价工具全部一致。本轮改动文件：`src/dev/xduo/enote/MainActivity.java`（+4 有效行：`ingestPickedImage` 双肾 + `hookDispatch` 分支 + `hookPickImage` 19 行，全部 ≤29）、`CHANGELOG.md`、`plan.md`。
+
+## 9.95 SSE 事件推送：2s 轮询 → 30s 心跳 + 事件总线（s2–s5）
+
+1. **动机**：UI 每 2s 轮询 `/api/state` 拉全量（真机测 ~6KB/s 常驻）。改服务端推送：Go 侧事件 hub + `/api/events` SSE 端点，JS 侧 EventSource 订阅，轮询降为 30s 心跳。外部变更（Java 分享/剪贴板/截图/设置）全部落到 Go 的 4 个落盘点，SSE 一条通道全覆盖。
+
+2. **Go 侧（`go/events.go` 新增）**：
+   * `eventsHub{mu, subs map[chan string]struct{}}`：非阻塞广播（满队列丢帧，前端反正只看"数据变了"），`eventSub{h, ch, done, once}` 订阅句柄；
+   * `handleEvents`（GET only）：先写 `data: connected` 首帧 + Flush，再注册订阅；30s 心跳 `data: ping`；`r.Context().Done()` / `sub.done` 双退出；
+   * **帧协议**：全部发**默认类型帧**（无 `event:` 行）。真机探针证明 WebView 的 EventSource 只把默认帧分发给 `onmessage`，命名帧 `event: xxx` 全丢（Go 侧 curl 证明服务端 SSE 正常，问题在 WebView 分发）。注释写进 events.go 与 web_test.go。
+   * 落盘点插桩：`store.go save()`→"notes"、`clip.go save()`→"clips"、`shots.go save()`→"shots"、`config.go set()`→"settings"；clearAll 不单独插。
+
+3. **JS 侧（`go/ui/js/bus.js` 新增）**：`var ES = (typeof EventSource === 'function') ? new EventSource('/api/events') : null`；`poke()` 150ms 突发合并（一次导入 N 条只发 1 次 refresh）；`onopen → refresh(true)`（重连全量兜底）；`onmessage → LAST=String(e.data); poke(LAST)`；`window.__enoteBus` 诊断缝。app.js `import './bus.js'` side-effect import，`setInterval` 2s→30s（轮询降级为心跳 + onAppResume + 71b Java nudge 兜底）。SSE 自回声靠 stateSig 指纹闸门去重。
+
+4. **--vd 验收修复（本次最大的坑）**：`test.sh` 的 `jseval.sh` 用裸 `am start`（无 `--display`）注入，而 `am_start` 把 app 放在虚拟屏（340/341/342…）上 → 每次注入触发**跨屏迁移 = Activity 重建**（testlog 立即出现 `web: loading`）→ 旧 WebView 销毁，把在飞的 `await fetch('/api/state')` 带走（CPAI 挂死：`isvue=1` 后无输出）。手工注入从不重建（app 在 display 0）。修复：jseval.sh 每次现场从 `dumpsys display` 抓真 id，`am start --display $VD`，失败退回裸启动。
+   * **顺带抓出既有 Vue bug**：clip 页模板 `<clip-item v-for>` 缺 `v-else`（错误态下「加载失败」空态与残留条目并存）；旧代码每次注入重建页面 → CLIP.list 为空假绿。修复：与截图页 `.shotgrid v-else` 同款互斥契约。截图页 shots.js 早就是对的。
+
+5. **白名单**：`EventSource` 加进 ui_test.js 两处（BUILTIN 行 185 + JS_GLOBALS 行 506），122 闸门全绿。`/api/events` 不进 GET-ping 列表（流式端点用真服务器 + bufio 测首帧）。
+
+6. **验收（最终 build）**：`GO_TEST=1 ./build.sh` 绿（go test `TestEventsStreamAndBroadcast` + `TestEventsHubConcurrent` 8 goroutine）、`./install.sh` Success、`node tools/ui_test.js` **122 ok / 0 FAIL**、`./test.sh --vd` **33/33 steps PASS（41 ok / 0 FAIL）**、真机 SSE 链路探针（connected 首帧进 onmessage、clipset 事件到达 `EVP3 recv0=2 last0=clips`）、三套 DOM 等价工具全部一致。本轮改动：`go/events.go` `go/bus.js` 新增；`go/{clip,config,shots,store,web,web_test}.go` `go/ui/js/{app,views/clip}.js` `test.sh` `tools/ui_test.js` 修改。

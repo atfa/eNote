@@ -182,7 +182,7 @@ for (const m of uiCode.matchAll(/(?:^|\n)\s{2,}([A-Za-z_$][\w$]*)\s*\(/g)) decla
 const BUILTIN = new Set(['this', 'window', 'document', 'location', 'navigator', 'alert', 'confirm',
   'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'JSON', 'Math', 'Date', 'Array',
   'Object', 'String', 'Number', 'Boolean', 'Promise', 'encodeURIComponent', 'decodeURIComponent',
-  'parseInt', 'parseFloat', 'isNaN', 'event', 'console', 'fetch', 'localStorage', 'RegExp', 'Set', 'Map']);
+  'parseInt', 'parseFloat', 'isNaN', 'event', 'console', 'fetch', 'localStorage', 'RegExp', 'Set', 'Map', 'EventSource']);
 
 const handlerRe = /on(click|input|change|keyup|keydown|focus|blur|submit|touchstart|touchend)="([^"]*)"/g;
 
@@ -513,7 +513,7 @@ const JS_GLOBALS = new Set(['console', 'document', 'window', 'navigator', 'locat
   'Headers', 'Request', 'Response', 'AbortController', 'TextEncoder', 'TextDecoder', 'structuredClone',
   'Intl', 'crypto', 'performance', 'getComputedStyle', 'querySelector', 'querySelectorAll',
   'addEventListener', 'MutationObserver', 'IntersectionObserver',
-  '__enote', '__enoteActions', '__enoteProbe']);
+  '__enote', '__enoteActions', '__enoteProbe', 'EventSource']);
 
 function payloadLocals(src) {
   const loc = new Set();

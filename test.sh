@@ -802,7 +802,18 @@ am_start "$ACTIVITY" "--es hook clipset --es arg ' '"
 sleep 2
 cat > "$TMPDIR/jseval.sh" <<'EOS'
 #!/bin/sh
-am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$(cat "$1")" >/dev/null
+# 注入必须投递到 app 当前所在的 display：裸 am start（无 --display）会把虚拟屏上的
+# Activity 迁回主屏 → onCreate 重建（testlog 里随即出现 web: loading），旧 WebView 销毁时
+# 把在飞的 await fetch 一并带走（CPAI 的 /api/state 永不 settle，验收挂死）。
+# 每次现场从 dumpsys 抓真 id（vd daemon 重启后 id 会变），--display 失败再退回裸启动。
+VD=$(dumpsys display 2>/dev/null | sed -n "s/.*displayId=\([0-9]*\), uniqueId='virtual:android,0,apkdbg.*/\1/p" | head -1)
+ARG="$(cat "$1")"
+if [ -n "$VD" ]; then
+  am start --display "$VD" -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$ARG" >/dev/null 2>&1 || \
+  am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$ARG" >/dev/null
+else
+  am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$ARG" >/dev/null
+fi
 EOS
 
 # 记录设备 WebView 版本。go/ui/vendor/VENDOR.md 把语言基线 pin 在 ES2020（Chrome 80），
@@ -1334,7 +1345,18 @@ UI_APP=$(asroot_global "stat -c%U '/data/data/$APP_PACKAGE'" | tr -d '\r')
 asroot_global "touch '$DATA/enote/.devmode'; chown '$UI_APP:$UI_APP' '$DATA/enote/.devmode'"
 cat > "$TMPDIR/jseval.sh" <<'EOS'
 #!/bin/sh
-am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$(cat "$1")" >/dev/null
+# 注入必须投递到 app 当前所在的 display：裸 am start（无 --display）会把虚拟屏上的
+# Activity 迁回主屏 → onCreate 重建（testlog 里随即出现 web: loading），旧 WebView 销毁时
+# 把在飞的 await fetch 一并带走（CPAI 的 /api/state 永不 settle，验收挂死）。
+# 每次现场从 dumpsys 抓真 id（vd daemon 重启后 id 会变），--display 失败再退回裸启动。
+VD=$(dumpsys display 2>/dev/null | sed -n "s/.*displayId=\([0-9]*\), uniqueId='virtual:android,0,apkdbg.*/\1/p" | head -1)
+ARG="$(cat "$1")"
+if [ -n "$VD" ]; then
+  am start --display "$VD" -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$ARG" >/dev/null 2>&1 || \
+  am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$ARG" >/dev/null
+else
+  am start -n dev.xduo.enote/.MainActivity --es hook jseval --es arg "$ARG" >/dev/null
+fi
 EOS
 N0T=$(readtlog | wc -l)
 "$PY" -c 'import json,sys; print(json.dumps({"js": sys.argv[1]}))' '(async function(){

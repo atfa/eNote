@@ -6,6 +6,15 @@
 
 ## 0.1（当前）
 
+### SSE 事件推送：2s 轮询 → 30s 心跳 + 事件总线（s2–s5）
+
+* **架构**：UI 不再每 2s 轮询拉全量（真机 ~6KB/s 常驻）。Go 侧新增 `go/events.go` 事件 hub（`eventsHub` 非阻塞广播 + `eventSub` 订阅句柄），`/api/events` SSE 端点（先写 `data: connected` 首帧再注册订阅，30s 心跳，`r.Context().Done()`/`sub.done` 双退出）；4 个落盘点插桩 `store.save→notes`、`clip.save→clips`、`shots.save→shots`、`config.set→settings`。
+* **帧协议坑（真机探针定位）**：WebView 的 EventSource 只把**默认类型帧**分发给 `onmessage`，`event: xxx` 命名帧全丢（Go 侧 curl 证明服务端 SSE 正常）。全部改发默认帧（首帧 `data: connected`、广播 `data: <type>`、心跳 `data: ping`）。
+* **前端**：新增 `go/ui/js/bus.js`（`new EventSource('/api/events')`，`poke()` 150ms 突发合并，`onopen→refresh(true)` 重连兜底，`window.__enoteBus` 诊断缝）；app.js side-effect import，`setInterval` 2s→30s 心跳（onAppResume + 71b Java nudge 兜底）。SSE 自回声靠 stateSig 指纹去重。
+* **--vd 验收修复**：test.sh 的 `jseval.sh` 裸 `am start`（无 `--display`）注入会把虚拟屏上的 Activity 迁回主屏 → 跨屏迁移重建（testlog 立即 `web: loading`）→ 旧 WebView 销毁带走在飞 `await fetch`（CPAI 挂死根因）。修复：jseval.sh 每现场从 `dumpsys display` 抓真 id 带 `--display` 投递，失败退回裸启动。**顺带抓出既有 Vue bug**：clip 页模板 `<clip-item v-for>` 缺 `v-else`，错误态下「加载失败」空态与残留条目并存（旧代码每次注入重建页面假绿）——与截图页 `.shotgrid v-else` 对齐。
+* 白名单：`EventSource` 进 ui_test.js 两处（BUILTIN/JS_GLOBALS）。`/api/events` 不进 GET-ping 列表（流式端点用真服务器 + bufio 测首帧）。
+* 验收：`GO_TEST=1 ./build.sh` 绿（go test 含 `TestEventsStreamAndBroadcast` + `TestEventsHubConcurrent` 8 goroutine）、`./install.sh` Success、`ui_test.js` **122 ok / 0 FAIL**、`./test.sh --vd` **33/33 steps PASS（41 ok / 0 FAIL）**、真机 SSE 链路探针（connected 首帧进 onmessage、clipset 事件 `EVP3 recv0=2 last0=clips`）、三套 DOM 等价工具全部一致。
+
 ### 选图占位卡即刻上屏：Java 双肾 refresh 摑（步骤 71b）
 
 * **症状根因**：app.js 的 `setInterval(refresh, 2000)` 轮询是「选图后卡片上屏」的唯一兜底——addflow.js `pickImage()` 里 `setTimeout(refresh, 1500/5000/12000)` 在 `Android.pickImage()` 之前就排好，系统选图器打开期间就过期了，回来后平均要等 ~1s（下一拍轮询）新卡才出现。

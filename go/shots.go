@@ -103,7 +103,13 @@ func openShotStore(dir string) (*ShotStore, error) {
 	return s, nil
 }
 
-func (s *ShotStore) save() error { return writeJSONAtomic(s.path, s) }
+func (s *ShotStore) save() error {
+	err := writeJSONAtomic(s.path, s)
+	if err == nil {
+		hub.broadcast("shots")
+	}
+	return err
+}
 
 func (s *ShotStore) snapshot() []*Shot {
 	s.mu.Lock()

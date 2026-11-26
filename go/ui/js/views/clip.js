@@ -110,7 +110,13 @@ export const ClipSheetView = {
   <template v-if="loading">加载中…</template>
   <div class="empty" v-else-if="err">加载失败</div>
   <empty-state v-else-if="!items.length" icon="inbox" title="暂存区是空的"/>
-  <clip-item v-for="(x,k) in items" :key="x.id" :x="x"/>
+  <!-- v-else 包住 v-for（与截图页 .shotgrid v-else 同款）：loadClips 失败分支只清
+       loading/error 不清 CLIP.list，裸 v-for 会在错误态下把残留旧条目一起画出来。
+       真机夹具 CPERR 断言 items==0 就是被它抓的（注入 /api/clip/list 失败时
+       #clipList 里能看到「加载失败」+ 残留条目并存）。 -->
+  <template v-else>
+    <clip-item v-for="(x,k) in items" :key="x.id" :x="x"/>
+  </template>
 </div>
 <!-- 内联 display:block 是有意的（闸门⑲ 钉住）：这两个弹层的计数独占一行、按钮整行排在下面。
      .pfoot 默认是 flex + flex-wrap（步骤 13 为文件夹页窄屏加的），走 flex 会让计数和三个按钮挤一行。 -->

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,7 +12,9 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // S1a：UI 从单个 ui.html 拆成 go/ui/ 目录（index.html + css/ + js/ + vendor/）。
@@ -431,6 +434,78 @@ func TestAPIRoutesStillRegistered(t *testing.T) {
 			t.Errorf("%s 变成 404 了：静态化改动把 API 路由吃掉了", p)
 		}
 	}
+}
+
+// /api/events 是流式端点，ServeHTTP 会一直挂着不给 httptest.ResponseRecorder 返回，
+// 所以它不能进上面那个 GET-ping 列表（进去了测试就挂起）。这里用真 HTTP 服务器 + bufio
+// 读首帧（connected 事件）验证路由存在、SSE 头对、广播能穿过整条链路，然后主动关闭连接：
+// 订阅者断开后 sub.close() 要把自己从 hub 摘掉，不能让 goroutine 泄漏（泄漏迟早把 30s
+// 心跳队列堆满，长期开发里就是内存 + 连接双泄漏）。
+func TestEventsStreamAndBroadcast(t *testing.T) {
+	srv := httptest.NewServer(apiMux())
+	defer srv.Close()
+
+	// 第一个订阅者（DisableKeepAlives：Close 后连接立刻断，否则 httptest.Server.Close 会等它）
+	cli := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	resp, err := cli.Get(srv.URL + "/api/events")
+	if err != nil {
+		t.Fatalf("GET /api/events: %v", err)
+	}
+	br := bufio.NewReader(resp.Body)
+	// 首帧是 data: connected + 空行。（不加 event: 行——WebView 的 EventSource 只把
+	// 默认类型帧分发给 onmessage，命名事件在真机探针里全丢。）读完整个首帧再广播，
+	// 否则第二行会被当成广播后的下一帧读掉。
+	line, err := br.ReadString('\n')
+	if err != nil {
+		t.Fatalf("读首帧：%v", err)
+	}
+	for i := 0; i < 1; i++ {
+		if _, err := br.ReadString('\n'); err != nil {
+			t.Fatalf("读首帧行 %d：%v", i+2, err)
+		}
+	}
+
+	hub.broadcast("notes")
+	line, err = br.ReadString('\n')
+	if err != nil {
+		t.Fatalf("读广播帧：%v", err)
+	}
+	if strings.TrimSpace(line) != "data: notes" {
+		t.Fatalf("广播帧 = %q，期望 data: notes", strings.TrimSpace(line))
+	}
+	resp.Body.Close()
+
+	// 关闭后 hub 的订阅必须摘干净（不摘就是 goroutine / channel 泄漏）
+	time.Sleep(50 * time.Millisecond)
+	hub.mu.Lock()
+	n := len(hub.subs)
+	hub.mu.Unlock()
+	if n != 0 {
+		t.Errorf("连接关闭后 hub 还有 %d 个订阅者，泄漏了", n)
+	}
+}
+
+// 广播事件名与 Hub 本身的并发安全：同时多个 goroutine broadcast + 订阅摘除不 panic、
+// 不互相覆盖（go test -race 会抓这里）。
+func TestEventsHubConcurrent(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			h := &eventsHub{subs: make(map[chan string]struct{})}
+			ch := make(chan string, 8)
+			h.mu.Lock()
+			h.subs[ch] = struct{}{}
+			h.mu.Unlock()
+			h.broadcast("notes")
+			time.Sleep(time.Duration(i) * time.Millisecond)
+			h.mu.Lock()
+			delete(h.subs, ch)
+			h.mu.Unlock()
+		}(i)
+	}
+	wg.Wait()
 }
 
 func uiBody(t *testing.T, resp *http.Response) string {
