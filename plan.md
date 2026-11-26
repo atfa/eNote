@@ -4218,3 +4218,63 @@ store 落盘。补跑 `.test/probe_go56b.js`（每次 toggle 后等 400ms）打�
 验收：`ui_test.js` **122 项全绿**、`gofmt -l go` 空、`go vet ./...` 干净、`go test ./...` ok、
 `GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**
 （一次过）、三套 DOM 等价工具全部一致。
+
+## 9.79 P14 S6：Go 侧三个长函数拆开（stats / runSearch / handleTodo，步骤 57）
+
+步骤 56 之后 Go 侧最长的三个函数是 `stats` 81 行、`runSearch` 64 行、`handleTodo` 61 行，
+三个都是「一个函数里干完四件/两三件不同的事」，逐个拆：
+
+**① `stats()` 81 → 12 行 + 一个小聚合器**
+
+原来一个循环里同时干四件事（笔记计数、待办计数、附件计数、近 7 天分桶），
+`res` / `dayIdx` / `tags` 三个累加器在四段之间穿来穿去。现在：
+
+```go
+func stats() statsRes {
+	a := newStatsAgg()
+	for _, n := range store.snapshot() {
+		a.note(n); a.todos(n); a.attachments(n)
+	}
+	return a.finish()
+}
+```
+
+累加器挂到 `statsAgg{res, dayIdx, tags, today, now}` 上，四段各自成方法。
+脚本核对：**原循环体 49 行 vs 三个方法体 49 行，剔缩进、剔 `a.` 前缀、附件段循环变量
+`att`→`a` 之后逐字一致**（附件段那个 `a` 跟新接收者撞名，只能改名）。
+`finish()` 里的 `topTags(tags, 8)` → `topTags(a.tags, 8)`、`return res` → `return a.res`。
+
+**② `runSearch` 64 → 17 行 + `searchTodos` / `searchNotes`**
+
+`runSearch` 只做参数归一化（q 小写、filters 补默认 `done=open`、limit 夹到 1..1000）+ 分流，
+两条分支各走各的：待办页命中的是「某条笔记里的某个待办」（返回项带 NoteID/NoteTitle，
+`TodoIDs` 给全量给 UI 分组用），笔记页/附件页整条笔记匹配（命中位置记进 `res.Where`）。
+**原两分支 44 行 vs 新两函数体 44 行逐字一致。**
+
+**③ `handleTodo` 61 → 20 行 + `todoAdd` / `todoToggle` / `todoDelete`**
+
+请求体原来是函数内的匿名 `struct`，三个 action 各占 15 行；拆函数就得给它起名 `todoReq`
+（json tag 一个没动，`/api/todo` 的对外契约不变）。**原三个 case 体 40 行 vs 新三个函数体
+40 行逐字一致。**
+
+拆完之后 Go 侧最长的函数变成：`callLLM` 69、`add`（shots）68、`clipAdd` 68、`selfTest` 63、
+`apiMux` 59 —— 都还在可读范围，下一轮再看要不要动。
+
+探针（物理屏，`.test/probe_go57.js`，三个改动点全打一遍）：
+
+```
+就绪 loads=1 卡片=8
+GET /api/stats（stats 拆成聚合器）：ok=true notes.total=8 notes.done=7 todos.total=0 todos.open=0
+  days=7 tags=0 attach.count=1 ai.calls=0 bytes=4684 sources=2
+GET /api/search（searchNotes / searchTodos）：notes total=8 scanned=8 返回=5 | todos total=0 返回=0 todoIds=0
+POST /api/add → /api/note：状态=done 标题="整理书架待办" 待办=1
+POST /api/todo add（todoAdd）：ok=true 条数=2 命中={"pri":"high","due":"2026-01-01T10:00","done":false}
+POST /api/todo toggle（todoToggle）：ok=true done=true doneAt="2026-11-26T07:59"
+POST /api/todo delete（todoDelete）：ok=true 条数=1（原来 1）
+未知 action：ok=false error="unknown action"
+清理 loads=1 卡片=8
+```
+
+验收：`ui_test.js` **122 项全绿**（未改闸门）、`gofmt -l go` 空、`go vet ./...` 干净、`go test ./...` ok、
+`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**（一次过）、
+三套 DOM 等价工具全部一致。

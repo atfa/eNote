@@ -1,0 +1,64 @@
+{
+"typ": [
+"\tvar body struct {",
+"\t\tAction   string `json:\"action\"` // add | toggle | delete",
+"\t\tNoteID   string `json:\"noteId\"`",
+"\t\tTodoID   string `json:\"todoId\"`",
+"\t\tText     string `json:\"text\"`",
+"\t\tDue      string `json:\"due\"`",
+"\t\tPriority string `json:\"priority\"`",
+"\t}"
+],
+"rd": [
+"\tif err := readBody(r, &body); err != nil {",
+"\t\tjsonOut(w, map[string]any{\"ok\": false, \"error\": err.Error()})",
+"\t\treturn",
+"\t}"
+],
+"add": [
+"\t\ttxt := strings.TrimSpace(body.Text)",
+"\t\tif txt == \"\" {",
+"\t\t\tjsonOut(w, map[string]any{\"ok\": false, \"error\": \"内容为空\"})",
+"\t\t\treturn",
+"\t\t}",
+"\t\tpr := strings.ToLower(body.Priority)",
+"\t\tif pr != \"high\" && pr != \"low\" {",
+"\t\t\tpr = \"normal\"",
+"\t\t}",
+"\t\tt := Todo{ID: newID(), Text: txt, Due: normaliseDue(body.Due),",
+"\t\t\tPriority: pr, Source: \"manual\"}",
+"\t\tok := store.update(body.NoteID, func(n *Note) {",
+"\t\t\tn.Todos = append(n.Todos, t)",
+"\t\t\tsortTodos(n.Todos)",
+"\t\t})",
+"\t\tjsonOut(w, map[string]any{\"ok\": ok, \"id\": t.ID})"
+],
+"tog": [
+"\t\tok := store.update(body.NoteID, func(n *Note) {",
+"\t\t\tfor i := range n.Todos {",
+"\t\t\t\tif n.Todos[i].ID == body.TodoID {",
+"\t\t\t\t\tn.Todos[i].Done = !n.Todos[i].Done",
+"\t\t\t\t\tif n.Todos[i].Done {",
+"\t\t\t\t\t\tn.Todos[i].DoneAt = time.Now().Format(\"2006-01-02T15:04\")",
+"\t\t\t\t\t} else {",
+"\t\t\t\t\t\tn.Todos[i].DoneAt = \"\"",
+"\t\t\t\t\t}",
+"\t\t\t\t}",
+"\t\t\t}",
+"\t\t\tsortTodos(n.Todos)",
+"\t\t})",
+"\t\tjsonOut(w, map[string]any{\"ok\": ok})"
+],
+"dele": [
+"\t\tok := store.update(body.NoteID, func(n *Note) {",
+"\t\t\tvar keep []Todo",
+"\t\t\tfor _, t := range n.Todos {",
+"\t\t\t\tif t.ID != body.TodoID {",
+"\t\t\t\t\tkeep = append(keep, t)",
+"\t\t\t\t}",
+"\t\t\t}",
+"\t\t\tn.Todos = keep",
+"\t\t})",
+"\t\tjsonOut(w, map[string]any{\"ok\": ok})"
+]
+}

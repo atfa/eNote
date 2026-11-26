@@ -200,33 +200,44 @@ func runSearch(req searchReq) searchRes {
 	}
 	all := store.snapshot()
 	res := searchRes{OK: true, Tab: req.Tab, Where: map[string][]string{}, Scanned: len(all)}
-
+	// 步骤 57：两条分支各 20 多行（待办页把每个待办单独拿出来匹配，笔记页整条笔记匹配），
+	// 混在一个函数里读要在两种数据形状之间来回切。现在 runSearch 只做参数归一化 + 分流。
 	if req.Tab == "todos" {
-		var hits []todoHit
-		var ids map[string]bool
-		for _, n := range all {
-			text := n.Title + " " + n.Content
-			for _, t := range n.Todos {
-				if matchTodo(t, q, f, text) {
-					if ids == nil {
-						ids = map[string]bool{}
-					}
-					ids[n.ID+"|"+t.ID] = true
-					hits = append(hits, todoHit{NoteID: n.ID, NoteTitle: n.Title, NoteAt: n.CreatedAt, Todo: t})
+		return searchTodos(all, res, q, f, req, limit)
+	}
+	return searchNotes(all, res, q, f, req, limit)
+}
+
+// searchTodos 待办页：命中的是「某条笔记里的某个待办」，所以命中项带 NoteID / NoteTitle；
+// 截断只截返回的列表，TodoIDs 给全量（UI 按日期分组要用整份）。
+func searchTodos(all []*Note, res searchRes, q string, f map[string]string, req searchReq, limit int) searchRes {
+	var hits []todoHit
+	var ids map[string]bool
+	for _, n := range all {
+		text := n.Title + " " + n.Content
+		for _, t := range n.Todos {
+			if matchTodo(t, q, f, text) {
+				if ids == nil {
+					ids = map[string]bool{}
 				}
+				ids[n.ID+"|"+t.ID] = true
+				hits = append(hits, todoHit{NoteID: n.ID, NoteTitle: n.Title, NoteAt: n.CreatedAt, Todo: t})
 			}
 		}
-		sortTodoHits(hits, req.Sort)
-		res.Total = len(hits)
-		if len(hits) > limit {
-			hits = hits[:limit]
-		}
-		res.Todos = hits
-		res.TodoIDs = ids // the UI groups todos by date, it needs the whole set
-		res.Notes = all
-		return res
 	}
+	sortTodoHits(hits, req.Sort)
+	res.Total = len(hits)
+	if len(hits) > limit {
+		hits = hits[:limit]
+	}
+	res.Todos = hits
+	res.TodoIDs = ids // the UI groups todos by date, it needs the whole set
+	res.Notes = all
+	return res
+}
 
+// searchNotes 笔记页 / 附件页：整条笔记匹配，命中位置记进 res.Where（UI 拿它画高亮）。
+func searchNotes(all []*Note, res searchRes, q string, f map[string]string, req searchReq, limit int) searchRes {
 	var out []*Note
 	for _, n := range all {
 		if req.Tab == "files" && n.ImagePath == "" {

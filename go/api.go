@@ -82,66 +82,86 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]any{"ok": ok})
 }
 
+// todoReq 是 /api/todo 的请求体。步骤 57：它原来是 handleTodo 里的匿名 struct，
+// 三个 action 各占 15 行，拆成三个函数之后得给它一个名字。
+type todoReq struct {
+	Action   string `json:"action"` // add | toggle | delete
+	NoteID   string `json:"noteId"`
+	TodoID   string `json:"todoId"`
+	Text     string `json:"text"`
+	Due      string `json:"due"`
+	Priority string `json:"priority"`
+}
+
 func handleTodo(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Action   string `json:"action"` // add | toggle | delete
-		NoteID   string `json:"noteId"`
-		TodoID   string `json:"todoId"`
-		Text     string `json:"text"`
-		Due      string `json:"due"`
-		Priority string `json:"priority"`
-	}
+	var body todoReq
 	if err := readBody(r, &body); err != nil {
 		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	switch body.Action {
 	case "add":
-		txt := strings.TrimSpace(body.Text)
-		if txt == "" {
-			jsonOut(w, map[string]any{"ok": false, "error": "内容为空"})
-			return
-		}
-		pr := strings.ToLower(body.Priority)
-		if pr != "high" && pr != "low" {
-			pr = "normal"
-		}
-		t := Todo{ID: newID(), Text: txt, Due: normaliseDue(body.Due),
-			Priority: pr, Source: "manual"}
-		ok := store.update(body.NoteID, func(n *Note) {
-			n.Todos = append(n.Todos, t)
-			sortTodos(n.Todos)
-		})
-		jsonOut(w, map[string]any{"ok": ok, "id": t.ID})
+		todoAdd(w, body)
 	case "toggle":
-		ok := store.update(body.NoteID, func(n *Note) {
-			for i := range n.Todos {
-				if n.Todos[i].ID == body.TodoID {
-					n.Todos[i].Done = !n.Todos[i].Done
-					if n.Todos[i].Done {
-						n.Todos[i].DoneAt = time.Now().Format("2006-01-02T15:04")
-					} else {
-						n.Todos[i].DoneAt = ""
-					}
-				}
-			}
-			sortTodos(n.Todos)
-		})
-		jsonOut(w, map[string]any{"ok": ok})
+		todoToggle(w, body)
 	case "delete":
-		ok := store.update(body.NoteID, func(n *Note) {
-			var keep []Todo
-			for _, t := range n.Todos {
-				if t.ID != body.TodoID {
-					keep = append(keep, t)
-				}
-			}
-			n.Todos = keep
-		})
-		jsonOut(w, map[string]any{"ok": ok})
+		todoDelete(w, body)
 	default:
 		jsonOut(w, map[string]any{"ok": false, "error": "unknown action"})
 	}
+}
+
+// todoAdd 手动加一条待办：优先级只认 high / low，其余归 normal；截止日走 normaliseDue。
+func todoAdd(w http.ResponseWriter, body todoReq) {
+	txt := strings.TrimSpace(body.Text)
+	if txt == "" {
+		jsonOut(w, map[string]any{"ok": false, "error": "内容为空"})
+		return
+	}
+	pr := strings.ToLower(body.Priority)
+	if pr != "high" && pr != "low" {
+		pr = "normal"
+	}
+	t := Todo{ID: newID(), Text: txt, Due: normaliseDue(body.Due),
+		Priority: pr, Source: "manual"}
+	ok := store.update(body.NoteID, func(n *Note) {
+		n.Todos = append(n.Todos, t)
+		sortTodos(n.Todos)
+	})
+	jsonOut(w, map[string]any{"ok": ok, "id": t.ID})
+}
+
+// todoToggle 勾选 / 取消勾选：勾上记 DoneAt（近 7 天那根柱子按它落桶），取消就清掉，
+// 两个方向都重排一次，完成的沉底。
+func todoToggle(w http.ResponseWriter, body todoReq) {
+	ok := store.update(body.NoteID, func(n *Note) {
+		for i := range n.Todos {
+			if n.Todos[i].ID == body.TodoID {
+				n.Todos[i].Done = !n.Todos[i].Done
+				if n.Todos[i].Done {
+					n.Todos[i].DoneAt = time.Now().Format("2006-01-02T15:04")
+				} else {
+					n.Todos[i].DoneAt = ""
+				}
+			}
+		}
+		sortTodos(n.Todos)
+	})
+	jsonOut(w, map[string]any{"ok": ok})
+}
+
+// todoDelete 删掉一条待办：留下所有 id 不等于目标 id 的。
+func todoDelete(w http.ResponseWriter, body todoReq) {
+	ok := store.update(body.NoteID, func(n *Note) {
+		var keep []Todo
+		for _, t := range n.Todos {
+			if t.ID != body.TodoID {
+				keep = append(keep, t)
+			}
+		}
+		n.Todos = keep
+	})
+	jsonOut(w, map[string]any{"ok": ok})
 }
 
 // currentSettings 原样返回（含明文 API Key）。

@@ -46,7 +46,33 @@ type statsRes struct {
 	   UI 的「更新于」是前端自己记的刷新时间，Go 里也没人读这个字段，纯死负载。 */
 }
 
+/* 步骤 57：stats() 原来 81 行，一个循环里同时干四件事（笔记计数、待办计数、附件计数、
+   近 7 天分桶），res / dayIdx / tags 三个累加器在四段之间穿来穿去。现在换成一个小聚合器：
+   stats() 只剩「建聚合器 → 逐条笔记喂进去 → 收尾」，四段各自成方法，累加器挂在结构体上。
+   语句逐字搬，只把裸累加器加上 a. 前缀；附件段的循环变量 a 跟接收者撞名，改叫 att。 */
+
 func stats() statsRes {
+	a := newStatsAgg()
+	for _, n := range store.snapshot() {
+		a.note(n)
+		a.todos(n)
+		a.attachments(n)
+	}
+	return a.finish()
+}
+
+// statsAgg 是统计的累加器：res 是最后要返回的那张表，dayIdx 是「日期 → 近 7 天下标」，
+// tags 是标签计数（收尾时 topTags 取前 8），today / now 在循环外算一次就够。
+type statsAgg struct {
+	res    statsRes
+	dayIdx map[string]int
+	tags   map[string]int
+	today  string
+	now    string
+}
+
+// newStatsAgg 建表：状态与待办计数的 key 先全部预置成 0，UI 就不用防着 key 不存在。
+func newStatsAgg() *statsAgg {
 	res := statsRes{OK: true,
 		Notes:   map[string]int{},
 		Todos:   map[string]int{},
@@ -60,72 +86,83 @@ func stats() statsRes {
 	for _, k := range []string{"total", "open", "done", "overdue", "dueToday", "high", "withDue"} {
 		res.Todos[k] = 0
 	}
-
-	dayIdx := map[string]int{}
-	for i, d := range res.Days {
-		dayIdx[d.Day] = i
+	a := &statsAgg{res: res, dayIdx: map[string]int{}, tags: map[string]int{},
+		today: time.Now().Format("2006-01-02"), now: nowStamp()}
+	for i, d := range a.res.Days {
+		a.dayIdx[d.Day] = i
 	}
-	tags := map[string]int{}
-	today := time.Now().Format("2006-01-02")
-	now := nowStamp()
+	return a
+}
 
-	for _, n := range store.snapshot() {
-		res.Notes["total"]++
-		st := n.Status
-		if st == "" {
-			st = stDone
-		}
-		res.Notes[st]++
-		res.Sources[firstNonEmpty(n.Source, "unknown")]++
-		for _, t := range n.Tags {
-			if t = trimTag(t); t != "" {
-				tags[t]++
-			}
-		}
-		day := n.CreatedAt.Format("2006-01-02")
-		if i, ok := dayIdx[day]; ok {
-			res.Days[i].Notes++
-			res.Days[i].Todos += len(n.Todos)
-		}
-		for _, t := range n.Todos {
-			res.Todos["total"]++
-			if t.Priority == "high" {
-				res.Todos["high"]++
-			}
-			if t.Due != "" {
-				res.Todos["withDue"]++
-			}
-			if t.Done {
-				res.Todos["done"]++
-				if i, ok := dayIdx[dayOf(t.DoneAt)]; ok {
-					res.Days[i].Done++
-				}
-				continue
-			}
-			res.Todos["open"]++
-			if t.Due != "" && t.Due < now {
-				res.Todos["overdue"]++
-			}
-			if len(t.Due) >= 10 && t.Due[:10] == today {
-				res.Todos["dueToday"]++
-			}
-		}
-		for _, a := range n.Attachments {
-			res.Attach["count"] = iv(res.Attach["count"]) + 1
-			res.Attach["bytes"] = i64v(res.Attach["bytes"]) + a.Size
-			if fileSize(a.Path) == 0 {
-				res.Attach["missing"] = iv(res.Attach["missing"]) + 1
-			}
-			byk := res.Attach["byKind"].(map[string]int)
-			byk[kindOfMime(a.MIME)]++
+// note 一条笔记：状态计数、来源计数、标签计数，以及它带来的当天笔记数与待办数。
+func (a *statsAgg) note(n *Note) {
+	a.res.Notes["total"]++
+	st := n.Status
+	if st == "" {
+		st = stDone
+	}
+	a.res.Notes[st]++
+	a.res.Sources[firstNonEmpty(n.Source, "unknown")]++
+	for _, t := range n.Tags {
+		if t = trimTag(t); t != "" {
+			a.tags[t]++
 		}
 	}
+	day := n.CreatedAt.Format("2006-01-02")
+	if i, ok := a.dayIdx[day]; ok {
+		a.res.Days[i].Notes++
+		a.res.Days[i].Todos += len(n.Todos)
+	}
+}
 
-	res.Tags = topTags(tags, 8)
-	res.Attach["count"] = iv(res.Attach["count"])
-	res.AI = aiStats()
-	res.Bytes = dataBytes()
-	return res
+// todos 一条笔记里的待办：总数 / 完成 / 未完成 / 逾期 / 今天到期 / 高优先级 / 有截止日，
+// 完成的还要按 DoneAt 落到近 7 天那根柱子上。
+func (a *statsAgg) todos(n *Note) {
+	for _, t := range n.Todos {
+		a.res.Todos["total"]++
+		if t.Priority == "high" {
+			a.res.Todos["high"]++
+		}
+		if t.Due != "" {
+			a.res.Todos["withDue"]++
+		}
+		if t.Done {
+			a.res.Todos["done"]++
+			if i, ok := a.dayIdx[dayOf(t.DoneAt)]; ok {
+				a.res.Days[i].Done++
+			}
+			continue
+		}
+		a.res.Todos["open"]++
+		if t.Due != "" && t.Due < a.now {
+			a.res.Todos["overdue"]++
+		}
+		if len(t.Due) >= 10 && t.Due[:10] == a.today {
+			a.res.Todos["dueToday"]++
+		}
+	}
+}
+
+// attachments 一条笔记的附件：张数、字节数、文件已丢失的张数、按 MIME 大类分桶。
+func (a *statsAgg) attachments(n *Note) {
+	for _, att := range n.Attachments {
+		a.res.Attach["count"] = iv(a.res.Attach["count"]) + 1
+		a.res.Attach["bytes"] = i64v(a.res.Attach["bytes"]) + att.Size
+		if fileSize(att.Path) == 0 {
+			a.res.Attach["missing"] = iv(a.res.Attach["missing"]) + 1
+		}
+		byk := a.res.Attach["byKind"].(map[string]int)
+		byk[kindOfMime(att.MIME)]++
+	}
+}
+
+// finish 收尾：标签取前 8，AI 与磁盘占用是全局的，跟笔记循环无关。
+func (a *statsAgg) finish() statsRes {
+	a.res.Tags = topTags(a.tags, 8)
+	a.res.Attach["count"] = iv(a.res.Attach["count"])
+	a.res.AI = aiStats()
+	a.res.Bytes = dataBytes()
+	return a.res
 }
 
 // aiStats summarises the in-memory LLM log (this run only).

@@ -1374,6 +1374,27 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Go 侧三个长函数拆开：stats / runSearch / handleTodo（P14 S6 步骤 57）
+
+* **`stats()` 81 → 12 行 + 小聚合器**：原来一个循环里同时干四件事（笔记计数、待办计数、附件计数、近 7 天分桶），
+  `res` / `dayIdx` / `tags` 三个累加器在四段之间穿来穿去。现在累加器挂到 `statsAgg{res, dayIdx, tags, today, now}` 上，
+  `stats()` 只剩「建聚合器 → 逐条喂 → 收尾」，四段各自成方法（`note` / `todos` / `attachments` / `finish`）。
+  脚本核对：**原循环体 49 行 vs 三个方法体 49 行，剔缩进、剔 `a.` 前缀、附件段循环变量 `att`→`a` 之后逐字一致**
+  （附件段那个 `a` 跟新接收者撞名，只能改名）。
+* **`runSearch` 64 → 17 行 + `searchTodos` / `searchNotes`**：`runSearch` 只做参数归一化（q 小写、待办页补默认
+  `done=open`、limit 夹到 1..1000）+ 分流；两条分支各走各的。**原两分支 44 行 vs 新两函数体 44 行逐字一致。**
+* **`handleTodo` 61 → 20 行 + `todoAdd` / `todoToggle` / `todoDelete`**：请求体原来是函数内匿名 `struct`，拆函数
+  就得给它起名 `todoReq`（json tag 一个没动，`/api/todo` 对外契约不变）。**原三个 case 体 40 行 vs 新三个函数体
+  40 行逐字一致。**
+* 拆完之后 Go 侧最长函数变成 `callLLM` 69、`add`（shots）68、`clipAdd` 68、`selfTest` 63、`apiMux` 59。
+* 探针（`.test/probe_go57.js`，三个改动点全打一遍）：`/api/stats` 聚合器各桶都对（notes.total=8 done=7 days=7
+  attach.count=1 bytes=4684 sources=2）→ `/api/search` 两条分支（notes total=8 scanned=8 返回=5 | todos total=0）→
+  `todoAdd`（优先级 high、截止日归一化）→ `todoToggle`（done=true 且 DoneAt 盖上）→ `todoDelete`（回到原条数）→
+  未知 action 报错 → 清理 `loads=1`。
+* 验收：`ui_test.js` **122 项全绿**（未改闸门）、`gofmt -l go` 空、`go vet ./...` 干净、`go test ./...` ok、
+  `GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd` **164 项 ok / 0 FAIL / PASS**（一次过）、
+  三套 DOM 等价工具全部一致。
+
 ### go/web.go 拆成 web.go + api.go + selftest.go（P14 S6 步骤 56）
 
 `go/web.go` 542 行里装着三件不相干的事：HTTP 服务器与静态资源、13 个 `/api/*` 处理器、headless 自检。
