@@ -439,8 +439,9 @@ public class MainActivity extends Activity {
     }
 
     /** 手动选图“先入队后 OCR”（步骤 71）：先以 defer=true 占位入队拿回 note id，
-     *  卡片立刻显「排队中」，再在后台跑 OCR 并带 id reingest 补文本进 LLM；
-     *  异常时若占位已落库则原地改成失败态，不另起一条。 */
+     *  立刻 runJs("refresh()") 掄页面让「排队中」卡片即刻上屏（不等 2s 轮询，步骤 71b），
+     *  再在后台跑 OCR 并带 id reingest 补文本进 LLM，完成后同样掄一次把状态立即刷成
+     *  「AI 解析中」/失败态；异常时若占位已落库则原地改成失败态，不另起一条。 */
     void ingestPickedImage(File f, String name) {
         String id = "";
         try {
@@ -448,6 +449,7 @@ public class MainActivity extends Activity {
                     f.getAbsolutePath(), name, "manual-image");
             note("enqueue manual-image (deferred) -> " + r0);
             id = noteIdOf(r0);
+            if (id.length() > 0) runJs("refresh()");   // 占位卡即刻上屏，不等 2s 轮询
             OcrHelper.Out o = OcrHelper.get(MainActivity.this)
                     .recognizeFile(f.getAbsolutePath());
             String r = Bridge.enqueueImage(id, f.getAbsolutePath(), name,
@@ -459,6 +461,7 @@ public class MainActivity extends Activity {
                     "图片处理失败: " + t, "manual-image");
             note("reingest manual-image FAIL -> " + r);
         }
+        if (id.length() > 0) runJs("refresh()");   // OCR 结果（或失败态）也立刻上屏
     }
 
     /** nativeEnqueue / enqueueImage 的返回 JSON 里取 note id（空串 = 占位失败或没拿到）。 */
@@ -886,6 +889,8 @@ public class MainActivity extends Activity {
             return hookImport(arg);
         } else if ("copyin".equals(hook)) {
             return hookCopyIn(arg);
+        } else if ("pickimage".equals(hook)) {
+            return hookPickImage(arg);
         }
         return Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
     }
@@ -1059,6 +1064,19 @@ public class MainActivity extends Activity {
             File out = copyIn(Uri.fromFile(f));
             return "{\"ok\":true,\"src\":\"" + f.getName() + "\",\"dst\":\"" + out.getName()
                     + "\",\"size\":" + out.length() + "}";
+        } catch (Throwable t) {
+            return "{\"ok\":false,\"error\":\"" + t + "\"}";
+        }
+    }
+
+    /** 验收用：模拟用户在相册里选了一张图（copyIn + ingestPickedImage 全链路，含占位卡掄刷新）。 */
+    private String hookPickImage(String arg) {
+        File f = new File(arg == null ? "" : arg);
+        if (!f.isFile()) return "{\"ok\":false,\"error\":\"文件不存在\"}";
+        try {
+            File out = copyIn(Uri.fromFile(f));
+            ingestPickedImage(out, f.getName());
+            return "{\"ok\":true,\"src\":\"" + f.getName() + "\",\"dst\":\"" + out.getName() + "\"}";
         } catch (Throwable t) {
             return "{\"ok\":false,\"error\":\"" + t + "\"}";
         }

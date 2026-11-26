@@ -5067,3 +5067,21 @@ cancelGone 撤销。）
 * 选图占位：`hook enqueue` 传 `defer:true` 立即生成 `status="queued"` 记录，列表卡片 `#n<id>` 即时显示 `"未命名笔记"` + `["图片","排队中"]`；随后带 `id` reingest 经 LLM 完成为 `["图片","✦ AI exec · 5365ms","购物","提醒"]`。
 
 全套闸门：`GO_TEST=1 ./build.sh` 绿（`go test` 1.196s，`TestEnqueueDeferredImageThenReingest` 0.032s）、`./install.sh` Success、`node tools/ui_test.js` **122 ok / 0 FAIL**、`./test.sh --vd` **166 ok / 0 FAIL / PASS**（`.test/logs/test_s71.log`）、三套 DOM 等价工具（`dom_equiv.js` / `dom_equiv2.js` / `dom_equiv3.js`）全部一致。
+
+## 9.94 选图占位卡即刻上屏：Java 双肾 refresh 掑（步骤 71b）
+
+1. **症状与根因**：相册选图后新卡平均 ~1s 才出现。`pollflow.js` 的 2s 轮询是选图回程后唯一剩余刷新触发；addflow.js `pickImage()` 的三个 `setTimeout(refresh, …)` 在 `Android.pickImage()` 之前排定，系统选图器开着就过期。不碰轮询间隔，也不改 setTimeout 表格。
+
+2. **修复（Java→JS 推送）**：`MainActivity.ingestPickedImage` 在两处加 `runJs("refresh()")`：
+   * `noteIdOf(r0)` 拿到占位 id 后立即刷（占位卡「排队中」即刻上屏）；
+   * OCR/reingest 完成后（try 或 catch 之后）再刷（结果/失败态即刻翻转）。
+   两个 nudge 都带 `id.length()>0` 守卫；`runJs` 走 `runOnUiThread` → `web.evaluateJavascript`，后台线程（onActivityResult / runHook / hookPickImage）都安全。`refresh` 由 `__enoteActions` 全局导出（app.js:355/362），`importJSON` 已有同款先例；ANIMLOCK 只拦重绘不拦 nudge；`pollflow` 指纹（D8 契约）保证数据没变不重绘，双肾零副作用。
+
+3. **验收钩子 `pickimage`**：`hookDispatch` 新增分支，镜像 `hookCopyIn`（arg = 文件路径，copyIn，返回 `{"ok":true,"src":…,"dst":…}` / `{"ok":false,…}`），物理机不开系统选图器即可跑全链路。`tools/ui_test.js` 无门禁枚举钩子名单、㉑ 只数 clipset 模式，无需改测试。
+
+4. **真机探针（MutationObserver 级）**：页面挂 MutationObserver（微任务，不受 WebView 后台节流影响）监视 `#view` 下新 `.card` DOM 节点，`hook pickimage` 触发两条探针：
+   * 923KB 图：enqueue `5807.752` → 占位卡 `5807.782`（30ms）；
+   * 97KB 图：enqueue `5905.907` → 占位卡 `5905.967`（60ms）。
+   两条都 <100ms，占位卡先于 reingest 出现、随后原地更新为解析结果。早前 `setInterval`（40ms）量到的 2.07s 被证伪：那是 WebView 节流定时器的假象。探针笔记经 `/api/delete` 清干净。
+
+5. **验收（最终 build）**：`GO_TEST=1 ./build.sh` 绿（`go test` 1.422s）、`./install.sh` Success、`node tools/ui_test.js` **122 ok / 0 FAIL**、`./test.sh --vd` **PASS**、三套 DOM 等价工具全部一致。本轮改动文件：`src/dev/xduo/enote/MainActivity.java`（+4 有效行：`ingestPickedImage` 双肾 + `hookDispatch` 分支 + `hookPickImage` 19 行，全部 ≤29）、`CHANGELOG.md`、`plan.md`。

@@ -6,6 +6,14 @@
 
 ## 0.1（当前）
 
+### 选图占位卡即刻上屏：Java 双肾 refresh 摑（步骤 71b）
+
+* **症状根因**：app.js 的 `setInterval(refresh, 2000)` 轮询是「选图后卡片上屏」的唯一兜底——addflow.js `pickImage()` 里 `setTimeout(refresh, 1500/5000/12000)` 在 `Android.pickImage()` 之前就排好，系统选图器打开期间就过期了，回来后平均要等 ~1s（下一拍轮询）新卡才出现。
+* **修复**：`MainActivity.ingestPickedImage` 在 `noteIdOf(r0)` 拿到占位 id 后立即 `runJs("refresh()")`（占位卡「排队中」即刻上屏，不再等轮询），OCR/reingest 完成后同样再 `runJs("refresh()")` 把结果/失败态也立刻刷出来；`id.length()>0` 守卫保证只有占位落库才摑（无谓刷新归零）。后端 `pollflow.refresh` 走指纹（D8 契约），数据没变不会重绘，双摑零副作用。
+* **验收钩子**：`hookDispatch` 新增 `pickimage` 钩子（arg = 图片路径，镜像 `hookCopyIn`：copyIn → 全链路 `ingestPickedImage` → `{"ok":true,"src":…,"dst":…}`），物理机无需开系统选图器即可验收。
+* **真机探针（MutationObserver 级）**：enqueue（deferred，testlog 时间戳）→ 占位卡 DOM 节点挂上 <60ms（两轮：`5807.752→5807.782` / `5905.907→5905.967`）；此前 `setInterval` 测到的 2.07s 是 WebView 后台节流 40ms 计时器的假象，MutationObserver（微任务）不受影响。清理钩子删净三条探针笔记。
+* 验收：`GO_TEST=1 ./build.sh` 绿（`go test` 1.422s）、`./install.sh` Success、`ui_test.js` **122 ok / 0 FAIL**、`./test.sh --vd` **PASS**、三套 DOM 等价工具全部一致。
+
 ### 手动选图「先入队后 OCR」+ 进度层浮岛小卡（步骤 71）
 
 * **手动选图先入队后 OCR**：`go/pipeline.go` 新增 `ingestReq.Defer`（`defer=true` 时占位入队保持 `stQueued`、跳过 `jobs` 且不误落 `stRaw`，OCR 完成后带 `id` `reingest` 推进；新增 `go/pipeline_test.go` `TestEnqueueDeferredImageThenReingest`）。`Bridge.java` 抽出 `enqueueImageInternal` 并新增 `enqueueImageDeferred`；`MainActivity.java` 抽出 `ingestPickedImage` 与 `noteIdOf`，统一 `onActivityResult`（`REQ_IMG`）与 `pickDocument` 图片分支：选图后立刻占位显「排队中」，后台跑 OCR 再带 `id` reingest（异常原地置 `stError`）。分享、剪贴板与截图批量导入流程不变。
