@@ -168,6 +168,15 @@ public final class Reminders {
                             Set<String> scheduled) {
                 String key = keyOf(o);
                 if (scheduled.contains(key)) return;
+                String[] ids = resolveIds(o);
+                PendingIntent pi = pending(c, key, o.optString("text"), o.optString("note"),
+                        ids[0], ids[1]);
+                scheduleAlarm(c, am, pi, o.optLong("dueMs"), exact, scheduled,
+                        key, ids[0], ids[1]);
+    }
+
+    /** 从载荷里取 noteId/todoId；老载荷是 "<noteId>|<todoId>" 一个字段的要拆开。 */
+    private static String[] resolveIds(JSONObject o) {
                 String noteId = o.optString("noteId");
                 String todoId = o.optString("todoId");
                 if (noteId.isEmpty() || todoId.isEmpty()) {
@@ -179,9 +188,13 @@ public final class Reminders {
                         todoId = id.substring(bar + 1);
                     }
                 }
-                PendingIntent pi = pending(c, key, o.optString("text"), o.optString("note"),
-                        noteId, todoId);
-                long due = o.optLong("dueMs");
+                return new String[]{noteId, todoId};
+    }
+
+    /** 排进去（setAlarmClock 优先）；厂商拒了退回 setAndAllowWhileIdle；排成记进 scheduled。 */
+    private static void scheduleAlarm(Context c, AlarmManager am, PendingIntent pi, long due,
+                                      boolean exact, Set<String> scheduled,
+                                      String key, String noteId, String todoId) {
                 try {
                     // setAlarmClock 是“必须响”的登记方式（系统时钟 app 自己的闹钟就是这么排的）：
                     // Doze / 应用待机 / 厂商冻结都不会静默丢弃它，到点还会唤醒进程。

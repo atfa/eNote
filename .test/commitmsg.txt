@@ -1,14 +1,11 @@
-P14 S6 步骤 69：Java 侧第九批长函数拆开（Shots.scan 34 / Reminders.onReceive 34 / MainActivity.copyIn 30 / ShareActivity.handle 31）
+P14 S6 步骤 70：Java 侧第十批长函数拆开（Reminders.arm 34）——长函数清零收官
 
-- Shots.scan 34 → 22 行 + stageCopies 11：批量复制后收尾段（去重判定 copy.copied == 0、Bridge.shotAdd、applyShotAddResp、saveSeen、日志）搬进 stageCopies，scan 只剩扫候选 + 收集 Hit + 调它。
-- Reminders.onReceive 34 → 9 行 + dropFired 3 + fireNotification 22：receiver 只剩取 extra + 分发；持久化 key 清理（load/remove/save）进 dropFired；渠道 + Builder + PendingIntent（→ MainActivity openNote/openTodoId）+ nm.notify 进 fireNotification。判定守卫翻成早退 return。
-- MainActivity.copyIn 30 → 13 行 + pickDisplayName 14 + extFromPick 6 + streamTo 3：DISPLAY_NAME 查询逐字搬进 pickDisplayName（空 DISPLAY_NAME 保持 "" 原语义 → .jpg）；扩展名推导进 extFromPick；65536 字节桶流复制进 streamTo（throws Exception，异常归调用者 try/finally）。
-- ShareActivity.handle 31 → 25 行 + shareFileOrNothing 5：非图片流（processFile）与没内容（ui("没有可保存的内容")）两分支合并，文本/图片分支原样。
-- hookDispatch 33 保持不拆：纯分发表（十五钩子 → 方法），按 apiMux 约定路由表不算长函数。
-- 加 hook copyin（步骤 67 hook import 先例：copyIn 只能经系统文件选择器触发，拆链需要端到端覆盖）：dispatch 加分支 → hookCopyIn(arg) → copyIn(Uri.fromFile(f)) → {"ok":true,"src","dst","size"}；README §手工驱动补了一条。
+- Reminders.arm 34 → 8 行 + resolveIds 11 + scheduleAlarm 20：老格式兼容（"<noteId>|<todoId>" 拆字段）逐字搬进 resolveIds（返回 String[]{noteId, todoId}）；排闹钟整段（setAlarmClock 优先 → SDK 分支 → scheduled.add，SecurityException 兜底 setAndAllowWhileIdle）搬进 scheduleAlarm（due 由调用处实参算出）。arm 只剩 keyOf → 去重早退 → resolveIds → pending → scheduleAlarm 五步。
 
-逐字核对（git show HEAD: 语句多重集双向，新侧按「原函数 + 拆出函数」拼起来比，verb69.py 多行签名感知）：scan / copyIn / handle 旧句 0 缺失；onReceive 只缺守卫改写 1 行；新句多余的全是签名 / 调用 / 闭合括号 / try-finally 结构。
+逐字核对（git show HEAD: 语句多重集双向，verb69.py 多行签名感知）：旧句缺失 2 行全是内联改写——long due = o.optLong("dueMs") 并进 scheduleAlarm(...) 实参、pending(...) 续行实参 noteId, todoId 改 ids[0], ids[1]（求值顺序不变）；无语句丢失。
 
-探针（物理屏）：hook copyin: {"ok":true,"src":"s69final.txt","dst":"1795682999888.txt","size":18}（copyIn 链）；显式组件广播 reminder fired: step69-fire + 2 条 NotificationRecord channel=reminder category=reminder defaults=ALL（fireNotification）；scheduled 注入 s69keep@8\ns69drop@9 响完只剩 s69keep@8（冷启动证明 dropFired）；空分享 handle action=...SEND type=text/plain text=null 进「没有可保存的内容」（shareFileOrNothing 空分支）。
+探针（物理屏，走真实 sync → arm 链）：/api/todo add 造 2027-01-02 到期待办 → hook keepalive on 触发 Reminders.sync → arm → dumpsys alarm 出现 RTC_WAKEUP tag=*walarm*:dev.xduo.enote.REMIND origWhen=2027-01-02 09:00 + Alarm clock showIntent（setAlarmClock 分支）+ pending:1；删待办再 off → pending:0、alarm 清零（撤销路径）。
 
-验收（hook copyin 加完后重跑）：ui_test.js 122 项全绿、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd 164 ok / 0 FAIL / PASS、三套 DOM 等价工具全部一致。
+收官口径：全部 Java 方法 ≤29 有效行（hookDispatch 32 是纯路由分发表，按 apiMux 约定豁免），十个批次拆分全部带逐字核对 + 物理屏探针。
+
+验收（最终 build）：ui_test.js 122 项全绿、GO_TEST=1 ./build.sh 绿、./install.sh Success、./test.sh --vd 164 ok / 0 FAIL / PASS、三套 DOM 等价工具全部一致。

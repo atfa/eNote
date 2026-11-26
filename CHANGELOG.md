@@ -6,6 +6,14 @@
 
 ## 0.1（当前）
 
+### Java 侧第十批长函数拆开：Reminders.arm 34（P14 S6 步骤 70）——长函数清零收官
+
+* **`Reminders.arm` 34 → 8 行 + `resolveIds` 11 + `scheduleAlarm` 20**：老格式兼容（`"<noteId>|<todoId>"` 拆字段）逐字搬进 `resolveIds`（返回 `String[]{noteId, todoId}`）；排闹钟整段（setAlarmClock 优先 → SDK 分支 → scheduled.add，SecurityException 兜底 setAndAllowWhileIdle）搬进 `scheduleAlarm`（`due` 由调用处实参算出）。`arm` 只剩 keyOf → 去重早退 → resolveIds → pending → scheduleAlarm 五步。
+* 逐字核对（`git show HEAD:` 语句多重集双向）：旧句缺失 2 行全是内联改写——`long due = o.optLong("dueMs")` 并进 `scheduleAlarm(...)` 实参、`pending(...)` 续行实参 `noteId, todoId` 改 `ids[0], ids[1]`（求值顺序不变）；无语句丢失。
+* 探针（物理屏，走真实 sync → arm 链）：`hook keepalive: {...,"pending":1}` + `dumpsys alarm` 出现 `RTC_WAKEUP tag=*walarm*:dev.xduo.enote.REMIND origWhen=2027-01-02 09:00` + `Alarm clock showIntent`（证明 `scheduleAlarm` 的 setAlarmClock 分支）；删待办再 off 后 `pending:0`、alarm 清零（撤销路径）。
+* 收官口径：**全部 Java 方法 ≤29 有效行（hookDispatch 32 是纯路由分发表，按 apiMux 约定豁免）**，十个批次拆分全部带逐字核对 + 物理屏探针。
+* 验收（最终 build）：`ui_test.js` **122 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Java 侧第九批长函数拆开：Shots.scan 34 / Reminders.onReceive 34 / MainActivity.copyIn 30 / ShareActivity.handle 31（P14 S6 步骤 69）
 
 * **`Shots.scan` 34 → 22 行 + `stageCopies` 11**：批量复制后收尾段（去重判定 `copy.copied == 0`、`Bridge.shotAdd`、`applyShotAddResp`、`saveSeen`、日志）搬进 `stageCopies`，`scan` 只剩扫候选 + 收集 Hit + 调它。

@@ -5015,3 +5015,37 @@ force-stop → 注入 → 冷启动广播，不能再拉起 Activity。）
 
 全套闸门（**hook copyin 加完后重跑**）：`ui_test.js` 122 全绿、`GO_TEST=1 ./build.sh` 绿、
 `./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
+## 9.92 P14 S6：Java 侧第十批长函数拆开（Reminders.arm 34，步骤 70）——长函数清零收官
+
+**`Reminders.arm` 34 → 8 行 + `resolveIds` 11 + `scheduleAlarm` 20**：载荷里取
+noteId/todoId 的老格式兼容（`"<noteId>|<todoId>"` 拆字段）逐字搬进 `resolveIds`（返回
+`String[]{noteId, todoId}`）；整段排闹钟逻辑（setAlarmClock 优先 → SDK 分支 →
+scheduled.add，SecurityException 兜底 setAndAllowWhileIdle）搬进 `scheduleAlarm`（多传
+`key, noteId, todoId`，`due` 由调用处 `o.optLong("dueMs")` 实参算出）。
+`arm` 只剩「keyOf → 去重早退 → resolveIds → pending → scheduleAlarm」五步。
+
+逐字核对（`git show HEAD:` 语句多重集双向，`verb69.py` 多行签名感知）：旧句缺失 2 行全是
+内联改写——`long due = o.optLong("dueMs")` 并进 `scheduleAlarm(...)` 调用实参、
+`pending(...)` 续行实参 `noteId, todoId` 改 `ids[0], ids[1]`（求值顺序不变：pending 仍在
+optLong 之前算）；无任何语句丢失。
+
+探针（物理屏，走真实 sync → arm 链）：
+
+```
+hook keepalive: {"keepAlive":true,"batteryIgnoring":true,"pending":1}
+dumpsys alarm: RTC_WAKEUP ... tag=*walarm*:dev.xduo.enote.REMIND origWhen=2027-01-02 09:00
+  Alarm clock: triggerTime=2027-01-02 09:00:00.000 showIntent=... dev.xduo.enote startActivity
+hook keepalive: {"keepAlive":false,...,"pending":0}   ← 删待办后撤销，alarm 清零
+```
+
+（先经 `/api/todo add` 造一条 2027-01-02 到期待办，`hook keepalive on` 触发
+`Reminders.sync` → `arm` → `scheduleAlarm` 的 setAlarmClock 分支；删掉待办再 off 验证
+cancelGone 撤销。）
+
+收官口径：**全部 Java 方法 ≤29 有效行（hookDispatch 32 是纯路由分发表，按步 62 apiMux
+约定豁免）**，十个批次的长函数拆分全部带逐字核对 + 物理屏探针。
+
+全套闸门（最终 build）：`ui_test.js` 122 全绿、`GO_TEST=1 ./build.sh` 绿、
+`./install.sh` Success、`./test.sh --vd` **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具
+全部一致。
