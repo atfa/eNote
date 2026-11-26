@@ -4349,3 +4349,52 @@ clipSync ×2（clipAdd 去重）：暂存=1 命中=1 kind=text text="步骤五�
 验收：`ui_test.js` **122 项全绿**（闸门数未变，⑯ 换匹配式）、`gofmt -l go` 空、`go vet ./...` 干净、
 `go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd`
 **164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+## 9.81 P14 S6：Go 侧第三批长函数拆开（selfTest / listAttachments / runNote，步骤 59）
+
+步骤 58 之后剩下的三个长函数是 `selfTest` 63、`listAttachments` 58、`runNote` 56。
+（`apiMux` 59 行是路由表，一行一个 handler，拆它只会把一张表切成三块，不动。）
+
+**① `selfTest` 63 → 17 行 + 一个 mode 一个函数**
+
+四个 mode 的分支挤在一起，每个分支都要自己写进 `out`。现在 `selfTest` 只剩「解参数 →
+按 mode 收集」，分支归 `selfTestStore(req)` / `selfTestWeb()` / `selfTestLLM(req)`，
+内联的匿名参数结构体归成 `selfTestInput{Mode,Text}`（json tag 不变）。
+改写只有：`out["store"] = …` → `return …`（store 两处、web 一处、llm 一处）。
+
+**② `listAttachments` 58 → 17 行 + 拼装 / 过滤 / 收尾各一个**
+
+一条附件的三件事原来挤在两层循环里。现在主函数只剩「遍历 → 过滤 → 收下」：
+`newAttachItem` 管拼装（标题占位、笔记时间、盘上没文件标 missing），`attachItem.matches`
+管两个过滤器（mime 可以是 mime 前缀或类型名，q 是名称/mime/笔记标题的子串），
+`attachRes.finish` 管收尾（missing/files 只统计过滤后的列表、排序在截断之前、补磁盘侧两个数）。
+改写：`a.MIME`/`a.Name` → `it.MIME`/`it.Name`（`attachItem` 内嵌 `Attachment`，同一字段）、
+过滤器里的 `continue` → `return false`、收尾里的 `res.` → `r.`。
+
+**③ `runNote` 56 → 25 行 + `noteText` / `noteFail` / `runNoteAI`**
+
+`runNote` 只剩「取正文 → 三道前置（没正文 / 关了 AI）→ 交给 `runNoteAI`」。
+两条 AI 失败出口（调用失败、输出解析不了）原来各写四行落库、只差一句原因文案，
+现在归 `noteFail(id, text, call, msg)` 一行调用。`cfg := config.get()` 只被用了一次，
+改成 `if !config.get().UseAI`。
+
+逐字核对（`git show HEAD:go/x.go` 语句多重集对比，双向）：listAttachments 原 56 有效行 → 新 63、
+selfTest 61 → 62、runNote 54 → 52，除上面列出的改写外，原句全部逐字保留，新代码里也没有一句
+没有原句对应（两个方向都是「无」）。
+
+探针（物理屏，`.test/probe_go59.js`）：
+
+```
+就绪 loads=1
+GET /api/attachments（listAttachments 拆分后）：全量 total=1 files=1 missing=0 bytes=77 scanned=9 dirs=1 diskFiles=4 首条 kind=pdf
+过滤：mime=pdf total=1 mime=image total=0 q无命中 total=0 q命中名称 total=1 note无命中 total=0 sort=size limit=1 条数=1
+POST /api/add → runNote/runNoteAI：状态=done 标题="明日致电母亲询问体检结果" 待办=1 时间="" 错误=""
+清理 loads=1 卡片=10
+```
+
+（`/api/attachments` 与 `/api/note` 的参数走 query string，不走 body —— 第一版探针把参数塞进
+body，所有过滤器都变成「没过滤」，正好反证过滤器分支真的在起作用。）
+`selfTest` 由测试套件的 selftest hook 步骤覆盖（store + web + llm + ocr 四个 mode 全跑）。
+
+验收：`ui_test.js` **122 项全绿**（闸门数未变）、`gofmt -l go` 空、`go vet ./...` 干净、
+`go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd`
+**164 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。

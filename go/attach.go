@@ -136,6 +136,11 @@ type attachRes struct {
 // listAttachments walks the store and returns the attachments that pass q/mime/note, newest
 // first by default. `mime` accepts a mime prefix ("image/", "application/pdf") or a kind
 // ("image", "pdf", "doc", ...) as the UI's 类型 filter sends it.
+/* 步骤 59：listAttachments 原来 58 行，一条附件的「拼装 / 过滤 / 收尾」三件事挤在两层循环里。
+   现在拼归 newAttachItem、过滤归 attachItem.matches、收尾归 attachRes.finish，
+   主函数只剩「遍历 → 过滤 → 收下」。语句逐字搬，只把 a.MIME/a.Name 换成 it.（attachItem
+   内嵌 Attachment，同一字段）、过滤器里的 continue 换成 return false、收尾里的 res. 换成 r.。 */
+
 func listAttachments(q, sortKey, dir, mime, noteID string, limit int) attachRes {
 	q = strings.ToLower(strings.TrimSpace(q))
 	limit = clampLimit(limit, 500, 2000)
@@ -146,53 +151,75 @@ func listAttachments(q, sortKey, dir, mime, noteID string, limit int) attachRes 
 		}
 		res.Scanned++
 		for _, a := range n.Attachments {
-			it := attachItem{Attachment: a, NoteTitle: n.Title, Kind: kindOfMime(a.MIME)}
-			if it.NoteTitle == "" {
-				it.NoteTitle = "(未命名笔记)"
-			}
-			it.NoteAt = n.CreatedAt.Format("2006-01-02 15:04")
-			if a.Path == "" {
-				it.Missing = true
-			} else if _, err := os.Stat(a.Path); err != nil {
-				it.Missing = true
-			}
-			switch mime {
-			case "", "all":
-				// no filter
-			default:
-				if strings.Contains(mime, "/") {
-					if !strings.HasPrefix(strings.ToLower(a.MIME), strings.ToLower(mime)) {
-						continue
-					}
-				} else if it.Kind != mime {
-					continue
-				}
-			}
-			if q != "" {
-				blob := strings.ToLower(a.Name + "\n" + a.MIME + "\n" + it.NoteTitle)
-				if !strings.Contains(blob, q) {
-					continue
-				}
+			it := newAttachItem(n, a)
+			if !it.matches(mime, q) {
+				continue
 			}
 			res.Items = append(res.Items, it)
 			res.Bytes += a.Size
 		}
 	}
-	res.Total = len(res.Items)
-	// files/missing describe the *filtered* list, so a search cannot make missing negative
-	for _, it := range res.Items {
-		if it.Missing {
-			res.Missing++
+	res.finish(sortKey, dir, limit)
+	return res
+}
+
+// newAttachItem 把一条附件连同所属笔记拼成 API 要的形状：标题空给占位、带上笔记时间、
+// 文件不在盘上标 missing。
+func newAttachItem(n *Note, a Attachment) attachItem {
+	it := attachItem{Attachment: a, NoteTitle: n.Title, Kind: kindOfMime(a.MIME)}
+	if it.NoteTitle == "" {
+		it.NoteTitle = "(未命名笔记)"
+	}
+	it.NoteAt = n.CreatedAt.Format("2006-01-02 15:04")
+	if a.Path == "" {
+		it.Missing = true
+	} else if _, err := os.Stat(a.Path); err != nil {
+		it.Missing = true
+	}
+	return it
+}
+
+// matches 是 UI 的两个过滤器：mime 可以是 mime 前缀（"image/"）或类型名（"image"、"pdf"），
+// q 是名称 / mime / 笔记标题的小写子串。返回 false 表示这条不进列表。
+func (it attachItem) matches(mime, q string) bool {
+	switch mime {
+	case "", "all":
+		// no filter
+	default:
+		if strings.Contains(mime, "/") {
+			if !strings.HasPrefix(strings.ToLower(it.MIME), strings.ToLower(mime)) {
+				return false
+			}
+		} else if it.Kind != mime {
+			return false
 		}
 	}
-	res.Files = res.Total - res.Missing
-	sortAttachments(res.Items, sortKey, dir)
-	if res.Total > limit {
-		res.Items = res.Items[:limit]
+	if q != "" {
+		blob := strings.ToLower(it.Name + "\n" + it.MIME + "\n" + it.NoteTitle)
+		if !strings.Contains(blob, q) {
+			return false
+		}
 	}
-	res.Dirs = attachmentDirs()
-	res.DiskFiles = countDiskFiles()
-	return res
+	return true
+}
+
+// finish 收尾：missing / files 只统计过滤后的列表（否则搜索会把 missing 减成负数），
+// 排序在截断之前，最后补上磁盘侧的两个数。
+func (r *attachRes) finish(sortKey, dir string, limit int) {
+	r.Total = len(r.Items)
+	// files/missing describe the *filtered* list, so a search cannot make missing negative
+	for _, it := range r.Items {
+		if it.Missing {
+			r.Missing++
+		}
+	}
+	r.Files = r.Total - r.Missing
+	sortAttachments(r.Items, sortKey, dir)
+	if r.Total > limit {
+		r.Items = r.Items[:limit]
+	}
+	r.Dirs = attachmentDirs()
+	r.DiskFiles = countDiskFiles()
 }
 
 func sortAttachments(list []attachItem, s, dir string) {

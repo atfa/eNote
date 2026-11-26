@@ -285,16 +285,12 @@ func runNote(id string) {
 	if n == nil {
 		return
 	}
-	cfg := config.get()
-	text := strings.TrimSpace(n.RawText)
-	if text == "" {
-		text = strings.TrimSpace(n.Content)
-	}
+	text := noteText(n)
 	if text == "" {
 		store.update(id, func(x *Note) { x.Status = stRaw; x.Error = "没有文本" })
 		return
 	}
-	if !cfg.UseAI {
+	if !config.get().UseAI {
 		store.update(id, func(x *Note) {
 			x.Status = stRaw
 			x.Content = text
@@ -302,25 +298,40 @@ func runNote(id string) {
 		})
 		return
 	}
+	runNoteAI(id, n, text)
+}
+
+// noteText 取笔记里能送去解析的正文：优先原文，没有就用正文。
+func noteText(n *Note) string {
+	text := strings.TrimSpace(n.RawText)
+	if text == "" {
+		text = strings.TrimSpace(n.Content)
+	}
+	return text
+}
+
+// noteFail 是 AI 解析失败的落库：状态退回 raw、正文保住原文、AI 原始输出留一份、错误写清原因。
+// 两条失败出口（调用失败 / 输出解析不了）原来各写四行，只差一句原因文案。
+func noteFail(id, text string, call *LLMCall, msg string) {
+	store.update(id, func(x *Note) {
+		x.Status = stRaw
+		x.Content = text
+		x.AIRaw = clip(call.Raw, 4000)
+		x.Error = msg
+	})
+}
+
+// runNoteAI 真调大模型：两条失败出口都走 noteFail（原文保住、可重试），成功走 applyParsed。
+func runNoteAI(id string, n *Note, text string) {
 	store.update(id, func(x *Note) { x.Status = stParsing; x.Error = "" })
 	call, err := callLLM(systemPrompt(), userPromptFor(n))
 	if err != nil {
-		store.update(id, func(x *Note) {
-			x.Status = stRaw
-			x.Content = text
-			x.AIRaw = clip(call.Raw, 4000)
-			x.Error = "AI 解析失败：" + clip(call.Err, 300) + "（原文已保留，可重试）"
-		})
+		noteFail(id, text, call, "AI 解析失败："+clip(call.Err, 300)+"（原文已保留，可重试）")
 		return
 	}
 	p, perr := parseNoteJSON(call.Raw)
 	if perr != nil {
-		store.update(id, func(x *Note) {
-			x.Status = stRaw
-			x.Content = text
-			x.AIRaw = clip(call.Raw, 4000)
-			x.Error = "AI 输出无法解析：" + perr.Error() + "（原文已保留，可重试）"
-		})
+		noteFail(id, text, call, "AI 输出无法解析："+perr.Error()+"（原文已保留，可重试）")
 		return
 	}
 	store.update(id, func(x *Note) {

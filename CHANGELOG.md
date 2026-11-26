@@ -1374,6 +1374,34 @@ P12「点了没反应」那一类），每次重绘整段 `innerHTML`。
 * 验收：`ui_test.js` **119 项全绿**、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、
   `./test.sh --vd` **163 项 ok / 0 FAIL / PASS**（与步骤 15/16a/16b 基线逐条相同）。
 
+### Go 侧第三批长函数拆开：selfTest / listAttachments / runNote（P14 S6 步骤 59）
+
+* **`selfTest` 63 → 17 行**：四个 mode 的分支挤在一起，每个分支都要自己写进 `out`。现在一个 mode
+  一个函数（`selfTestStore` / `selfTestWeb` / `selfTestLLM`），`selfTest` 只剩「解参数 → 按 mode 收集」；
+  内联的匿名参数结构体归成 `selfTestInput{Mode,Text}`（json tag 不变）。改写只有
+  `out["store"] = …` → `return …`（store 两处、web 一处、llm 一处）。
+* **`listAttachments` 58 → 17 行**：一条附件的「拼装 / 过滤 / 收尾」三件事原来挤在两层循环里。
+  现在拼归 `newAttachItem`（标题占位、笔记时间、盘上没文件标 missing）、过滤归
+  `attachItem.matches`（mime 可以是 mime 前缀或类型名，q 是名称/mime/笔记标题的子串）、
+  收尾归 `attachRes.finish`（missing/files 只统计过滤后的列表、排序在截断之前、补磁盘侧两个数）。
+  改写：`a.MIME`/`a.Name` → `it.MIME`/`it.Name`（`attachItem` 内嵌 `Attachment`，同一字段）、
+  过滤器里的 `continue` → `return false`、收尾里的 `res.` → `r.`。
+* **`runNote` 56 → 25 行**：只剩「取正文（`noteText`）→ 三道前置（没正文 / 关了 AI）→ 交给 `runNoteAI`」。
+  两条 AI 失败出口（调用失败、输出解析不了）原来各写四行落库、只差一句原因文案，现在归
+  `noteFail(id, text, call, msg)` 一行调用。`cfg := config.get()` 只被用了一次，改成 `if !config.get().UseAI`。
+* 逐字核对（`git show HEAD:go/x.go` 语句多重集双向对比）：listAttachments 原 56 有效行 → 新 63、
+  selfTest 61 → 62、runNote 54 → 52，除上面列出的改写外原句逐字保留，新代码里也没有一句没有原句对应。
+  `apiMux` 59 行是路由表（一行一个 handler），拆它只会把一张表切成三块，不动。
+* 探针（`.test/probe_go59.js`）：`/api/attachments` 全量 total=1 files=1 missing=0 bytes=77 dirs=1
+  diskFiles=4 → 过滤器 mime=pdf 1 / mime=image 0 / q无命中 0 / q命中名称 1 / note无命中 0 /
+  sort=size limit=1 条数=1 → `/api/add` 走 runNote/runNoteAI 得到 状态=done 标题="明日致电母亲询问体检结果"
+  待办=1 → 清理 `loads=1`。（`/api/attachments` 与 `/api/note` 的参数走 query string 不走 body：
+  第一版探针塞进 body，所有过滤器都变成「没过滤」，正好反证过滤器分支真的在起作用。）
+  `selfTest` 由测试套件的 selftest hook 步骤覆盖（store + web + llm + ocr 四个 mode 全跑）。
+* 验收：`ui_test.js` **122 项全绿**（闸门数未变）、`gofmt -l go` 空、`go vet ./...` 干净、
+  `go test ./...` ok、`GO_TEST=1 ./build.sh` 绿、`./install.sh` Success、`./test.sh --vd`
+  **164 项 ok / 0 FAIL / PASS**、三套 DOM 等价工具全部一致。
+
 ### Go 侧第二批长函数拆开：callLLM / shots.add / clipAdd（P14 S6 步骤 58）
 
 * **`callLLM` 69 → 33 行**：六条失败出口每条都要「写 `c.Err` → `remember(c)` → 造 error」三件套，
