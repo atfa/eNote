@@ -56,7 +56,10 @@ func handleVoice(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(body.Audios) > 0 {
 		req.Audios = body.Audios
-		req.Text = ""
+		/* text 不再强制清空（P18.3）：「保存并解析」现在把打字内容与语音段一起交，
+		   voiceText() 会把两份内容合成一篇正文，内容相同（老的单段调用方两处都给）
+		   只算一份。Java 侧 enqueueVoice 固定传 text=""，不受影响。 */
+		req.Text = body.Text
 	} else {
 		req.Text = body.Text
 		req.Path, req.Name, req.MIME = body.Path, body.Name, body.MIME

@@ -177,3 +177,46 @@ func TestReingestVoiceFromAudios(t *testing.T) {
 		t.Errorf("status = %s, want queued", n.Status)
 	}
 }
+
+// P18.3「保存并解析」合二为一：打字内容与语音段一次提交，合成一条笔记。
+// text 是用户打的字（不是各段拼起来），所以两份都要进正文：打字内容在前，各段在后；
+// 每段音频各自挂附件。handleVoice 不再把 text 丢掉，这条是那条改动的回归锁。
+func TestVoiceMergedTextAndSegs(t *testing.T) {
+	dir := t.TempDir()
+	s, err := openStore(dir)
+	if err != nil {
+		t.Fatalf("openStore: %v", err)
+	}
+	oldStore := store
+	store = s
+	drainJobs()
+	t.Cleanup(func() {
+		drainJobs()
+		store = oldStore
+	})
+
+	a1, a2 := dir+"/s1.wav", dir+"/s2.wav"
+	res := enqueue(ingestReq{Kind: "voice", Source: "manual-voice",
+		Text: "补一句：记得买牛奶",
+		Audios: []voiceSeg{
+			{Text: "今天天气好吗吗", Path: a1, Name: "s1.wav", MIME: "audio/wav"},
+			{Text: "明天去爬山", Path: a2, Name: "s2.wav", MIME: "audio/wav"},
+		}})
+	if res.Error != "" {
+		t.Fatalf("enqueue: %v", res.Error)
+	}
+	n := store.get(res.ID)
+	if n == nil {
+		t.Fatal("note not stored")
+	}
+	want := "补一句：记得买牛奶\n\n今天天气好吗\n\n明天去爬山"
+	if n.RawText != want {
+		t.Errorf("RawText = %q, want %q", n.RawText, want)
+	}
+	if len(n.Attachments) != 2 {
+		t.Errorf("attachments = %d, want 2 (每段音频各挂一个)", len(n.Attachments))
+	}
+	if n.Source != "manual-voice" {
+		t.Errorf("source = %q", n.Source)
+	}
+}

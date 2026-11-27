@@ -126,16 +126,18 @@ export const AddSheetView = {
       /* STT 是 {v:} 容器（js/voiceflow.js），宿主给的是盒子里的 v；没装配上时给一份
          同形状的空值，面板渲染成空的而不是抛错（闸门⑮ 负责把漏装配报红）。 */
       st: computed(() => H.STT || { segs: [], listening: false, handsFree: false,
-        secs: 0, partial: '', error: '' }),
+        secs: 0, partial: '', error: '', busy: false }),
       segs: computed(() => (H.STT && H.STT.segs) || [])
     }
   },
   /* P18：面板里从上到下三样东西 —— 文字、三个原料按钮、语音暂存区。语音不再藏在
      「录音（离线）」按钮后面（先点一下才能用只是多一道墙），它和图片、文件一样是
-     随手可用的原料。按钮行按需求排序：选图片 / 选文件 / 保存并解析（主操作在最后）。 */
+     随手可用的原料。按钮行按需求排序：选图片 / 选文件 / 保存并解析（主操作在最后）。
+     P18.3（设计图）：「发送」与「保存并解析」合二为一 —— 语音行只剩「撤销 + 圆钮」，
+     主按钮一次把打字内容与语音段合成一条笔记；有段时按钮上直接写出段数。 */
   template: `
-<h2>记一笔</h2><label>文字</label><textarea id="addText" :value="f.text" @input="H.formSet('add','text',$event.target.value)" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea><div class="acts"><button class="btn" @click="H.pickImage()"><ico n="camera"/>选图片</button><button class="btn" @click="H.pickFile()"><ico n="clipfile"/>选文件</button><button class="btn pri" @click="H.addNote()">保存并解析</button></div>
-<div class="vpane"><div class="vhead"><span>语音暂存</span><small>{{ segs.length }} 段 · 说完一段再录下一段</small></div><div class="vseg" v-for="(s,i) in segs" :key="i"><textarea class="vtx" :value="s.text" @input="H.voiceEdit(i,$event.target.value)"></textarea><button class="vmini" @click="H.voicePlay(i)"><ico n="play"/></button><button class="vmini" @click="H.voiceDelSeg(i)"><ico n="trash"/></button></div><div class="vpart" v-if="st.partial">{{ st.partial }}</div><div class="verr" v-if="st.error">{{ st.error }}</div><div class="vbar"><button class="vside" :disabled="!segs.length" @click="H.voiceUndo()"><ico n="refresh"/>撤销</button><button class="vrec" :class="{live: st.listening}" @pointerdown.prevent="H.voiceDown()" @pointerup="H.voiceUp()" @pointercancel="H.voiceStop()"><ico :n="st.listening ? 'stop' : 'mic'"/></button><button class="vside pri" :disabled="!segs.length" @click="H.voiceSend()"><ico n="send"/>发送</button></div><div class="vhint">{{ st.listening ? (st.handsFree ? '免手持录音中 ' + st.secs + 's · 点一下圆钮结束本段' : '松手结束本段') : '按住说话；点一下圆钮 = 免手持（静音不自动断句）' }}</div></div>
+<h2>记一笔</h2><label>文字</label><textarea id="addText" maxlength="2000" :value="f.text" @input="H.formSet('add','text',$event.target.value)" placeholder="输入或粘贴文字，点「保存并解析」"></textarea><div class="cnt">{{ (f.text || '').length }} / 2000</div><div class="acts wide"><button class="btn" @click="H.pickImage()"><ico n="camera"/>选图片</button><button class="btn" @click="H.pickFile()"><ico n="clipfile"/>选文件</button><button class="btn pri" :disabled="st.busy" @click="H.addNote()">{{ segs.length ? '保存并解析 · ' + segs.length + ' 段语音' : '保存并解析' }}</button></div>
+<div class="vpane"><div class="vhead"><span>语音暂存</span><small>{{ segs.length }} 段 · 说完一段再录下一段</small></div><div class="vseg" v-for="(s,i) in segs" :key="i"><textarea class="vtx" :value="s.text" @input="H.voiceEdit(i,$event.target.value)"></textarea><button class="vmini" @click="H.voicePlay(i)"><ico n="play"/></button><button class="vmini" @click="H.voiceDelSeg(i)"><ico n="trash"/></button></div><div class="vpart" v-if="st.partial">{{ st.partial }}</div><div class="verr" v-if="st.error">{{ st.error }}</div><div class="vbar"><button class="vside" :disabled="!segs.length" @click="H.voiceUndo()"><ico n="refresh"/>撤销</button><button class="vrec" :class="{live: st.listening}" @pointerdown.prevent="H.voiceDown()" @pointerup="H.voiceUp()" @pointercancel="H.voiceStop()"><ico :n="st.listening ? 'stop' : 'mic'"/></button><span class="vside ghost" aria-hidden="true"><ico n="refresh"/>撤销</span></div><div class="vhint">{{ st.listening ? (st.handsFree ? '免手持录音中 ' + st.secs + 's · 点一下圆钮结束本段' : '松手结束本段') : (segs.length ? '说完点上面「保存并解析」，文字和语音合成一条笔记' : '按住说话；点一下圆钮 = 免手持（静音不自动断句）') }}</div></div>
 <audio id="stt-audio" preload="none"></audio>
 `
 };

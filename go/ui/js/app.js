@@ -95,7 +95,7 @@ import { FA, fmtSize, filesNow, attachCardCls, attachGlyphName, openAttach, delA
    AddSheetView 模板直接调（H.voiceXxx），所以必须进 HOST_KEYS['sheet:add']。
    面板一打开就是展开态（不再先点「录音」），所以没有 voiceOpen / voiceClose 了。 */
 import { STT, voiceDown, voiceUp, voiceStop, voiceUndo,
-         voiceEdit, voicePlay, voiceDelSeg, voiceSend } from './voiceflow.js'
+         voiceEdit, voicePlay, voiceDelSeg } from './voiceflow.js'
 import { CLIP, openClip, importClip, clipItemCls, clipPrevText, clipThumbText, clipMetaText,
          clipParseText, clipSheet, loadClips, clipPick, clipSelAll, clipDel, clipDelSel,
          clipParse } from './clipflow.js'
@@ -246,7 +246,7 @@ var HOST = setHost({
   get STT(){ return STT.v },
   voiceDown: voiceDown, voiceUp: voiceUp,
   voiceStop: voiceStop, voiceUndo: voiceUndo, voiceEdit: voiceEdit,
-  voicePlay: voicePlay, voiceDelSeg: voiceDelSeg, voiceSend: voiceSend,
+  voicePlay: voicePlay, voiceDelSeg: voiceDelSeg,
   get sheetArg(){ return SHEETARGB.v },
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
@@ -305,9 +305,10 @@ var HOST_KEYS = {
     'missedDismiss', 'missedDone', 'missedGoTodos'],
   /* sheet:add      组件根 AddSheetView，2 个 key */
   /* sheet:add      组件根 AddSheetView，4 个 key（步骤 21 加 FORMS / formSet） */
-  /* sheet:add      组件根 AddSheetView，14 个 key（P18 加 STT / voiceXxx / pickFile） */
+  /* sheet:add      组件根 AddSheetView，13 个 key（P18 加 STT / voiceXxx / pickFile；
+     P18.3 「发送」并入「保存并解析」，voiceSend 没了） */
   'sheet:add': ['addNote', 'formSet', 'FORMS', 'pickFile', 'pickImage', 'STT',
-    'voiceDelSeg', 'voiceDown', 'voiceEdit', 'voicePlay', 'voiceSend', 'voiceStop',
+    'voiceDelSeg', 'voiceDown', 'voiceEdit', 'voicePlay', 'voiceStop',
     'voiceUndo', 'voiceUp'],
   /* sheet:addtodo  组件根 AddTodoSheetView，2 个 key */
   /* sheet:addtodo  组件根 AddTodoSheetView，4 个 key（步骤 21 加 FORMS / formSet） */

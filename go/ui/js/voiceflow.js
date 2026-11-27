@@ -7,8 +7,10 @@
 //     VAD 断句会把思考的停顿切断，所以断句权只在圆钮上）。
 //     免手持时圆钮呈红色脉冲 + 计时秒数 + 「点击结束」文案。
 // 每段识别完进暂存区（可编辑 / 单条删除 / 回放 = 从 /sttaudio 放原音频），
-// 实时部分结果上屏在圆钮上方。点「发送」把全部段合并成一条笔记交给 Go（kind=voice），
-// 原音频各自挂附件（之后可「重新识别语音」）。点「撤销」删除上一段。
+// 实时部分结果上屏在圆钮上方。「发送」和「保存并解析」是同一个按钮（P18.3）：面板顶部
+// 那个主按钮一次把打字内容 + 全部语音段合成一条笔记交给 Go（kind=voice），原音频各自
+// 挂附件（之后可「重新识别语音」）—— 提交逻辑在 js/addflow.js 的 addNote()。
+// 点「撤销」删除上一段。
 //
 // 本模块只碰 window 桥（window.Android.startVoice / stopVoice / askMic / micGranted，
 // 以及 Java 推回来的 onSttPartial / onSttEnd / micResult）与本模块自己的状态。
@@ -18,8 +20,7 @@
 // 循环依赖契约（同 js/shotflow.js 文件头）：顶层不许读 app.js / pollflow.js 的导出，
 // api / toast / refresh 全部只在函数体里用（模块求值期它们可能还没初始化）。
 import { Vue } from './vue.js'
-import { api, toast } from './netflow.js'
-import { refresh } from './pollflow.js'
+import { toast } from './netflow.js'
 
 const { reactive } = Vue
 
@@ -44,6 +45,18 @@ var TAP_MS = 300;
 
 var timer = 0;     // 计时器（不进 reactive：Interval id 不是渲染依赖）
 var pressAt = 0;   // 本次按下的时刻，用来分辨点按 / 按住
+
+/* 「这段定稿」的等待者：Java 的 onSttEnd 是异步的（引擎最后一句要等 awaitFinal），
+   而「保存并解析」必须等最后一段定稿再提交，否则刚说完的那段会被丢掉。上限 SETTLE_MS：
+   引擎卡住时不能把提交永久挂住（到点就带着已有的段提交）。 */
+var SETTLE_MS = 2500;
+var settleDone = null, settleTimer = 0;
+function settleNow(){
+  if (!settleDone) return;
+  var d = settleDone; settleDone = null;
+  if (settleTimer) { clearTimeout(settleTimer); settleTimer = 0 }
+  d();
+}
 
 /* 发完 / 打开面板时清掉上一次的实时行与错误（暂存段不清：用户在面板上改字时不该丢内容） */
 function voiceReset(){ STT.v.partial = ''; STT.v.error = '' }
@@ -87,17 +100,23 @@ function voiceStart(){
   return true;
 }
 
-/* 结束本段：真正的收尾在 Java 的 onSttEnd（它带回该段文本 + 原音频路径） */
+/* 结束本段：真正的收尾在 Java 的 onSttEnd（它带回该段文本 + 原音频路径）。
+   返回 promise = 「本段定稿」（没在录时立刻 resolve），提交方 await 它。 */
 function voiceStop(){
   detachUp();
   pressAt = 0;
   stopTimer();
-  if (!STT.v.listening) return;
+  if (!STT.v.listening) return Promise.resolve();
   STT.v.listening = false;
   STT.v.handsFree = false;
+  var p = new Promise(function(res){
+    settleDone = res;
+    settleTimer = setTimeout(settleNow, SETTLE_MS);
+  });
   if (window.Android && Android.stopVoice) {
     try { Android.stopVoice() } catch (e) { /* 已经停了 */ }
   }
+  return p;
 }
 
 /* 收起软键盘。圆钮的 pointerdown 带 .prevent（不让它抢走焦点），代价是输入框的焦点
@@ -152,6 +171,7 @@ window.onSttEnd = function(text, error, path){
   STT.v.handsFree = false;
   STT.v.partial = '';
   stopTimer();
+  settleNow();          // 叫醒在等这段定稿的提交（「保存并解析」）
 };
 
 /* ---------------- 暂存区操作 ---------------- */
@@ -174,31 +194,11 @@ function voicePlay(i){
   } catch (e) { toast('回放失败') }
 }
 
-/* 发送：全部段合并成一条笔记（kind=voice），音频各自挂附件 */
-async function voiceSend(){
-  if (STT.v.listening) voiceStop();
-  if (!STT.v.segs.length) { toast('还没有语音内容'); return }
-  if (STT.v.busy) return;
-  var audios = STT.v.segs.map(function(s){
-    return { text: s.text || '', path: s.path || '', name: s.name || '' };
-  });
-  STT.v.busy = true;
-  STT.v.error = '';
-  try {
-    var r = await api('/api/voice', { audios: audios });
-    if (r && r.ok) {
-      STT.v.segs = [];
-      toast('已发送，AI 解析中…');
-      setTimeout(refresh, 500); setTimeout(refresh, 3000); setTimeout(refresh, 9000);
-      voiceReset();
-    } else {
-      STT.v.error = (r && r.error) || '发送失败';
-    }
-  } catch (e) {
-    STT.v.error = '发送失败: ' + e;
-  }
-  STT.v.busy = false;
+/* 提交成功后清空暂存区（提交本身在 js/addflow.js 的 addNote()：文字和语音段一个按钮） */
+function voiceClear(){
+  STT.v.segs = [];
+  voiceReset();
 }
 
 export { STT, voiceDown, voiceUp, voiceStop, voiceUndo,
-  voiceEdit, voicePlay, voiceDelSeg, voiceSend }
+  voiceEdit, voicePlay, voiceDelSeg, voiceClear }

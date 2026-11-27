@@ -25,12 +25,13 @@
 .vpart{min-height:var(--s4);color:var(--acc);font-size:var(--fs-md)}
 .verr{color:var(--bad);font-size:var(--fs-sm)}
 
-/* 底部一行：左撤销（删上一段）/ 中圆钮（起停本段）/ 右发送（全部暂存） */
+/* 底部一行：左撤销（删上一段）/ 中圆钮（起停本段）。P18.3：右边的「发送」没了（并入
+   上面的「保存并解析」），右边留一个与「撤销」同宽的隐形占位，圆钮才仍在正中。 */
 .vbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s2) 0}
 .vside{display:inline-flex;align-items:center;gap:var(--s1);padding:var(--s2) var(--s3);
   border:var(--hair) solid var(--line);border-radius:var(--r-pill);background:var(--card);
   color:var(--fg);font-size:var(--fs-md);cursor:pointer}
-.vside.pri{background:var(--grad);border-color:transparent;color:var(--on-grad)}
+.vside.ghost{visibility:hidden;pointer-events:none}
 .vside:disabled{opacity:.45}
 .vrec{display:flex;align-items:center;justify-content:center;
   width:calc(var(--s6) + var(--s5));height:calc(var(--s6) + var(--s5));

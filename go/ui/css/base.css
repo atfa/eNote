@@ -161,6 +161,11 @@ a{text-decoration:underline}
 .remind:active{transform:scale(.94)}
 .thumb{width:100%;max-height:230px;object-fit:contain;border-radius:var(--r2);margin-top:var(--s2);border:var(--hair) solid var(--line);background:var(--thumb-bg)}
 .acts{display:flex;gap:var(--s2);flex-wrap:wrap;margin-top:var(--s2)}
+/* 「记一笔」的按钮行（设计图）：三个按钮铺满一行，主按钮最宽 —— 它现在是唯一的提交
+   入口（文字 + 语音段一起交），比两个取料按钮重要，宽度要说清这件事。 */
+.acts.wide{flex-wrap:nowrap}
+.acts.wide .btn{flex:1}
+.acts.wide .btn.pri{flex:1.7}
 .btn{border:var(--hair) solid var(--line);background:var(--card2);color:var(--fg);
   border-radius:var(--r1);padding:var(--s2) var(--s3);font-size:var(--fs-md);font-weight:600;
   display:inline-flex;align-items:center;justify-content:center;gap:var(--s1);text-align:center;
@@ -178,6 +183,8 @@ textarea{min-height:110px;resize:vertical}
 label{display:block;font-size:var(--fs-xs);color:var(--dim);margin:var(--s3) 0 var(--s1);font-weight:600;letter-spacing:.5px}
 /* 输入框下面的一行说明（比如"key 明文存在本机"） */
 .fhint{font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s1);line-height:1.45}
+/* 输入框下面的字数计数（设计图：0 / 2000），右对齐、比 .fhint 更贴输入框 */
+.cnt{text-align:right;color:var(--dim2);font-size:var(--fs-xs);margin-top:calc(var(--s1) * -1)}
 .empty{text-align:center;color:var(--dim2);padding:var(--s6) var(--s4);font-size:var(--fs-base)}
 .empty div{font-size:var(--fs-display);margin-bottom:var(--s2);opacity:.6}
 /* 步骤 18d：弹层外壳是 Vant 的 van-popup，.sheet 挂在它的根节点上（见 js/shell.js）。
