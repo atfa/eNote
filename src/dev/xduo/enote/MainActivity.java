@@ -50,6 +50,10 @@ public class MainActivity extends Activity {
     static final int REQ_SHOTS = 11;   // P11 截图捕获：读媒体库图片
     static final int REQ_MIC = 12;     // 语音：录音权限
     static final int REQ_NOTE_ATTACHMENTS = 13;
+    static final int REQ_LOCAL_MODEL = 14;
+    private static final java.util.concurrent.atomic.AtomicBoolean importingModel =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    private static volatile String modelImportError = "";
     private static final String NOTE_ATTACHMENT_TARGET = "noteAttachmentTarget";
     private String noteAttachmentTarget;
     /** A note/todo to open once the page is ready (notification tap). */
@@ -452,6 +456,91 @@ public class MainActivity extends Activity {
         }
     }
 
+    File localModelFile() {
+        return new File(getFilesDir(), "models/local.gguf");
+    }
+
+    String localModelImportState() {
+        return importingModel.get() ? "正在导入 GGUF…" : modelImportError;
+    }
+
+    void pickLocalModel() {
+        if (importingModel.get()) return;
+        try {
+            startActivityForResult(openableDocuments(), REQ_LOCAL_MODEL);
+        } catch (RuntimeException e) {
+            Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void importLocalModel(Uri uri) {
+        if (!importingModel.compareAndSet(false, true)) return;
+        modelImportError = "";
+        Toast.makeText(this, "正在导入模型…", Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            @Override public void run() { copyLocalModel(uri); }
+        }, "enote-model-import").start();
+    }
+
+    private void copyLocalModel(Uri uri) {
+        File model = localModelFile();
+        File dir = model.getParentFile();
+        File nextLink = new File(dir, "local.gguf.next");
+        File stagedDir = null;
+        File stagedModel = null;
+        boolean installed = false;
+        String message;
+        try {
+            if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("无法创建模型目录");
+            File previous = model.getCanonicalFile();
+            String name = new File(displayName(uri, "model.gguf").replace('\\', '/')).getName();
+            if (name.isEmpty() || ".".equals(name) || "..".equals(name)) name = "model.gguf";
+            stagedDir = java.nio.file.Files.createTempDirectory(dir.toPath(), "model-").toFile();
+            stagedModel = new File(stagedDir, name);
+            try (InputStream source = getContentResolver().openInputStream(uri)) {
+                if (source == null || source.read() != 'G' || source.read() != 'G'
+                        || source.read() != 'U' || source.read() != 'F') {
+                    throw new IOException("请选择 GGUF 文件");
+                }
+                try (FileOutputStream dest = new FileOutputStream(stagedModel)) {
+                    dest.write(new byte[]{'G', 'G', 'U', 'F'});
+                    byte[] buffer = new byte[256 * 1024];
+                    int count;
+                    while ((count = source.read(buffer)) != -1) dest.write(buffer, 0, count);
+                    dest.getFD().sync();
+                }
+            }
+            nextLink.delete();
+            android.system.Os.symlink(stagedDir.getName() + "/" + name, nextLink.getAbsolutePath());
+            android.system.Os.rename(nextLink.getAbsolutePath(), model.getAbsolutePath());
+            installed = true;
+            File previousDir = previous.getParentFile();
+            if (dir.getCanonicalFile().equals(previousDir.getParentFile())
+                    && previousDir.getName().startsWith("model-")) {
+                previous.delete();
+                previousDir.delete();
+            }
+            message = "本地模型已导入，可测试模型";
+        } catch (Exception e) {
+            message = "导入失败：" + e.getMessage();
+            modelImportError = message;
+        } finally {
+            if (!installed) {
+                nextLink.delete();
+                if (stagedModel != null) stagedModel.delete();
+                if (stagedDir != null) stagedDir.delete();
+            }
+            importingModel.set(false);
+        }
+        String result = message;
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                Toast.makeText(MainActivity.this, result, Toast.LENGTH_LONG).show();
+            }
+        });
+        runJs("window.onAppResume && window.onAppResume()");
+    }
+
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
@@ -467,6 +556,7 @@ public class MainActivity extends Activity {
         if (res != RESULT_OK || data == null || data.getData() == null) return;
         if (req == REQ_FILE) { pickDocument(data.getData()); return; }
         if (req == REQ_IMPORT) { importJSON(data.getData()); return; }
+        if (req == REQ_LOCAL_MODEL) { importLocalModel(data.getData()); return; }
         if (req != REQ_IMG) return;
         final Uri uri = data.getData();
         new Thread(new Runnable() {

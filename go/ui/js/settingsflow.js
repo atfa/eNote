@@ -73,6 +73,24 @@ function resetPrefs(){
   closeSheet(); searchNow(); savePrefs();
 }
 
+const modelSwitch = Vue.ref(false);
+async function selectModelBackend(modelBackend){
+  if(modelSwitch.value || S.settings.modelBackend === modelBackend) return;
+  modelSwitch.value = true;
+  try {
+    var r = await api('/api/settings', {modelBackend});
+    if(r.ok) {
+      S.settings = r.settings;
+    } else {
+      toast(r.error || '模型模式保存失败');
+    }
+  } catch {
+    toast('模型模式保存失败');
+  } finally {
+    modelSwitch.value = false;
+  }
+}
+
 async function saveSettings(){
   /* 步骤 20：六项全部来自 SFORM（输入框是它的纯函数），不再 $('#sUrl').value 读 DOM。
      useAI 是开关，直接读 S.settings（van-switch 的那条线，见 18e）。 */
@@ -88,4 +106,4 @@ async function saveSettings(){
 /* 步骤 32：app.js 把下面这些名字挂进 HOST / HOST_KEYS / window.__enoteActions，
    views/settings.js 与 views/sheets.js 通过 H.xxx 读它们。 */
 export { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
-  clearAllNotes, sortSheet, setPref, resetPrefs, saveSettings }
+  clearAllNotes, sortSheet, setPref, resetPrefs, saveSettings, modelSwitch, selectModelBackend }

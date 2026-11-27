@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"net/http/httptest"
+	"strings"
 	"os"
 	"path/filepath"
 	"testing"
@@ -102,6 +104,7 @@ func TestSettingsPersistWithoutOnlineEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := c.get()
+	s.LocalAI = true
 	s.UseAI = false
 	if err := c.set(s); err != nil {
 		t.Fatal(err)
@@ -111,7 +114,37 @@ func TestSettingsPersistWithoutOnlineEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := c.get()
-	if got.BaseURL != "" || got.UseAI {
-		t.Fatal("AI preferences did not survive reopening settings")
+	if got.BaseURL != "" || !got.LocalAI || got.UseAI {
+		t.Fatal("local model and AI preferences did not survive reopening settings")
+	}
+}
+
+func TestModelBackendSwitchPersists(t *testing.T) {
+	dir := t.TempDir()
+	old := config
+	defer func() { config = old }()
+	var err error
+	config, err = openConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"local", "online"} {
+		req := httptest.NewRequest("POST", "/api/settings", strings.NewReader(`{"modelBackend":"`+mode+`"}`))
+		res := httptest.NewRecorder()
+		handleSettings(res, req)
+		var reply struct {
+			OK       bool     `json:"ok"`
+			Settings Settings `json:"settings"`
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &reply); err != nil || !reply.OK || reply.Settings.Backend != mode {
+			t.Fatalf("switch to %s: %s", mode, res.Body)
+		}
+		config, err = openConfig(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := config.get().modelBackend(); got != mode {
+			t.Fatalf("reopened backend = %q, want %q", got, mode)
+		}
 	}
 }

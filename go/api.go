@@ -229,7 +229,9 @@ func todoDelete(w http.ResponseWriter, body todoReq) {
 // 以前这里打码，结果设置页每次打开都是 sk-l…ellm，用户以为没存住、反复重填；
 // key 本来就明文躺在 app 私有目录（别的 app 读不到），打码只带来麻烦，不打码了。
 func maskedSettings() Settings {
-	return config.get()
+	s := config.get()
+	s.Backend = s.modelBackend()
+	return s
 }
 
 // settingsPatch 让"只提交一部分字段"的 POST 不会把没提交的字段清成零值。
@@ -242,6 +244,8 @@ type settingsPatch struct {
 	TimeoutS *int                 `json:"timeoutS"`
 	MaxTok   *int                 `json:"maxTokens"`
 	Temp     *float64             `json:"temperature"`
+	LocalAI  *bool                `json:"localAI"`
+	Backend  *string              `json:"modelBackend"`
 	UseAI    *bool                `json:"useAI"`
 	Theme    *string              `json:"theme"`
 	UI       map[string]ViewPrefs `json:"ui"`
@@ -257,12 +261,19 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
+	if p.Backend != nil && *p.Backend != "local" && *p.Backend != "online" {
+		jsonOut(w, map[string]any{"ok": false, "error": "请选择本地模型或在线 API"})
+		return
+	}
 	s := config.get()
 	p.applyTo(&s)
 	s.fillDefaults(config.get())
 	if err := config.set(s); err != nil {
 		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
 		return
+	}
+	if localEngineAvailable && p.Backend != nil && s.modelBackend() == "online" {
+		go unloadLocalWhenDisabled(config)
 	}
 	jsonOut(w, map[string]any{"ok": true, "settings": maskedSettings()})
 }
@@ -287,6 +298,13 @@ func (p settingsPatch) applyTo(s *Settings) {
 	}
 	if p.Temp != nil {
 		s.Temp = *p.Temp
+	}
+	if p.LocalAI != nil {
+		s.LocalAI = *p.LocalAI
+		s.Backend = ""
+	}
+	if p.Backend != nil {
+		s.Backend = *p.Backend
 	}
 	if p.UseAI != nil {
 		s.UseAI = *p.UseAI
@@ -336,22 +354,38 @@ func handleTheme(w http.ResponseWriter, r *http.Request) {
 		"settings": maskedSettings()})
 }
 
-// handleLLMTest is the BYOK "测试连接" button: one round trip, raw reply shown in the UI.
+// handleLLMTest runs a short reply check and returns the raw result for display.
 func handleLLMTest(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Prompt string `json:"prompt"`
 	}
 	readBody(r, &body)
 	prompt := strings.TrimSpace(body.Prompt)
-	if prompt == "" {
+	s := config.get()
+	local := s.modelBackend() == "local"
+	checkReply := local && prompt == ""
+	if checkReply {
+		prompt = "请只回复两个英文字母 OK。"
+	} else if prompt == "" {
 		prompt = "你好，请用一句话介绍你自己。"
 	}
-	call, err := callLLM("你是一个连接测试助手，按要求简短回答。", prompt)
-	out := map[string]any{"ok": err == nil, "ms": call.MS, "url": call.URL,
+	if local {
+		s.MaxTok = min(s.MaxTok, 24)
+		s.Temp = 0
+	}
+	call, err := callLLMWithSettings(s, "你是一个连接测试助手，按要求简短回答。", prompt)
+	testError := call.Err
+	if err == nil && checkReply && !strings.EqualFold(strings.Trim(strings.TrimSpace(call.Raw), "。.!！"), "OK") {
+		testError = "模型已加载，但没有按要求只回复 OK。"
+		if call.finishReason == "length" {
+			testError += " 已达到测试输出上限。"
+		}
+	}
+	out := map[string]any{"ok": testError == "", "ms": call.MS, "url": call.URL,
 		"model": call.Model, "reply": call.Raw, "reasonLen": len(call.Reason),
 		"httpCode": call.HTTPCode}
-	if err != nil {
-		out["error"] = call.Err
+	if testError != "" {
+		out["error"] = testError
 	}
 	jsonOut(w, out)
 }

@@ -6,16 +6,23 @@
 // 读它们的 .v（整包赋值，所以读的是 getter，同 SFORM 那条规矩）。
 import { Vue } from './vue.js'
 import { sheetVue } from './sheetflow.js'
-import { api } from './netflow.js'
+import { api, apiTimeout } from './netflow.js'
 
 /* 步骤 19：这是全项目最后一处「拼字符串 + esc() 写 innerHTML」。换成一个 {v:} 盒子，
    #llmOut 里的 DOM 由 settings.js 的模板画 —— 转义交给 Vue 的插值（textContent），
    「连接中」与结果两态都是状态的纯函数。整包赋值，所以读它的是 getter（同 LOGDATA）。 */
 var LLMTEST = Vue.reactive({ v: null });
-async function testLLM(){
-  LLMTEST.v = {busy:true};
-  var r = await api('/api/llm/test',{});
-  LLMTEST.v = {busy:false, ok:!!r.ok, ms:r.ms, httpCode:r.httpCode, reply:r.reply, error:r.error};
+async function testLLM(timeoutS, backend){
+  if(LLMTEST.v?.busy) return;
+  LLMTEST.v = {busy:true, backend};
+  const wait = (Math.min(Number(timeoutS) || 90, 3600) + 15) * 1000;
+  try {
+    const r = await apiTimeout('/api/llm/test', {}, wait);
+    LLMTEST.v = {backend, ok:!!r.ok, ms:r.ms, httpCode:r.httpCode, reply:r.reply, error:r.error};
+  } catch(e) {
+    const error = e.message === 'timeout' ? '应用未在预期时间内返回测试结果' : '测试请求失败：' + e.message;
+    LLMTEST.v = {backend, ok:false, error};
+  }
 }
 /* 运行日志 / AI 调用记录：步骤 16c 之前是「取完数据才弹」（await api 然内拼字符串），
    组件里自己 fetch 会变成「先弹出一个空的再填」，那是行为改动不是重构，所以数据依旧

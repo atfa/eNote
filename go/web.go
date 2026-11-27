@@ -89,6 +89,7 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/import", handleImport)
 	m.HandleFunc("/api/clear", handleClear)
 	m.HandleFunc("/api/llm/test", handleLLMTest)
+	m.HandleFunc("GET /api/llm/local", handleLocalModelState)
 	m.HandleFunc("/api/llmlog", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, map[string]any{"ok": true, "calls": llmHistory()})
 	})

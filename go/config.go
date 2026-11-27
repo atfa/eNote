@@ -17,6 +17,8 @@ type Settings struct {
 	TimeoutS int                  `json:"timeoutS"`
 	MaxTok   int                  `json:"maxTokens"`
 	Temp     float64              `json:"temperature"`
+	LocalAI  bool                 `json:"localAI,omitempty"` // legacy backend preference
+	Backend  string               `json:"modelBackend,omitempty"`
 	UseAI    bool                 `json:"useAI"` // off = save shared content as-is, no LLM call
 	Theme    string               `json:"theme"` // light | dark | auto, default light
 	UI       map[string]ViewPrefs `json:"ui"`    // per-page remembered search/sort/filter
@@ -90,6 +92,17 @@ func (s *Settings) normalize() {
 	if s.Model == "" {
 		s.Model = defaultSettings.Model
 	}
+}
+
+func (s Settings) modelBackend() string {
+	switch s.Backend {
+	case "local", "online":
+		return s.Backend
+	}
+	if s.LocalAI || (localEngineAvailable && strings.TrimSpace(s.BaseURL) == "") {
+		return "local"
+	}
+	return "online"
 }
 
 func (c *Config) get() Settings {

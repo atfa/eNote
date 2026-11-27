@@ -97,8 +97,23 @@ if [ -f "$GO_DIR/go.mod" ]; then
     ( cd "$GO_DIR" && go test ./... )
   fi
   if [ -n "$GO_LIB" ]; then
+    native_ldflags=${CGO_LDFLAGS:-}
+    if [ "$ABI" = arm64-v8a ] && [ "${BUILD_LLAMA:-1}" = 1 ]; then
+      need cmake cmake
+      need ninja ninja
+      echo "==> build llama.cpp"
+      bash tools/build_llama.sh
+      llama_build="$PROJ/.cache/enote-llama/build"
+      cp "$llama_build/libenote_llama.so" "$OUT/native/"
+      llama_cxx_runtime=$(clang++ --print-file-name=libc++_shared.so)
+      [ -f "$llama_cxx_runtime" ] || die "cannot find clang++ libc++_shared.so"
+      mkdir -p "$OUT/apk/assets/licenses"
+      cp "$PROJ/.cache/enote-llama/source/LICENSE" "$OUT/apk/assets/licenses/llama.cpp.txt"
+      native_ldflags="$native_ldflags -L$llama_build -lenote_llama"
+      GO_FLAGS="$GO_FLAGS -tags=enote_llama"
+    fi
     echo "==> go build -buildmode=c-shared (GOOS=android GOARCH=$GO_ARCH -> lib/$ABI/lib$GO_LIB.so)"
-  ( cd "$GO_DIR" && env GOOS=android GOARCH="$GO_ARCH" CGO_ENABLED=1 \
+  ( cd "$GO_DIR" && env GOOS=android GOARCH="$GO_ARCH" CGO_ENABLED=1 CGO_LDFLAGS="$native_ldflags" \
       go build -buildmode=c-shared -trimpath -ldflags="$GO_LDFLAGS" $GO_FLAGS \
       -o "$PROJ/$OUT/native/lib$GO_LIB.so" . ) || die "go build failed"
   [ -f "$OUT/native/lib$GO_LIB.so" ] || die "go build produced no lib$GO_LIB.so"
@@ -121,18 +136,31 @@ cp "$OUT/apk/base.apk" "$OUT/apk/unaligned.apk"
 if [ -d "$OUT/native" ] && ls "$OUT/native"/*.so >/dev/null 2>&1; then
   mkdir -p "$OUT/apk/lib/$ABI"
   cp "$OUT/native"/*.so "$OUT/apk/lib/$ABI/"
-  (cd "$OUT/apk" && zip -q -X -r "$OLDPWD/$OUT/apk/unaligned.apk" "lib/$ABI")
 fi
 # Prebuilt native libraries shipped with the project (jniLibs/<abi>/*.so), e.g. the OCR engine.
 if [ -d "jniLibs/$ABI" ] && [ -n "$(ls -A jniLibs/$ABI 2>/dev/null)" ]; then
   mkdir -p "$OUT/apk/lib/$ABI"
   cp "jniLibs/$ABI"/*.so "$OUT/apk/lib/$ABI/"
-  (cd "$OUT/apk" && zip -q -X -r "$OLDPWD/$OUT/apk/unaligned.apk" "lib/$ABI")
+fi
+# Package one C++ runtime for both llama.cpp and the existing native engines.
+if [ -n "${llama_cxx_runtime:-}" ]; then
+  cp "$llama_cxx_runtime" "$OUT/apk/lib/$ABI/libc++_shared.so"
+  cxx_license="$(dirname "$llama_cxx_runtime")/../share/doc/libc++/copyright"
+  if [ -f "$cxx_license" ]; then
+    cp "$cxx_license" "$OUT/apk/assets/licenses/libc++.txt"
+  fi
+fi
+if [ -n "$ABI" ] && [ -d "$OUT/apk/lib/$ABI" ]; then
+  (cd "$OUT/apk" && zip -q -X -r unaligned.apk "lib/$ABI")
 fi
 if [ -d assets ] && [ -n "$(ls -A assets 2>/dev/null)" ]; then
   # AssetManager needs the literal "assets/" prefix inside the apk, so zip the directory
   # itself, not its contents.
   zip -q -X -r "$OUT/apk/unaligned.apk" assets
+fi
+
+if [ -f "$OUT/apk/assets/licenses/llama.cpp.txt" ]; then
+  (cd "$OUT/apk" && zip -q -X -r unaligned.apk assets/licenses)
 fi
 
 echo "==> sign (v1+v2+v3)"

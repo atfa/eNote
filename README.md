@@ -90,13 +90,17 @@ GO_TEST=1 ./build.sh      # 编译 Go（含单元测试）+ javac + d8 + aapt2 +
 * 附件页：图片 / PDF / 音频 / 压缩包按类型图标展示，可预览、可转成笔记。
 * 我的页：本地数据摘要（笔记 / 待办 / 附件 / 占用）、近 7 天活动柱状图、笔记状态、常见标签，
   以及设置、运行日志、AI 调用记录、导出 / 导入 JSON、清空数据。
-* 设置页：API Base URL、Key、模型名、超时、max tokens、温度、`测试连接`、主题（亮 / 暗 / 跟随系统）、
+* 设置页：API Base URL、Key、模型名、超时、max tokens、温度、`测试模型`、主题（亮 / 暗 / 跟随系统）、
   本地 OCR 引擎状态、本地语音识别引擎状态、剪贴板采集开关、常驻后台开关与电池优化引导。
   Key 明文存在 `files/enote/settings.json`，接口返回时打码成「前 4 + … + 后 4」，回传打码值不会覆盖真 Key。
 
-默认不预置大模型（仓库里不带任何端点）：装好后在设置里填 API Base URL / Key / 模型名，任何
-OpenAI 兼容服务都行（本地 llama.cpp、litellm、云端 API），`测试连接` 会直接显示模型首句回复。
-没填地址时分享的内容原样入库（状态 `raw`），之后随时可以 `重新解析`。
+### 本地 AI 模型
+
+`arm64-v8a` APK 内置 llama.cpp 推理库。打开「我的 → 设置 → AI 模型」，打开「使用本地模型」开关，导入单文件 GGUF 后点「测试模型」。例如可以使用 [Qwen3.5-0.8B Q4_K_M](https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/blob/c61c105fd9f6919021a9f13e7d98f11edfddc41e/Qwen3.5-0.8B-Q4_K_M.gguf)（约 533 MB）。开关状态和已导入的文件会保留。设置页会显示文件名和加载阶段。使用本地模型只需导入权重，API 地址、端口、Key 和模型名仅用于「在线 API」。模型导入后，笔记解析和语音整理可离线运行。
+
+在线模式兼容 OpenAI API。模型不可用时，分享的内容原样入库（状态 `raw`），可以稍后重新解析。
+
+首次运行 `./build.sh` 构建原生推理库需要 Termux 的 clang、CMake、Ninja，以及下载锁定的 llama.cpp 源码。后续构建复用 `.cache/enote-llama`。`BUILD_LLAMA=0 ./build.sh` 可构建仅使用在线模型的版本。
 
 ## 3. 架构
 

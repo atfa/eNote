@@ -412,6 +412,22 @@ public class Bridge {
         }
     }
 
+    @JavascriptInterface
+    public void pickLocalModel() {
+        MainActivity a = current.get();
+        if (a != null) {
+            a.runOnUiThread(new Runnable() {
+                @Override public void run() { a.pickLocalModel(); }
+            });
+        }
+    }
+
+    @JavascriptInterface
+    public String localModelImportState() {
+        MainActivity a = current.get();
+        return a != null ? a.localModelImportState() : "";
+    }
+
     /** window.Android.pickJSON(): pick a JSON export and POST it to /api/import. */
     @JavascriptInterface
     public void pickJSON() {

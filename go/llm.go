@@ -84,16 +84,22 @@ type chatResp struct {
 	Usage any `json:"usage"`
 }
 
-// callLLM posts one chat completion to the configured OpenAI-compatible endpoint.
+// callLLM dispatches to the local model or the configured OpenAI-compatible endpoint.
 /* 步骤 58：callLLM 原来 69 行，六条失败出口每条都要「写 c.Err → remember(c) → 造 error」
    三件套，中间还夹着建请求、发请求、读响应、解响应四段。现在四段各自成函数，六条出口
    收敛成 c.fail(...) / c.failErr(err) / c.failNet(...) / c.failLogged() 一行；语句逐字搬。 */
 
 func callLLM(system, user string) (*LLMCall, error) {
-	s := config.get()
+	return callLLMWithSettings(config.get(), system, user)
+}
+
+func callLLMWithSettings(s Settings, system, user string) (*LLMCall, error) {
 	c := &LLMCall{TS: time.Now(), Model: s.Model, System: system, User: user}
-	if strings.TrimSpace(s.BaseURL) == "" {
-		return c.fail("未配置大模型地址：在设置里填 OpenAI 兼容的 API Base URL")
+	if s.modelBackend() == "local" {
+		return callLocalLLM(c, s)
+	}
+	if s.BaseURL == "" {
+		return c.fail("请在设置中填写在线 API 地址，或选择本地模型")
 	}
 	c.URL = s.BaseURL + "/chat/completions"
 	req, err := chatRequest(c, s, system, user)

@@ -31,7 +31,18 @@ import { Ico, KvRow } from '../components/leaf.js'
 import { SettingsDataCard, SettingsRunCard, SettingsOcrCard, SettingsSttCard }
   from '../components/blocks.js'
 
-const { computed, inject } = Vue
+import { modelSwitch, selectModelBackend } from '../settingsflow.js'
+
+import { apiTimeout } from '../netflow.js'
+
+const { computed, inject, onMounted, onUnmounted, ref } = Vue
+
+const modelStages = {
+  missing: '尚未导入模型', unloaded: '已导入 · 尚未载入内存',
+  loading: '正在载入模型…', prefill: '模型已载入 · 正在处理输入…',
+  generating: '模型已载入 · 正在生成回复…', loaded: '模型已载入内存',
+  unavailable: '暂时无法读取模型状态'
+};
 
 export const SettingsSheetView = {
   name: 'SettingsSheetView',
@@ -43,6 +54,28 @@ export const SettingsSheetView = {
        settingsRefresh() bump 一次，下面这几个 computed 显式读它才会重算。
        （步骤 17h 之前：所有 computed 靠 live() 隐式绑 tick，每次 render 全量重绘。） */
     const nat = computed(() => V.tick.v);
+    const modelState = ref({});
+    const importState = ref('');
+    let polling = false;
+    let timer;
+    async function refreshModel(){
+      if(H.S.settings.modelBackend !== 'local' || polling) return;
+      importState.value = window.Android?.localModelImportState?.() || '';
+      polling = true;
+      try {
+        modelState.value = await apiTimeout('/api/llm/local', null, 3000);
+      } catch {
+        modelState.value = { ...modelState.value, stage: 'unavailable' };
+      } finally {
+        polling = false;
+      }
+    }
+    onMounted(() => { refreshModel(); timer = setInterval(refreshModel, 1000); });
+    onUnmounted(() => clearInterval(timer));
+    const llmResult = computed(() => {
+      const test = H.llmTest;
+      return test && (!test.backend || test.backend === H.S.settings.modelBackend) ? test : null;
+    });
     return {
       H,
       s: computed(() => ({ ...H.S.settings })),
@@ -50,6 +83,13 @@ export const SettingsSheetView = {
          单向 :value.attr + @input 回写，不用 v-model —— 我们要的是 DOM 上真的那个
          value 属性（test.sh 断言 #sUrl 有 value 属性），v-model 写的是 property。 */
       f: computed(() => H.SFORM || { baseUrl:'', apiKey:'', model:'', timeoutS:90, maxTokens:2048, temperature:0.2 }),
+      modelSwitch,
+      selectModelBackend,
+      canImportModel: computed(() => H.S.info.localLLM && !!window.Android?.pickLocalModel),
+      modelName: computed(() => modelState.value.fileName || ''),
+      modelStatus: computed(() => modelStages[modelState.value.stage] || '正在读取模型状态…'),
+      importState,
+      pickLocalModel: () => window.Android?.pickLocalModel?.(),
       i: computed(() => ({ ...H.S.info })),
       // 提醒卡：副标题的插值切分必须与遗留拼接一一对应（三个文本节点）
       notifyGranted: computed(() => { nat.value; return H.notifyGranted() }),
@@ -65,12 +105,12 @@ export const SettingsSheetView = {
       /* 「测试连接」的结果（步骤 19 起是响应式盒子，app.js 的 testLLM() 只写状态）。
          两态的 DOM 与旧 innerHTML 逐字相同：连接中 = <span class="spin"> + 文本，
          结果 = 一行结论 + <br> + 回复/错误原文。转义交给插值（textContent），不再 esc()。 */
-      llmBusy: computed(() => !!(H.llmTest && H.llmTest.busy)),
-      llmLine: computed(() => { var t = H.llmTest; if(!t || t.busy) return '';
-        return t.ok ? '✅ 成功（' + t.ms + 'ms，HTTP ' + t.httpCode + '）'
+      llmBusy: computed(() => !!H.llmTest?.busy),
+      llmLine: computed(() => { var t = llmResult.value; if(!t || t.busy) return '';
+        return t.ok ? '✅ 成功（' + t.ms + 'ms，' + (t.httpCode ? 'HTTP ' + t.httpCode : '本地') + '）'
                     : '❌ 失败（' + (t.ms || 0) + 'ms）' }),
-      llmBody: computed(() => { var t = H.llmTest; if(!t || t.busy) return '';
-        return t.ok ? t.reply : (t.error || '') }),
+      llmBody: computed(() => { var t = llmResult.value; if(!t || t.busy) return '';
+        return t.ok ? t.reply : (t.error || '测试失败') }),
       themes: computed(function(){
         var cur = H.S.settings.theme || 'light';
         var label = { light: '亮色', dark: '暗色', auto: '跟随系统' };
@@ -81,6 +121,7 @@ export const SettingsSheetView = {
           };
         });
       }),
+      failedReply: computed(() => llmResult.value?.ok === false ? llmResult.value.reply : ''),
       aiSwCls: computed(() => 'sw' + (H.S.settings.useAI ? ' on' : ''))
     }
   },
@@ -107,18 +148,29 @@ export const SettingsSheetView = {
 </div>
 <div class="pgroup">外观</div>
 <div class="card"><div class="seg" style="margin-top:var(--s0)"><button v-for="t in themes" :key="t.m" :class="t.cls" @click="H.setTheme(t.m)"><ico :n="t.icon"/>{{ t.label }}</button></div><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">默认亮色；选「跟随系统」时随手机夜间模式切换，状态栏与导航栏同步变色</div></div>
-<div class="pgroup">AI 模型（BYOK）</div>
+<div class="pgroup">AI 模型</div>
 <div class="card">
   <div class="row between" style="margin-top:var(--s0)"><div><b>启用 AI 解析</b><div style="font-size:var(--fs-xs);color:var(--dim)">关闭后只保存原文，不调用模型</div></div>
   <van-switch :class="aiSwCls" :model-value="s.useAI" @update:model-value="H.toggleAI"/></div>
+  <div class="row between" v-if="canImportModel || s.modelBackend === 'local'">
+    <div><b>使用本地模型</b><div class="fhint">{{ s.modelBackend === 'local' ? '在手机上运行，无需填写端口或密钥' : '已关闭 · 使用在线 API' }}</div></div>
+    <van-switch aria-label="使用本地模型" :class="'sw' + (s.modelBackend === 'local' ? ' on' : '')" :model-value="s.modelBackend === 'local'" :disabled="modelSwitch || llmBusy" @update:model-value="selectModelBackend($event ? 'local' : 'online')"/>
+  </div>
+  <template v-if="s.modelBackend === 'local'">
+    <div class="row between"><div style="min-width:0;overflow-wrap:anywhere"><b>{{ modelName || '本地 GGUF' }}</b><div class="fhint" role="status">{{ modelStatus }}</div></div>
+    <button v-if="canImportModel" class="btn sm" :disabled="llmBusy || importState.startsWith('正在')" @click="pickLocalModel()">{{ modelName ? '更换 GGUF' : '导入 GGUF' }}</button></div>
+    <div v-if="importState" class="fhint" role="status">{{ importState }}</div>
+  </template>
+  <template v-else>
   <label>API Base URL（OpenAI 兼容）</label><input id="sUrl" :value.attr="f.baseUrl" @input="H.formInput('baseUrl', $event.target.value)" placeholder="https://your-server:8080/v1">
   <label>API Key</label><input id="sKey" :value.attr="f.apiKey" @input="H.formInput('apiKey', $event.target.value)" placeholder="sk-...">
   <div class="fhint">明文存在本机 app 私有目录（别的 app 读不到），这里显示的就是已保存的 key，换 key 直接改这一栏</div>
   <label>模型名</label><input id="sModel" :value.attr="f.model" @input="H.formInput('model', $event.target.value)">
+  </template>
   <div class="grid2"><div><label>超时（秒）</label><input id="sTimeout" :value.attr="f.timeoutS" @input="H.formInput('timeoutS', $event.target.value)"></div><div><label>最大 tokens</label><input id="sMax" :value.attr="f.maxTokens" @input="H.formInput('maxTokens', $event.target.value)"></div></div>
   <label>温度 temperature</label><input id="sTemp" :value.attr="f.temperature" @input="H.formInput('temperature', $event.target.value)">
-  <div class="acts"><button class="btn pri" @click="H.saveSettings()">保存</button><button class="btn" @click="H.testLLM()">测试连接</button></div>
-  <div id="llmOut"><div class="body" v-if="llmBusy"><span class="spin"></span> 连接中…</div><div class="body" v-else-if="llmLine" style="margin-top:var(--s2)">{{ llmLine }}<br>{{ llmBody }}</div></div>
+  <div class="acts"><button class="btn pri" @click="H.saveSettings()" :disabled="modelSwitch">保存参数</button><button class="btn" @click="H.testLLM(s.timeoutS, s.modelBackend)" :disabled="modelSwitch || llmBusy || importState.startsWith('正在')">测试模型</button></div>
+  <div id="llmOut"><div class="body" v-if="llmBusy"><span class="spin"></span> 测试中…</div><div class="body" v-else-if="llmLine" style="margin-top:var(--s2)">{{ llmLine }}<br>{{ llmBody }}<div v-if="failedReply" class="fhint">模型原始回复<br>{{ failedReply }}</div></div></div>
 </div>
 <div class="pgroup">采集</div><div class="card"><kv-row k="剪贴板暂存" v="前台自动 + 顶栏按钮手动" vstyle="color:var(--acc2)"/><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">打开 app 时自动暂存剪贴板里的文字；在别的 app 复制后切回「懒得记」即可看到，顶栏剪贴板按钮也可以随时手动收一条。Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。点「解析」才发到大模型，之前内容不会离开本机。</div></div>
 <div class="pgroup">本地 OCR</div><div class="card"><settings-ocr-card :i="i"/></div>

@@ -485,6 +485,7 @@ func appInfo() map[string]any {
 		"server":   srvURL,
 		"go":       goVersion(),
 		"tz":       tzInfo(),
+		"localLLM": localEngineAvailable,
 		"ocrReady": ocrReady,
 		"sttReady": sttReady, // P16：离线语音识别引擎状态
 		"sttInfo":  sttInfo,
