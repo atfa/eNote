@@ -8,16 +8,16 @@
   padding:var(--s3);border:var(--hair) solid var(--line);border-radius:var(--r2);
   background:var(--card2)}
 .vhead{display:flex;align-items:center;gap:var(--s2)}
+.vhead>.ic{color:var(--acc);font-size:var(--fs-xl)}
 .vhead>span{font-weight:700;font-size:var(--fs-base)}
 .vhead>small{flex:1;color:var(--dim);font-size:var(--fs-xs)}
 
-/* 一段一行：文本可改（识别错了当场改，不回去重新录）+ 回放 + 单条删除 */
-.vseg{display:flex;align-items:flex-start;gap:var(--s1);padding:var(--s2);
+/* 一段一行：转写原文、回放和删除 */
+.vseg{display:flex;align-items:center;gap:var(--s1);padding:var(--s2);
   background:var(--card);border:var(--hair) solid var(--line);border-radius:var(--r1)}
-.vtx{flex:1;min-height:calc(var(--s6) + var(--s4));resize:none;border:0;background:transparent;
-  color:var(--fg);font-family:inherit;font-size:var(--fs-md);line-height:1.45}
-.vtx:focus{outline:none}
-.vmini{display:flex;align-items:center;justify-content:center;width:var(--s6);height:var(--s6);
+.vtx{flex:1;min-width:0;padding:var(--s2);white-space:pre-wrap;overflow-wrap:anywhere;
+  color:var(--fg);font-size:var(--fs-md);line-height:1.45}
+.vmini{display:flex;flex:none;align-items:center;justify-content:center;width:var(--s6);height:var(--s6);
   border:0;border-radius:var(--r-pill);background:var(--card2);color:var(--dim);cursor:pointer}
 .vmini:active{background:var(--acc-s);color:var(--acc)}
 
@@ -25,14 +25,14 @@
 .vpart{min-height:var(--s4);color:var(--acc);font-size:var(--fs-md)}
 .verr{color:var(--bad);font-size:var(--fs-sm)}
 
-/* 底部一行：左撤销（删上一段）/ 中圆钮（起停本段）。P18.3：右边的「发送」没了（并入
-   上面的「保存并解析」），右边留一个与「撤销」同宽的隐形占位，圆钮才仍在正中。 */
-.vbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s2) 0}
-.vside{display:inline-flex;align-items:center;gap:var(--s1);padding:var(--s2) var(--s3);
+/* 左撤销、中录音、右整理。对称的两列让录音按钮居中。 */
+.vbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center;gap:var(--s1);padding:var(--s2) 0}
+.vside{display:inline-flex;justify-self:start;align-items:center;gap:var(--s1);padding:var(--s2);
   border:var(--hair) solid var(--line);border-radius:var(--r-pill);background:var(--card);
-  color:var(--fg);font-size:var(--fs-md);cursor:pointer}
-.vside.ghost{visibility:hidden;pointer-events:none}
+  color:var(--fg);font-size:var(--fs-md);cursor:pointer;white-space:nowrap}
 .vside:disabled{opacity:.45}
+.vside.vai{justify-self:end;color:var(--acc)}
 .vrec{display:flex;align-items:center;justify-content:center;
   width:calc(var(--s6) + var(--s5));height:calc(var(--s6) + var(--s5));
   border:0;border-radius:var(--r-pill);background:var(--grad);color:var(--on-grad);
@@ -46,3 +46,18 @@
   100%{box-shadow:0 0 0 0 var(--bad-s)}}
 
 .vhint{color:var(--dim2);font-size:var(--fs-xs);text-align:center}
+.vresult{padding:var(--s2);border-radius:var(--r1);background:var(--card)}
+.vresult-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s1)}
+.vresult-original{border:0;background:transparent;color:var(--acc);font-size:var(--fs-sm)}
+.vresult textarea{min-height:calc(var(--s6) * 3);background:var(--card2)}
+.add-text-field{position:relative}
+.add-text-field textarea{display:block;padding-bottom:var(--s5)}
+.add-text-field .cnt{position:absolute;right:var(--s4);bottom:var(--s2);pointer-events:none}
+.add-attachments .btn{flex:none;padding-inline:var(--s4);border-radius:var(--r-pill)}
+.add-submit{width:100%;margin-top:var(--s5);padding:var(--s3) var(--s4);
+  border-radius:var(--r-pill);justify-content:space-between;box-shadow:var(--sh2)}
+.add-submit>.ic{width:var(--s5);height:var(--s5)}
+.add-submit>span{display:flex;flex:1;flex-direction:column;align-items:flex-start;
+  margin-left:var(--s2);padding-left:var(--s3);border-left:var(--hair) solid currentColor;text-align:left}
+.add-submit strong{font-size:var(--fs-lg)}
+.add-submit small{font-size:var(--fs-sm);font-weight:400}

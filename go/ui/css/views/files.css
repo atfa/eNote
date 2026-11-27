@@ -1,3 +1,8 @@
 /* go/ui/css/views/files.css — owner: Austin（一个文件一个 owner，见 plan.md §2）
    S1a 建的是空文件：规则还在 css/views.css 里，S2 才按视图搬进来。
    搬动时保持层叠顺序：tokens → base → components → views/* 的加载顺序（见 index.html）。 */
+
+.attachment-preview{display:grid;justify-items:center;gap:var(--s2);padding:var(--s2) 0}
+.attachment-preview img{display:block;max-width:100%;max-height:78vh;object-fit:contain}
+.attachment-preview audio{width:100%;max-width:32rem}
+.panel[data-kind="attachment-preview"] .phead>div{min-width:0;overflow-wrap:anywhere}

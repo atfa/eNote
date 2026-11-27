@@ -34,6 +34,13 @@
     <!-- P16 语音：离线语音识别（本地引擎，不联网）。录音是运行时权限，首次点录音时请求。 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="content" android:mimeType="*/*" />
+        </intent>
+    </queries>
+
     <application
         android:name=".EnoteApp"
         android:label="懒得记"
@@ -43,6 +50,12 @@
         android:extractNativeLibs="true"
         android:usesCleartextTraffic="true"
         android:debuggable="true">
+
+        <provider
+            android:name=".AttachmentProvider"
+            android:authorities="dev.xduo.enote.attachments"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
         <activity
             android:name=".MainActivity"
@@ -72,8 +85,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-            <!-- wider text sharing + PDF: stored as an attachment, not parsed (R4). Deliberately
-                 no "*/*": 懒得记 should not show up in every share menu. -->
+            <!-- Document streams, including PDF, Office and ZIP, create file notes. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -82,7 +94,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

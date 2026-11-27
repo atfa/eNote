@@ -81,6 +81,13 @@ func guard(env *C.JNIEnv, what string, f func() C.jstring) (out C.jstring) {
 // JNI exports (class dev.xduo.enote.Bridge)
 // ===========================================================================
 
+//export Java_dev_xduo_enote_Bridge_nativeAppendAttachments
+func Java_dev_xduo_enote_Bridge_nativeAppendAttachments(env *C.JNIEnv, cls C.jclass, payload C.jstring) C.jstring {
+	return guard(env, "nativeAppendAttachments", func() C.jstring {
+		return js2j(env, appendPickedAttachments(j2s(env, payload)))
+	})
+}
+
 // nativeInit(filesDir, tzOffsetSec, tzId) - called from Application.onCreate. Pins the Go
 // clock to the device's wall clock (the Android Go runtime has no tzdata, so time.Now()
 // would report UTC and every "overdue" / day-bucket comparison would drift), then loads
@@ -167,6 +174,17 @@ func Java_dev_xduo_enote_Bridge_nativeSetStt(env *C.JNIEnv, cls C.jclass, ready 
 	setSTT(ready != 0, j2s(env, js))
 }
 
+//export Java_dev_xduo_enote_Bridge_nativeAttachment
+func Java_dev_xduo_enote_Bridge_nativeAttachment(env *C.JNIEnv, cls C.jclass, id C.jstring) C.jstring {
+	return guard(env, "nativeAttachment", func() C.jstring {
+		a, ok := findAttachment(j2s(env, id))
+		if !ok || a.Missing {
+			return s2j(env, "")
+		}
+		return js2j(env, a.Attachment)
+	})
+}
+
 // nativeNoteImage(id) - the stored image path of a note, so Java can re-run OCR on it.
 //
 //export Java_dev_xduo_enote_Bridge_nativeNoteImage
@@ -193,7 +211,7 @@ func Java_dev_xduo_enote_Bridge_nativeNoteAudio(env *C.JNIEnv, cls C.jclass, js 
 		}
 		out := make([]map[string]string, 0, len(n.Attachments))
 		for _, a := range n.Attachments {
-			if kindOfMime(a.MIME) != "audio" {
+			if a.Role != attachmentOriginal || attachmentKind(a) != "audio" {
 				continue
 			}
 			out = append(out, map[string]string{"path": a.Path, "name": a.Name})

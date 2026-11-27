@@ -8,6 +8,7 @@ package main
 // so the old read paths (/img?id=, card thumbnails) keep working untouched.
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,11 +28,18 @@ func attachTo(n *Note, a Attachment) {
 	a.NoteID = n.ID
 	for i := range n.Attachments {
 		if n.Attachments[i].Path != "" && n.Attachments[i].Path == a.Path {
+			a.ID = n.Attachments[i].ID
 			n.Attachments[i] = a
 			return
 		}
 	}
 	n.Attachments = append(n.Attachments, a)
+}
+
+func attachOriginal(n *Note, path, name, mime string) {
+	a := attachmentFor(n.ID, path, name, mime, n.Source, n.CreatedAt)
+	a.Role = attachmentOriginal
+	attachTo(n, a)
 }
 
 // attachmentFor builds the record for a file that is already inside the app's files dir.
@@ -85,6 +93,21 @@ func mimeForName(name string) string {
 		return "application/octet-stream"
 	}
 	return "application/octet-stream"
+}
+
+func attachmentKind(a Attachment) string {
+	return kindOfMime(attachmentMIME(a))
+}
+
+func attachmentMIME(a Attachment) string {
+	mime := a.MIME
+	if mime == "" || mime == "application/octet-stream" {
+		mime = mimeForName(a.Name)
+		if mime == "application/octet-stream" {
+			mime = mimeForName(a.Path)
+		}
+	}
+	return mime
 }
 
 // kindOfMime groups a mime type for the 附件 page icons and its 类型 filter.
@@ -172,7 +195,7 @@ func listAttachments(q, sortKey, dir, mime, noteID string, limit int) attachRes 
 // newAttachItem 把一条附件连同所属笔记拼成 API 要的形状：标题空给占位、带上笔记时间、
 // 文件不在盘上标 missing。
 func newAttachItem(n *Note, a Attachment) attachItem {
-	it := attachItem{Attachment: a, NoteTitle: n.Title, Kind: kindOfMime(a.MIME)}
+	it := attachItem{Attachment: a, NoteTitle: n.Title, Kind: attachmentKind(a)}
 	if it.NoteTitle == "" {
 		it.NoteTitle = "(未命名笔记)"
 	}
@@ -323,7 +346,7 @@ func findAttachment(id string) (attachItem, bool) {
 	for _, n := range store.snapshot() {
 		for _, a := range n.Attachments {
 			if a.ID == id {
-				it := attachItem{Attachment: a, NoteTitle: n.Title, Kind: kindOfMime(a.MIME)}
+				it := attachItem{Attachment: a, NoteTitle: n.Title, Kind: attachmentKind(a)}
 				it.NoteAt = n.CreatedAt.Format("2006-01-02 15:04")
 				_, err := os.Stat(a.Path)
 				it.Missing = err != nil
@@ -353,9 +376,7 @@ func handleFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "文件已不在磁盘上", http.StatusGone)
 		return
 	}
-	if it.MIME != "" {
-		w.Header().Set("Content-Type", it.MIME)
-	}
+	w.Header().Set("Content-Type", attachmentMIME(it.Attachment))
 	w.Header().Set("Content-Disposition", "inline; filename*=UTF-8''"+url.PathEscape(it.Name))
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	http.ServeFile(w, r, it.Path)
@@ -376,27 +397,31 @@ func handleAttachDelete(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, map[string]any{"ok": false, "error": "附件不存在"})
 		return
 	}
-	removeFile(it.Path)
-	store.update(it.NoteID, func(n *Note) {
-		out := n.Attachments[:0]
-		for _, a := range n.Attachments {
+	err := store.updateSaved(it.NoteID, func(n *Note) error {
+		for i, a := range n.Attachments {
 			if a.ID != it.ID {
-				out = append(out, a)
+				continue
 			}
-		}
-		n.Attachments = out
-		if n.ImagePath == it.Path {
-			n.ImagePath = ""
-			n.ImageName = ""
-			for _, a := range n.Attachments {
-				if kindOfMime(a.MIME) == "image" {
-					n.ImagePath = a.Path
-					n.ImageName = a.Name
-					break
+			n.Attachments = append(n.Attachments[:i], n.Attachments[i+1:]...)
+			if n.ImagePath == a.Path {
+				n.ImagePath, n.ImageName = "", ""
+				for _, candidate := range n.Attachments {
+					if candidate.Role == attachmentOriginal && attachmentKind(candidate) == "image" {
+						n.ImagePath, n.ImageName = candidate.Path, candidate.Name
+						break
+					}
 				}
 			}
+			return nil
 		}
+		return errors.New("附件不存在")
 	})
+	if err != nil {
+		logf("attach delete %s: %v", it.ID, err)
+		jsonOut(w, map[string]any{"ok": false, "error": "移除附件失败"})
+		return
+	}
+	removeFile(it.Path)
 	logf("attach delete %s (%s)", it.ID, it.Name)
 	jsonOut(w, map[string]any{"ok": true, "name": it.Name})
 }

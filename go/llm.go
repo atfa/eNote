@@ -14,18 +14,19 @@ import (
 
 // LLMCall is one request/response pair, kept for the 调试 tab.
 type LLMCall struct {
-	TS       time.Time `json:"ts"`
-	URL      string    `json:"url"`
-	Model    string    `json:"model"`
-	System   string    `json:"system"`
-	User     string    `json:"user"`
-	HTTPCode int       `json:"httpCode"`
-	Raw      string    `json:"raw"`    // message.content as returned
-	Reason   string    `json:"reason"` // reasoning_content, when the model emits it
-	MS       int64     `json:"ms"`
-	Err      string    `json:"err,omitempty"`
-	Usage    any       `json:"usage,omitempty"`
-	Parsed   any       `json:"parsed,omitempty"`
+	TS           time.Time `json:"ts"`
+	URL          string    `json:"url"`
+	Model        string    `json:"model"`
+	System       string    `json:"system"`
+	User         string    `json:"user"`
+	HTTPCode     int       `json:"httpCode"`
+	Raw          string    `json:"raw"`    // message.content as returned
+	Reason       string    `json:"reason"` // reasoning_content, when the model emits it
+	MS           int64     `json:"ms"`
+	Err          string    `json:"err,omitempty"`
+	Usage        any       `json:"usage,omitempty"`
+	Parsed       any       `json:"parsed,omitempty"`
+	finishReason string
 }
 
 var (
@@ -192,7 +193,8 @@ func (c *LLMCall) readChatBody(raw []byte) (string, error) {
 	}
 	c.Raw = cr.Choices[0].Message.Content
 	c.Reason = cr.Choices[0].Message.ReasoningContent
-	return cr.Choices[0].FinishReason, nil
+	c.finishReason = cr.Choices[0].FinishReason
+	return c.finishReason, nil
 }
 
 // ---------------------------------------------------------------------------

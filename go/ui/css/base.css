@@ -62,22 +62,22 @@ a{text-decoration:underline}
 .hit .ic{width:11px;height:11px;stroke-width:2}
 .hit.img{background:var(--acc2-s);color:var(--acc2);border-color:var(--acc2)}
 @keyframes hitin{from{opacity:0;transform:translateY(-4px) scale(.9)}to{opacity:1;transform:none}}
-/* 附件网格（R4）：图片给缩略图，其他文件给类型图标 */
-.agrid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--s2);margin-top:var(--s2)}
-.acard{background:var(--card);border:var(--hair) solid var(--line);border-radius:var(--r2);padding:var(--s2);
-  box-shadow:var(--sh);display:flex;flex-direction:column;gap:var(--s1);cursor:pointer;
+/* 附件列表 */
+.agrid{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--s2);margin-top:var(--s2)}
+.acard{background:var(--card);border:var(--hair) solid var(--line);border-radius:var(--r);padding:var(--s3);
+  box-shadow:var(--sh);display:flex;align-items:flex-start;gap:var(--s3);cursor:pointer;
   transition:transform var(--d1) var(--ease)}
 .acard:active{transform:scale(.97)}
 .acard.gone{opacity:.62}
-.athumb{width:100%;height:var(--tile-h);object-fit:contain;border-radius:var(--r1);background:var(--card2)}
-.aglyph{height:var(--tile-h);display:flex;align-items:center;justify-content:center;font-size:var(--fs-2xl);
-  border-radius:var(--r1);background:var(--card2)}
-.aname{font-size:var(--fs-sm);font-weight:600;word-break:break-all;line-height:1.35}
+.athumb,.aglyph{flex:none;width:var(--tile-h);height:var(--tile-h);border-radius:var(--r1);background:var(--card2)}
+.athumb{object-fit:contain}
+.aglyph{display:flex;align-items:center;justify-content:center;font-size:var(--fs-2xl)}
+.afile-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--s1)}
+.aname{font-size:var(--fs-md);font-weight:700;overflow-wrap:anywhere;line-height:1.35}
 .ameta{font-size:var(--fs-xs);color:var(--dim2)}
 .anote{font-size:var(--fs-xs);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .amiss{font-size:var(--fs-xs);color:var(--bad)}
-.arow{display:flex;gap:var(--s2);margin-top:var(--s0)}
-.arow .btn{flex:1}
+.arow{display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s1)}
 /* 错误提示框：类名不能叫 .err，否则和 .chip.err（「重要」小标签）撞车，
    小标签会被套上 12px 字号 + 7px 内边距，比旁边的时间标签大一圈 */
 .errbox{margin-top:var(--s2);font-size:var(--fs-sm);color:var(--bad);background:var(--bad-s);border:var(--hair) solid var(--bad);border-radius:var(--r1);padding:var(--s2)}

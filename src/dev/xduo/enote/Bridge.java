@@ -39,10 +39,22 @@ public class Bridge {
     static native String nativeStatus();
     static native String nativeReminders();
     static native String nativeSelfTest(String json);
+    static native String nativeAttachment(String id);
+    static native String nativeAppendAttachments(String payload);
     static native String nativeNoteImage(String id);
     static native String nativeNoteAudio(String id);
     static native void nativeSetOcr(boolean ready, String info);
     static native void nativeSetStt(boolean ready, String info);
+
+    @JavascriptInterface
+    public void openAttachment(String id) {
+        MainActivity activity = current.get();
+        if (activity != null) {
+            activity.runOnUiThread(new Runnable() {
+                @Override public void run() { AttachmentProvider.open(activity, id); }
+            });
+        }
+    }
 
     /** Go->Java->JS: push a JS snippet to the WebView (STT partial results, ...). */
     static void pushJs(String js) {
@@ -388,6 +400,16 @@ public class Bridge {
         MainActivity a = current.get();
         Log.i(TAG, "js pickFile");
         if (a != null) a.pickFile();
+    }
+
+    @JavascriptInterface
+    public void pickNoteAttachments(String noteId) {
+        MainActivity a = current.get();
+        if (a != null) {
+            a.runOnUiThread(new Runnable() {
+                @Override public void run() { a.pickNoteAttachments(noteId); }
+            });
+        }
     }
 
     /** window.Android.pickJSON(): pick a JSON export and POST it to /api/import. */

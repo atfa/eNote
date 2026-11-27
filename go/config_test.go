@@ -94,3 +94,24 @@ func TestConfigWriteIsAtomic(t *testing.T) {
 		t.Fatalf("key 没写进去: %q", s.APIKey)
 	}
 }
+
+func TestSettingsPersistWithoutOnlineEndpoint(t *testing.T) {
+	dir := t.TempDir()
+	c, err := openConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := c.get()
+	s.UseAI = false
+	if err := c.set(s); err != nil {
+		t.Fatal(err)
+	}
+	c, err = openConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.get()
+	if got.BaseURL != "" || got.UseAI {
+		t.Fatal("AI preferences did not survive reopening settings")
+	}
+}

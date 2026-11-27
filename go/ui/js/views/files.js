@@ -7,7 +7,7 @@
    FA / q 走 setHost 的 getter（不是快照）：装配时传值的话，后面换掉的 FA 视图看不见。
 
    三态的判定顺序和遗留 renderFiles() 逐字一致：骨架屏（FA.loaded=false）优先于空态，
-   空态优先于网格 —— 首屏时 items 是空数组，把空态排在前面会先闪一下「还没有附件」。
+   空态优先于列表 —— 首屏时 items 是空数组，把空态排在前面会先闪一下「还没有附件」。
 
    步骤 17l 之前这里还有一条「<empty-state> 不许收 :tick」：EmptyState（Tony owner）的 props
    只有 icon/title/sub，多传的 :tick 会透传成根元素属性，真机实测 Vue 路径
@@ -18,6 +18,7 @@
    components: { EmptyState, AttachCard, Ico, AttachGlyph, AttachMeta, FileStrip } */
 
 import { Vue } from '../vue.js'
+import { attachmentRoleLabel } from '../filesflow.js'
 import { EmptyState } from '../components.js'
 import { Ico, AttachGlyph, AttachMeta, FileStrip } from '../components/leaf.js'
 
@@ -30,7 +31,7 @@ export const AttachCard = {
   setup(props){
     const H = inject('H');
     return {
-      H,
+      H, attachmentRoleLabel,
       // cls 里已经带 'acard'，所以模板只写 :class，不再叠静态 class="acard"
       // （Vue 会合并成 "acard acard enter"，VDIFF 比 class 字符串，多一个就红）
       cls: computed(() => H.attachCardCls(props.a)),
@@ -39,16 +40,19 @@ export const AttachCard = {
     }
   },
   template: `
-  <div :class="cls" :style="'--i:'+idx" @click="H.openAttach(a.id)">
+  <div :class="cls" :style="'--i:'+idx" @click="H.openAttach(a)">
     <img class="athumb" v-if="isImg" loading="lazy" :src="'/file?id='+a.id">
     <attach-glyph v-else :a="a"/>
-    <div class="aname">{{ a.name }}</div>
-    <attach-meta :a="a"/>
-    <div class="anote">{{ a.noteTitle || '' }}</div>
-    <div class="amiss" v-if="a.missing">文件已不在</div>
-    <div class="arow" @click.stop>
-      <button class="btn sm gh" @click.stop="H.jump(a.noteId)"><ico n="note"/>笔记</button>
-      <button class="btn sm dg" @click.stop="H.delAttach(a.id)"><ico n="trash"/>删除</button>
+    <div class="afile-info">
+      <div class="aname">{{ a.name }}</div>
+      <attach-meta :a="a"/>
+      <div v-if="a.role === 'original'" class="ameta">{{ attachmentRoleLabel(a) }}</div>
+      <div class="anote" v-if="a.noteTitle">{{ a.noteTitle }}</div>
+      <div class="amiss" v-if="a.missing">文件已不在</div>
+      <div class="arow" @click.stop>
+        <button class="btn sm gh" @click.stop="H.jump(a.noteId)"><ico n="note"/>笔记</button>
+        <button class="btn sm dg" @click.stop="H.delAttach(a.id)"><ico n="trash"/>删除</button>
+      </div>
     </div>
   </div>`
 };

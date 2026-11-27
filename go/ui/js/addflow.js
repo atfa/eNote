@@ -6,45 +6,53 @@
 // （模块求值顺序是 import 先跑，那时 SHEETARGB 还是 undefined → 整份 app.js 抛
 // TypeError、页面全白），而且 SHEETARG 只写不读，是个死变量。写 nid 直接 syncBox。
 import { Vue } from './vue.js'
-import { sheetVue, closeSheet } from './sheetflow.js'
+import { sheetVue, closeSheet, sheetVersion } from './sheetflow.js'
+import { shell } from './shell.js'
 import { refresh, syncBox, SHEETARGB } from './app.js'
 import { api, toast } from './netflow.js'
 import { STT, voiceStop, voiceClear } from './voiceflow.js'
-/* 步骤 21：「记一笔」与「添加待办」的表单值也搬进状态（步骤 20 的同一套做法）。
-   这两个弹层是每次新建，所以初值就是空串 / 默认值，不需要从服务端灌。
-   与设置页的差别：这里用 :value（DOM property）而不是 :value.attr —— 这些元素今天
-   DOM 上没有 value 属性，写属性保持序列化逐字不变（设置页那六个必须写属性，见步骤 20）。 */
+/* 记一笔的手输文字与语音草稿一起保留到提交成功。添加待办每次打开使用默认值。 */
 var FORMS = Vue.reactive({ v: { add: null, todo: null } });
 function formSet(name, k, v){ var f = FORMS.v[name]; if(f) f[k] = v }
 function addSheet(){
-  FORMS.v.add = { text: '' };
+  if (!FORMS.v.add) FORMS.v.add = { text: '' };
   return sheetVue('add');
 }
-/* 「保存并解析」= 唯一的提交按钮（P18.3：原来语音区的「发送」和它合二为一）。
-   一次点击把面板里的原料一起交出去：
-     · 只有打字内容 → /api/add（kind=text，走原有解析队列）
-     · 有语音段     → /api/voice（kind=voice），打字内容作为 text 一起带上，
-                       Go 侧 voiceText() 把「打字内容 + 各段识别文本」合成一篇正文
-                       （内容相同不重复一遍），每段音频各自挂附件
-   正在录时先 voiceStop() 并等这段定稿（onSttEnd），否则刚说完的最后一段会被丢掉。 */
+/* 「解析并记录」先等待当前录音定稿。整理结果占用第一个语音段的文字位，
+   所有段仍各自携带音频附件。手输文字单独随请求提交。 */
 async function addNote(){
-  if (STT.v.busy) return;
+  if (STT.v.busy || STT.v.organizing) return;
+  if (STT.v.organizedStale) { toast('语音已变化，请重新整理或使用原文'); return }
+  if (STT.v.organized !== null && !STT.v.organized.trim()) {
+    toast('整理后的文字为空，请编辑或使用原文'); return;
+  }
   var t = String((FORMS.v.add || {}).text || '').trim();
-  if (STT.v.listening) await voiceStop();
-  var segs = STT.v.segs.slice();
-  if (!t && !segs.length) { toast('写点内容吧'); return }
+  var openedSheet = sheetVersion();
   STT.v.busy = true;
-  closeSheet();
-  toast(segs.length ? '已发送，AI 解析中…' : '已加入队列…');
+  if (STT.v.listening || STT.v.settling) await voiceStop();
+  if (STT.v.organizedStale) {
+    STT.v.busy = false;
+    toast('语音已变化，请重新整理或使用原文');
+    return;
+  }
+  var segs = STT.v.segs.slice();
+  if (!t && !segs.length) { STT.v.busy = false; toast('写点内容吧'); return }
+  var organized = STT.v.organized;
   var r;
   try {
     r = segs.length
-      ? await api('/api/voice', { text: t, audios: segs.map(function(s){
-          return { text: s.text || '', path: s.path || '', name: s.name || '' } }) })
+      ? await api('/api/voice', { text: t, audios: segs.map(function(s, i){
+          var text = organized === null ? s.text : (i === 0 ? organized : '');
+          return { text: text || '', path: s.path || '', name: s.name || '' } }) })
       : await api('/api/add', { text: t });
   } catch (e) { r = { ok: false, error: '发送失败' } }
   if (!r || !r.ok) toast((r && r.error) || '失败');
-  else if (segs.length) voiceClear();
+  else {
+    voiceClear();
+    FORMS.v.add.text = '';
+    if (shell.sheet.on && sheetVersion() === openedSheet) closeSheet();
+    toast(segs.length ? '已发送，AI 解析中…' : '已加入队列…');
+  }
   STT.v.busy = false;
   setTimeout(refresh,500); setTimeout(refresh,3000); setTimeout(refresh,9000);
 }

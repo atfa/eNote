@@ -18,16 +18,17 @@
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，StripBar 是第一个组件、
    它只用得到 <ico>，所以全量名单写在下面这行注释里（运行时各组件注册自己用到的那些）。
-   components: { Ico, EmptyState, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact } */
+   components: { Ico, EmptyState, NoteMeta, NoteHits, NoteFacts, TodoRowCompact } */
 
 import { Vue } from './vue.js'
+import { attachmentKind } from './filesflow.js'
 const { computed, inject } = Vue
 // 基础组件 <empty-state> 归 Tony（owner 见文件头注释），在这里统一注册。
 import { EmptyState } from './components/empty-state.js'
 /* 步骤 16：叶子片段（图标 / chip / meta / 关键信息 / 紧凑待办行）从 app.js 的 HTML 字符串
    函数翻成真组件，v-html 在这里清零。 */
-import { Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact } from './components/leaf.js'
-export { EmptyState, Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact }
+import { Ico, NoteMeta, NoteHits, NoteFacts, TodoRowCompact } from './components/leaf.js'
+export { EmptyState, Ico, NoteMeta, NoteHits, NoteFacts, TodoRowCompact }
 
 /* 本文件的 computed 全部裸写（真依赖追踪）：读到的模块状态都是 reactive 的。
    返容器本身是陷阱（FileStrip 的 i 就是浅拷贝），见 vue.js 头部两条契约。 */
@@ -128,7 +129,7 @@ export const ClipBanner = {
 
 export const NoteCard = {
   name: 'NoteCard',
-  components: { Ico, NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoRowCompact },
+  components: { Ico, NoteMeta, NoteHits, NoteFacts, TodoRowCompact },
   props: ['n', 'k'],
   setup(props){
     const H = inject('H');
@@ -139,34 +140,51 @@ export const NoteCard = {
       const w = H.SR.where && H.SR.where[props.n.id]
       return !!(w && w.length)
     })
-    const attach = computed(() => props.n.attachments && props.n.attachments.length > 1)
-    /* P18：这条笔记带音频附件（分享进来的音频 / 「记一笔」的语音）→ 给「重新识别语音」。
-       MIME 优先（fillVoice 会给 audio/*），老数据里没 MIME 的按扩展名兑。 */
-    const audio = computed(() => (props.n.attachments || []).some(a =>
-      String(a.mime || '').indexOf('audio/') === 0
-      || /\.(wav|m4a|mp3|ogg|opus|amr|3gp|aac|flac)$/i.test(String(a.path || ''))))
+    const attachments = computed(() => props.n.attachments || [])
+    const singleAttachment = computed(() => {
+      if (attachments.value.length !== 1) return null;
+      const attachment = attachments.value[0];
+      const kind = attachmentKind(attachment);
+      const icon = kind === 'image' ? 'eye' : kind === 'audio' ? 'play' : 'clip';
+      const action = kind === 'image' ? '查看图片' : kind === 'audio' ? '播放音频' : '打开附件';
+      return { attachment, icon, action, label: attachment.name ? action + '：' + attachment.name : action };
+    })
+    const fileNote = computed(() => ['manual-file', 'share-file'].includes(props.n.source))
+    const savedFile = computed(() => fileNote.value && props.n.status !== 'error')
+    const audio = computed(() => attachments.value.some(a => a.role === 'original' && attachmentKind(a) === 'audio'))
     const todos = computed(() => props.n.todos || [])
-    return { H, exp, hits, attach, audio, todos,
+    return { H, exp, hits, attachments, singleAttachment, fileNote, savedFile, audio, todos,
              idx: computed(() => Math.min(props.k || 0, 8)),
-             body: computed(() => props.n.content || '(无正文)'),
+             body: computed(() => savedFile.value ? (props.n.description || '') : (props.n.content || '(无正文)')),
              ec: computed(() => H.enterCls('n' + props.n.id)) }
   },
   template: `
 <div class="card" :class="ec" :id="'n'+n.id" :style="'--i:'+idx">
-  <div class="row between"><p class="t">{{ n.title || '未命名笔记' }}</p></div>
-  <div class="meta"><note-meta :n="n"/></div>
+  <div class="row between note-card-head">
+    <p class="t">{{ n.title || '未命名笔记' }}</p>
+  </div>
+  <div class="meta"><note-meta :n="n" :hide-status="savedFile"/></div>
   <div class="hits" v-if="hits"><note-hits :n="n"/></div>
-  <div class="hits" v-if="attach"><note-attach :n="n"/></div>
   <img class="thumb" v-if="n.imagePath" :src="'/img?id='+n.id">
   <note-facts :n="n"/>
-  <div class="body" :class="{clamp: !exp}" v-text="body"></div>
-  <div class="errbox" v-if="n.error" v-text="n.error"></div>
+  <div v-if="body" class="body" :class="{clamp: !exp}" v-text="body"></div>
+  <div class="errbox" v-if="n.error && !savedFile" v-text="n.error"></div>
   <div style="margin-top:var(--s2)" v-if="todos.length"><todo-row-compact v-for="t in todos" :key="t.id" :t="t" :n="n"/></div>
   <div class="acts">
-    <button class="btn sm gh exp" @click="H.expand(n.id)"><ico :n="exp?'chevup':'chev'"/>{{ exp?'收起':'展开详情' }}</button>
-    <button class="btn sm" v-if="n.status==='done'||n.status==='raw'" @click="H.reparse(n.id)"><ico n="refresh"/>重新解析</button>
+    <button v-if="singleAttachment" type="button" class="btn sm note-card-attachment"
+            :aria-label="singleAttachment.label" :title="singleAttachment.label" @click="H.openAttach(singleAttachment.attachment)">
+      <ico :n="singleAttachment.icon"/>{{ singleAttachment.action }}
+    </button>
+    <button v-else-if="attachments.length > 1" type="button" class="btn sm note-card-attachment"
+            :aria-label="'查看 ' + attachments.length + ' 个附件'" @click="H.openNoteAttachments(n.id)">
+      <ico n="clip"/>附件（{{ attachments.length }}）
+    </button>
+    <button class="btn sm gh exp" v-if="body" @click="H.expand(n.id)"><ico :n="exp?'chevup':'chev'"/>{{ exp?'收起':'展开详情' }}</button>
+    <button class="btn sm" v-if="!savedFile && (n.status==='done'||n.status==='raw')" @click="H.reparse(n.id)"><ico n="refresh"/>重新解析</button>
     <button class="btn sm" v-if="n.imagePath" @click="H.reocr(n.id)"><ico n="scan"/>重新识别图片</button>
     <button class="btn sm" v-if="audio" @click="H.revoice(n.id)"><ico n="mic"/>重新识别语音</button>
+    <button class="btn sm" v-if="savedFile" @click="H.editNoteDescription(n)"><ico n="note"/>{{ n.description ? '编辑说明' : '添加说明' }}</button>
+    <button class="btn sm" v-if="!fileNote || (savedFile && !attachments.length)" @click="H.pickNoteAttachments(n.id)"><ico n="clip"/>添加附件</button>
     <button class="btn sm" @click="H.addTodoSheet(n.id)"><ico n="plus"/>待办</button>
     <button class="btn sm dg" @click="H.delNote(n.id)"><ico n="trash"/>删除</button>
   </div>

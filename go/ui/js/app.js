@@ -89,13 +89,15 @@ import { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, as
 import { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
          clearAllNotes, sortSheet, setPref, resetPrefs, saveSettings } from './settingsflow.js'
 import { FA, fmtSize, filesNow, attachCardCls, attachGlyphName, openAttach, delAttach,
-         pickFile } from './filesflow.js'
+         pickFile, pickNoteAttachments, openNoteAttachments, noteAttachmentsSaved } from './filesflow.js'
+import { editNoteDescription } from './views/note-description.js'
 /* P18：「记一笔」里的语音暂存区（多段识别 → 一次发送成一条 kind=voice 的笔记）。
    STT 是 {v:} 容器，进宿主走 getter；那八个 voiceXxx 都被 views/sheets.js 的
    AddSheetView 模板直接调（H.voiceXxx），所以必须进 HOST_KEYS['sheet:add']。
    面板一打开就是展开态（不再先点「录音」），所以没有 voiceOpen / voiceClose 了。 */
 import { STT, voiceDown, voiceUp, voiceStop, voiceUndo,
-         voiceEdit, voicePlay, voiceDelSeg } from './voiceflow.js'
+         voicePlay, voiceDelSeg, voiceOrganize,
+         voiceOrganizedEdit, voiceUseOriginal } from './voiceflow.js'
 import { CLIP, openClip, importClip, clipItemCls, clipPrevText, clipThumbText, clipMetaText,
          clipParseText, clipSheet, loadClips, clipPick, clipSelAll, clipDel, clipDelSel,
          clipParse } from './clipflow.js'
@@ -137,6 +139,7 @@ window.openNote = openNote; window.notifyResult = notifyResult;
 window.openTodo = openTodo;
 
 /* 从系统设置页回来后重新读一次权限/保活状态；顺便重画，让「剪贴板刚有更新」提示立刻出现 */
+window.onNoteAttachmentsSaved = noteAttachmentsSaved;
 window.onAppResume = function(){
   shotFlags();
   settingsRefresh();
@@ -170,7 +173,8 @@ var HOST = setHost({
   now: now, cdCls: cdCls, cdText: cdText, toCalendar: toCalendar, toAlarm: toAlarm,
   clipHint: function(){ return !!(window.Android && Android.clipHint && Android.clipHint() === '1') },
   expand: expand, reparse: reparse, reocr: reocr, addTodoSheet: addTodoSheet, delNote: delNote,
-  revoice: revoice,
+  revoice: revoice, editNoteDescription: editNoteDescription,
+  pickNoteAttachments: pickNoteAttachments, openNoteAttachments: openNoteAttachments,
   missedSheet: missedSheet, shotSheet: shotSheet, shotSetup: shotSetup, askShotPerm: askShotPerm,
   folderSheet: folderSheet, clipSheet: clipSheet, importClip: importClip, shotGo: shotGo,
   /* 步骤 6 加：TodosView 的宿主函数。漏一个的症状是「Vue 渲染抛错 → render() 静默回退
@@ -245,8 +249,10 @@ var HOST = setHost({
   pickFile: pickFile,
   get STT(){ return STT.v },
   voiceDown: voiceDown, voiceUp: voiceUp,
-  voiceStop: voiceStop, voiceUndo: voiceUndo, voiceEdit: voiceEdit,
+  voiceStop: voiceStop, voiceUndo: voiceUndo,
   voicePlay: voicePlay, voiceDelSeg: voiceDelSeg,
+  voiceOrganize: voiceOrganize, voiceOrganizedEdit: voiceOrganizedEdit,
+  voiceUseOriginal: voiceUseOriginal,
   get sheetArg(){ return SHEETARGB.v },
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
@@ -267,10 +273,10 @@ var HOST = setHost({
    表里、表里不许列这棵树没读的 key。app id 就是挂载点的名字：view:<tab> / sheet:<name> /
    shell:<容器 id>（shell.js 的 mount(id, def)）。 */
 var HOST_KEYS = {
-  /* view:notes     组件根 NotesView，28 个 key */
+  /* view:notes     组件根 NotesView，32 个 key */
   'view:notes': ['MISSED', 'S', 'SHOTFLAGS', 'SR', 'addTodoSheet', 'cdCls', 'cdText', 'clipHint',
-    'clipSheet', 'delNote', 'enterCls', 'expand', 'fmtTime', 'importClip', 'missedSheet',
-    'notesFiltered', 'now', 'open', 'reocr', 'reparse', 'revoice', 'searchNow', 'shotGo', 'srErr',
+    'clipSheet', 'delNote', 'editNoteDescription', 'enterCls', 'expand', 'fmtTime', 'importClip', 'missedSheet',
+    'notesFiltered', 'now', 'open', 'openAttach', 'openNoteAttachments', 'pickNoteAttachments', 'reocr', 'reparse', 'revoice', 'searchNow', 'shotGo', 'srErr',
     'toAlarm', 'toCalendar', 'todoRowCls', 'toggle'],
   /* view:todos     组件根 TodosView，16 个 key */
   'view:todos': ['P', 'S', 'SR', 'cdCls', 'cdText', 'enterCls', 'fmtTime', 'groupTodos', 'hit',
@@ -305,11 +311,13 @@ var HOST_KEYS = {
     'missedDismiss', 'missedDone', 'missedGoTodos'],
   /* sheet:add      组件根 AddSheetView，2 个 key */
   /* sheet:add      组件根 AddSheetView，4 个 key（步骤 21 加 FORMS / formSet） */
-  /* sheet:add      组件根 AddSheetView，13 个 key（P18 加 STT / voiceXxx / pickFile；
-     P18.3 「发送」并入「保存并解析」，voiceSend 没了） */
+  /* sheet:add      组件根 AddSheetView。 */
   'sheet:add': ['addNote', 'formSet', 'FORMS', 'pickFile', 'pickImage', 'STT',
-    'voiceDelSeg', 'voiceDown', 'voiceEdit', 'voicePlay', 'voiceStop',
-    'voiceUndo', 'voiceUp'],
+    'voiceDelSeg', 'voiceDown', 'voicePlay', 'voiceStop',
+    'voiceUndo', 'voiceUp', 'voiceOrganize', 'voiceOrganizedEdit', 'voiceUseOriginal'],
+  'sheet:attachmentPreview': [],
+  'sheet:noteAttachments': ['pickNoteAttachments'],
+  'sheet:noteDescription': [],
   /* sheet:addtodo  组件根 AddTodoSheetView，2 个 key */
   /* sheet:addtodo  组件根 AddTodoSheetView，4 个 key（步骤 21 加 FORMS / formSet） */
   'sheet:addtodo': ['addTodo', 'formSet', 'FORMS', 'sheetArg'],

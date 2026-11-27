@@ -2511,25 +2511,25 @@ if (SPLIT) {
   else ok('闸门㉕ 调试基建齐全：' + rows.map(m => m[1]).join(' + ') + ' + ?vue=dev 开关 + WebView 可调试');
 }
 
-/* ---------- 闸门㉖：「保存并解析」是记一笔的唯一提交入口（P18.3）----------
-   设计图把语音区的「发送」和文本区的「保存并解析」合成了一个按钮。这件事跨四个文件，
-   任何一侧单独回退都会安静地坏掉：模板里把「发送」加回来 → 两个入口语义不一致；
-   addNote 不再带 text → 打字内容在有语音段时被静丢掉；Go 把 text 清空 → 同一条笔记
-   只剩语音段。所以两侧同时钉：模板只有一个提交按钮、主按钮带段数、提交走 /api/voice
-   且带 text、Go 不丢 text、录音中提交先等本段定稿。 */
+/* ---------- 闸门㉖：「解析并记录」统一提交，语音行可整理 ----------
+   语音与手输正文走同一个提交入口。AI 整理仅生成可编辑草稿，
+   提交时保留手输正文和语音附件，并等待录音定稿。 */
 {
   const d26 = [];
   const sh26 = read('go/ui/js/views/sheets.js');
   const af26 = read('go/ui/js/addflow.js');
   const vf26 = read('go/ui/js/voiceflow.js');
   const api26 = read('go/api.go');
-  const add = sh26.slice(sh26.indexOf('export const AddSheetView'));
-  const vbar = (add.match(/<div class="vbar">[\s\S]*?<\/div><div class="vhint">/) || [''])[0];
-  if (!vbar) d26.push('模板里找不到 .vbar（闸门在假绿）');
-  if (/voiceSend|\u53d1\u9001/.test(vbar)) d26.push('.vbar 里又出现了「发送」按钮（提交入口必须只有一个）');
-  if (!/class="vside ghost"/.test(add)) d26.push('.vbar 少了隐形占位 .vside.ghost（圆钮不再居中）');
-  if (!/class="acts wide"/.test(add)) d26.push('按钮行不再是 .acts.wide（主按钮加宽是设计图要求的）');
-  if (!/segs\.length \? '保存并解析 · '/.test(add)) d26.push('主按钮不再显示段数（用户看不出这一点会发送语音）');
+  const add = sh26.slice(sh26.indexOf('export const AddSheetView'), sh26.indexOf('export const AddTodoSheetView'));
+  const vbar = (add.match(/<div class="vbar">[\s\S]*?(?=<div class="vhint">)/) || [''])[0];
+  if (!/voiceUndo[\s\S]*voiceDown[\s\S]*voiceOrganize/.test(vbar))
+    d26.push('录音行应依次显示撤销、麦克风和 AI 整理');
+  if (/voiceSend|addNote|发送/.test(vbar)) d26.push('录音行出现了提交入口');
+  if ((add.match(/H\.addNote\(\)/g) || []).length !== 1 || !/解析并记录/.test(add))
+    d26.push('缺少唯一的「解析并记录」提交按钮');
+  if (!/segs\.length\s*\}\}\s*段/.test(add)) d26.push('语音区缺少段数');
+  if (/voiceEdit\(/.test(add) || !/voiceOrganizedEdit\(/.test(add) || !/\/api\/voice\/organize/.test(vf26))
+    d26.push('整理流程应支持整体编辑草稿');
   if (!/maxlength="2000"/.test(add) || !/class="cnt"/.test(add)) d26.push('输入框的 2000 字上限 / 字数计数没了');
   if (!/\/api\/voice/.test(af26) || !/text: t, audios:/.test(af26))
     d26.push('addNote 不再把打字内容随语音段一起交（/api/voice 的 text 丢了）');
@@ -2539,8 +2539,8 @@ if (SPLIT) {
     d26.push('voiceStop 不再返回「本段定稿」的 promise（onSttEnd 是异步的，提交会抢跑）');
   if (!/req\.Text = body\.Text/.test(api26))
     d26.push('go/api.go 又把有 audios 时的 text 丢了（打字内容进不了正文）');
-  if (d26.length) bad('「记一笔」的提交入口又裂成两个（P18.3）', d26.join('；'));
-  else ok('闸门㉖ 提交入口合一：语音行无发送、主按钮带段数、/api/voice 带 text、Go 不丢 text、提交前等本段定稿');
+  if (d26.length) bad('闸门㉖ 「记一笔」语音整理和统一提交', d26.join('；'));
+  else ok('闸门㉖ 语音可整理为整体草稿，提交保留手输文字并等录音定稿');
 }
 
 // ---------- 输出 ----------

@@ -15,6 +15,8 @@ import { $ } from './domutil.js'
    步骤 17i：closeSheet 不再参与 —— 收场交给 <Transition>，leave 被取消时 Vue 不会调
    after-leave，所以上面这条只剩「开」这一侧要防。 */
 var sheetGen = 0;
+var sheetBack = null;
+function sheetVersion(){ return sheetGen }
 /* 弹层开合（步骤 15 之后只有一条路径）：状态写进 shell.sheet，SheetHost 渲染外壳，
    内容交给 VUE_SHEETS 里的组件挂载。两种形态：
    - pageSheetVue(name, title, kind)：全屏页（.phead + .pbody#sheetBody）
@@ -22,7 +24,8 @@ var sheetGen = 0;
    两者都返回 nextTick 的 Promise（D13：调用方 await 完才能断到新 DOM），并在挂载后把
    面板滚回顶部。步骤 16c：字符串内容那条路（pageSheet / sheet + mode:'html'）删掉了，
    六个字符串弹层全成了组件，内联 onclick 也一起没了（app.js 里从 21 处降到 0）。 */
-function pageSheetVue(name, title, kind){
+function pageSheetVue(name, title, kind, onBack){
+  sheetBack = onBack || null;
   sheetGen++;
   var gen = sheetGen;
   /* 步骤 13：先把所有旧 sheet 拆干。以前只拆同名（mountSheet 里那句 unmountSheet(name)），
@@ -49,6 +52,7 @@ function pageSheetVue(name, title, kind){
    迁移前是 `p.innerHTML = '<div class="grip"></div><button class="pclose" …>' + html`，
    现在 html 那一层包在 #sheetBody 里（唯一的结构差别，CSS 已跟上）。 */
 function sheetVue(name, full){
+  sheetBack = null;
   sheetGen++;
   var gen = sheetGen;
   unmountAllSheets();
@@ -79,6 +83,12 @@ function cssMs(name){
 }
 function closeSheet(){
   if(!shell.sheet.on) return;
+  if(sheetBack){
+    var back = sheetBack;
+    sheetBack = null;
+    back();
+    return;
+  }
   /* 步骤 18d：外壳是 van-popup，显隐是 v-if（没有 Vue 的 leave 阶段，理由见 js/shell.js
      的 SheetHost 注释），所以收场动画自己排：on=false 让 SheetHost 挂上 .closing
      （面板下滑 + 遮罩淡出，规则在 css/components.css），动画跑完才摘节点。
@@ -104,4 +114,4 @@ function sheetLeft(){
 /* app.js 把 pageSheetVue / sheetVue 挂进各弹层的入口函数，把 closeSheet / sheetLeft
    挂进 HOST（SheetHost 的 @click-overlay / @vue:unmounted）；clipflow / missedflow /
    settingsflow / shotflow 都从 app.js 拿 pageSheetVue，所以 app.js 那边继续再导出。 */
-export { pageSheetVue, sheetVue, closeSheet, sheetLeft }
+export { pageSheetVue, sheetVue, closeSheet, sheetLeft, sheetVersion }

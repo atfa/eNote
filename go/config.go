@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Settings is the BYOK configuration plus UI preferences, editable in 我的 → 设置.
+// Settings stores model configuration and UI preferences, editable in 我的 → 设置.
 type Settings struct {
 	BaseURL  string               `json:"baseUrl"`
 	APIKey   string               `json:"apiKey"`
@@ -31,8 +31,6 @@ type ViewPrefs struct {
 	Filters map[string]string `json:"filters"`
 }
 
-// A fresh install has no AI configured: the app is BYOK, so the endpoint goes into 设置
-// (any OpenAI-compatible server). With BaseURL empty, shared content is stored as-is.
 var defaultSettings = Settings{
 	BaseURL:  "",
 	APIKey:   "",
@@ -60,12 +58,9 @@ func openConfig(dir string) (*Config, error) {
 		if err != nil || len(b) == 0 {
 			continue
 		}
-		var s Settings
+		s := defaultSettings
 		if err := json.Unmarshal(b, &s); err != nil {
 			logf("config: %s 不是合法 JSON，跳过：%v", filepath.Base(f), err)
-			continue
-		}
-		if s.BaseURL == "" && s.APIKey == "" {
 			continue
 		}
 		if f != c.path {
@@ -74,26 +69,26 @@ func openConfig(dir string) (*Config, error) {
 		c.Settings = s
 		break
 	}
-	c.normalize()
+	c.Settings.normalize()
 	return c, nil
 }
 
-func (c *Config) normalize() {
-	c.BaseURL = trimSlash(strings.TrimSpace(c.BaseURL))
-	if c.Theme != "dark" && c.Theme != "auto" {
-		c.Theme = "light"
+func (s *Settings) normalize() {
+	s.BaseURL = trimSlash(strings.TrimSpace(s.BaseURL))
+	if s.Theme != "dark" && s.Theme != "auto" {
+		s.Theme = "light"
 	}
-	if c.UI == nil {
-		c.UI = map[string]ViewPrefs{}
+	if s.UI == nil {
+		s.UI = map[string]ViewPrefs{}
 	}
-	if c.TimeoutS <= 0 {
-		c.TimeoutS = 90
+	if s.TimeoutS <= 0 {
+		s.TimeoutS = 90
 	}
-	if c.MaxTok <= 0 {
-		c.MaxTok = 2048
+	if s.MaxTok <= 0 {
+		s.MaxTok = 2048
 	}
-	if c.Model == "" {
-		c.Model = defaultSettings.Model
+	if s.Model == "" {
+		s.Model = defaultSettings.Model
 	}
 }
 
@@ -106,9 +101,8 @@ func (c *Config) get() Settings {
 func (c *Config) set(s Settings) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.Settings = s
-	c.normalize()
-	b, err := json.MarshalIndent(c.Settings, "", "  ")
+	s.normalize()
+	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -130,10 +124,12 @@ func (c *Config) set(s Settings) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	_ = os.WriteFile(c.path+".bak", b, 0o600)
 	if err := os.Rename(tmp, c.path); err != nil {
+		_ = os.Remove(tmp)
 		return err
 	}
+	c.Settings = s
+	_ = os.WriteFile(c.path+".bak", b, 0o600)
 	hub.broadcast("settings")
 	return nil
 }

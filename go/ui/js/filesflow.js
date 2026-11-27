@@ -7,6 +7,10 @@
 import { Vue } from './vue.js'
 import { S, P, q, SRK, reassign, paintStatus, render, enterCls, askDel, refresh } from './app.js'
 import { api, apiTimeout, errText, toast } from './netflow.js'
+import { pageSheetVue } from './sheetflow.js'
+
+const attachmentPreview = Vue.shallowRef(null)
+const noteAttachmentsId = Vue.ref(null)
 
 /* ---------- 附件页（R4）----------
    数据来自 /api/attachments（服务端过滤/排序，含磁盘文件数校验）。 */
@@ -61,18 +65,66 @@ function attachCardCls(a){
 function attachGlyphName(a){
   return KIND[a.kind] || 'clipfile';
 }
-function openAttach(id){
-  var a = null;
-  FA.items.forEach(function(x){ if(x.id===id) a = x });
-  toast('预览即将上线' + (a ? '：' + a.name : ''));
+function attachmentKind(attachment){
+  if (attachment.kind) return attachment.kind;
+  const mime = attachment.mime || '';
+  const group = mime.split('/')[0];
+  if (['image', 'audio', 'video', 'text'].includes(group)) return group;
+  if (mime.includes('pdf')) return 'pdf';
+  if (/sheet|excel/.test(mime)) return 'sheet';
+  if (/presentation|powerpoint/.test(mime)) return 'slides';
+  if (/word|document/.test(mime)) return 'doc';
+  if (/zip|compressed|tar|7z/.test(mime)) return 'archive';
+  return 'file';
 }
-async function delAttach(id){
-  var a = null;
-  FA.items.forEach(function(x){ if(x.id===id) a = x });
-  askDel('附件「' + (a ? a.name : '') + '」？文件会从存储中删除。', function(){
+function attachmentRoleLabel(attachment){
+  if (attachment.role !== 'original') return '';
+  const kind = attachmentKind(attachment);
+  return kind === 'image' ? '原始图片' : kind === 'audio' ? '原始录音' : '原始文件';
+}
+function openNoteAttachments(noteId){
+  noteAttachmentsId.value = noteId;
+  return pageSheetVue('noteAttachments', '笔记附件');
+}
+function pickNoteAttachments(noteId){
+  if (!window.Android || !Android.pickNoteAttachments) {
+    toast('请在 Android App 中添加附件');
+    return;
+  }
+  Android.pickNoteAttachments(noteId);
+}
+function noteAttachmentsSaved(ok, message){
+  toast(message || (ok ? '附件已添加' : '添加附件失败'));
+  if (ok) refresh();
+}
+function openAttach(attachment, backToNoteId){
+  if (attachment.missing) {
+    toast('附件文件已不在');
+    return;
+  }
+  const kind = attachmentKind(attachment);
+  if (kind === 'image' || kind === 'audio') {
+    attachmentPreview.value = {
+      kind,
+      name: attachment.name,
+      role: attachmentRoleLabel(attachment),
+      src: '/file?id=' + encodeURIComponent(attachment.id)
+    };
+    const onBack = backToNoteId ? () => openNoteAttachments(backToNoteId) : null;
+    return pageSheetVue('attachmentPreview', attachment.name || (kind === 'image' ? '图片' : '音频'), 'attachment-preview', onBack);
+  }
+  if (!window.Android || !Android.openAttachment) {
+    toast('请在 Android App 中打开附件');
+    return;
+  }
+  Android.openAttachment(attachment.id);
+}
+function delAttach(id, name){
+  var a = FA.items.find(x => x.id === id);
+  askDel('附件「' + (name || (a && a.name) || '') + '」？文件会从存储中删除。', function(){
     api('/api/attach/delete', {id:id}).then(function(r){
       toast(r.ok ? '已删除' : ('删除失败: ' + (r.error||'')));
-      filesNow(); refresh();
+      if (r.ok) refresh();
     }, function(e){ toast('删除失败: '+e) });
   });
 }
@@ -86,4 +138,5 @@ function pickFile(){
 /* 步骤 31：app.js 把下面这些名字挂进 HOST / HOST_KEYS，views/files.js 通过 H.xxx 读它们。
    filesSeq / filesRetry 只在簇内用，导出来是为了闸门⑩ 的「定义了没人用」能看见引用侧。 */
 export { FA, filesSeq, filesRetry, KIND, fmtSize, filesNow, attachCardCls, attachGlyphName,
-  openAttach, delAttach, pickFile }
+  openAttach, delAttach, pickFile, attachmentKind, attachmentRoleLabel, attachmentPreview, noteAttachmentsId,
+  openNoteAttachments, pickNoteAttachments, noteAttachmentsSaved }

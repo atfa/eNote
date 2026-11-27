@@ -21,3 +21,5 @@ go/ui/build.json
 # 都是每次调试现造的，不是证据。
 .test/*.bak
 .test/chk.mjs
+
+.cache/enote-llama/

@@ -18,7 +18,7 @@
    最早用到子组件的 CdChip 定义在 RemindBtns / TodoDue 之前，那里写全量会撞 TDZ），
    所以全量名单写在下面这行注释里；运行时每个组件仍各自注册自己模板里用到的那些。
    components: { Ico, SrcChip, StatusChip, CdChip, RemindBtns, TodoDue, TodoPriChips,
-                 NoteMeta, NoteHits, NoteAttach, NoteFacts, TodoTx, TodoRowCompact,
+                 NoteMeta, NoteHits, NoteFacts, TodoTx, TodoRowCompact,
                  KvRow, OcrReady, FileStrip, AttachGlyph, AttachMeta } */
 import { Vue } from '../vue.js'
 const { computed, inject } = Vue
@@ -40,6 +40,8 @@ export const SrcChip = {
 <span class="chip" v-else-if="n.source==='share-text'">分享文字</span>
 <span class="chip img" v-else-if="n.source==='share-image'">分享图片</span>
 <span class="chip img" v-else-if="n.source==='share-voice'">分享语音</span>
+<span class="chip" v-else-if="n.source==='share-file'">分享文件</span>
+<span class="chip" v-else-if="n.source==='manual-file'">文件</span>
 <span class="chip img" v-else-if="n.source==='manual-image'">图片</span>
 <span class="chip mic" v-else-if="n.source==='manual-voice'">语音</span>
 <span class="chip" v-else>手动</span>`
@@ -61,10 +63,10 @@ export const StatusChip = {
 export const NoteMeta = {
   name: 'NoteMeta',
   components: { Ico, SrcChip, StatusChip },
-  props: ['n'],
+  props: ['n', 'hideStatus'],
   setup(){ const H = inject('H'); return { H } },
   template: `
-<src-chip :n="n"/><status-chip :n="n"/>
+<src-chip :n="n"/><status-chip v-if="!hideStatus" :n="n"/>
 <span><ico n="clock" cls="s"/> {{ H.fmtTime(n.createdAt) }}</span>
 <span class="chip tag" v-for="t in n.tags || []" :key="t"><ico n="tag"/> {{ t }}</span>`
 }
@@ -81,15 +83,6 @@ export const NoteHits = {
   },
   template: `
 <span class="hit" v-for="(x, i) in where" :key="i" :class="{img: x==='来自图片文字'}"><ico :n="x==='来自图片文字' ? 'image' : 'search'"/>{{ x }}</span>`
-}
-
-/* 多附件提示（只有一个附件时不显示，那个附件就是缩略图） */
-export const NoteAttach = {
-  name: 'NoteAttach',
-  components: { Ico },
-  props: ['n'],
-  template: `
-<span class="hit" v-if="n.attachments && n.attachments.length > 1"><ico n="clip"/>{{ n.attachments.length }} 个附件</span>`
 }
 
 /* 关键信息（AI 抽出来的 q/a 列表）；整块 .facts 由本组件自己 v-if，

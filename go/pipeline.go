@@ -147,7 +147,7 @@ func fillImage(n *Note, r ingestReq) {
 	n.ImagePath = r.Path
 	n.ImageName = firstNonEmpty(r.Name, filepath.Base(r.Path))
 	if r.Path != "" {
-		attachTo(n, attachmentFor(n.ID, r.Path, n.ImageName, r.MIME, r.Source, n.CreatedAt))
+		attachOriginal(n, r.Path, n.ImageName, r.MIME)
 	}
 	n.OCRText = strings.TrimSpace(r.OCR)
 	n.OCRMs = r.OCRMs
@@ -171,7 +171,7 @@ func fillImages(n *Note, r ingestReq) string {
 	ocrErr := ""
 	for _, im := range r.Images {
 		name := firstNonEmpty(im.Name, filepath.Base(im.Path))
-		attachTo(n, attachmentFor(n.ID, im.Path, name, im.MIME, n.Source, n.CreatedAt))
+		attachOriginal(n, im.Path, name, im.MIME)
 		if n.ImagePath == "" {
 			n.ImagePath, n.ImageName = im.Path, name
 		}
@@ -214,11 +214,8 @@ func fillFile(n *Note, r ingestReq) string {
 		return "文件路径为空"
 	}
 	n.Title = firstNonEmpty(r.Name, filepath.Base(r.Path))
-	n.Content = "已保存附件：" + n.Title
-	n.RawText = ""
 	n.Status = stRaw
-	n.Error = "文件已保存，未做 AI 解析"
-	attachTo(n, attachmentFor(n.ID, r.Path, n.Title, r.MIME, n.Source, n.CreatedAt))
+	attachOriginal(n, r.Path, n.Title, r.MIME)
 	return ""
 }
 
@@ -252,7 +249,7 @@ func reingest(r ingestReq) enqueueResult {
 		if r.Path != "" {
 			n.ImagePath = r.Path
 			n.ImageName = firstNonEmpty(r.Name, filepath.Base(r.Path))
-			attachTo(n, attachmentFor(n.ID, r.Path, n.ImageName, r.MIME, n.Source, n.CreatedAt))
+			attachOriginal(n, r.Path, n.ImageName, r.MIME)
 		}
 		n.OCRText = txt
 		n.OCRMs = r.OCRMs

@@ -60,6 +60,7 @@ func searchableFields(n *Note) [][2]string {
 	return [][2]string{
 		{"标题", n.Title},
 		{"正文", n.Content},
+		{"说明", n.Description},
 		{"关键信息", strings.Join(facts, " ")},
 		{"待办", strings.Join(todos, " ")},
 		{"标签", strings.Join(n.Tags, " ")},
@@ -233,7 +234,7 @@ func searchTodos(all []*Note, res searchRes, q string, f map[string]string, req 
 	var hits []todoHit
 	var ids map[string]bool
 	for _, n := range all {
-		text := n.Title + " " + n.Content
+		text := n.Title + " " + n.Content + " " + n.Description
 		for _, t := range n.Todos {
 			if matchTodo(t, q, f, text) {
 				if ids == nil {

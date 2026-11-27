@@ -17,6 +17,7 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -99,35 +100,31 @@ public class ShareActivity extends Activity {
             String text = it.getStringExtra(Intent.EXTRA_TEXT);
             String subject = it.getStringExtra(Intent.EXTRA_SUBJECT);
             Uri stream = it.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (stream != null && (type.isEmpty() || "*/*".equals(type) || "application/octet-stream".equals(type))) {
+                String reported = getContentResolver().getType(stream);
+                if (reported != null) type = reported;
+            }
             if (stream != null && type.startsWith("audio/")) {
                 ArrayList<Uri> one = new ArrayList<Uri>();
                 one.add(stream);
                 processAudio(one);
                 return;
             }
-            if (stream != null && (type.startsWith("image/") || type.equals("*/*"))) {
+            if (stream != null && type.startsWith("image/")) {
                 shareImageWithText(stream, text, subject);
                 return;
             }
-            if (text != null && text.trim().length() > 0) {
+            if (stream != null) {
+                processFile(stream, type);
+            } else if (text != null && text.trim().length() > 0) {
                 shareText(text, subject);
-                return;
+            } else {
+                ui("没有可保存的内容");
             }
-            shareFileOrNothing(stream);
         } catch (Throwable t) {
             Log.e(TAG, "share failed", t);
             ui("处理失败: " + t);
         }
-    }
-
-    /** 非图片流 → 按文件存（pdf/txt/office…）；啥都没有 → 提示用户。 */
-    private void shareFileOrNothing(Uri stream) {
-        if (stream != null) {
-            // anything that is not an image (pdf, txt, office, ...) is stored as a file
-            processFile(stream);
-            return;
-        }
-        ui("没有可保存的内容");
     }
 
     /** 一次分享多张图：逐张走图片链路；分享多段音频则合并成一条笔记（多段语音）。 */
@@ -176,12 +173,13 @@ public class ShareActivity extends Activity {
         }
     }
 
-    void processFile(Uri uri) {
+    void processFile(Uri uri, String declaredMime) {
         ui("正在保存文件…");
-        String mime = "application/octet-stream";
+        String mime = declaredMime.isEmpty() || declaredMime.contains("*")
+                ? "application/octet-stream" : declaredMime;
         try {
             String m = getContentResolver().getType(uri);
-            if (m != null && m.length() > 0) mime = m;
+            if (m != null && !m.isEmpty() && !m.contains("*") && !"application/octet-stream".equals(m)) mime = m;
         } catch (Throwable ignored) {
         }
         try {
@@ -266,20 +264,18 @@ public class ShareActivity extends Activity {
         String ext = defExt;
         int dot = name.lastIndexOf('.');
         if (dot > 0 && dot > name.length() - 7) ext = name.substring(dot);
-        File dir = OcrHelper.inboxDir(this);
-        File out = new File(dir, System.currentTimeMillis() + ext);
-        InputStream in = getContentResolver().openInputStream(uri);
-        FileOutputStream fo = new FileOutputStream(out);
-        byte[] buf = new byte[65536];
-        int n;
-        long total = 0;
-        while ((n = in.read(buf)) > 0) {
-            fo.write(buf, 0, n);
-            total += n;
+        if (!ext.matches("\\.[A-Za-z0-9]{1,8}")) ext = defExt;
+        File out = File.createTempFile("shared-", ext, OcrHelper.inboxDir(this));
+        try (InputStream in = getContentResolver().openInputStream(uri);
+             FileOutputStream output = new FileOutputStream(out)) {
+            if (in == null) throw new IOException("Shared file has no stream");
+            byte[] buf = new byte[65536];
+            int count;
+            while ((count = in.read(buf)) != -1) output.write(buf, 0, count);
+        } catch (Exception e) {
+            if (!out.delete()) Log.w(TAG, "Could not clean incomplete shared file");
+            throw e;
         }
-        fo.close();
-        in.close();
-        Log.i(TAG, "copied " + uri + " -> " + out + " (" + total + " B)");
         return out;
     }
 

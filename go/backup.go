@@ -53,7 +53,7 @@ func importNotes(b []byte) importRes {
 		list = []*Note{&one}
 	}
 	for _, n := range list {
-		if n == nil || n.ID == "" || (n.Content == "" && n.RawText == "" && n.Title == "") {
+		if n == nil || n.ID == "" || (n.Content == "" && n.RawText == "" && n.Title == "" && n.Description == "" && len(n.Attachments) == 0) {
 			res.Invalid++
 			continue
 		}
@@ -70,6 +70,7 @@ func importNotes(b []byte) importRes {
 		if n.Status == "" {
 			n.Status = stDone
 		}
+		migrateNoteMetadata(n)
 		sortTodos(n.Todos)
 		store.add(n)
 		res.Imported++

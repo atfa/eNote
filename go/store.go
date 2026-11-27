@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,13 @@ const (
 	stRaw     = "raw"     // LLM failed / unparseable: text kept, no todos
 	stError   = "error"   // ingest failed (OCR failed, file unreadable, ...)
 )
+
+const (
+	attachmentOriginal     = "original"
+	attachmentSupplemental = "supplemental"
+)
+
+var errNoteMissing = errors.New("笔记不存在")
 
 type Todo struct {
 	ID       string `json:"id"`
@@ -40,6 +48,7 @@ type Attachment struct {
 	MIME      string    `json:"mime"`
 	Size      int64     `json:"size"`
 	Path      string    `json:"path"`
+	Role      string    `json:"role,omitempty"`
 	Source    string    `json:"source,omitempty"` // share-image|manual-image|share-file|manual-file
 	CreatedAt time.Time `json:"createdAt"`
 }
@@ -56,6 +65,7 @@ type Fact struct {
 type Note struct {
 	ID          string       `json:"id"`
 	Title       string       `json:"title"`
+	Description string       `json:"description,omitempty"`
 	Content     string       `json:"content"`
 	RawText     string       `json:"rawText"` // original shared/OCR text, kept for 重新解析
 	Facts       []Fact       `json:"facts,omitempty"`
@@ -105,7 +115,7 @@ func openStore(dir string) (*Store, error) {
 			n.Status = stRaw // a previous process died mid-parse
 			n.Error = "处理被中断，可点「重新解析」"
 		}
-		if migrateAttachments(n) {
+		if migrateNoteMetadata(n) {
 			mig++
 		}
 	}
@@ -113,9 +123,62 @@ func openStore(dir string) (*Store, error) {
 		if err := s.save(); err != nil {
 			logf("store migrate attachments: %v", err)
 		}
-		logf("store: synthesised attachment records for %d note(s)", mig)
+		logf("store: migrated attachment metadata for %d note(s)", mig)
 	}
 	return s, nil
+}
+
+// migrateNoteMetadata preserves provenance recorded by newer versions and infers it for older notes.
+func migrateNoteMetadata(n *Note) bool {
+	changed := migrateAttachments(n)
+	for i := range n.Attachments {
+		a := &n.Attachments[i]
+		if a.NoteID != n.ID {
+			a.NoteID = n.ID
+			changed = true
+		}
+		if mime := attachmentMIME(*a); mime != a.MIME && mime != "application/octet-stream" {
+			a.MIME = mime
+			changed = true
+		}
+		if a.Role != "" {
+			continue
+		}
+		a.Role = attachmentSupplemental
+		if legacyOriginalAttachment(n, *a) {
+			a.Role = attachmentOriginal
+		}
+		changed = true
+	}
+	if n.Source == "manual-file" || n.Source == "share-file" {
+		if n.Error == "文件已保存，未做 AI 解析" {
+			n.Error = ""
+			changed = true
+		}
+		if n.Content == "已保存附件："+n.Title {
+			n.Content = ""
+			changed = true
+		}
+	}
+	return changed
+}
+
+func legacyOriginalAttachment(n *Note, a Attachment) bool {
+	if a.Path != "" && a.Path == n.ImagePath {
+		return true
+	}
+	if a.Source != "" && a.Source != n.Source {
+		return false
+	}
+	switch n.Source {
+	case "manual-file", "share-file":
+		return true
+	case "manual-voice", "share-voice":
+		return attachmentKind(a) == "audio"
+	case "manual-image", "share-image", "clipboard-image", "shot-single", "shot-merge":
+		return attachmentKind(a) == "image"
+	}
+	return false
 }
 
 // migrateAttachments is the lazy half of the one-image -> attachments[] migration: a note that
@@ -126,9 +189,6 @@ func migrateAttachments(n *Note) bool {
 	}
 	for i := range n.Attachments {
 		a := &n.Attachments[i]
-		if a.NoteID == "" {
-			a.NoteID = n.ID
-		}
 		if a.Path == n.ImagePath {
 			return false
 		}
@@ -141,6 +201,7 @@ func migrateAttachments(n *Note) bool {
 		Size:      fileSize(n.ImagePath),
 		Path:      n.ImagePath,
 		Source:    n.Source,
+		Role:      attachmentOriginal,
 		CreatedAt: n.CreatedAt,
 	})
 	return true
@@ -223,6 +284,33 @@ func (s *Store) update(id string, f func(*Note)) bool {
 		}
 	}
 	return false
+}
+
+// updateSaved publishes a note edit only if the new state was written to disk.
+func (s *Store) updateSaved(id string, edit func(*Note) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, n := range s.Notes {
+		if n.ID != id {
+			continue
+		}
+		next := *n
+		next.Attachments = append([]Attachment(nil), n.Attachments...)
+		next.Todos = append([]Todo(nil), n.Todos...)
+		next.Tags = append([]string(nil), n.Tags...)
+		next.Facts = append([]Fact(nil), n.Facts...)
+		if err := edit(&next); err != nil {
+			return err
+		}
+		next.UpdatedAt = time.Now()
+		s.Notes[i] = &next
+		if err := s.save(); err != nil {
+			s.Notes[i] = n
+			return err
+		}
+		return nil
+	}
+	return errNoteMissing
 }
 
 func (s *Store) get(id string) *Note {

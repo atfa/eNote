@@ -5,6 +5,7 @@ package main
    路由注册表在 web.go 的 apiMux()，闸门⑯ 从 web.go 里读它，别搬走。 */
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -20,6 +21,32 @@ func handleNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOut(w, map[string]any{"ok": true, "note": n})
+}
+
+func handleNoteDescription(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID          string `json:"id"`
+		Description string `json:"description"`
+	}
+	if err := readBody(r, &body); err != nil {
+		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	err := store.updateSaved(body.ID, func(n *Note) error {
+		n.Description = strings.TrimSpace(body.Description)
+		return nil
+	})
+	if err != nil {
+		msg := "说明保存失败"
+		if errors.Is(err, errNoteMissing) {
+			msg = errNoteMissing.Error()
+		} else {
+			logf("save description: %v", err)
+		}
+		jsonOut(w, map[string]any{"ok": false, "error": msg})
+		return
+	}
+	jsonOut(w, map[string]any{"ok": true})
 }
 
 func handleAdd(w http.ResponseWriter, r *http.Request) {

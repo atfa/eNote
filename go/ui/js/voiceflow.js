@@ -6,10 +6,9 @@
 //   - 点按 = 免手持开关：点一下开始本段，再点一下结束本段（静音再长也不自动切段，
 //     VAD 断句会把思考的停顿切断，所以断句权只在圆钮上）。
 //     免手持时圆钮呈红色脉冲 + 计时秒数 + 「点击结束」文案。
-// 每段识别完进暂存区（可编辑 / 单条删除 / 回放 = 从 /sttaudio 放原音频），
-// 实时部分结果上屏在圆钮上方。「发送」和「保存并解析」是同一个按钮（P18.3）：面板顶部
-// 那个主按钮一次把打字内容 + 全部语音段合成一条笔记交给 Go（kind=voice），原音频各自
-// 挂附件（之后可「重新识别语音」）—— 提交逻辑在 js/addflow.js 的 addNote()。
+// 每段转写可单独删除或回放，实时部分结果显示在录音按钮上方。
+// 「AI 整理」把所有语音转写合成一份可编辑草稿。「解析并记录」提交手输文字和语音文字，
+// 每段原音频各自挂成附件。提交逻辑在 js/addflow.js 的 addNote()。
 // 点「撤销」删除上一段。
 //
 // 本模块只碰 window 桥（window.Android.startVoice / stopVoice / askMic / micGranted，
@@ -20,7 +19,7 @@
 // 循环依赖契约（同 js/shotflow.js 文件头）：顶层不许读 app.js / pollflow.js 的导出，
 // api / toast / refresh 全部只在函数体里用（模块求值期它们可能还没初始化）。
 import { Vue } from './vue.js'
-import { toast } from './netflow.js'
+import { api, toast } from './netflow.js'
 
 const { reactive } = Vue
 
@@ -34,7 +33,11 @@ var STT = reactive({
     secs: 0,
     partial: '',
     error: '',
-    busy: false     // 发送中
+    busy: false,    // 发送中
+    settling: false,
+    organizing: false,
+    organized: null,
+    organizedStale: false
   }
 });
 
@@ -55,6 +58,7 @@ function settleNow(){
   if (!settleDone) return;
   var d = settleDone; settleDone = null;
   if (settleTimer) { clearTimeout(settleTimer); settleTimer = 0 }
+  STT.v.settling = false;
   d();
 }
 
@@ -88,6 +92,7 @@ function stopTimer(){
 
 /* 开始一段（调用方只在确定能录时进这里） */
 function voiceStart(){
+  if (STT.v.busy || STT.v.organizing || STT.v.settling) return false;
   if (!window.Android || !Android.startVoice) { STT.v.error = '语音只在 app 内可用'; return false }
   if (!Android.micGranted()) { voiceAskMic(); return false }
   STT.v.error = '';
@@ -106,9 +111,16 @@ function voiceStop(){
   detachUp();
   pressAt = 0;
   stopTimer();
-  if (!STT.v.listening) return Promise.resolve();
+  if (!STT.v.listening) {
+    if (!settleDone) return Promise.resolve();
+    return new Promise(function(res){
+      var previous = settleDone;
+      settleDone = function(){ previous(); res() };
+    });
+  }
   STT.v.listening = false;
   STT.v.handsFree = false;
+  STT.v.settling = true;
   var p = new Promise(function(res){
     settleDone = res;
     settleTimer = setTimeout(settleNow, SETTLE_MS);
@@ -164,6 +176,7 @@ window.onSttEnd = function(text, error, path){
   var txt = String(text || '').trim();
   if (txt) {
     STT.v.segs.push({ text: txt, path: path || '', name: path ? String(path).split('/').pop() : '' });
+    voiceChanged();
   } else if (error) {
     STT.v.error = String(error);
   }
@@ -171,14 +184,53 @@ window.onSttEnd = function(text, error, path){
   STT.v.handsFree = false;
   STT.v.partial = '';
   stopTimer();
-  settleNow();          // 叫醒在等这段定稿的提交（「保存并解析」）
+  settleNow();          // 让等待录音定稿的提交继续
 };
 
 /* ---------------- 暂存区操作 ---------------- */
 
-function voiceDelSeg(i){ STT.v.segs.splice(i, 1) }
-function voiceUndo(){ if (STT.v.segs.length) STT.v.segs.pop() }
-function voiceEdit(i, v){ var s = STT.v.segs[i]; if (s) s.text = String(v) }
+var voiceRevision = 0;
+function voiceChanged(){
+  voiceRevision++;
+  if (STT.v.organized !== null) STT.v.organizedStale = true;
+}
+function voiceDelSeg(i){
+  if (STT.v.organizing || STT.v.busy || !STT.v.segs[i]) return;
+  STT.v.segs.splice(i, 1);
+  voiceChanged();
+}
+function voiceUndo(){
+  if (!STT.v.segs.length || STT.v.organizing || STT.v.busy) return;
+  STT.v.segs.pop();
+  voiceChanged();
+}
+function voiceOrganizedEdit(v){ STT.v.organized = String(v) }
+function voiceUseOriginal(){
+  STT.v.organized = null;
+  STT.v.organizedStale = false;
+}
+async function voiceOrganize(){
+  if (STT.v.organizing || STT.v.busy || STT.v.listening || STT.v.settling) return;
+  var text = STT.v.segs.map(function(s){ return s.text }).join('\n\n').trim();
+  if (!text) { toast('请先录一段语音'); return }
+  var revision = voiceRevision;
+  STT.v.organizing = true;
+  STT.v.error = '';
+  try {
+    var r = await api('/api/voice/organize', { text: text });
+    if (revision !== voiceRevision) return;
+    if (!r || !r.ok || !String(r.text || '').trim()) {
+      STT.v.error = (r && r.error) || '整理失败，请重试';
+      return;
+    }
+    STT.v.organized = String(r.text);
+    STT.v.organizedStale = false;
+  } catch (e) {
+    if (revision === voiceRevision) STT.v.error = '整理失败，请检查网络后重试';
+  } finally {
+    STT.v.organizing = false;
+  }
+}
 
 /* 回放本段：走 /sttaudio?p=（会话刚结束的音频还不在附件表里，只有路径）。
    端点只发 inbox 目录内的文件（go/shots.go handleSttAudio）。 */
@@ -197,8 +249,11 @@ function voicePlay(i){
 /* 提交成功后清空暂存区（提交本身在 js/addflow.js 的 addNote()：文字和语音段一个按钮） */
 function voiceClear(){
   STT.v.segs = [];
+  voiceRevision++;
+  voiceUseOriginal();
   voiceReset();
 }
 
 export { STT, voiceDown, voiceUp, voiceStop, voiceUndo,
-  voiceEdit, voicePlay, voiceDelSeg, voiceClear }
+  voicePlay, voiceDelSeg, voiceClear, voiceOrganize,
+  voiceOrganizedEdit, voiceUseOriginal }

@@ -27,10 +27,16 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.Locale;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * The whole UI is a WebView pointed at the Go HTTP server; Java is a shell: WebView setup,
@@ -43,6 +49,9 @@ public class MainActivity extends Activity {
     static final int REQ_NOTIFY = 10;
     static final int REQ_SHOTS = 11;   // P11 截图捕获：读媒体库图片
     static final int REQ_MIC = 12;     // 语音：录音权限
+    static final int REQ_NOTE_ATTACHMENTS = 13;
+    private static final String NOTE_ATTACHMENT_TARGET = "noteAttachmentTarget";
+    private String noteAttachmentTarget;
     /** A note/todo to open once the page is ready (notification tap). */
     static String pendingOpenNote;
     static String pendingOpenTodo;
@@ -55,6 +64,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (savedInstanceState != null) {
+            noteAttachmentTarget = savedInstanceState.getString(NOTE_ATTACHMENT_TARGET);
+        }
         Bridge.init(getApplication());
         Bridge.current = new WeakReference<MainActivity>(this);
         handleIntent(getIntent());
@@ -152,6 +164,12 @@ public class MainActivity extends Activity {
                 return true;
             }
         };
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putString(NOTE_ATTACHMENT_TARGET, noteAttachmentTarget);
     }
 
     @Override
@@ -397,9 +415,7 @@ public class MainActivity extends Activity {
 
     /** Called from JS: window.Android.pickFile() - any document, not only images. */
     public void pickFile() {
-        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        i.setType("*/*");
-        i.addCategory(Intent.CATEGORY_OPENABLE);
+        Intent i = openableDocuments();
         i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
                 "image/*", "text/*", "application/pdf",
                 "application/msword",
@@ -416,9 +432,38 @@ public class MainActivity extends Activity {
         }
     }
 
+    private Intent openableDocuments() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        return intent;
+    }
+
+    void pickNoteAttachments(String noteId) {
+        if (noteId == null || noteId.isEmpty() || noteAttachmentTarget != null) return;
+        noteAttachmentTarget = noteId;
+        Intent intent = openableDocuments().putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        try {
+            startActivityForResult(intent, REQ_NOTE_ATTACHMENTS);
+        } catch (RuntimeException e) {
+            noteAttachmentTarget = null;
+            note("pick note attachments: " + e);
+            noteAttachmentsSaved(false, "无法打开文件选择器");
+        }
+    }
+
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_NOTE_ATTACHMENTS) {
+            String target = noteAttachmentTarget;
+            noteAttachmentTarget = null;
+            if (res == RESULT_OK && data != null) {
+                if (target == null) noteAttachmentsSaved(false, "找不到要添加附件的笔记");
+                else appendPickedAttachments(target, data);
+            }
+            return;
+        }
         if (res != RESULT_OK || data == null || data.getData() == null) return;
         if (req == REQ_FILE) { pickDocument(data.getData()); return; }
         if (req == REQ_IMPORT) { importJSON(data.getData()); return; }
@@ -437,6 +482,70 @@ public class MainActivity extends Activity {
                 }
             }
         }).start();
+    }
+
+    private void appendPickedAttachments(String noteId, Intent data) {
+        LinkedHashSet<Uri> uris = new LinkedHashSet<>();
+        ClipData selection = data.getClipData();
+        if (selection != null) {
+            for (int i = 0; i < selection.getItemCount(); i++) {
+                Uri uri = selection.getItemAt(i).getUri();
+                if (uri != null) uris.add(uri);
+            }
+        }
+        if (data.getData() != null) uris.add(data.getData());
+        if (uris.isEmpty()) {
+            noteAttachmentsSaved(false, "文件选择器没有返回可读取的附件");
+            return;
+        }
+
+        new Thread(new Runnable() {
+            @Override public void run() {
+                ArrayList<File> copies = new ArrayList<>();
+                String name = "所选文件";
+                boolean committed = false;
+                try {
+                    JSONArray files = new JSONArray();
+                    for (Uri uri : uris) {
+                        name = displayName(uri, "文件 " + (copies.size() + 1));
+                        File file = copyContentIntoInbox(uri, ".file");
+                        copies.add(file);
+                        files.put(new JSONObject().put("path", file.getAbsolutePath())
+                                .put("name", name).put("mime", getTypeFor(uri)));
+                    }
+                    JSONObject request = new JSONObject().put("noteId", noteId).put("files", files);
+                    JSONObject result = new JSONObject(Bridge.nativeAppendAttachments(request.toString()));
+                    committed = result.optBoolean("ok");
+                    String message = committed ? "已添加 " + copies.size() + " 个附件"
+                            : result.optString("error", "添加附件失败");
+                    noteAttachmentsSaved(committed, message);
+                } catch (Exception e) {
+                    Log.w(Bridge.TAG, "Could not append note attachments", e);
+                    noteAttachmentsSaved(false, "无法保存附件「" + name + "」");
+                } finally {
+                    if (!committed) {
+                        for (File file : copies) {
+                            if (!file.delete()) note("could not clean up an attachment copy");
+                        }
+                    }
+                }
+            }
+        }).start();
+    }
+
+    private void noteAttachmentsSaved(boolean ok, String message) {
+        MainActivity activity = Bridge.current.get();
+        if (activity == null) return;
+        if (activity.pageReady) {
+            activity.runJs("window.onNoteAttachmentsSaved && window.onNoteAttachmentsSaved("
+                    + ok + "," + JSONObject.quote(message) + ")");
+        } else {
+            activity.runOnUiThread(new Runnable() {
+                @Override public void run() {
+                    Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
     }
 
     /** 手动选图“先入队后 OCR”（步骤 71）：先以 defer=true 占位入队拿回 note id，
@@ -818,17 +927,22 @@ public class MainActivity extends Activity {
     File copyIn(Uri uri) throws Exception {
         String name = pickDisplayName(uri);
         if (name == null) name = uri.getLastPathSegment();
-        String ext = extFromPick(name);
-        File out = new File(OcrHelper.inboxDir(this), System.currentTimeMillis() + ext);
-        InputStream in = getContentResolver().openInputStream(uri);
-        FileOutputStream fo = new FileOutputStream(out);
+        return copyContentIntoInbox(uri, extFromPick(name));
+    }
+
+    private File copyContentIntoInbox(Uri uri, String suffix) throws Exception {
+        File out = File.createTempFile("picked-", suffix, OcrHelper.inboxDir(this));
         try {
-            streamTo(in, fo);
-        } finally {
-            fo.close();
-            in.close();
+            try (InputStream input = getContentResolver().openInputStream(uri);
+                 FileOutputStream output = new FileOutputStream(out)) {
+                if (input == null) throw new IOException("Selected file has no stream");
+                streamTo(input, output);
+            }
+            return out;
+        } catch (Exception e) {
+            if (!out.delete()) note("could not clean up an incomplete attachment copy");
+            throw e;
         }
-        return out;
     }
 
     /** 问提供方要显示名；没查到 / 抛异常返回 null（调用方自己兑底）。 */

@@ -12,6 +12,9 @@ import { tab } from './app.js'
 import { NotesView } from './views/notes.js'
 import TodosView from './views/todos.js'
 import FilesView from './views/files.js'
+import { AttachmentPreviewView } from './views/attachment-preview.js'
+import { NoteAttachmentsView } from './views/note-attachments.js'
+import { NoteDescriptionView } from './views/note-description.js'
 import { ShotsView } from './views/shots.js'
 import FoldersView from './views/folders.js'
 import ClipSheetView from './views/clip.js'
@@ -51,7 +54,8 @@ var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView, mine: St
    闸门⑮ 会查完整性：views/ 里 export const *View 必须出现在 VUE_VIEWS ∪ VUE_SHEETS。 */
 var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, clip: ClipSheetView,
   settings: SettingsSheetView, sort: SortSheetView, missed: MissedSheetView, add: AddSheetView,
-  addtodo: AddTodoSheetView, log: LogSheetView, debug: DebugSheetView };
+  attachmentPreview: AttachmentPreviewView, noteAttachments: NoteAttachmentsView,
+  noteDescription: NoteDescriptionView, addtodo: AddTodoSheetView, log: LogSheetView, debug: DebugSheetView };
 
 /* app.js 把 VUE_SHEETS 原样再导出（js/sheetflow.js 从 './app.js' 拿它），VUE_VIEWS 由
    app.js 挂进 window.__enote.vue；paneBuilt / paneDirty / showPane / tabScroll 是

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"path/filepath"
 	"strings"
 )
 
@@ -66,8 +65,7 @@ func fillVoice(n *Note, r ingestReq) string {
 			segTexts = append(segTexts, strings.TrimSpace(a.Text))
 		}
 		if a.Path != "" {
-			attachTo(n, attachmentFor(n.ID, a.Path,
-				firstNonEmpty(a.Name, filepath.Base(a.Path)), a.MIME, n.Source, n.CreatedAt))
+			attachOriginal(n, a.Path, a.Name, a.MIME)
 		}
 	}
 	/* 老的调用方（单段 /api/voice）把整段文本放在 text 里，新调用方把每段放在 audios[].text。
@@ -78,8 +76,7 @@ func fillVoice(n *Note, r ingestReq) string {
 	}
 	parts = append(parts, segTexts...)
 	if r.Path != "" {
-		attachTo(n, attachmentFor(n.ID, r.Path,
-			firstNonEmpty(r.Name, filepath.Base(r.Path)), r.MIME, n.Source, n.CreatedAt))
+		attachOriginal(n, r.Path, r.Name, r.MIME)
 	}
 	txt := strings.TrimSpace(fixVoiceDup(strings.Join(parts, "\n\n")))
 	if txt == "" {
