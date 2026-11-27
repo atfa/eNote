@@ -64,6 +64,7 @@ import { now, fmtTime, relTime } from './timeflow.js'
 import { toast, api, apiTimeout, errText, REQ_TIMEOUT_MS, setApiFail, apiFail } from './netflow.js'
 import { $, clip, esc, ic } from './domutil.js'
 import { watchKeyboard } from './keyboard.js'
+import { lockSelection } from './noselect.js'
 import { panes, paneBuilt, paneDirty, tabScroll, paneFor, invalidatePanes,
          showPane, VUE_VIEWS, VUE_SHEETS } from './panes.js'
 import { render, afterPaint, markReady, syncExpand, strip, paintStatus,
@@ -355,6 +356,9 @@ window.__enote.vue = { app:null, views:VUE_VIEWS, apps:apps,
 /* P18：软键盘遮挡补偿（--kb，见 js/keyboard.js）。弹层是 fixed 贴底的，键盘弹起时
    布局视口不缩，面板下半截会被键盘盖住 —— 挂一次监听就够，全程有效。 */
 watchKeyboard();
+/* P18.2：长按不许出现网页式的选择/复制/打开图片菜单（CSS 已全局禁选，这里兜住
+   contextmenu / selectstart / dragstart，见 js/noselect.js）。 */
+lockSelection();
 setInterval(function(){ if(!document.hidden) refresh(true); }, 30000);
 refresh();
 setTab();

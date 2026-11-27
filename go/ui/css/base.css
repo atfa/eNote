@@ -254,8 +254,15 @@ html.theming body{opacity:.6;transition:opacity var(--d1) var(--ease)}
 .seg button:focus-visible{outline:none;box-shadow:var(--focus);border-radius:var(--r1)}
 input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box-shadow:var(--focus);border-color:var(--acc)}
 
-/* 2. 点按手感：去掉 WebView 的 300ms 双击缩放判定（页面本来就不该缩放正文），
-      并禁掉控件文字选中——长按按钮弹出"复制"菜单是这类 app 最掉价的地方。 */
+/* 2. 点按手感 + 长按不许出现网页式行为。
+      去掉 WebView 的 300ms 双击缩放判定（页面本来就不该缩放正文）。
+      这个 app 不是网页：**任何地方长按都不该选中文字、弹「复制 / 全选 / 打开图片」菜单**。
+      策略 = 全局禁选（Chromium 里 user-select 会往下传播，html,body 一条盖全部后代），
+      只给输入控件放行——文本框要能拖光标、双击选词、长按粘贴。
+      -webkit-touch-callout 是 iOS 的；Android 靠 user-select + JS 的 contextmenu 兜底。 */
+html,body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea,[contenteditable="true"]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+img{-webkit-user-drag:none;-webkit-touch-callout:none}
 button,.tab,.iconbtn,.chip,.todo,.row,.acard,.seg button{
   touch-action:manipulation;-webkit-user-select:none;user-select:none}
 [onclick]{cursor:pointer}

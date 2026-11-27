@@ -6,6 +6,21 @@
 
 ## 0.1（当前）
 
+### 长按不再像网页一样选中文字（P18.2）
+
+UI 是 WebView，但用户不该看到浏览器的行为：长按卡片能选中一段文字、弹出「复制 / 全选」浮条，
+长按图片还能弹「打开图片 / 保存图片」。改成：
+
+* **全局禁选**：`css/base.css` 给 `html,body` 设 `user-select:none`（Chromium 里它往下传播，
+  一条盖全部后代）+ `-webkit-touch-callout:none`，`img` 再加 `-webkit-user-drag:none`；
+  只给 `input / textarea / [contenteditable]` 放行——文本框要能拖光标、双击选词、长按粘贴。
+* **三道 JS 兜底**（`js/noselect.js`，`lockSelection()` 在挂载时调一次）：捕获阶段拦
+  `contextmenu`（长按图片/链接的菜单走这个事件）、`selectstart`（user-select 不是继承属性，
+  组件的 shadow 边界偶有漏网）、`dragstart`（图片默认可拖，拖一下会浮出半透明缩略图）。
+  输入控件一律放行。
+* **闸门⑨ 反向重写**：原来是「正文必须可复制」，现在是「全局禁选 + 只放行输入控件 +
+  三道 JS 监听都在」，任何地方再把 `user-select` 打开都会红。
+
 ### 「记一笔」面板改版 + 键盘遮挡修复（P18.1）
 
 * **语音区不再藏在按钮后面**：面板打开就是 `[文本框]` → `🖼 选图片 · 📎 选文件 · 保存并解析`

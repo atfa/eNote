@@ -400,5 +400,9 @@ vivo 离线 OCR / ASR 引擎（`~/ocr`、`~/stt`）里拷出来的官方文件�
   （`dumpsys window` 里 `visibleRequested=false`）。
 * WebView 里的 `<svg><use href="#id">` 必须和 `<symbol>` 在同一个 document，且 sprite 要在
   `<body>` 最前面；用外部 `sprite.svg` 在 `file://`/自定义 scheme 下会拿不到。
+* WebView 的「网页感」要从两头抓：CSS 给 `html,body` 设 `user-select:none`（Chromium 里它会
+  往下传播，一条盖全部后代）并只给 `input/textarea/[contenteditable]` 放行，JS 再拦
+  `contextmenu / selectstart / dragstart`。只写控件级 `user-select:none` 不管用——
+  卡片正文、`.body`、图片照样能被长按选中、弹「复制 / 全选 / 打开图片」。
 * 图标几何只写一份：`tools/gen_icon.py` 里一组 Python 常量同时生成矢量 XML 和 `go/icon.png`，
   启动器图标和 app 内 logo 永远一致。

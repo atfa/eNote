@@ -862,25 +862,39 @@ if (SPLIT) {
   else ok('无幽灵 token（每个 var() 的名字都在 tokens.css 里有定义）');
 }
 
-// ---------- 闸门⑨ 可复制的文本不许被 user-select:none 盖到 ----------
-// 控件禁选中是对的（长按按钮弹“复制”菜单很掉价），但笔记正文和剪贴板文本是
-// 用户唯一要复制的东西。它们今天没被盖到，而 user-select 的选择器列表是一行长选择器，
-// 后续迁移很容易顺手把 .body/.clipbody 加进去——加了不会报错，只是长按没反应。
+// ---------- 闸门⑨ 长按不许激活网页式的选择/菜单 ----------
+// 用户的明确要求：这是 app 不是网页，界面上**任何地方**长按都不该选中文字、不该弹
+// 「复制 / 全选 / 打开图片」。策略因此从「控件禁选、正文可复制」改成「全局禁选 +
+// 只给输入控件放行」（css/base.css 第 2 节 + js/noselect.js）。
+// 这条闸门盯四件事：
+//   ①全局禁选还在（html 和 body 上都写了 user-select:none）；
+//   ②输入控件真的被放行（textarea 上是 user-select:text，不然连字都改不了）；
+//   ③除放行那一组，任何地方都不许再把选择打开（text/auto/all/contain/element）；
+//   ④JS 那只手也还在（contextmenu / selectstart / dragstart 三个监听）。
 {
-  const COPYABLE = ['.body', '.clipbody', 'pre'];
-  const hits = [];
-  for (const [rel, text] of cssFiles) {
-    for (const m of text.matchAll(/([^{}]+)\{([^}]*user-select:\s*none[^}]*)\}/g)) {
-      const sels = m[1].split(',').map(s => s.trim()).filter(Boolean);
-      for (const c of COPYABLE) {
-        if (sels.some(s => s === c || s.endsWith(' ' + c) || s.includes(c + ':'))) {
-          hits.push(rel + ' 的 ' + sels.find(s => s.includes(c)) + ' 禁了选中');
-        }
-      }
+  const rules = [];
+  for (const [rel, raw] of cssFiles) {
+    const text = raw.replace(/\/\*[\s\S]*?\*\//g, '');   // 注释里也有逗号/花括号，先剥掉
+    for (const m of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      rules.push({ rel, sels: m[1].split(',').map(s => s.trim()).filter(Boolean), decl: m[2] });
     }
   }
-  if (hits.length) bad('用户要复制的文本被 user-select:none 盖住了', hits);
-  else ok('笔记正文 / 剪贴板文本可长按复制（未被 user-select:none 覆盖）');
+  const NONE_RE = /(^|;)\s*(-webkit-)?user-select\s*:\s*none/;
+  const TEXT_RE = /(^|;)\s*(-webkit-)?user-select\s*:\s*text/;
+  const OPEN_RE = /(^|;)\s*(-webkit-)?user-select\s*:\s*(text|auto|all|contain|element)/;
+  const hasNone = sel => rules.some(r => r.sels.includes(sel) && NONE_RE.test(r.decl));
+  const release = rules.filter(r => r.sels.includes('textarea') && TEXT_RE.test(r.decl));
+  const reopened = rules.filter(r => OPEN_RE.test(r.decl) && !release.includes(r))
+    .map(r => r.rel + ' 的 ' + r.sels.join(', ') + ' 又把选中打开了');
+  const missingGuards = ['contextmenu', 'selectstart', 'dragstart']
+    .filter(ev => !jsStyleSrc.includes("'" + ev + "'"));
+  const hits = [];
+  if (!hasNone('html') || !hasNone('body')) hits.push('全局禁选丢了：html/body 上必须 user-select:none');
+  if (!release.length) hits.push('输入控件没放行：textarea 上要 user-select:text');
+  hits.push(...reopened);
+  if (missingGuards.length) hits.push('js/noselect.js 少了监听：' + missingGuards.join(' / '));
+  if (hits.length) bad('长按会弹出网页式的选择/菜单', hits);
+  else ok('全局禁选 + 输入控件放行 + contextmenu/selectstart/dragstart 三道 JS 兜底都在（长按不会选中文字或弹网页菜单）');
 }
 
 // ---------- 闸门⑩ 定义了却没人用的 token（棘轮）----------
