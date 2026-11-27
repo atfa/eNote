@@ -185,9 +185,15 @@ label{display:block;font-size:var(--fs-xs);color:var(--dim);margin:var(--s3) 0 v
    宽屏上把面板居中（Vant 的 bottom popup 是满宽左对齐的块）、补 Vant 没有的维度、
    入场动画。.van-popup 自带白底与 overflow-y:auto，两条都要写回：白底会在面板的圆角外
    露出一圈，overflow 会裁掉面板往上散的那层阴影。 */
-.sheet{display:flex;align-items:flex-end;justify-content:center;background:transparent;overflow:visible}
+.sheet{display:flex;align-items:flex-end;justify-content:center;background:transparent;overflow:visible;
+  /* P18：软键盘遮挡补偿。.sheet 是 van-popup 的 fixed 贴底根节点，而 Android WebView
+     默认只缩 visual viewport（布局视口不变），键盘弹起时面板下半截就落在键盘底下 ——
+     真机现象是圆钮和「发送」那一行只剩一半。--kb 是 js/keyboard.js 写进来的遮挡像素：
+     底板抬起来，面板高度上限也减掉这一块（面板自己 overflow:auto 滚动）。
+     没有键盘时 --kb 是 0px，这里两条声明都退化成改动前的样子。 */
+  padding-bottom:var(--kb)}
 .sheet.page{height:100%}
-.sheet .panel{width:100%;max-width:760px;max-height:88vh;overflow:auto;background:var(--card);border-radius:var(--r3) var(--r3) 0 0;padding:var(--s4) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom));border-top:var(--hair) solid var(--line);animation:up var(--d2) var(--ease)}
+.sheet .panel{width:100%;max-width:760px;max-height:calc(88vh - var(--kb));overflow:auto;background:var(--card);border-radius:var(--r3) var(--r3) 0 0;padding:var(--s4) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom));border-top:var(--hair) solid var(--line);animation:up var(--d2) var(--ease)}
 /* S2：这条原来在 css/components.css，和上面那条同名同属性（animation），跨文件层叠靠
    加载顺序，肉眼看不出来。合并到同一文件、紧邻原规则之后，层叠顺序变成读得出来的。
    tools/ui_test.js 闸门⑦ 的 CASCADE_BASELINE 就是为这两条开的，现在清空。 */

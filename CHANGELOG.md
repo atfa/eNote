@@ -6,6 +6,19 @@
 
 ## 0.1（当前）
 
+### 「记一笔」面板改版 + 键盘遮挡修复（P18.1）
+
+* **语音区不再藏在按钮后面**：面板打开就是 `[文本框]` → `🖼 选图片 · 📎 选文件 · 保存并解析`
+  → 语音暂存区，去掉「🎤 录音」开关和语音区右上角的关闭叉（`STT.v.hidden`、
+  `voiceOpen / voiceClose` 一并删除，`HOST_KEYS['sheet:add']` 相应减到 14 个 key）。
+* **键盘不再压住底部按钮**：新增 `go/ui/js/keyboard.js`，监听 `visualViewport` 的
+  resize / scroll（`kb = innerHeight - vv.height - vv.offsetTop`）写 `--kb` CSS 变量；
+  `.sheet` 加 `padding-bottom:var(--kb)`、`.sheet .panel` 的 `max-height` 改
+  `calc(88vh - var(--kb))`，viewport 补 `interactive-widget=resizes-content`。
+  `adjustResize` 生效时 `--kb` 为 0（不会重复上抬），只在键盘浮层不缩窗口的设备兜底。
+* **按住说话先收键盘**：`voiceDown()` 开头 `document.activeElement.blur()`——圆钮
+  `@pointerdown` 带 `.prevent`，不主动 blur 会留下焦点、键盘一直挂着不回去。
+
 ### 离线语音识别（P18）：多段暂存、一次发送
 
 * **全离线**：vivo 离线 ASR 引擎打进 APK（`assets/stt/model/` 93 MB 中文模型 + `jniLibs/arm64-v8a/`

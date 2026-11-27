@@ -10,8 +10,6 @@
 .vhead{display:flex;align-items:center;gap:var(--s2)}
 .vhead>span{font-weight:700;font-size:var(--fs-base)}
 .vhead>small{flex:1;color:var(--dim);font-size:var(--fs-xs)}
-.vclose{display:flex;padding:var(--s1);border:0;background:transparent;color:var(--dim2);cursor:pointer}
-.vclose:active{color:var(--fg)}
 
 /* 一段一行：文本可改（识别错了当场改，不回去重新录）+ 回放 + 单条删除 */
 .vseg{display:flex;align-items:flex-start;gap:var(--s1);padding:var(--s2);

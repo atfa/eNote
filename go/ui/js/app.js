@@ -63,6 +63,7 @@ import { todoRowCls, notesFiltered, groupTodos, rank, hit } from './listflow.js'
 import { now, fmtTime, relTime } from './timeflow.js'
 import { toast, api, apiTimeout, errText, REQ_TIMEOUT_MS, setApiFail, apiFail } from './netflow.js'
 import { $, clip, esc, ic } from './domutil.js'
+import { watchKeyboard } from './keyboard.js'
 import { panes, paneBuilt, paneDirty, tabScroll, paneFor, invalidatePanes,
          showPane, VUE_VIEWS, VUE_SHEETS } from './panes.js'
 import { render, afterPaint, markReady, syncExpand, strip, paintStatus,
@@ -89,9 +90,10 @@ import { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON,
 import { FA, fmtSize, filesNow, attachCardCls, attachGlyphName, openAttach, delAttach,
          pickFile } from './filesflow.js'
 /* P18：「记一笔」里的语音暂存区（多段识别 → 一次发送成一条 kind=voice 的笔记）。
-   STT 是 {v:} 容器，进宿主走 getter；那九个 voiceXxx 都被 views/sheets.js 的
-   AddSheetView 模板直接调（H.voiceXxx），所以必须进 HOST_KEYS['sheet:add']。 */
-import { STT, voiceOpen, voiceClose, voiceDown, voiceUp, voiceStop, voiceUndo,
+   STT 是 {v:} 容器，进宿主走 getter；那八个 voiceXxx 都被 views/sheets.js 的
+   AddSheetView 模板直接调（H.voiceXxx），所以必须进 HOST_KEYS['sheet:add']。
+   面板一打开就是展开态（不再先点「录音」），所以没有 voiceOpen / voiceClose 了。 */
+import { STT, voiceDown, voiceUp, voiceStop, voiceUndo,
          voiceEdit, voicePlay, voiceDelSeg, voiceSend } from './voiceflow.js'
 import { CLIP, openClip, importClip, clipItemCls, clipPrevText, clipThumbText, clipMetaText,
          clipParseText, clipSheet, loadClips, clipPick, clipSelAll, clipDel, clipDelSel,
@@ -241,7 +243,7 @@ var HOST = setHost({
      @pointerdown / @pointerup / @pointercancel 各自到底（点按与按住的区别在 voiceDown/Up 里判）。 */
   pickFile: pickFile,
   get STT(){ return STT.v },
-  voiceOpen: voiceOpen, voiceClose: voiceClose, voiceDown: voiceDown, voiceUp: voiceUp,
+  voiceDown: voiceDown, voiceUp: voiceUp,
   voiceStop: voiceStop, voiceUndo: voiceUndo, voiceEdit: voiceEdit,
   voicePlay: voicePlay, voiceDelSeg: voiceDelSeg, voiceSend: voiceSend,
   get sheetArg(){ return SHEETARGB.v },
@@ -302,9 +304,9 @@ var HOST_KEYS = {
     'missedDismiss', 'missedDone', 'missedGoTodos'],
   /* sheet:add      组件根 AddSheetView，2 个 key */
   /* sheet:add      组件根 AddSheetView，4 个 key（步骤 21 加 FORMS / formSet） */
-  /* sheet:add      组件根 AddSheetView，15 个 key（P18 加 STT / voiceXxx / pickFile） */
-  'sheet:add': ['addNote', 'formSet', 'FORMS', 'pickFile', 'pickImage', 'STT', 'voiceClose',
-    'voiceDelSeg', 'voiceDown', 'voiceEdit', 'voiceOpen', 'voicePlay', 'voiceSend', 'voiceStop',
+  /* sheet:add      组件根 AddSheetView，14 个 key（P18 加 STT / voiceXxx / pickFile） */
+  'sheet:add': ['addNote', 'formSet', 'FORMS', 'pickFile', 'pickImage', 'STT',
+    'voiceDelSeg', 'voiceDown', 'voiceEdit', 'voicePlay', 'voiceSend', 'voiceStop',
     'voiceUndo', 'voiceUp'],
   /* sheet:addtodo  组件根 AddTodoSheetView，2 个 key */
   /* sheet:addtodo  组件根 AddTodoSheetView，4 个 key（步骤 21 加 FORMS / formSet） */
@@ -350,6 +352,9 @@ window.__enote.vue = { app:null, views:VUE_VIEWS, apps:apps,
                           只服务内联 handler，加一个 key 就要动 Tony 的基线），测试要刷新
                           附件列表只能走这里。它是观测缝，不是生产门禁。 */
                        host: HOST };
+/* P18：软键盘遮挡补偿（--kb，见 js/keyboard.js）。弹层是 fixed 贴底的，键盘弹起时
+   布局视口不缩，面板下半截会被键盘盖住 —— 挂一次监听就够，全程有效。 */
+watchKeyboard();
 setInterval(function(){ if(!document.hidden) refresh(true); }, 30000);
 refresh();
 setTab();

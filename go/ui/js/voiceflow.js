@@ -1,6 +1,7 @@
 // go/ui/js/voiceflow.js — 「记一笔」面板里的语音暂存区（P18）。
 //
-// 交互心智（与方案一致）：面板里点 🎤 进语音模式 → 底部大圆钮。
+// 交互心智（与方案一致）：「记一笔」面板一打开就摆着这块暂存区（不再要先点「录音」
+// 才展开 —— 语音和文字、图片、文件一样都是原料，多一次点击只是多一道墙），底部大圆钮。
 //   - 按住说话：按下开始本段，松手结束本段。
 //   - 点按 = 免手持开关：点一下开始本段，再点一下结束本段（静音再长也不自动切段，
 //     VAD 断句会把思考的停顿切断，所以断句权只在圆钮上）。
@@ -23,11 +24,10 @@ import { refresh } from './pollflow.js'
 const { reactive } = Vue
 
 /* 语音暂存区状态：segs = [{text, path, name}，…]。全部是面板内局部状态，不走 SSE
-   （引擎的实时部分结果是 UI 局部，进不了 store）。hidden 决定面板里那一块显不显示。 */
+   （引擎的实时部分结果是 UI 局部，进不了 store）。 */
 var STT = reactive({
   v: {
     segs: [],       // 已定稿的段（每段 = 一次圆钮起停）
-    hidden: true,   // 语音面板是否收起（点 🎤 才展开）
     listening: false,
     handsFree: false,
     secs: 0,
@@ -45,20 +45,8 @@ var TAP_MS = 300;
 var timer = 0;     // 计时器（不进 reactive：Interval id 不是渲染依赖）
 var pressAt = 0;   // 本次按下的时刻，用来分辨点按 / 按住
 
-/* 打开「记一笔」时重置到收起态（不自动清暂存：用户在面板上改字时不该丢内容） */
+/* 发完 / 打开面板时清掉上一次的实时行与错误（暂存段不清：用户在面板上改字时不该丢内容） */
 function voiceReset(){ STT.v.partial = ''; STT.v.error = '' }
-
-function voiceOpen(){
-  STT.v.hidden = false;
-  voiceReset();
-}
-
-/* 收起语音面板：还在录就先结束这一段（不然 AudioRecord 留在前台录，用户看不出来） */
-function voiceClose(){
-  if (STT.v.listening) voiceStop();
-  STT.v.hidden = true;
-  voiceReset();
-}
 
 /* 权限引导：先请求，结果回调 window.micResult */
 function voiceAskMic(){
@@ -112,8 +100,17 @@ function voiceStop(){
   }
 }
 
+/* 收起软键盘。圆钮的 pointerdown 带 .prevent（不让它抢走焦点），代价是输入框的焦点
+   一直留着 —— 用户实测：正在编辑那段文字时直接按住说话，键盘会一直挂在屏幕上不消失。
+   软键盘没有「自己收」的机会，只能显式 blur 当前焦点元素。 */
+function blurEditing(){
+  var a = document.activeElement;
+  if (a && a !== document.body && typeof a.blur === 'function') a.blur();
+}
+
 /* 圆钮按下：正在录 = 结束本段；否则开始录（先按「按住」算，松手时再判点按） */
 function voiceDown(){
+  blurEditing();
   if (STT.v.listening) { voiceStop(); return }
   STT.v.handsFree = false;
   if (!voiceStart()) return;
@@ -193,7 +190,7 @@ async function voiceSend(){
       STT.v.segs = [];
       toast('已发送，AI 解析中…');
       setTimeout(refresh, 500); setTimeout(refresh, 3000); setTimeout(refresh, 9000);
-      voiceClose();
+      voiceReset();
     } else {
       STT.v.error = (r && r.error) || '发送失败';
     }
@@ -203,5 +200,5 @@ async function voiceSend(){
   STT.v.busy = false;
 }
 
-export { STT, voiceOpen, voiceClose, voiceDown, voiceUp, voiceStop, voiceUndo,
+export { STT, voiceDown, voiceUp, voiceStop, voiceUndo,
   voiceEdit, voicePlay, voiceDelSeg, voiceSend }

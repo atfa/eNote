@@ -158,6 +158,9 @@
   --nav-h:56px;
   --safe-b:env(safe-area-inset-bottom);
   --safe-t:env(safe-area-inset-top);
+  /* P18：软键盘盖住的像素（js/keyboard.js 实时写）。0 = 没有键盘。
+     只给贴底弹层的抬起量与高度上限用，不是调色板也不是间距刻度。 */
+  --kb:0px;
   --focus:0 0 0 3px rgba(47,107,255,.28);
   /* 焦点环的实色版，给 outline 用（box-shadow 焦点环会顶掉卡片自己的层级阴影）。 */
   --focus-ring:rgba(47,107,255,.7);
