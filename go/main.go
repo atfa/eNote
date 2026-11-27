@@ -160,6 +160,13 @@ func Java_dev_xduo_enote_Bridge_nativeSetOcr(env *C.JNIEnv, cls C.jclass, ready 
 	setOCR(ready != 0, j2s(env, js))
 }
 
+// nativeSetStt(ready, info) - Java reports the STT engine state (P16), mirroring OCR.
+//
+//export Java_dev_xduo_enote_Bridge_nativeSetStt
+func Java_dev_xduo_enote_Bridge_nativeSetStt(env *C.JNIEnv, cls C.jclass, ready C.jboolean, js C.jstring) {
+	setSTT(ready != 0, j2s(env, js))
+}
+
 // nativeNoteImage(id) - the stored image path of a note, so Java can re-run OCR on it.
 //
 //export Java_dev_xduo_enote_Bridge_nativeNoteImage
@@ -170,6 +177,32 @@ func Java_dev_xduo_enote_Bridge_nativeNoteImage(env *C.JNIEnv, cls C.jclass, js 
 			return s2j(env, "")
 		}
 		return s2j(env, n.ImagePath)
+	})
+}
+
+// nativeNoteAudio(id) - the audio attachments of a note as JSON [{path,name}], so Java can
+// re-run the local STT on them ("重新识别语音", P18). Multi-segment voice notes have one
+// attachment per segment; Java recognises them all and sends the joined transcript back.
+//
+//export Java_dev_xduo_enote_Bridge_nativeNoteAudio
+func Java_dev_xduo_enote_Bridge_nativeNoteAudio(env *C.JNIEnv, cls C.jclass, js C.jstring) C.jstring {
+	return guard(env, "nativeNoteAudio", func() C.jstring {
+		n := store.get(j2s(env, js))
+		if n == nil {
+			return s2j(env, "[]")
+		}
+		out := make([]map[string]string, 0, len(n.Attachments))
+		for _, a := range n.Attachments {
+			if kindOfMime(a.MIME) != "audio" {
+				continue
+			}
+			out = append(out, map[string]string{"path": a.Path, "name": a.Name})
+		}
+		b, err := json.Marshal(out)
+		if err != nil {
+			return s2j(env, "[]")
+		}
+		return s2j(env, string(b))
 	})
 }
 

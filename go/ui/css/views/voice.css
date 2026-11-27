@@ -1,0 +1,49 @@
+/* go/ui/css/views/voice.css — owner: voice（P18）
+   「记一笔」弹层里的语音暂存区：录音圆钮、段列表、实时部分结果。
+   容器（.sheet / .panel / .acts）沿用既有规则，这里只加这一层自己的东西。
+   新增样式一律走 token（tools/ui_test.js 闸门③：裸 hex / 刻度内的裸 px 基线是 0）。 */
+
+/* 语音面板：在上面的按钮行下面展开，和 .acts 同一套间距 */
+.vpane{display:flex;flex-direction:column;gap:var(--s2);margin-top:var(--s3);
+  padding:var(--s3);border:var(--hair) solid var(--line);border-radius:var(--r2);
+  background:var(--card2)}
+.vhead{display:flex;align-items:center;gap:var(--s2)}
+.vhead>span{font-weight:700;font-size:var(--fs-base)}
+.vhead>small{flex:1;color:var(--dim);font-size:var(--fs-xs)}
+.vclose{display:flex;padding:var(--s1);border:0;background:transparent;color:var(--dim2);cursor:pointer}
+.vclose:active{color:var(--fg)}
+
+/* 一段一行：文本可改（识别错了当场改，不回去重新录）+ 回放 + 单条删除 */
+.vseg{display:flex;align-items:flex-start;gap:var(--s1);padding:var(--s2);
+  background:var(--card);border:var(--hair) solid var(--line);border-radius:var(--r1)}
+.vtx{flex:1;min-height:calc(var(--s6) + var(--s4));resize:none;border:0;background:transparent;
+  color:var(--fg);font-family:inherit;font-size:var(--fs-md);line-height:1.45}
+.vtx:focus{outline:none}
+.vmini{display:flex;align-items:center;justify-content:center;width:var(--s6);height:var(--s6);
+  border:0;border-radius:var(--r-pill);background:var(--card2);color:var(--dim);cursor:pointer}
+.vmini:active{background:var(--acc-s);color:var(--acc)}
+
+/* 实时部分结果（还没定稿，所以是提示色）与错误 */
+.vpart{min-height:var(--s4);color:var(--acc);font-size:var(--fs-md)}
+.verr{color:var(--bad);font-size:var(--fs-sm)}
+
+/* 底部一行：左撤销（删上一段）/ 中圆钮（起停本段）/ 右发送（全部暂存） */
+.vbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s2) 0}
+.vside{display:inline-flex;align-items:center;gap:var(--s1);padding:var(--s2) var(--s3);
+  border:var(--hair) solid var(--line);border-radius:var(--r-pill);background:var(--card);
+  color:var(--fg);font-size:var(--fs-md);cursor:pointer}
+.vside.pri{background:var(--grad);border-color:transparent;color:var(--on-grad)}
+.vside:disabled{opacity:.45}
+.vrec{display:flex;align-items:center;justify-content:center;
+  width:calc(var(--s6) + var(--s5));height:calc(var(--s6) + var(--s5));
+  border:0;border-radius:var(--r-pill);background:var(--grad);color:var(--on-grad);
+  box-shadow:var(--sh2);touch-action:none;cursor:pointer;
+  transition:transform var(--d1) var(--ease)}
+.vrec:active{transform:scale(.94)}
+/* 录音中：红色脉冲（免手持时用户要能一眼看出「还在录、得再点一下」） */
+.vrec.live{background:var(--bad);animation:vpulse 1.4s var(--ease) infinite}
+@keyframes vpulse{0%{box-shadow:0 0 0 0 var(--bad-s)}
+  70%{box-shadow:0 0 0 var(--s4) var(--bad-s)}
+  100%{box-shadow:0 0 0 0 var(--bad-s)}}
+
+.vhint{color:var(--dim2);font-size:var(--fs-xs);text-align:center}

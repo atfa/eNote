@@ -34,6 +34,37 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]any{"ok": res.Error == "", "id": res.ID, "error": res.Error})
 }
 
+// handleVoice POST /api/voice — 多段语音一次发送（P18）。每段 = 识别文本 + 原音频附件，
+// 全部合并成一条笔记；Source 固定 manual-voice（判断处见 userPromptFor）。
+func handleVoice(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID     string     `json:"id"`   // 有 id = 重新识别（只换正文，附件不动）
+		Text   string     `json:"text"` // 兼容单段：识别文本
+		Path   string     `json:"path"` // 兼容单段：音频文件
+		Name   string     `json:"name"`
+		MIME   string     `json:"mime"`
+		Source string     `json:"source"` // 默认 manual-voice（share-voice 由 Java 侧直连 native）
+		Audios []voiceSeg `json:"audios"` // 多段
+	}
+	if err := readBody(r, &body); err != nil {
+		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	req := ingestReq{ID: body.ID, Kind: "voice", Source: body.Source}
+	if req.Source == "" {
+		req.Source = "manual-voice"
+	}
+	if len(body.Audios) > 0 {
+		req.Audios = body.Audios
+		req.Text = ""
+	} else {
+		req.Text = body.Text
+		req.Path, req.Name, req.MIME = body.Path, body.Name, body.MIME
+	}
+	res := enqueue(req)
+	jsonOut(w, map[string]any{"ok": res.Error == "", "id": res.ID, "error": res.Error})
+}
+
 func handleClipList(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]any{"ok": true, "clips": clipStore.snapshot()})
 }

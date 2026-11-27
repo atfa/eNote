@@ -19,6 +19,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.List;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * The system share target: "分享 → 懒得记" from any app.
@@ -26,6 +30,8 @@ import java.util.ArrayList;
  * text/plain  -> handed to Go as-is
  * image/*     -> copied into the app's files dir, read by the local OCR engine, and only
  *                the recognised text goes on to the LLM (the image never leaves the phone)
+ * audio/*     -> decoded to 16 kHz mono WAV (AudioDecode), read by the local vivo ASR engine;
+ *                the transcript becomes the note and the WAV stays as an attachment (P18)
  *
  * The process is started here, so Bridge.init (Go) happens in EnoteApp.onCreate first.
  */
@@ -93,6 +99,12 @@ public class ShareActivity extends Activity {
             String text = it.getStringExtra(Intent.EXTRA_TEXT);
             String subject = it.getStringExtra(Intent.EXTRA_SUBJECT);
             Uri stream = it.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (stream != null && type.startsWith("audio/")) {
+                ArrayList<Uri> one = new ArrayList<Uri>();
+                one.add(stream);
+                processAudio(one);
+                return;
+            }
             if (stream != null && (type.startsWith("image/") || type.equals("*/*"))) {
                 shareImageWithText(stream, text, subject);
                 return;
@@ -118,10 +130,15 @@ public class ShareActivity extends Activity {
         ui("没有可保存的内容");
     }
 
-    /** 一次分享多张图：逐张走图片链路。 */
+    /** 一次分享多张图：逐张走图片链路；分享多段音频则合并成一条笔记（多段语音）。 */
     private void shareMultiple(Intent it) {
         ArrayList<Uri> uris = it.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
         if (uris == null) return;
+        String type = it.getType() == null ? "" : it.getType();
+        if (type.startsWith("audio/")) {
+            processAudio(uris);
+            return;
+        }
         for (Uri u : uris) processImage(u);
     }
 
@@ -177,6 +194,58 @@ public class ShareActivity extends Activity {
             Bridge.enqueueFile("", displayName(uri), mime,
                     "文件处理失败: " + t, "share-file");
         }
+    }
+
+    /**
+     * 分享进来的语音：解码成 16k 单声道 WAV → 本机离线引擎识别 → 文本 + 音频一起入队。
+     * 多条音频 = 一条笔记（多段），每段音频各自挂附件（所以可以「重新识别语音」）。
+     * 只留解码后的 16k WAV：引擎只吃这个格式（SttHelper.readWav），重识别才走得通。
+     */
+    void processAudio(List<Uri> uris) {
+        ui(uris.size() > 1 ? "正在准备 " + uris.size() + " 段语音…" : "正在准备语音…");
+        JSONArray segs = new JSONArray();
+        String err = "";
+        long t0 = System.currentTimeMillis();
+        for (Uri u : uris) {
+            try {
+                File src = copyToInbox(u, extForAudio(u));
+                ui("正在解码音频…");
+                File wav = AudioDecode.toWav16k(this, src);
+                if (!src.equals(wav)) src.delete();
+                ui("正在识别语音（本机）…");
+                String txt = SttHelper.get(this).recognizeFile(wav.getAbsolutePath());
+                JSONObject s = new JSONObject();
+                s.put("text", txt == null ? "" : txt);
+                s.put("path", wav.getAbsolutePath());
+                s.put("name", displayName(u));
+                segs.put(s);
+            } catch (Throwable t) {
+                Log.e(TAG, "audio failed", t);
+                err = "音频处理失败: " + t;
+            }
+        }
+        long ms = System.currentTimeMillis() - t0;
+        String r = Bridge.enqueueVoice(null, segs.toString(), ms, err, "share-voice");
+        note("enqueueVoice segs=" + segs.length() + " ms=" + ms + " -> " + r);
+        if (r.contains("\"error\"") && err.isEmpty()) {
+            ui("没识别到文字");
+        } else {
+            ui(err.isEmpty() ? "已保存语音，AI 解析中…" : err);
+        }
+    }
+
+    /** 复制进来时给的默认扩展名（解码器自己嗅探容器，扩展名只是看起来对劲）。 */
+    static String extForAudio(Uri uri) {
+        String t = uri == null ? null : uri.toString();
+        if (t != null) {
+            String s = t.toLowerCase();
+            if (s.contains(".mp3")) return ".mp3";
+            if (s.contains(".wav")) return ".wav";
+            if (s.contains(".ogg") || s.contains(".opus")) return ".ogg";
+            if (s.contains(".amr")) return ".amr";
+            if (s.contains(".3gp")) return ".3gp";
+        }
+        return ".m4a";
     }
 
     static String extFor(String mime) {

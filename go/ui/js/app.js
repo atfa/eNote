@@ -58,7 +58,7 @@ import { MISSED, loadMissed, missedSheet, missedDone, missedGoTodos, missedDismi
 import { LLMTEST, testLLM, LOGDATA, DEBUGDATA, showLog, showDebug } from './logflow.js'
 import { setTab, moveInd, tabPick, brandGo, fabAct } from './tabflow.js'
 import { expand, toggle, todoEnterCls, clearEnter, enterCls, clearSeen, delTodo,
-         reparse, delNote, reocr, toggleAI, ANIMLOCK } from './noteflow.js'
+         reparse, delNote, reocr, revoice, toggleAI, ANIMLOCK } from './noteflow.js'
 import { todoRowCls, notesFiltered, groupTodos, rank, hit } from './listflow.js'
 import { now, fmtTime, relTime } from './timeflow.js'
 import { toast, api, apiTimeout, errText, REQ_TIMEOUT_MS, setApiFail, apiFail } from './netflow.js'
@@ -86,7 +86,13 @@ import { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, as
          notifyResult, keepAliveOn, batteryIgnoring, toggleKeepAlive, askBattery } from './remindflow.js'
 import { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
          clearAllNotes, sortSheet, setPref, resetPrefs, saveSettings } from './settingsflow.js'
-import { FA, fmtSize, filesNow, attachCardCls, attachGlyphName, openAttach, delAttach } from './filesflow.js'
+import { FA, fmtSize, filesNow, attachCardCls, attachGlyphName, openAttach, delAttach,
+         pickFile } from './filesflow.js'
+/* P18：「记一笔」里的语音暂存区（多段识别 → 一次发送成一条 kind=voice 的笔记）。
+   STT 是 {v:} 容器，进宿主走 getter；那九个 voiceXxx 都被 views/sheets.js 的
+   AddSheetView 模板直接调（H.voiceXxx），所以必须进 HOST_KEYS['sheet:add']。 */
+import { STT, voiceOpen, voiceClose, voiceDown, voiceUp, voiceStop, voiceUndo,
+         voiceEdit, voicePlay, voiceDelSeg, voiceSend } from './voiceflow.js'
 import { CLIP, openClip, importClip, clipItemCls, clipPrevText, clipThumbText, clipMetaText,
          clipParseText, clipSheet, loadClips, clipPick, clipSelAll, clipDel, clipDelSel,
          clipParse } from './clipflow.js'
@@ -161,6 +167,7 @@ var HOST = setHost({
   now: now, cdCls: cdCls, cdText: cdText, toCalendar: toCalendar, toAlarm: toAlarm,
   clipHint: function(){ return !!(window.Android && Android.clipHint && Android.clipHint() === '1') },
   expand: expand, reparse: reparse, reocr: reocr, addTodoSheet: addTodoSheet, delNote: delNote,
+  revoice: revoice,
   missedSheet: missedSheet, shotSheet: shotSheet, shotSetup: shotSetup, askShotPerm: askShotPerm,
   folderSheet: folderSheet, clipSheet: clipSheet, importClip: importClip, shotGo: shotGo,
   /* 步骤 6 加：TodosView 的宿主函数。漏一个的症状是「Vue 渲染抛错 → render() 静默回退
@@ -228,6 +235,15 @@ var HOST = setHost({
   get SFORM(){ return SFORM.v }, formInput: formInput,
   /* 步骤 21：记一笔 / 添加待办两个弹层的表单盒子与写回。 */
   get FORMS(){ return FORMS.v }, formSet: formSet,
+  /* P18：「记一笔」的第四种原料（本地文件，走系统的文件选择器）与语音暂存区。
+     STT.v 是 {segs, hidden, listening, …}，整包不换引用但 segs 会被整体赋值（发送后清空），
+     所以走 getter（同 FA / q 的教训）。圆钮的按下/松手/结束必须分三个函数：模板上
+     @pointerdown / @pointerup / @pointercancel 各自到底（点按与按住的区别在 voiceDown/Up 里判）。 */
+  pickFile: pickFile,
+  get STT(){ return STT.v },
+  voiceOpen: voiceOpen, voiceClose: voiceClose, voiceDown: voiceDown, voiceUp: voiceUp,
+  voiceStop: voiceStop, voiceUndo: voiceUndo, voiceEdit: voiceEdit,
+  voicePlay: voicePlay, voiceDelSeg: voiceDelSeg, voiceSend: voiceSend,
   get sheetArg(){ return SHEETARGB.v },
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
@@ -248,11 +264,11 @@ var HOST = setHost({
    表里、表里不许列这棵树没读的 key。app id 就是挂载点的名字：view:<tab> / sheet:<name> /
    shell:<容器 id>（shell.js 的 mount(id, def)）。 */
 var HOST_KEYS = {
-  /* view:notes     组件根 NotesView，27 个 key */
+  /* view:notes     组件根 NotesView，28 个 key */
   'view:notes': ['MISSED', 'S', 'SHOTFLAGS', 'SR', 'addTodoSheet', 'cdCls', 'cdText', 'clipHint',
     'clipSheet', 'delNote', 'enterCls', 'expand', 'fmtTime', 'importClip', 'missedSheet',
-    'notesFiltered', 'now', 'open', 'reocr', 'reparse', 'searchNow', 'shotGo', 'srErr', 'toAlarm',
-    'toCalendar', 'todoRowCls', 'toggle'],
+    'notesFiltered', 'now', 'open', 'reocr', 'reparse', 'revoice', 'searchNow', 'shotGo', 'srErr',
+    'toAlarm', 'toCalendar', 'todoRowCls', 'toggle'],
   /* view:todos     组件根 TodosView，16 个 key */
   'view:todos': ['P', 'S', 'SR', 'cdCls', 'cdText', 'enterCls', 'fmtTime', 'groupTodos', 'hit',
     'jump', 'now', 'rank', 'toAlarm', 'toCalendar', 'todoRowCls', 'toggle'],
@@ -286,7 +302,10 @@ var HOST_KEYS = {
     'missedDismiss', 'missedDone', 'missedGoTodos'],
   /* sheet:add      组件根 AddSheetView，2 个 key */
   /* sheet:add      组件根 AddSheetView，4 个 key（步骤 21 加 FORMS / formSet） */
-  'sheet:add': ['addNote', 'formSet', 'FORMS', 'pickImage'],
+  /* sheet:add      组件根 AddSheetView，15 个 key（P18 加 STT / voiceXxx / pickFile） */
+  'sheet:add': ['addNote', 'formSet', 'FORMS', 'pickFile', 'pickImage', 'STT', 'voiceClose',
+    'voiceDelSeg', 'voiceDown', 'voiceEdit', 'voiceOpen', 'voicePlay', 'voiceSend', 'voiceStop',
+    'voiceUndo', 'voiceUp'],
   /* sheet:addtodo  组件根 AddTodoSheetView，2 个 key */
   /* sheet:addtodo  组件根 AddTodoSheetView，4 个 key（步骤 21 加 FORMS / formSet） */
   'sheet:addtodo': ['addTodo', 'formSet', 'FORMS', 'sheetArg'],
@@ -356,7 +375,7 @@ window.__enoteActions = {
   delTodo, doImportShots, expand, exportJSON, folderFilter, folderPick, folderPickShots,
   folderSave, folderSelAll, folderSheet, importClip, importJSON, jump,
   missedDismiss, missedDone, missedGoTodos, missedSheet, openAttach, pickImage,
-  refresh, render, reocr, reparse, resetPrefs, rescanShots, saveSettings,
+  refresh, render, reocr, reparse, revoice, resetPrefs, rescanShots, saveSettings,
   scanShotsNow, settingsRefresh, settingsSheet, showDebug, showLog, sortSheet, statsNow,
   clearShots,
   setPref, setTheme, shotIgnoreSel, shotOverlay, shotOvlSub, shotPick, shotSelAll, shotSetup,

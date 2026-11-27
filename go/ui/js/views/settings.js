@@ -25,16 +25,17 @@
       接同一个状态源，app.js 里那两处 DOM 写操作随之删掉。
 
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面这行：
-   components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard } */
+   components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard, SettingsSttCard } */
 import { V, Vue } from '../vue.js'
 import { Ico, KvRow } from '../components/leaf.js'
-import { SettingsDataCard, SettingsRunCard, SettingsOcrCard } from '../components/blocks.js'
+import { SettingsDataCard, SettingsRunCard, SettingsOcrCard, SettingsSttCard }
+  from '../components/blocks.js'
 
 const { computed, inject } = Vue
 
 export const SettingsSheetView = {
   name: 'SettingsSheetView',
-  components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard },
+  components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard, SettingsSttCard },
   setup(){
     const H = inject('H');
     /* 通知权限 / 常驻后台 / 电池优化这三样是 Android 桥的「拉」式接口，本身不可观察。
@@ -121,6 +122,7 @@ export const SettingsSheetView = {
 </div>
 <div class="pgroup">采集</div><div class="card"><kv-row k="剪贴板暂存" v="前台自动 + 顶栏按钮手动" vstyle="color:var(--acc2)"/><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">打开 app 时自动暂存剪贴板里的文字；在别的 app 复制后切回「懒得记」即可看到，顶栏剪贴板按钮也可以随时手动收一条。Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。点「解析」才发到大模型，之前内容不会离开本机。</div></div>
 <div class="pgroup">本地 OCR</div><div class="card"><settings-ocr-card :i="i"/></div>
+<div class="pgroup">离线语音</div><div class="card"><settings-stt-card :i="i"/></div>
 <div class="pgroup">数据</div><div class="card"><settings-data-card/></div>
 <div class="pgroup">运行状态</div><div class="card"><settings-run-card :i="i"/></div>
 <div class="pgroup">用法</div><div class="card"><div class="body" style="margin-top:var(--s0)">· 在微信 / 浏览器 / 相册里点「分享」→ 选 懒得记<br>· 文字直接发给模型；图片先在本机用离线 OCR 识别成文字，再发给模型（图片不出门）<br>· 模型返回 JSON：标题、正文、标签、待办（含到期时间）<br>· 底部 ＋ 可手动记文字或选图片；返回键先关面板，再回笔记页</div></div>`

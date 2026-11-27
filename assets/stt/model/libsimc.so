@@ -1,0 +1,27 @@
+{
+  "name": "Simplified Chinese to Traditional Chinese (Taiwan standard)",
+  "segmentation": {
+    "type": "mmseg",
+    "dict": {
+      "type": "ocd2",
+      "file": "libSTPhrases.so"
+    }
+  },
+  "conversion_chain": [{
+    "dict": {
+      "type": "group",
+      "dicts": [{
+        "type": "ocd2",
+        "file": "libSTPhrases.so"
+      }, {
+        "type": "ocd2",
+        "file": "libSTCharacters.so"
+      }]
+    }
+  }, {
+    "dict": {
+      "type": "ocd2",
+      "file": "libTWVariants.so"
+    }
+  }]
+}

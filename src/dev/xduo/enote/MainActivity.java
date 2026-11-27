@@ -42,6 +42,7 @@ public class MainActivity extends Activity {
     static final int REQ_IMPORT = 9;
     static final int REQ_NOTIFY = 10;
     static final int REQ_SHOTS = 11;   // P11 截图捕获：读媒体库图片
+    static final int REQ_MIC = 12;     // 语音：录音权限
     /** A note/todo to open once the page is ready (notification tap). */
     static String pendingOpenNote;
     static String pendingOpenTodo;
@@ -584,6 +585,27 @@ public class MainActivity extends Activity {
         requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFY);
     }
 
+    // ---------------------------------------------------------------- 语音 (P16)
+
+    /** RECORD_AUDIO 是否已授予（API 21+，运行时权限）。 */
+    static boolean micGranted(Context c) {
+        return c.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    void askMicPermission() {
+        if (micGranted(this)) {
+            note("mic: 已有权限");
+            runJs("window.micResult && micResult(true)");
+            return;
+        }
+        try {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+        } catch (Throwable t) {
+            note("mic: requestPermissions failed " + t);
+        }
+    }
+
     @Override
     public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
         super.onRequestPermissionsResult(req, perms, res);
@@ -596,6 +618,10 @@ public class MainActivity extends Activity {
             note("shots: media permission granted=" + ok);
             runJs("window.shotPermResult && shotPermResult(" + ok + ")");
             if (ok) scanShotsAsync();
+        } else if (req == REQ_MIC) {
+            boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
+            note("mic: user granted=" + ok);
+            runJs("window.micResult && micResult(" + ok + ")");
         }
     }
 
@@ -891,6 +917,9 @@ public class MainActivity extends Activity {
             return hookCopyIn(arg);
         } else if ("pickimage".equals(hook)) {
             return hookPickImage(arg);
+        } else if ("revoice".equals(hook)) {
+            // 验收用：arg = 笔记 id，重新识别这条语音笔记（结果异步回填，脚本轮询 /api/state）
+            return hookRevoice(arg);
         }
         return Bridge.nativeSelfTest(arg == null ? "{\"mode\":\"all\"}" : arg);
     }
@@ -1011,6 +1040,21 @@ public class MainActivity extends Activity {
         return "{\"ok\":true,\"queued\":" + code.length() + "}";
             }
         }
+    }
+
+    /** 验收用：重新识别一条语音笔记（arg = id）。立即返回，识别在后台线程里跑完回填。 */
+    private String hookRevoice(final String id) {
+        if (id == null || id.isEmpty()) return "{\"ok\":false,\"error\":\"need id\"}";
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    new Bridge().revoice(id);
+                } catch (Throwable t) {
+                    note("hook revoice failed: " + t);
+                }
+            }
+        }, "hook-revoice").start();
+        return "{\"ok\":true}";
     }
 
     /** 验收用：立刻扫一次截图暂存目录。 */

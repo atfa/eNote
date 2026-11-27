@@ -140,8 +140,13 @@ export const NoteCard = {
       return !!(w && w.length)
     })
     const attach = computed(() => props.n.attachments && props.n.attachments.length > 1)
+    /* P18：这条笔记带音频附件（分享进来的音频 / 「记一笔」的语音）→ 给「重新识别语音」。
+       MIME 优先（fillVoice 会给 audio/*），老数据里没 MIME 的按扩展名兑。 */
+    const audio = computed(() => (props.n.attachments || []).some(a =>
+      String(a.mime || '').indexOf('audio/') === 0
+      || /\.(wav|m4a|mp3|ogg|opus|amr|3gp|aac|flac)$/i.test(String(a.path || ''))))
     const todos = computed(() => props.n.todos || [])
-    return { H, exp, hits, attach, todos,
+    return { H, exp, hits, attach, audio, todos,
              idx: computed(() => Math.min(props.k || 0, 8)),
              body: computed(() => props.n.content || '(无正文)'),
              ec: computed(() => H.enterCls('n' + props.n.id)) }
@@ -161,6 +166,7 @@ export const NoteCard = {
     <button class="btn sm gh exp" @click="H.expand(n.id)"><ico :n="exp?'chevup':'chev'"/>{{ exp?'收起':'展开详情' }}</button>
     <button class="btn sm" v-if="n.status==='done'||n.status==='raw'" @click="H.reparse(n.id)"><ico n="refresh"/>重新解析</button>
     <button class="btn sm" v-if="n.imagePath" @click="H.reocr(n.id)"><ico n="scan"/>重新识别图片</button>
+    <button class="btn sm" v-if="audio" @click="H.revoice(n.id)"><ico n="mic"/>重新识别语音</button>
     <button class="btn sm" @click="H.addTodoSheet(n.id)"><ico n="plus"/>待办</button>
     <button class="btn sm dg" @click="H.delNote(n.id)"><ico n="trash"/>删除</button>
   </div>

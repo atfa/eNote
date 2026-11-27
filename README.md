@@ -54,12 +54,18 @@ GO_TEST=1 ./build.sh      # 编译 Go（含单元测试）+ javac + d8 + aapt2 +
 | --- | --- |
 | 纯文本 / 链接 | 立刻落库为「排队中」，后台交给大模型解析 |
 | 单张 / 多张图片 | 先**在本机** OCR（vivo 离线引擎），只有识别出的文字会发给大模型，图片本身从不上传 |
+| 语音 / 音频 | 先**在本机**离线识别（vivo 语音引擎，93 MB 模型打进 APK），文字进库，音频原样留作附件 |
 
 图片走 `SEND` / `SEND_MULTIPLE` / `VIEW` 三种 intent，所以相册、微信、浏览器都能分享进来。
 
 **App 内**：底部五个入口 笔记 / 待办 / ➕记一笔 / 附件 / 我的，顶栏是搜索 + 剪贴板暂存 + 排序。
 
-* ➕「记一笔」：粘贴文字直接解析，或「选图片（本机 OCR）」从相册挑一张。
+* ➕「记一笔」：粘贴文字直接解析，「选图片（本机 OCR）」从相册挑一张，「选本地文件」当附件存下来，
+  或者「录音」——说几段、攒着、一次发出去。
+* 语音面板：底部大圆钮**按住说话**（松手结束本段），**点一下 = 免手持**（再点一下才结束，
+  中间的思考停顿不会被切成两段），每段 ≤2 分钟。每段的识别文字进上方暂存区，可逐条编辑 /
+  删除 / 回放，左键撤销上一段、右键发送。发送时 N 段合并成**一条**笔记（每段音频各挂一个附件），
+  卡片上还有 `重新识别语音`，拿原音频重跑一遍。
 * 笔记卡片：勾选待办、展开详情、`重新解析`、`重新识别图片`、`+ 待办`、`删除`；
   AI 提取出的「关键信息」（何时 / 何人 / 何事 / 何地 / 为什么 / 备注）直接列在卡片里。
 * 待办页按 已逾期 / 今天 / 明天 / 本周 / 以后 / 无日期 / 已完成 分组，红色左边框 = 高优先级，
@@ -81,7 +87,7 @@ GO_TEST=1 ./build.sh      # 编译 Go（含单元测试）+ javac + d8 + aapt2 +
 * 我的页：本地数据摘要（笔记 / 待办 / 附件 / 占用）、近 7 天活动柱状图、笔记状态、常见标签，
   以及设置、运行日志、AI 调用记录、导出 / 导入 JSON、清空数据。
 * 设置页：API Base URL、Key、模型名、超时、max tokens、温度、`测试连接`、主题（亮 / 暗 / 跟随系统）、
-  本地 OCR 引擎状态、剪贴板采集开关、常驻后台开关与电池优化引导。
+  本地 OCR 引擎状态、本地语音识别引擎状态、剪贴板采集开关、常驻后台开关与电池优化引导。
   Key 明文存在 `files/enote/settings.json`，接口返回时打码成「前 4 + … + 后 4」，回传打码值不会覆盖真 Key。
 
 默认不预置大模型（仓库里不带任何端点）：装好后在设置里填 API Base URL / Key / 模型名，任何
@@ -94,6 +100,7 @@ OpenAI 兼容服务都行（本地 llama.cpp、litellm、云端 API），`测试
 Java 壳 (src/dev/xduo/enote/)                Go 业务层 (go/, 编成 libenote.so)
   EnoteApp     启动 Go、初始化 OCR      ┌──  main.go      JNI 入口 + 生命周期
   OcrHelper    vivo 离线 OCR            │   app.go        全局状态
+  SttHelper    vivo 离线语音识别        │   voice.go      语音文本后处理
   ShareActivity 接收分享 intent         │   store.go      notes.json 读写
   MainActivity WebView 容器            ├──  pipeline.go  队列 + worker + 解析
   Bridge       JNI + WebView 桥        │   llm.go        OpenAI 兼容客户端 + 调用记录
@@ -107,6 +114,9 @@ Java 壳 (src/dev/xduo/enote/)                Go 业务层 (go/, 编成 libenote
   WebView 直接不执行脚本。UI ↔ Go 只走 HTTP，JNI 面积极小（7 个导出函数）。
 * **OCR 在 Java 侧、入库前完成**：`ShareActivity` / 图片选择器 / `重新识别图片` 都会先跑 OCR，
   把识别文本连同图片路径一起交给 Go 的 `enqueue`。Go 的 worker 从不回调 Java，所以不会有跨语言死锁。
+* **语音同理**：`SttHelper` 边录边写 16 kHz WAV，PCM 喂引擎、文字连同 WAV 路径交给 Go；分享进来的
+  音频先过 `AudioDecode`（MediaExtractor + MediaCodec → 混成单声道 → 重采样 16 kHz WAV）再识别，
+  所以只留 16 kHz WAV 一份——引擎只吃这个格式，`重新识别语音` 才走得通。
 * 解析失败不丢数据：LLM 挂了就把原文存成 `raw` / `error` 状态，卡片上给「重新解析」按钮。
 * 图片原件永远保留在 `files/enote/inbox/`。
 
@@ -116,11 +126,17 @@ Java 壳 (src/dev/xduo/enote/)                Go 业务层 (go/, 编成 libenote
 | --- | --- |
 | `notes.json` | 全部笔记与待办（单文件，原子写） |
 | `settings.json` | BYOK 配置（Key 明文） |
-| `inbox/` | 收到的图片原件 |
+| `inbox/` | 收到的图片原件、语音 WAV |
 | `enote.log` | 业务日志（`./log.sh enote`） |
 
 OCR 引擎：`assets/mdl_ocr/`（9 MB 模型）+ `jniLibs/arm64-v8a/libocr_general.so`、`libvcap_core.so`、
 `libvcap_opencl.so`（6.7 MB），来自 `~/ocr` 的 vivo 离线识别 SDK，CPU 推理，一张证书约 150–320 ms。
+
+语音引擎：`assets/stt/model/`（93 MB 中文模型）+ `jniLibs/arm64-v8a/` 里 20 个 .so，来自 `~/stt`
+的 vivo 离线 ASR SDK，同样 CPU 推理，一句话约 1 s。两处坑写在「踩过的坑」里：STT 版
+`libvcap_core.so` 与 OCR 的同名不同内容，改 `.dynstr` 里的 SONAME 成 `libvcap_cstt.so` 才能共存；
+两套引擎都静态链了 LLVM OpenMP，共存还得在 dlopen 之前设 `KMP_DUPLICATE_LIB_OK=TRUE`（`go/omp.go`）。
+APK 因此从 ~7 MB 涨到 ~87 MB。
 
 ## 4. 本地 HTTP API
 
@@ -182,10 +198,13 @@ curl -s "http://127.0.0.1:$P/api/state" | python3 -m json.tool
 2. `selftest` hook：存储读写、Web 首页、真实大模型调用、OCR 引擎就绪
 3. 分享文本 → 轮询到 `status=done`，且至少一个待办带截止时间
 4. 分享图片（`file://` 放进 App 外部目录 + `chown`）→ 轮询到 OCR 字数 > 0 且解析完成
-5. 待办 add / toggle / delete 往返
-6. `reparse` + `llm/test` + `export`
-7. 设置往返（打码 Key 不覆盖真 Key）
-8. `probe.sh`：进程活着、无 crash
+5. 分享语音（`audio/*`，夹具 `.test/stt/zh.wav`）→ 本机离线识别 → `source=share-voice` 的
+   voice 笔记 + `audio/wav` 附件
+6. 语音文本去重：POST `/api/voice` 送「今天天气好吗吗」，断言正文收敛成「今天天气好吗」
+7. 待办 add / toggle / delete 往返
+8. `reparse` + `llm/test` + `export`
+9. 设置往返（打码 Key 不覆盖真 Key）
+10. `probe.sh`：进程活着、无 crash
 
 ```bash
 ./test.sh                 # 完整跑（含构建）
@@ -209,6 +228,9 @@ python3 tools/crop_png.py docs/shots/p12-missed-ops.png .test/ocr-test.png 120 2
 # 分享文本
 su -c "am start -n dev.xduo.enote/.ShareActivity -a android.intent.action.SEND \
   -t text/plain --es android.intent.extra.TEXT '买牛奶和鸡蛋；晚上8点开周会'"
+# 分享语音（任意采样率的音频都行，AudioDecode 会转成 16 kHz WAV）
+su -c "am start -n dev.xduo.enote/.ShareActivity -a android.intent.action.SEND \
+  -t 'audio/*' --eu android.intent.extra.STREAM file:///sdcard/Android/data/dev.xduo.enote/files/enote/inbox/zh.wav"
 # 分享图片（目录要先 chown 给 App 的 uid）
 su -c "am start -n dev.xduo.enote/.ShareActivity -a android.intent.action.SEND \
   -t 'image/*' --eu android.intent.extra.STREAM file:///sdcard/Android/data/dev.xduo.enote/files/ocr-test.png"
@@ -345,13 +367,15 @@ tools/gen_icon.py       图标几何（矢量 XML + PNG 一起出）
 tools/ui_test.js        UI 静态闸门 + 签名断言（无浏览器，纯静态断言）
 docs/shots/             README 截图（由 .test/shots/ 缩图生成）
 assets/mdl_ocr/         OCR 模型（9 MB）
-jniLibs/arm64-v8a/      OCR 引擎 .so（6.7 MB）
+assets/stt/model/       语音识别模型（93 MB，中文）
+jniLibs/arm64-v8a/      OCR + 语音引擎 .so（6.7 MB + 74 MB）
 vendor/                 从 ~/ocr 拷来的 SDK jar 与头文件
 .agents/skills/         构建这套 APK 的技能（上游 github.com/atfa/dev-apk-on-android）
 ```
 
-`assets/mdl_ocr/`（9 MB）和 `jniLibs/arm64-v8a/`（6.7 MB）是从手机上的 vivo 离线 OCR 引擎
-（`~/ocr`）里拷出来的官方文件，不是本项目编译产物，clone 下来直接能构建。
+`assets/mdl_ocr/`（9 MB）、`assets/stt/model/`（93 MB）和 `jniLibs/arm64-v8a/`（81 MB）是从手机上的
+vivo 离线 OCR / ASR 引擎（`~/ocr`、`~/stt`）里拷出来的官方文件，不是本项目编译产物，clone 下来直接
+能构建。两者的导入脚本见 `tools/import_stt.sh`（可重复执行，会自己改 `libvcap_cstt.so` 的 SONAME）。
 
 ## 8. 踩过的坑（给未来的自己）
 
@@ -360,6 +384,12 @@ vendor/                 从 ~/ocr 拷来的 SDK jar 与头文件
 * `jniLibs/<abi>/*.so` 不会自动进 APK，要显式复制成 `lib/<abi>/*.so`，否则
   `dlopen failed: library "libvcap_core.so" not found`。
 * 测试 hook 里同步调用大模型（10 s）会卡住主线程 → ANR 被系统杀掉，hook 一律起线程。
+* 两套 vivo 引擎都静态链了 LLVM OpenMP，第二个初始化时直接 abort（logcat 只有一行 SIGABRT，
+  堆栈停在 `libvcap_*.so (__kmp_abort_process)` → `abort@plt`，没有任何断言信息）。`go/omp.go`
+  在 `libenote.so` 加载时 `os.Setenv("KMP_DUPLICATE_LIB_OK", "TRUE")`，必须赶在任何引擎 dlopen 之前。
+* 引擎的最后一句是**异步**回调：`engine.stop()` 返回时它可能还没到，`SttHelper` 用 CountDownLatch
+  等 `is_final`（上限 1.5 s）再读累加文本；少了这一步，2 s 的 wav 识别结果永远是空串。
+  同理，忘了 `engine.setListener(...)` 也不会报错，症状一模一样（一直是空白）。
 * POSIX `sh` 里 `echo "$json"` 会展开 `\n`，把 JSON 打碎，用 `printf '%s'`。
 * `am start` 送到已在前台的实例时不会重建 Activity，所以要实现 `onNewIntent` + `launchMode="singleTop"`。
 * `aapt2 link` 里用 `<aapt:attr>` 渐变填充矢量图时，`<vector>` 上必须声明

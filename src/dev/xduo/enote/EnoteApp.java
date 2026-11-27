@@ -25,6 +25,7 @@ public class EnoteApp extends Application {
             Log.e(TAG, "Bridge.init failed", t);
         }
         OcrHelper.get(app).initAsync();
+        SttHelper.get(app).initAsync();
         Reminders.ensureChannel(app);
         // 常驻后台开关是用户自己开的，进程被回收后要恢复；首启或后台启动失败时会静默忽略。
         KeepAlive.resumeIfEnabled(app);

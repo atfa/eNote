@@ -60,6 +60,11 @@ function delNote(id){
 }
 function reocr(id){ if(!window.Android){toast('图片识别只在 app 内可用');return;}
   toast('正在识别图片…'); Android.reocr(id); setTimeout(refresh,1500); setTimeout(refresh,5000); }
+/* 重新识别语音（P18）：回源笔记里的音频附件（SttHelper 识别的 16k WAV）重跑离线识别，
+   结果替换正文并重新交给 AI。同 reocr，只是耗时更长（音频要重新过一遍引擎）。 */
+function revoice(id){ if(!window.Android){toast('语音识别只在 app 内可用');return;}
+  toast('正在重新识别语音…'); Android.revoice(id);
+  setTimeout(refresh,3000); setTimeout(refresh,8000); setTimeout(refresh,20000); }
 function toggleAI(){ var s=S.settings; s.useAI=!s.useAI; saveSettings(); }
 /* 设置页保存（saveSettings）搬进 js/settingsflow.js（P14 S6 步骤 42）：它读的就是那边的
    SFORM，formFill 也在那边；toggleAI 翻完 useAI 直接调它。 */
@@ -68,4 +73,4 @@ function toggleAI(){ var s=S.settings; s.useAI=!s.useAI; saveSettings(); }
    app.js 转取的（filesflow / statsflow / tabflow），todoEnterCls 给 app.js 的 todoRowCls，
    clearEnter 给 app.js 的 render()，ANIMLOCK 给 app.js 的 refresh()。 */
 export { expand, toggle, keyOf, todoEnterCls, clearEnter, enterCls, clearSeen,
-  delTodo, reparse, delNote, reocr, toggleAI, ANIMLOCK }
+  delTodo, reparse, delNote, reocr, revoice, toggleAI, ANIMLOCK }

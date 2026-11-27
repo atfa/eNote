@@ -12,24 +12,38 @@ import (
 // ingestReq is what Java hands over: shared text, or an image plus the text the local
 // vivo OCR engine read out of it. The image itself never goes to the LLM.
 type ingestReq struct {
-	ID        string `json:"id"`   // set = re-ingest an existing note (re-OCR + re-parse)
-	Kind      string `json:"kind"` // text | image
-	Text      string `json:"text"`
-	Subject   string `json:"subject"`
-	Path      string `json:"path"`
-	Name      string `json:"name"`
-	OCR       string `json:"ocr"`
-	OCRMs     int64  `json:"ocrMs"`
-	OCRError  string `json:"ocrError"`
+	ID       string `json:"id"`   // set = re-ingest an existing note (re-OCR + re-parse)
+	Kind     string `json:"kind"` // text | image
+	Text     string `json:"text"`
+	Subject  string `json:"subject"`
+	Path     string `json:"path"`
+	Name     string `json:"name"`
+	OCR      string `json:"ocr"`
+	OCRMs    int64  `json:"ocrMs"`
+	OCRError string `json:"ocrError"`
+	// P16 语音：识别出来的文字 + 原音频附件。ST/STError 与 OCR*/OCRMs 对称。
+	ST        string `json:"st"`
+	STMs      int64  `json:"stMs"`
+	STError   string `json:"stError"`
 	MIME      string `json:"mime"`      // kind=file
 	FileError string `json:"fileError"` // kind=file: the copy failed, keep the reason
 	Raw       bool   `json:"raw"`       // true = store as-is, no LLM call
 	Source    string `json:"source"`    // share-text | share-image | manual-text | manual-image | share-file | manual-file | clipboard-*
 	// Defer 是「手动选图先占位」的开关（Java 占位入队设 true）：图片立刻进列表显「排队中」，
 	// 但不推 LLM 队列，等 Java OCR 完成后带同一 id reingest 才推进（重 OCR → 空文本/失败各自落位）。
-	Defer     bool   `json:"defer"`
+	Defer bool `json:"defer"`
 	// Images 只在 kind=images 时用：一次导入的多张截图（合并成一条笔记，P11）。
 	Images []ingestImage `json:"images,omitempty"`
+	// P18 多段语音：一次发多条。每条含识别文本 + 原音频附件。
+	Audios []voiceSeg `json:"audios,omitempty"`
+}
+
+// voiceSeg 是多段语音里的一段：识别文本 + 音频文件（原样保留，可"重新识别语音"）。
+type voiceSeg struct {
+	Text string `json:"text"`
+	Path string `json:"path"`
+	Name string `json:"name"`
+	MIME string `json:"mime,omitempty"`
 }
 
 // ingestImage 是"合并成一条笔记"里的单张图：OCR 结果由 Java 侧（ML Kit）给。
@@ -62,6 +76,9 @@ func enqueueRaw(payload string) enqueueResult {
 
 func enqueue(r ingestReq) enqueueResult {
 	if r.ID != "" && store.get(r.ID) != nil {
+		if r.Kind == "voice" {
+			return reingestVoice(r) // P16：重新识别语音（回源音频重跑 STT）
+		}
 		return reingest(r)
 	}
 	n := &Note{
@@ -82,6 +99,8 @@ func enqueue(r ingestReq) enqueueResult {
 		e = fillImages(n, r)
 	case "file":
 		e = fillFile(n, r)
+	case "voice": // P16：语音识别文本 + 原音频附件
+		e = fillVoice(n, r)
 	default: // text
 		e = fillText(n, r)
 	}
@@ -250,6 +269,35 @@ func reingest(r ingestReq) enqueueResult {
 	}
 	logf("reingest %s len=%d status=%s", r.ID, len(txt), status)
 	return enqueueResult{ID: r.ID, Kind: "image"}
+}
+
+// reingestVoice is "重新识别语音": the stored audio attachment is re-fed through the STT
+// engine, the note's text is replaced with the new transcript and it goes back to the LLM.
+// Mirrors reingest (re-OCR of an image) but talks about text + audio instead of OCR.
+func reingestVoice(r ingestReq) enqueueResult {
+	txt := voiceText(r) // text 与 audios[].text 都可能是正文来源（多段语音）
+	err := ""
+	status := stQueued
+	if r.STError != "" {
+		status, err = stError, r.STError
+	} else if txt == "" {
+		status, err = stRaw, "语音里没有识别到文字"
+	}
+	store.update(r.ID, func(n *Note) {
+		n.RawText = txt
+		n.Content = txt
+		n.STMs = r.STMs
+		n.Status = status
+		n.Error = err
+	})
+	if status == stQueued {
+		select {
+		case jobs <- r.ID:
+		default:
+		}
+	}
+	logf("reingestVoice %s len=%d status=%s", r.ID, len(txt), status)
+	return enqueueResult{ID: r.ID, Kind: "voice"}
 }
 
 // requeue sends an existing note back through the LLM, using the text as it was received.
@@ -441,6 +489,8 @@ func appInfo() map[string]any {
 		"go":       goVersion(),
 		"tz":       tzInfo(),
 		"ocrReady": ocrReady,
+		"sttReady": sttReady, // P16：离线语音识别引擎状态
+		"sttInfo":  sttInfo,
 	}
 	if store != nil {
 		for _, n := range store.snapshot() {

@@ -6,6 +6,7 @@ import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsResult;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.lang.ref.WeakReference;
@@ -39,7 +40,47 @@ public class Bridge {
     static native String nativeReminders();
     static native String nativeSelfTest(String json);
     static native String nativeNoteImage(String id);
+    static native String nativeNoteAudio(String id);
     static native void nativeSetOcr(boolean ready, String info);
+    static native void nativeSetStt(boolean ready, String info);
+
+    /** Go->Java->JS: push a JS snippet to the WebView (STT partial results, ...). */
+    static void pushJs(String js) {
+        MainActivity a = current.get();
+        if (a != null) a.runJs(js);
+    }
+
+    /** window.Android.askMic(): request RECORD_AUDIO at runtime, result via window.micResult. */
+    @JavascriptInterface
+    public void askMic() {
+        MainActivity a = current.get();
+        Log.i(TAG, "js askMic");
+        if (a != null) a.askMicPermission();
+    }
+
+    /** window.Android.micGranted(): is RECORD_AUDIO granted already? */
+    @JavascriptInterface
+    public boolean micGranted() {
+        return MainActivity.micGranted(EnoteApp.app);
+    }
+
+    /** window.Android.startVoice(): begin a live STT session (UI keeps the button pressed). */
+    @JavascriptInterface
+    public void startVoice() {
+        Log.i(TAG, "js startVoice");
+        if (!micGranted()) {
+            Log.w(TAG, "startVoice without RECORD_AUDIO");
+            return;
+        }
+        SttHelper.get(EnoteApp.app).startSession(null);
+    }
+
+    /** window.Android.stopVoice(): end the session; result via window.onSttEnd. */
+    @JavascriptInterface
+    public void stopVoice() {
+        Log.i(TAG, "js stopVoice");
+        SttHelper.get(EnoteApp.app).stopSession(null);
+    }
 
     static volatile Context appCtx;  // set in init(), for the clipboard hint (no Activity needed)
 
@@ -122,6 +163,31 @@ public class Bridge {
             o.put("name", name == null ? "" : name);
             o.put("mime", mime == null ? "" : mime);
             o.put("fileError", error == null ? "" : error);
+            o.put("source", source);
+        } catch (Exception e) {
+            return "{\"error\":\"" + e + "\"}";
+        }
+        return nativeEnqueue(o.toString());
+    }
+
+    // ---------------------------------------------------------------- 语音 (P18)
+
+    /** 语音分享 / 重新识别语音：识别文本 + 原音频（可以多段，一段一个附件）。
+     *  segsJson = [{text,path,name}]；一次分享多条音频 = 一条笔记挂多个音频。
+     *  id 非空 = 「重新识别语音」：Go 侧走 reingestVoice，用 text 换掉旧文本、音频附件不动。 */
+    static String enqueueVoice(String id, String segsJson, long stMs, String error, String source) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("kind", "voice");
+            if (id != null && !id.isEmpty()) o.put("id", id);
+            JSONArray segs = new JSONArray(segsJson == null || segsJson.isEmpty() ? "[]" : segsJson);
+            /* 正文只由 audios[].text 带过去：Go 的 fillVoice 会把 text 和每段 audios[].text
+               都拼进正文，两处都给等于每段重复一遍（实测 zh.wav → 「…\n\n…」）。
+               text 留空串只是为了 JSON 形状稳定。 */
+            o.put("text", "");
+            o.put("audios", segs);
+            o.put("stMs", stMs);
+            o.put("stError", error == null ? "" : error);
             o.put("source", source);
         } catch (Exception e) {
             return "{\"error\":\"" + e + "\"}";
@@ -345,6 +411,45 @@ public class Bridge {
                 }
                 OcrHelper.Out out = OcrHelper.get(EnoteApp.app).recognizeFile(path);
                 enqueueImage(id, path, nameOf(path), out.text, out.ms, out.error, "share-image");
+            }
+        }).start();
+    }
+
+    /** window.Android.revoice(id): re-run the local STT on a note's stored audio (P18).
+     *  多段语音会有多个音频附件：逐段重跑，拼成一段文本回写（reingestVoice 只换文字，
+     *  附件不动）。没有音频附件的笔记直接返回（按钮不该出现）。 */
+    @JavascriptInterface
+    public void revoice(final String id) {
+        Log.i(TAG, "js revoice " + id);
+        new Thread(new Runnable() {
+            public void run() {
+                JSONArray segs = new JSONArray();
+                try {
+                    String js = loaded ? nativeNoteAudio(id) : "";
+                    if (js != null && !js.isEmpty()) segs = new JSONArray(js);
+                } catch (Exception e) {
+                    Log.w(TAG, "revoice: bad audio list " + e);
+                }
+                if (segs.length() == 0) {
+                    Log.w(TAG, "revoice: no audio for " + id);
+                    return;
+                }
+                long t0 = System.currentTimeMillis();
+                String err = "";
+                for (int i = 0; i < segs.length(); i++) {
+                    try {
+                        JSONObject s = segs.getJSONObject(i);
+                        String txt = SttHelper.get(EnoteApp.app)
+                                .recognizeFile(s.optString("path", ""));
+                        s.put("text", txt == null ? "" : txt);
+                    } catch (Throwable t) {
+                        Log.e(TAG, "revoice segment", t);
+                        err = "重新识别失败: " + t;
+                    }
+                }
+                long ms = System.currentTimeMillis() - t0;
+                String r = enqueueVoice(id, segs.toString(), ms, err, "share-voice");
+                Log.i(TAG, "revoice -> " + r);
             }
         }).start();
     }

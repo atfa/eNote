@@ -9,6 +9,8 @@ var (
 	goVersionString = runtime.Version()
 	ocrReady        bool // set by Java once the vivo OCR engine has initialised
 	ocrInfo         = ""
+	sttReady        bool // P16：离线语音识别引擎状态（Java 上报）
+	sttInfo         = ""
 	tzOffset        = 0
 	tzID            = ""
 )
@@ -45,4 +47,10 @@ func absInt(v int) int {
 func setOCR(ready bool, info string) {
 	ocrReady, ocrInfo = ready, info
 	logf("ocr state: ready=%v %s", ready, info)
+}
+
+// setSTT 让 Java 上报离线语音识别引擎状态（P16），与 setOCR 同款。
+func setSTT(ready bool, info string) {
+	sttReady, sttInfo = ready, info
+	logf("stt state: ready=%v %s", ready, info)
 }

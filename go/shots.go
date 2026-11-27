@@ -445,3 +445,24 @@ func handleShotImg(w http.ResponseWriter, r *http.Request) {
 	}
 	http.ServeFile(w, r, clean)
 }
+
+// handleSttAudio GET /api/sttaudio?p=<inbox 下的绝对路径> — 语音暂存区回放用。
+// 会话结束的音频还没进附件表（只有 path），先按路径直接从 inbox 发；等附件入表后
+// 回放走 /file?id=（在 files 页），这里是暂存区播放的唯一通道。
+// 只发 inbox 里的真实文件（与 handleShotImg 同款越权防护）：拒绝任何不在 inbox 下的路径。
+func handleSttAudio(w http.ResponseWriter, r *http.Request) {
+	p := r.URL.Query().Get("p")
+	if p == "" {
+		http.NotFound(w, r)
+		return
+	}
+	clean := filepath.Clean(p)
+	if !strings.HasPrefix(clean, filepath.Clean(inboxDir)+string(os.PathSeparator)) {
+		logf("sttaudio: 拒绝越权路径 %s", p)
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "audio/wav")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	http.ServeFile(w, r, clean)
+}

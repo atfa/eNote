@@ -67,6 +67,7 @@ type Note struct {
 	Attachments []Attachment `json:"attachments,omitempty"`
 	OCRText     string       `json:"ocrText,omitempty"`
 	OCRMs       int64        `json:"ocrMs,omitempty"`
+	STMs        int64        `json:"stMs,omitempty"` // P16 语音识别耗时（毫秒）
 	AIModel     string       `json:"aiModel,omitempty"`
 	AIMs        int64        `json:"aiMs,omitempty"`
 	AIRaw       string       `json:"aiRaw,omitempty"` // raw model output, for the debug tab

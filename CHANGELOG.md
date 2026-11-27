@@ -6,6 +6,38 @@
 
 ## 0.1（当前）
 
+### 离线语音识别（P18）：多段暂存、一次发送
+
+* **全离线**：vivo 离线 ASR 引擎打进 APK（`assets/stt/model/` 93 MB 中文模型 + `jniLibs/arm64-v8a/`
+  20 个 .so，含 `libvasrjni.so`），装上即用——不联网、不 root、不依赖厂商服务、不要签名权限。
+  APK 从 ~7 MB 涨到 87 MB（`extractNativeLibs=true`，否则 74 MB 的 .so 进不了包）。
+* **「记一笔」= 内容原料的统一入口**：`AddSheetView` 重排成 `[文本框] / [保存并解析] /
+  🖼 选图片 · 🎤 录音 / 📎 选本地文件`，不新增页面、不新增 FAB。
+* **录音交互**：底部中间大圆钮**按住说话**（松手结束本段）、**点一下 = 免手持**（再点一下结束，
+  `TAP_MS=300` 判定短按，`.vrec.live` 红色脉冲 + 计时秒数）；左键撤销上一段、右键发送全部暂存文字。
+  每段 ≤2 分钟（`MAX_SECS=120`）。**不做静音自动断句**：免手持下只有再点一次才结束——思考停顿
+  不能被 VAD 切成两段。暂存区每段可编辑 / 单条删除 / 回放，部分结果实时上屏。
+* **一段都不丢、音频不丢**：`kind=voice` 的笔记把 N 段文字拼成一条正文（`\n\n` 分隔），每段音频
+  各自 `attachTo` 一个附件；回放走 `/sttaudio?p=`（会话刚结束的音频还没进附件表，只有 path），
+  卡片上的 `重新识别语音` 用 `nativeNoteAudio` 回源附件、逐段重跑引擎（`reingestVoice` 只换文字，
+  附件不动）。
+* **分享音频**：`AudioDecode`（MediaExtractor + MediaCodec → 混成单声道 → 线性插值重采样 16 kHz →
+  WAV）落成 `inbox/voice_<ts>.wav` 再识别，`source=share-voice`；Manifest 补 `SEND_MULTIPLE audio/*`。
+  只留 16 kHz WAV（引擎只吃这个格式，重识别才走得通）。
+* **识别文本纠错**：`fixVoiceDup` 只收敛「句尾连续两个相同语气助词」（`吗吗→吗`，`妈妈/哈哈/谢谢`
+  不动），句内停顿叠词一律不碰；同时写进 LLM 系统提示词规则 6。`fillVoice`/`reingestVoice` 共用
+  `voiceText()`，`text` 与 `audios[].text` 内容相同时只算一份。
+* **两处真机坑**：①两套 vivo 引擎都静态链 LLVM OpenMP，第二个初始化直接 abort（只有 SIGABRT 没有
+  信息）→ `go/omp.go` 在 dlopen 前 `KMP_DUPLICATE_LIB_OK=TRUE`；②引擎最后一句是异步回调，
+  `engine.stop()` 返回时可能还没到 → CountDownLatch 等 `is_final`；顺带补上漏掉的
+  `engine.setListener(...)`（它不报错，症状就是「一直识别出空串」）。
+* **可见性**：设置页新增「离线语音」卡（就绪状态 + 引擎版本），运行日志标题栏加 `语音 ready/…` chip；
+  `selftest` 输出 `stt.ready` 并硬断言。
+* 验收：`go test ./...` 绿（新增 `TestFixVoiceDup` / `TestVoiceSegsNoDoubleText` /
+  `TestReingestVoiceFromAudios` 等）、`ui_test.js` **122 ok / 0 FAIL**、`./test.sh --skip-build`
+  里 STT 三条（selftest `stt ready=True`、share 语音 → `share-voice` 笔记 + `audio/wav` 附件、
+  `吗吗→吗`）全绿；真机手动复核 share 音频与 `重新识别语音`（钩子 `hook revoice`）。
+
 ### SSE 事件推送：2s 轮询 → 30s 心跳 + 事件总线（s2–s5）
 
 * **架构**：UI 不再每 2s 轮询拉全量（真机 ~6KB/s 常驻）。Go 侧新增 `go/events.go` 事件 hub（`eventsHub` 非阻塞广播 + `eventSub` 订阅句柄），`/api/events` SSE 端点（先写 `data: connected` 首帧再注册订阅，30s 心跳，`r.Context().Done()`/`sub.done` 双退出）；4 个落盘点插桩 `store.save→notes`、`clip.save→clips`、`shots.save→shots`、`config.set→settings`。

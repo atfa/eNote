@@ -61,6 +61,7 @@ func apiMux() *http.ServeMux {
 	})
 	m.HandleFunc("/api/note", handleNote)
 	m.HandleFunc("/api/add", handleAdd)
+	m.HandleFunc("/api/voice", handleVoice)
 	m.HandleFunc("/api/reparse", handleReparse)
 	m.HandleFunc("/api/delete", handleDelete)
 	m.HandleFunc("/api/todo", handleTodo)
@@ -95,7 +96,8 @@ func apiMux() *http.ServeMux {
 			n = 200
 		}
 		jsonOut(w, map[string]any{"ok": true, "log": readLog(n), "ocrReady": ocrReady,
-			"ocrInfo": ocrInfo, "server": srvURL, "app": appInfo()})
+			"ocrInfo": ocrInfo, "sttReady": sttReady, "sttInfo": sttInfo, "server": srvURL,
+			"app": appInfo()})
 	})
 	m.HandleFunc("/api/export", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := json.MarshalIndent(store.snapshot(), "", "  ")
@@ -110,6 +112,7 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/img", handleImg)
 	m.HandleFunc("/file", handleFile)
 	m.HandleFunc("/shotimg", handleShotImg)
+	m.HandleFunc("/sttaudio", handleSttAudio) // 语音暂存区回放（只发 inbox 内文件）
 	return m
 }
 

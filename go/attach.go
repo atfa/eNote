@@ -67,6 +67,12 @@ var mimeByExt = map[string]string{
 	".ppt":  "application/vnd.ms-powerpoint",
 	".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 	".zip":  "application/zip", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".mp4": "video/mp4",
+	// P18 语音附件：实时录音与 AudioDecode 解码出来的都是 16k 单声道 WAV。
+	// 少了这几条，音频附件会按 octet-stream 归类——附件页图标/「类型」筛选全错，
+	// nativeNoteAudio 也认不出来（笔记卡上就点不出「重新识别语音」）。
+	".wav": "audio/wav", ".ogg": "audio/ogg", ".opus": "audio/opus",
+	".aac": "audio/aac", ".amr": "audio/amr", ".flac": "audio/flac",
+	".3gp": "audio/3gpp",
 }
 
 func mimeForName(name string) string {

@@ -339,7 +339,7 @@ need_ai() {
 }
 say "  llm ok=$AI_OK"
 
-step "selftest hook (store + web + llm + ocr)"
+step "selftest hook (store + web + llm + ocr + stt)"
 am_start "$ACTIVITY" "--es hook selftest --es arg '{\"mode\":\"all\"}'"
 n=0
 while [ "$n" -lt 90 ]; do
@@ -355,8 +355,12 @@ d = json.loads(line.split("hook selftest: ", 1)[1])
 if os.environ.get("AI_OK") != "1":   # 没配 AI 时允许 llm 那一段是失败的
     d["llm"]["ok"] = True
 assert d["ok"], d
-print("  store ok, web %s in %sms, llm ok in %sms, ocr ready=%s" % (
-    d["web"]["httpCode"], d["web"]["ms"], d["llm"].get("ms", -1), d["ocr"]["ready"]))
+# 语音引擎是 P18 新加的：模型打进 APK、离线可用，所以 ready 必须是 True。
+# 它比 OCR 慢（首次要解包 93MB 模型），90s 内没就绪这条就红，而不是留着以后自己发现。
+assert d["stt"]["ready"], "offline stt engine not ready: %s" % d["stt"]
+print("  store ok, web %s in %sms, llm ok in %sms, ocr ready=%s, stt ready=%s" % (
+    d["web"]["httpCode"], d["web"]["ms"], d["llm"].get("ms", -1), d["ocr"]["ready"],
+    d["stt"]["ready"]))
 ' || fail "selftest did not report ok"
 
 step "share text -> note with a dated todo"
@@ -426,6 +430,47 @@ assert len(n.get("ocrText","")) >= 10, "ocr text too short"
 print("  ocr %d chars in %sms" % (len(n["ocrText"]), n["ocrMs"]))
 ' || fail "local ocr produced nothing useful"
 fi
+
+step "share 语音 → 本机离线识别 → voice 笔记 + 16k WAV 附件"
+# P18 的验收：语音识别全程离线（模型与 .so 打进 APK），所以这条用例不看 AI 是否配置，
+# 也不该因为断网而红。夹具 .test/stt/zh.wav 是 16k/单声道/PCM16 的 2.18s 中文样本，
+# 内容「今天天气怎么样」——识别器开了标点，所以断言只比字面不看问号。
+WAV="$HERE/.test/stt/zh.wav"
+[ -f "$WAV" ] || fail "missing STT fixture $WAV (16k mono PCM16 中文样本)"
+asroot_global "cp '$WAV' '$EXT/zh.wav' && chown '$UID_APP:$UID_APP' '$EXT/zh.wav' && chmod 644 '$EXT/zh.wav'" \
+  || fail "cannot stage the test wav in $EXT"
+V_BEFORE=$(api_state | "$PY" -c 'import json,sys; print(max([n["id"] for n in json.load(sys.stdin)["notes"]] or ["0"]))')
+am_start "$APP_PACKAGE/.ShareActivity" "-a android.intent.action.SEND -t 'audio/*' --eu android.intent.extra.STREAM file://$EXT/zh.wav"
+sleep 2
+wait_note "n['source']=='share-voice' and n.get('stMs',0)>0 and n['id']>'$V_BEFORE'" 180 \
+  || fail "the shared audio never came back from the local stt engine"
+printf '%s' "$LAST" | "$PY" -c '
+import json,sys
+n = json.load(sys.stdin)
+txt = n.get("rawText") or n.get("content") or ""
+assert "今天天气怎么样" in txt, "stt text = %r" % txt[:80]
+auds = [a for a in n.get("attachments") or [] if str(a.get("mime","")).startswith("audio/")]
+assert auds, "voice note has no audio attachment: %r" % (n.get("attachments"),)
+print("  stt %d chars in %sms, audio %s (%s)" % (
+    len(txt), n["stMs"], auds[0]["name"], auds[0]["mime"]))
+' || fail "the voice note looks wrong (text or attachment)"
+asroot_global "rm -f '$EXT/zh.wav'" >/dev/null 2>&1 || true
+
+step "语音文本部分重复在 Go 侧收敛（吗吗 → 吗，真叠词不动）"
+# 识别器偶尔吐重复字（"今天天气好吗" → "今天天气好吗吗"），这是错误重复不是叠词。
+# 这条只验 Go 侧的收敛（/api/voice 的文本通道），不依赖引擎；"妈妈/哈哈" 那类真叠词
+# 由 go/voice_test.go 钉住。
+V_BEFORE=$(api_state | "$PY" -c 'import json,sys; print(max([n["id"] for n in json.load(sys.stdin)["notes"]] or ["0"]))')
+api_post voice '{"text":"今天天气好吗吗"}' | grep -q '"ok":true' || fail "POST /api/voice failed"
+wait_note "n['source']=='manual-voice' and n['id']>'$V_BEFORE'" 60 \
+  || fail "the voice text never got stored"
+printf '%s' "$LAST" | "$PY" -c '
+import json,sys
+n = json.load(sys.stdin)
+txt = n.get("rawText") or n.get("content") or ""
+assert txt.endswith("今天天气好吗"), "dedupe failed: %r" % txt
+print("  text after dedupe: %s" % txt)
+' || fail "voice duplicate-character dedupe regressed"
 
 step "share 现造的随机串图 → 本地 OCR 逐字读出（搜索断言只靠它）"
 # 为什么现造：搜索断言以前只用「取快递」，它同时出现在分享的文本笔记里，「命中来自图片文字」

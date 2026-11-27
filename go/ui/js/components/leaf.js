@@ -39,7 +39,9 @@ export const SrcChip = {
 <span class="chip img" v-else-if="n.source==='clipboard-image'">剪贴板图片</span>
 <span class="chip" v-else-if="n.source==='share-text'">分享文字</span>
 <span class="chip img" v-else-if="n.source==='share-image'">分享图片</span>
+<span class="chip img" v-else-if="n.source==='share-voice'">分享语音</span>
 <span class="chip img" v-else-if="n.source==='manual-image'">图片</span>
+<span class="chip mic" v-else-if="n.source==='manual-voice'">语音</span>
 <span class="chip" v-else>手动</span>`
 }
 

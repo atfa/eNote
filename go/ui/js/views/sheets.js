@@ -104,15 +104,36 @@ export const MissedSheetView = {
 `
 };
 
-/* 记一笔：文本框 + 保存 / 选图。输入框不写 :value（迁移前的字符串里就没有 value 属性，
-   写了会让 innerHTML 序列化多一个属性；见 views/folders.js 第 3 条）。 */
+/* 记一笔：文本框 + 保存 / 选图 / 录音 / 选本地文件。输入框不写 :value（迁移前的字符串
+   里就没有 value 属性，写了会让 innerHTML 序列化多一个属性；见 views/folders.js 第 3 条）。
+
+   四个按钮是「一篇笔记的四种原料」（P18）：文字 / 图片（本机 OCR）/ 语音（本机 ASR）/
+   本地文件。语音不再有自己的页面，它是这个弹层里的一层：点 🎤 展开暂存区，多段识别
+   全进 STT.v.segs（可编辑 / 删 / 回放 / 撤销），点发送一次性合并成一条 kind=voice 的笔记，
+   每段原音频各自挂附件。圆钮的心智见 js/voiceflow.js 文件头。 */
 export const AddSheetView = {
   name: 'AddSheetView',
   components: { Ico },
-  setup(){ const H = inject('H'); return { H,
-    f: computed(() => (H.FORMS && H.FORMS.add) || { text: '' }) } },
+  setup(){
+    const H = inject('H');
+    /* 面板被关掉（返回键 / 点遮罩 / 切页）时把还在录的那一段收掉：AudioRecord 留在
+       后台会被系统杀掉，而且用户看不到还在录。 */
+    if (Vue.onBeforeUnmount) {
+      Vue.onBeforeUnmount(function(){ if (H.STT && H.STT.listening) H.voiceStop() });
+    }
+    return { H,
+      f: computed(() => (H.FORMS && H.FORMS.add) || { text: '' }),
+      /* STT 是 {v:} 容器（js/voiceflow.js），宿主给的是盒子里的 v；没装配上时给一份
+         同形状的空值，面板渲染成空的而不是抛错（闸门⑮ 负责把漏装配报红）。 */
+      st: computed(() => H.STT || { segs: [], hidden: true, listening: false, handsFree: false,
+        secs: 0, partial: '', error: '' }),
+      segs: computed(() => (H.STT && H.STT.segs) || [])
+    }
+  },
   template: `
-<h2>记一笔</h2><label>文字</label><textarea id="addText" :value="f.text" @input="H.formSet('add','text',$event.target.value)" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea><div class="acts"><button class="btn pri" @click="H.addNote()">保存并解析</button><button class="btn" @click="H.pickImage()"><ico n="camera"/>选图片（本机 OCR）</button></div>
+<h2>记一笔</h2><label>文字</label><textarea id="addText" :value="f.text" @input="H.formSet('add','text',$event.target.value)" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea><div class="acts"><button class="btn pri" @click="H.addNote()">保存并解析</button><button class="btn" @click="H.pickImage()"><ico n="camera"/>选图片（本机 OCR）</button><button class="btn" @click="H.voiceOpen()"><ico n="mic"/>录音（离线）</button><button class="btn" @click="H.pickFile()"><ico n="clipfile"/>选本地文件</button></div>
+<div class="vpane" v-if="!st.hidden"><div class="vhead"><span>语音暂存</span><small>{{ segs.length }} 段 · 说完一段再录下一段</small><button class="vclose" @click="H.voiceClose()"><ico n="x"/></button></div><div class="vseg" v-for="(s,i) in segs" :key="i"><textarea class="vtx" :value="s.text" @input="H.voiceEdit(i,$event.target.value)"></textarea><button class="vmini" @click="H.voicePlay(i)"><ico n="play"/></button><button class="vmini" @click="H.voiceDelSeg(i)"><ico n="trash"/></button></div><div class="vpart" v-if="st.partial">{{ st.partial }}</div><div class="verr" v-if="st.error">{{ st.error }}</div><div class="vbar"><button class="vside" :disabled="!segs.length" @click="H.voiceUndo()"><ico n="refresh"/>撤销</button><button class="vrec" :class="{live: st.listening}" @pointerdown.prevent="H.voiceDown()" @pointerup="H.voiceUp()" @pointercancel="H.voiceStop()"><ico :n="st.listening ? 'stop' : 'mic'"/></button><button class="vside pri" :disabled="!segs.length" @click="H.voiceSend()"><ico n="send"/>发送</button></div><div class="vhint">{{ st.listening ? (st.handsFree ? '免手持录音中 ' + st.secs + 's · 点一下圆钮结束本段' : '松手结束本段') : '按住说话；点一下圆钮 = 免手持（静音不自动断句）' }}</div></div>
+<audio id="stt-audio" preload="none"></audio>
 `
 };
 
@@ -145,7 +166,7 @@ export const LogSheetView = {
     }
   },
   template: `
-<h2>运行日志</h2><div class="meta"><span class="chip">OCR {{ r.ocrReady ? 'ready' : '…' }}</span><span class="chip">{{ r.server || '' }}</span></div><pre>{{ r.log }}</pre>
+<h2>运行日志</h2><div class="meta"><span class="chip">OCR {{ r.ocrReady ? 'ready' : '…' }}</span><span class="chip">语音 {{ r.sttReady ? 'ready' : '…' }}</span><span class="chip">{{ r.server || '' }}</span></div><pre>{{ r.log }}</pre>
 `
 };
 

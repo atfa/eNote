@@ -50,6 +50,9 @@ func selfTest(arg string) map[string]any {
 	if mode == "all" || mode == "ocr" {
 		out["ocr"] = map[string]any{"ready": ocrReady, "info": ocrInfo}
 	}
+	if mode == "all" || mode == "stt" {
+		out["stt"] = map[string]any{"ready": sttReady, "info": sttInfo}
+	}
 	return out
 }
 

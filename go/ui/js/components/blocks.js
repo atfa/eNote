@@ -11,7 +11,7 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面
    这行注释里；运行时每个组件仍各自注册自己模板里用到的那些。
    components: { Ico, KvRow, OcrReady, StatsHero, StatsNotesCard, StatsRunCard,
-                 SettingsDataCard, SettingsRunCard, SettingsOcrCard } */
+                 SettingsDataCard, SettingsRunCard, SettingsOcrCard, SettingsSttCard } */
 import { Vue } from '../vue.js'
 const { computed, inject } = Vue
 import { Ico, KvRow, OcrReady } from './leaf.js'
@@ -82,4 +82,16 @@ export const SettingsOcrCard = {
   setup(){ const H = inject('H'); return { H, } },
   template: `
 <kv-row k="引擎状态"><ocr-ready :ready="i.ocrReady"/></kv-row><kv-row k="引擎信息">{{ H.S.ocrInfo || 'vivo 离线 OCR' }}</kv-row><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">图片只在本机识别成文字，只有识别出的文字（和原文）会发给模型。单条笔记可在笔记卡片上「↻ 重新识别图片」。</div>`
+};
+
+/* 设置页「离线语音」卡（P18）：与 OCR 卡同构，只是讲的是录音那条链路。
+   「记一笔」里点 🎤 就地录（多段识别 → 一次发送），系统分享的音频走同一条入队路径；
+   两者都把 16k WAV 留在附件里，所以卡片上能给「↻ 重新识别语音」。 */
+export const SettingsSttCard = {
+  name: 'SettingsSttCard',
+  components: { Ico, KvRow, OcrReady },
+  props: ['i'],
+  setup(){ const H = inject('H'); return { H, } },
+  template: `
+<kv-row k="引擎状态"><span class="m wide" :class="{ok: i.sttReady}"><ico :n="i.sttReady ? 'mic' : 'mic-slash'" cls="s"/>{{ i.sttReady ? '本机语音识别就绪' : '语音引擎启动中…' }}</span></kv-row><kv-row k="引擎信息">{{ i.sttInfo || H.S.sttInfo || 'vivo 离线语音识别' }}</kv-row><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">语音只在本机识别成文字，只有识别出的文字（和原文）会发给模型。录音在「记一笔」里点 🎤，多段说完再一次性发送；音频原件留在附件里，单条笔记可「↻ 重新识别语音」。</div>`
 };

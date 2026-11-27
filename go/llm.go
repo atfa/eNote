@@ -224,7 +224,7 @@ const systemPromptTemplate = `你是笔记与待办整理助手。用户把一�
 3. 只有明确的可执行事项才进 todos；纯信息、纯知识记录时 todos 为 []。
 4. 每个 todo 是一句独立可执行的中文短句，不要写成整段。
 5. content 用原文语言（中文就保持中文）重写要点，条理清晰，保留关键信息、数字、人名、链接，不要编造原文没有的内容。
-6. 内容可能来自图片 OCR，有明显识别错误时按上下文纠正错字。
+6. 内容可能来自图片 OCR 或语音识别。OCR 有明显识别错误时按上下文纠正错字；语音识别常有同音字、歧义字、识别错漏（含句尾语气词重复，如"好吗吗"），请结合上下文整体理解纠正，保持原意，不编造原文没有的内容。
 7. tags 0-3 个，短词。
 8. facts 是这条笔记里可当事实查的硬信息，按六问提取：何时、何人、何地、何事、为何、下一步。
    q 就用这六个词（能归类的用原词，确实需要时可用更具体的两到四字，如「体检机构」「异常指标」「颁发机构」）；
@@ -349,6 +349,10 @@ func userPromptFor(n *Note) string {
 	case n.OCRText != "":
 		b.WriteString("以下内容识别自图片《" + n.ImageName + "》：\n\n")
 		b.WriteString(clip(n.OCRText, 6000))
+	case strings.HasPrefix(n.Source, "manual-voice") || strings.HasPrefix(n.Source, "share-voice"):
+		// P16：语音识别文本。告诉模型可能含同音字/错漏，让它结合上下文纠错。
+		b.WriteString("以下文字识别自语音（可能含同音字、错漏，请结合上下文纠正）：\n\n")
+		b.WriteString(clip(n.RawText, 6000))
 	case n.Source == "share-text":
 		if n.ImageName != "" {
 			b.WriteString("标题：" + n.ImageName + "\n\n")

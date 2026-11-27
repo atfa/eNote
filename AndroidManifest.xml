@@ -31,6 +31,8 @@
          REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 只用于弹标准的电池优化豁免对话框。 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- P16 语音：离线语音识别（本地引擎，不联网）。录音是运行时权限，首次点录音时请求。 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:name=".EnoteApp"
@@ -97,6 +99,18 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:mimeType="image/*" />
+            </intent-filter>
+            <!-- P16 语音：系统其他 App 分享音频进来，本地识别成文字 + 原音频存附件 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+            <!-- P18：一次分享多段音频 = 一条笔记挂多个附件（与多张图同理） -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="audio/*" />
             </intent-filter>
         </activity>
         <!-- 到期闹钟的落点：只发通知，不启动界面（后台唤起 Activity 会被系统拦） -->        <receiver
