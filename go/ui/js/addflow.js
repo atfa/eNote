@@ -9,10 +9,19 @@ import { Vue } from './vue.js'
 import { sheetVue, closeSheet, sheetVersion } from './sheetflow.js'
 import { shell } from './shell.js'
 import { refresh, syncBox, SHEETARGB } from './app.js'
-import { api, toast } from './netflow.js'
+import { api, apiTimeout, toast } from './netflow.js'
 import { STT, voiceStop, voiceClear } from './voiceflow.js'
 /* 记一笔的手输文字与语音草稿一起保留到提交成功。添加待办每次打开使用默认值。 */
 var FORMS = Vue.reactive({ v: { add: null, todo: null } });
+const DRAFTMEDIA = Vue.reactive({ files: [], picking: false });
+let mediaRequest = '';
+let pendingDraft = null;
+
+function draftID(){
+  const random = crypto.getRandomValues(new Uint8Array(16));
+  return 'draft-' + Array.from(random, n => n.toString(16).padStart(2, '0')).join('');
+}
+
 function formSet(name, k, v){ var f = FORMS.v[name]; if(f) f[k] = v }
 function addSheet(){
   if (!FORMS.v.add) FORMS.v.add = { text: '' };
@@ -20,49 +29,89 @@ function addSheet(){
      （见 css/views/voice.css 的 .panel[data-kind="add"]）。 */
   return sheetVue('add', false, 'add');
 }
-/* 「解析并记录」先等待当前录音定稿。整理结果占用第一个语音段的文字位，
-   所有段仍各自携带音频附件。手输文字单独随请求提交。 */
+function draftHasContent(){
+  return Boolean((FORMS.v.add?.text || '').trim() || STT.v.segs.length || DRAFTMEDIA.files.length);
+}
+
+/* 整理结果占用首段语音的文字位。图片、附件、语音原件和手输文字一次入队。 */
 async function addNote(){
-  if (STT.v.busy || STT.v.organizing) return;
+  if (STT.v.busy || STT.v.organizing || DRAFTMEDIA.picking) return;
   if (STT.v.organizedStale) { toast('语音已变化，请重新整理或使用原文'); return }
   if (STT.v.organized !== null && !STT.v.organized.trim()) {
     toast('整理后的文字为空，请编辑或使用原文'); return;
   }
-  var t = String((FORMS.v.add || {}).text || '').trim();
-  var openedSheet = sheetVersion();
+  const openedSheet = sheetVersion();
   STT.v.busy = true;
-  if (STT.v.listening || STT.v.settling) await voiceStop();
-  if (STT.v.organizedStale) {
-    STT.v.busy = false;
-    toast('语音已变化，请重新整理或使用原文');
-    return;
-  }
-  var segs = STT.v.segs.slice();
-  if (!t && !segs.length) { STT.v.busy = false; toast('写点内容吧'); return }
-  var organized = STT.v.organized;
-  var r;
   try {
-    r = segs.length
-      ? await api('/api/voice', { text: t, audios: segs.map(function(s, i){
-          var text = organized === null ? s.text : (i === 0 ? organized : '');
-          return { text: text || '', path: s.path || '', name: s.name || '' } }) })
-      : await api('/api/add', { text: t });
-  } catch (e) { r = { ok: false, error: '发送失败' } }
-  if (!r || !r.ok) toast((r && r.error) || '失败');
-  else {
+    if (STT.v.listening || STT.v.settling) await voiceStop();
+    if (STT.v.organizedStale) { toast('语音已变化，请重新整理或使用原文'); return }
+    if (!draftHasContent()) { toast('按住说话'); return }
+    const organized = STT.v.organized;
+    const body = {
+      text: (FORMS.v.add?.text || '').trim(),
+      audios: STT.v.segs.map((s, i) => ({
+        text: organized === null ? s.text : (i === 0 ? organized : ''),
+        path: s.path || '', name: s.name || ''
+      })),
+      files: DRAFTMEDIA.files.slice()
+    };
+    const signature = JSON.stringify(body);
+    if (pendingDraft?.signature !== signature) pendingDraft = { signature, id: draftID() };
+    const result = await apiTimeout('/api/draft', { id: pendingDraft.id, ...body });
+    if (!result?.ok) { toast(result?.error || '发送失败，请重试'); return }
+    pendingDraft = null;
     voiceClear();
     FORMS.v.add.text = '';
+    DRAFTMEDIA.files = [];
     if (shell.sheet.on && sheetVersion() === openedSheet) closeSheet();
-    toast(segs.length ? '已发送，AI 解析中…' : '已加入队列…');
+    toast('已记录');
+    refresh();
+  } catch (e) {
+    toast('未收到发送结果，可以重试');
+  } finally {
+    STT.v.busy = false;
   }
-  STT.v.busy = false;
-  setTimeout(refresh,500); setTimeout(refresh,3000); setTimeout(refresh,9000);
 }
-function pickImage(){
-  if(!window.Android){toast('选图只在 app 内可用');return;}
-  Android.pickImage(); closeSheet(); toast('已提交，正在识别图片…');
-  setTimeout(refresh,1500); setTimeout(refresh,5000); setTimeout(refresh,12000);
+
+function pickDraftImage(){ pickDraftMedia(true) }
+function pickDraftFile(){ pickDraftMedia(false) }
+function pickDraftMedia(imageOnly){
+  if (DRAFTMEDIA.picking || STT.v.busy || STT.v.listening) return;
+  if (!window.Android?.pickDraftMedia) { toast('请在 Android 应用里选择附件'); return }
+  mediaRequest = draftID();
+  DRAFTMEDIA.picking = true;
+  try {
+    window.Android.pickDraftMedia(mediaRequest, imageOnly);
+  } catch (e) {
+    mediaRequest = '';
+    DRAFTMEDIA.picking = false;
+    toast('无法打开文件选择器');
+  }
 }
+
+function discardDraftFile(path){
+  if (path) api('/api/draft/discard', { path }).catch(() => {});
+}
+
+function removeDraftFile(path){
+  if (STT.v.busy) return;
+  const i = DRAFTMEDIA.files.findIndex(file => file.path === path);
+  if (i === -1) return;
+  DRAFTMEDIA.files.splice(i, 1);
+  discardDraftFile(path);
+}
+
+window.onDraftMedia = (request, result) => {
+  if (request !== mediaRequest) {
+    if (!DRAFTMEDIA.files.some(file => file.path === result?.file?.path))
+      discardDraftFile(result?.file?.path);
+    return;
+  }
+  mediaRequest = '';
+  DRAFTMEDIA.picking = false;
+  if (result?.file) DRAFTMEDIA.files.push(result.file);
+  else if (!result?.cancelled) toast(result?.error || '无法读取所选文件');
+};
 /* 给哪条笔记加待办：弹层组件不接 props（mountSheet 只挂不传），所以存进模块变量，
    组件挂载时读一次（见 views/sheets.js 的 AddTodoSheetView）。 */
 function addTodoSheet(nid){
@@ -80,4 +129,5 @@ async function addTodo(nid){
 /* app.js 把 addSheet 挂在 fab（FABS 的 fn）、把 addTodoSheet / formSet / FORMS / sheetArg
    挂进 HOST（sheet:add / sheet:addtodo / view:notes 的「待办」按钮）；SHEETARGB 这个盒子
    留在 app.js 的盒子区（声明顺序是硬要求），那边 HOST 的 getter 读 SHEETARGB.v。 */
-export { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo }
+export { FORMS, DRAFTMEDIA, formSet, addSheet, addNote, draftHasContent, pickDraftImage,
+  pickDraftFile, removeDraftFile, addTodoSheet, addTodo }

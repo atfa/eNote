@@ -11,9 +11,9 @@
    闸门⑮ 每个文件只取第一处 components 注册表当整份文件的名单，所以全量名单写在下面
    这行注释里；运行时每个组件仍各自注册自己模板里用到的那些。
    components: { Ico, KvRow, OcrReady, StatsHero, StatsNotesCard, StatsRunCard,
-                 SettingsDataCard, SettingsRunCard, SettingsOcrCard, SettingsSttCard } */
+                 SettingsOcrCard, SettingsSttCard } */
 import { Vue } from '../vue.js'
-const { computed, inject } = Vue
+const { inject } = Vue
 import { Ico, KvRow, OcrReady } from './leaf.js'
 
 /* 我的页顶部整块：logo + 四格统计（.hero 这个壳也在组件里，消费方只写一个标签）。
@@ -21,10 +21,10 @@ import { Ico, KvRow, OcrReady } from './leaf.js'
 export const StatsHero = {
   name: 'StatsHero',
   components: { Ico },
-  props: ['i', 'st'],
+  props: ['st'],
   setup(){ const H = inject('H'); return { H, } },
   template: `
-<div class="hero"><div class="hrow"><div class="hlogo"><img src="/icon.png" alt=""></div><div><h1>懒得记</h1><div class="hver">{{ i.go || '' }} · 本机离线 OCR · BYOK</div></div></div>
+<div class="hero"><div class="hrow"><div class="hlogo"><img src="/icon.png" alt=""></div><div><h1>懒得记</h1></div></div>
 <div class="hstats"><template v-if="st"><span><ico n="note"/>{{ st.notes.total }} 条笔记</span><span><ico n="check-square"/>{{ st.todos.total }} 条待办</span><span><ico n="clip"/>{{ st.attach.count || 0 }} 个附件</span><span><ico n="db"/>{{ H.fmtSize(st.bytes) }}</span></template><span v-else>正在统计本地数据…</span></div></div>`
 };
 
@@ -37,41 +37,22 @@ export const StatsNotesCard = {
 <h2>笔记状态</h2><kv-row k="AI 解析完成" :v="st.notes.done"/><kv-row k="仅存原文" :v="st.notes.raw"/><kv-row k="解析失败" :v="st.notes.error"/><kv-row k="队列中" :v="(st.notes.queued||0)+(st.notes.parsing||0)"/><kv-row k="附件缺失文件" :v="st.attach.missing||0"/>`
 };
 
-/* 我的页最底部的运行信息卡内容。设置页「运行状态」卡前三行相同、第四行是解析队列，
-   所以那三行由 SettingsRunCard 各自写一遍（原来那是 statsRunRowsHTML 的用途）。 */
+/* 我的页的运行状态与技术信息。 */
 export const StatsRunCard = {
   name: 'StatsRunCard',
   components: { KvRow, OcrReady },
   props: ['i'],
   template: `
-<kv-row k="Go 服务">{{ i.server || '' }}</kv-row><kv-row k="Go / 运行时长">{{ (i.go || '') + ' / ' + (i.uptimeS || 0) + 's' }}</kv-row><kv-row k="时区">{{ i.tz || '' }}</kv-row><kv-row k="OCR 引擎"><ocr-ready :ready="i.ocrReady"/></kv-row>`
-};
-
-/* 设置页「数据」卡：三行 kv（值都是「3 / 2」这种三段拼接）+ 三个按钮 + 一段说明。
-   按钮原来是字符串里的 onclick="exportJSON()"，现在走 @click + 导出表。 */
-export const SettingsDataCard = {
-  name: 'SettingsDataCard',
-  components: { KvRow },
-  setup(){
-    const H = inject('H');
-    return {
-      H,
-      st: computed(() => H.ST),
-      i: computed(() => ({ ...H.S.info }))
-    }
-  },
-  template: `
-<kv-row k="笔记 / 待办">{{ (st ? st.notes.total : i.notes || 0) }} / {{ (st ? st.todos.total : i.todos || 0) }}</kv-row><kv-row k="未完成 / 已逾期">{{ (st ? st.todos.open : i.open || 0) }} / <b style="color:var(--bad)">{{ (st ? st.todos.overdue : i.overdue || 0) }}</b></kv-row><kv-row k="附件 / 占用">{{ (st ? (st.attach.count || 0) : 0) }} 个 / {{ H.fmtSize(st ? st.bytes : 0) }}</kv-row><div class="acts"><button class="btn gh" @click="H.exportJSON()">导出 JSON</button><button class="btn gh" @click="H.importJSON()">导入 JSON</button><button class="btn dg" @click="H.clearAllNotes()">清空全部</button></div><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">导出＝全量备份（含待办与附件元数据）；导入按笔记 ID 合并，已存在的笔记不覆盖；清空只删笔记与附件，设置与 API Key 保留。</div>`
-};
-
-/* 设置页「运行状态」卡：与我的页那张共用前三行的算法，第四行是解析队列。 */
-export const SettingsRunCard = {
-  name: 'SettingsRunCard',
-  components: { KvRow },
-  props: ['i'],
-  setup(){ const H = inject('H'); return { H, } },
-  template: `
-<kv-row k="Go 服务">{{ i.server || '' }}</kv-row><kv-row k="Go / 运行时长">{{ (i.go || '') + ' / ' + (i.uptimeS || 0) + 's' }}</kv-row><kv-row k="时区">{{ i.tz || '' }}</kv-row><kv-row k="解析队列">{{ (i.queue || 0) }} 条待处理</kv-row><div class="acts"><button class="btn gh" @click="H.showLog()">查看日志</button><button class="btn gh" @click="H.showDebug()">AI 调用记录</button></div>`
+<div class="mine-status">
+  <kv-row k="本机 OCR"><ocr-ready :ready="i.ocrReady"/></kv-row>
+  <details>
+    <summary>运行详情</summary>
+    <kv-row k="Go 服务" :v="i.server"/>
+    <kv-row k="Go / 运行时长">{{ (i.go || '') + ' / ' + (i.uptimeS || 0) + 's' }}</kv-row>
+    <kv-row k="时区" :v="i.tz"/>
+    <kv-row k="解析队列">{{ (i.queue || 0) + ' 条待处理' }}</kv-row>
+  </details>
+</div>`
 };
 
 /* 设置页「本地 OCR」卡：引擎状态 + 引擎信息 + 一段说明。 */

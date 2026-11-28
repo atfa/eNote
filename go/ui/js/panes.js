@@ -20,6 +20,7 @@ import FoldersView from './views/folders.js'
 import ClipSheetView from './views/clip.js'
 import StatsView from './views/stats.js'
 import SettingsSheetView from './views/settings.js'
+import { BackupSheetView } from './views/backup.js'
 import { SortSheetView, MissedSheetView, AddSheetView, AddTodoSheetView,
          LogSheetView, DebugSheetView } from './views/sheets.js'
 
@@ -55,7 +56,8 @@ var VUE_VIEWS = { notes: NotesView, todos: TodosView, files: FilesView, mine: St
 var VUE_SHEETS = { shots: ShotsView, folders: FoldersView, clip: ClipSheetView,
   settings: SettingsSheetView, sort: SortSheetView, missed: MissedSheetView, add: AddSheetView,
   attachmentPreview: AttachmentPreviewView, noteAttachments: NoteAttachmentsView,
-  noteDescription: NoteDescriptionView, addtodo: AddTodoSheetView, log: LogSheetView, debug: DebugSheetView };
+  noteDescription: NoteDescriptionView, addtodo: AddTodoSheetView, log: LogSheetView,
+  debug: DebugSheetView, backup: BackupSheetView };
 
 /* app.js 把 VUE_SHEETS 原样再导出（js/sheetflow.js 从 './app.js' 拿它），VUE_VIEWS 由
    app.js 挂进 window.__enote.vue；paneBuilt / paneDirty / showPane / tabScroll 是

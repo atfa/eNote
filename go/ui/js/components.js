@@ -47,7 +47,6 @@ export const StripBar = {
   <div class="m"><b>{{ i.open || 0 }}</b><span><ico n="check-square" cls="s"/>待办</span></div>
   <div class="m" :class="{hot: i.overdue}"><b>{{ i.overdue || 0 }}</b><span><ico n="alert" cls="s"/>逾期</span></div>
   <div class="m"><b>{{ i.notes || 0 }}</b><span><ico n="note" cls="s"/>笔记</span></div>
-  <div class="m wide" :class="{ok: i.ocrReady}"><ico :n="i.ocrReady ? 'mic' : 'mic-slash'" cls="s"/>{{ i.ocrReady ? '本机 OCR 就绪' : 'OCR 引擎启动中…' }}</div>
 </div>`
 }
 

@@ -92,6 +92,8 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/note", handleNote)
 	m.HandleFunc("POST /api/note/description", handleNoteDescription)
 	m.HandleFunc("/api/add", requireInferenceSession(handleAdd))
+	m.HandleFunc("POST /api/draft", requireInferenceSession(handleDraft))
+	m.HandleFunc("POST /api/draft/discard", requireOpenAISession(handleDiscardDraftFile))
 	m.HandleFunc("/api/voice", requireInferenceSession(handleVoice))
 	m.HandleFunc("POST /api/voice/organize", requireInferenceSession(handleVoiceOrganize))
 	m.HandleFunc("/api/reparse", requireInferenceSession(handleReparse))
@@ -137,11 +139,7 @@ func apiMux() *http.ServeMux {
 			"ocrInfo": ocrInfo, "sttReady": sttReady, "sttInfo": sttInfo, "server": srvURL,
 			"app": appInfo()})
 	})
-	m.HandleFunc("/api/export", func(w http.ResponseWriter, r *http.Request) {
-		b, _ := json.MarshalIndent(store.snapshot(), "", "  ")
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Write(b)
-	})
+	m.HandleFunc("/api/export", handleExport)
 	m.HandleFunc("/icon.png", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Cache-Control", "no-cache")

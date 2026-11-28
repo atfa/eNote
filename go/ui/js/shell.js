@@ -44,9 +44,8 @@ export const shell = reactive({
   q: '',
   has: false,
   placeholder: '搜索笔记与待办',
-  /* fab：icon 是图标名（'plus' / 'clip'），SVG 由 <ico> 组件画（步骤 16d 之前这里存的是
-     ic('plus','l') 那串字符串，靠 v-html 直插）。初值 = 笔记页的「记一笔」。 */
-  fab: { icon: 'plus', label: '记一笔', hidden: false },
+  /* 各页签的浮动操作图标及无障碍名称。 */
+  fab: { icon: 'mic', label: '记一笔' },
   /* 页签指示条：moveInd() 量完活动页签的几何写进来（DOM 测量只能读真实布局） */
   ind: { w: 0, x: 0 },
   sheet: {
@@ -92,19 +91,30 @@ export const TopBar = {
 `
 }
 
-/* 底栏：四个页签 + 中间的大按钮（fab）+ 顶部指示条。
-   元素顺序与迁移前逐字相同（notes、todos、fab、files、mine）：fab 夹在中间是布局的一部分。 */
+/* 底栏只包含四个页签和指示条。 */
 export const TabBar = {
   name: 'TabBar',
-  components: { Ico },
   setup(){ const H = inject('H'); return { H, s: shell } },
   template: `
 <span class="ind" id="ind" :style="{width: s.ind.w+'px', transform: 'translateX(' + s.ind.x + 'px)'}"></span>
 <button class="tab" :class="{on: s.tab==='notes'}" data-tab="notes" @click="H.tabPick('notes')"><span class="ti"><svg class="ic"><use href="#i-note"/></svg></span><em>笔记</em></button>
 <button class="tab" :class="{on: s.tab==='todos'}" data-tab="todos" @click="H.tabPick('todos')"><span class="ti"><svg class="ic"><use href="#i-check-square"/></svg></span><em>待办</em></button>
-<button class="fab" id="fab" :class="{hide: s.fab.hidden}" @click="H.fabAct()"><span class="fico"><ico :n="s.fab.icon" cls="l"/></span><span class="flabel">{{ s.fab.label }}</span></button>
 <button class="tab" :class="{on: s.tab==='files'}" data-tab="files" @click="H.tabPick('files')"><span class="ti"><svg class="ic"><use href="#i-clip"/></svg></span><em>附件</em></button>
 <button class="tab" :class="{on: s.tab==='mine'}" data-tab="mine" @click="H.tabPick('mine')"><span class="ti"><svg class="ic"><use href="#i-user"/></svg></span><em>我的</em></button>
+`
+}
+
+export const FloatingAction = {
+  name: 'FloatingAction',
+  components: { Ico },
+  setup(){ const H = inject('H'); return { H, s: shell } },
+  template: `
+<button type="button" class="fab vrec" id="fab" :class="{hide: s.sheet.mounted}"
+        :aria-label="s.fab.label" :aria-hidden="s.sheet.mounted ? 'true' : null"
+        :tabindex="s.sheet.mounted ? -1 : 0"
+        @pointerdown="H.fabHold($event)" @click="H.fabAct($event)" @contextmenu.prevent>
+  <ico :n="s.fab.icon"/>
+</button>
 `
 }
 
@@ -223,12 +233,13 @@ export const ToastHost = {
 `
 }
 
-/* 五个外壳应用。必须在首次 render() 之前调用：app.js 的 __enote.dom 与所有
+/* 外壳应用必须在首次 render() 之前挂载：app.js 的 __enote.dom 与所有
    toast/dialog/sheet 调用点都假定这些节点已经存在。 */
 export function mountShell(){
   return {
     topbar: mount('topbar', TopBar),
     tabbar: mount('tabbar', TabBar),
+    fabRoot: mount('fabRoot', FloatingAction),
     sheet: mount('sheetRoot', SheetHost),
     dlg: mount('dlgRoot', DialogHost),
     toast: mount('toastRoot', ToastHost)

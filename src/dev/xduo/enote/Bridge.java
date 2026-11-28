@@ -97,6 +97,12 @@ public class Bridge {
         SttHelper.get(EnoteApp.app).stopSession(null);
     }
 
+    /** Discard the current recording and its transcript. */
+    @JavascriptInterface
+    public void cancelVoice() {
+        SttHelper.get(EnoteApp.app).cancelSession();
+    }
+
     static volatile Context appCtx;  // set in init(), for the clipboard hint (no Activity needed)
 
     static synchronized void init(Context c) {
@@ -406,6 +412,16 @@ public class Bridge {
     }
 
     @JavascriptInterface
+    public void pickDraftMedia(final String request, final boolean imageOnly) {
+        final MainActivity a = current.get();
+        if (a != null) {
+            a.runOnUiThread(new Runnable() {
+                @Override public void run() { a.pickDraftMedia(request, imageOnly); }
+            });
+        }
+    }
+
+    @JavascriptInterface
     public void pickNoteAttachments(String noteId) {
         MainActivity a = current.get();
         if (a != null) {
@@ -442,12 +458,18 @@ public class Bridge {
         }
     }
 
-    /** window.Android.pickJSON(): pick a JSON export and POST it to /api/import. */
     @JavascriptInterface
-    public void pickJSON() {
+    public void backupRequest(String requestId, String action, String name) {
         MainActivity a = current.get();
-        Log.i(TAG, "js pickJSON");
-        if (a != null) a.pickJSON();
+        if (a != null) BackupFiles.request(a, requestId, action, name);
+    }
+
+    @JavascriptInterface
+    public void backupAccess() {
+        MainActivity a = current.get();
+        if (a != null) a.runOnUiThread(new Runnable() {
+            @Override public void run() { BackupFiles.requestAccess(a); }
+        });
     }
 
     /** window.Android.reocr(id): re-run the local OCR on a note's stored image. */

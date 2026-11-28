@@ -45,13 +45,16 @@ import org.json.JSONObject;
 public class MainActivity extends Activity {
     static final int REQ_IMG = 7;
     static final int REQ_FILE = 8;
-    static final int REQ_IMPORT = 9;
+    static final int REQ_BACKUP_STORAGE = 9;
     static final int REQ_NOTIFY = 10;
     static final int REQ_SHOTS = 11;   // P11 截图捕获：读媒体库图片
     static final int REQ_MIC = 12;     // 语音：录音权限
     static final int REQ_NOTE_ATTACHMENTS = 13;
+    static final int REQ_DRAFT_IMAGE = 14;
+    static final int REQ_DRAFT_FILE = 15;
     private static final String NOTE_ATTACHMENT_TARGET = "noteAttachmentTarget";
     private String noteAttachmentTarget;
+    private String draftMediaRequest;
     /** A note/todo to open once the page is ready (notification tap). */
     static String pendingOpenNote;
     static String pendingOpenTodo;
@@ -411,11 +414,8 @@ public class MainActivity extends Activity {
 
     /** Called from JS: window.Android.pickImage(). */
     public void pickImage() {
-        Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-        i.setType("image/*");
-        i.addCategory(Intent.CATEGORY_OPENABLE);
         try {
-            startActivityForResult(Intent.createChooser(i, "选择图片"), REQ_IMG);
+            startActivityForResult(Intent.createChooser(imagePicker(), "选择图片"), REQ_IMG);
         } catch (Throwable t) {
             note("pickImage failed: " + t);
         }
@@ -423,6 +423,21 @@ public class MainActivity extends Activity {
 
     /** Called from JS: window.Android.pickFile() - any document, not only images. */
     public void pickFile() {
+        try {
+            startActivityForResult(Intent.createChooser(filePicker(), "添加附件"), REQ_FILE);
+        } catch (Throwable t) {
+            note("pickFile failed: " + t);
+        }
+    }
+
+    private Intent imagePicker() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("image/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        return intent;
+    }
+
+    private Intent filePicker() {
         Intent i = openableDocuments();
         i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
                 "image/*", "text/*", "application/pdf",
@@ -433,10 +448,24 @@ public class MainActivity extends Activity {
                 "application/vnd.ms-powerpoint",
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 "application/zip", "audio/*", "video/*"});
+        return i;
+    }
+
+    void pickDraftMedia(String request, boolean imageOnly) {
+        if (draftMediaRequest != null) {
+            deliverDraftMedia(request, "{\"error\":\"请先完成当前文件选择\"}");
+            return;
+        }
+        draftMediaRequest = request;
         try {
-            startActivityForResult(Intent.createChooser(i, "添加附件"), REQ_FILE);
-        } catch (Throwable t) {
-            note("pickFile failed: " + t);
+            Intent intent = imageOnly ? imagePicker() : filePicker();
+            String title = imageOnly ? "选择图片" : "选择附件";
+            startActivityForResult(Intent.createChooser(intent, title),
+                    imageOnly ? REQ_DRAFT_IMAGE : REQ_DRAFT_FILE);
+        } catch (RuntimeException e) {
+            draftMediaRequest = null;
+            note("draft media picker: " + e);
+            deliverDraftMedia(request, "{\"error\":\"无法打开文件选择器\"}");
         }
     }
 
@@ -463,6 +492,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_BACKUP_STORAGE) {
+            runJs("window.dispatchEvent(new Event('enoteBackupAccessChanged'))");
+            return;
+        }
         if (req == REQ_NOTE_ATTACHMENTS) {
             String target = noteAttachmentTarget;
             noteAttachmentTarget = null;
@@ -472,9 +505,17 @@ public class MainActivity extends Activity {
             }
             return;
         }
+        if (req == REQ_DRAFT_IMAGE || req == REQ_DRAFT_FILE) {
+            String request = draftMediaRequest;
+            draftMediaRequest = null;
+            if (request == null) return;
+            Uri uri = res == RESULT_OK && data != null ? data.getData() : null;
+            if (uri == null) deliverDraftMedia(request, "{\"cancelled\":true}");
+            else stageDraftMedia(request, uri, req == REQ_DRAFT_IMAGE);
+            return;
+        }
         if (res != RESULT_OK || data == null || data.getData() == null) return;
         if (req == REQ_FILE) { pickDocument(data.getData()); return; }
-        if (req == REQ_IMPORT) { importJSON(data.getData()); return; }
         if (req != REQ_IMG) return;
         final Uri uri = data.getData();
         new Thread(new Runnable() {
@@ -490,6 +531,47 @@ public class MainActivity extends Activity {
                 }
             }
         }).start();
+    }
+
+    private void stageDraftMedia(final String request, final Uri uri, final boolean imageOnly) {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                File copy = null;
+                try {
+                    String name = displayName(uri, imageOnly ? "图片" : "附件");
+                    String mime = getTypeFor(uri);
+                    copy = copyContentIntoInbox(uri, "draft-", ".file");
+                    JSONObject media = new JSONObject().put("path", copy.getAbsolutePath())
+                            .put("name", name).put("mime", mime);
+                    if (imageOnly || mime.startsWith("image/")) {
+                        OcrHelper.Out result = OcrHelper.get(MainActivity.this)
+                                .recognizeFile(copy.getAbsolutePath());
+                        if (result.text != null) media.put("ocr", clipDraftOCR(result.text));
+                        if (result.error != null) media.put("ocrError", result.error);
+                    }
+                    deliverDraftMedia(request, new JSONObject().put("file", media).toString());
+                } catch (Exception e) {
+                    if (copy != null && !copy.delete()) note("could not clean up draft media");
+                    Log.w(Bridge.TAG, "Could not stage draft media", e);
+                    deliverDraftMedia(request, "{\"error\":\"无法读取所选文件\"}");
+                }
+            }
+        }).start();
+    }
+
+    private static String clipDraftOCR(String text) {
+        int limit = 12000;
+        if (text.length() <= limit) return text;
+        if (Character.isHighSurrogate(text.charAt(limit - 1))) limit--;
+        return text.substring(0, limit);
+    }
+
+    private void deliverDraftMedia(String request, String result) {
+        MainActivity activity = Bridge.current.get();
+        if (activity != null) {
+            activity.runJs("window.onDraftMedia && window.onDraftMedia("
+                    + JSONObject.quote(request) + "," + result + ")");
+        }
     }
 
     private void appendPickedAttachments(String noteId, Intent data) {
@@ -644,7 +726,6 @@ public class MainActivity extends Activity {
         return fallback;
     }
 
-    /** Called from JS: window.Android.pickJSON() - restore a JSON export (设置 → 数据). */
     /** Runs JS on the UI thread; the page owns all state, Java only nudges it. */
     void runJs(final String js) {
         runOnUiThread(new Runnable() {
@@ -726,6 +807,10 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
         super.onRequestPermissionsResult(req, perms, res);
+        if (req == REQ_BACKUP_STORAGE) {
+            runJs("window.dispatchEvent(new Event('enoteBackupAccessChanged'))");
+            return;
+        }
         if (req == REQ_NOTIFY) {
             boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
             note("notify: 用户选择 granted=" + ok);
@@ -836,19 +921,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    public void pickJSON() {
-        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        i.setType("*/*");
-        i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.putExtra(Intent.EXTRA_MIME_TYPES,
-                new String[]{"application/json", "text/plain", "application/octet-stream"});
-        try {
-            startActivityForResult(Intent.createChooser(i, "选择导出的 JSON"), REQ_IMPORT);
-        } catch (Throwable t) {
-            note("pickJSON failed: " + t);
-        }
-    }
-
     /**
      * Reads a JSON export and POSTs it to the Go server (/api/import). No JNI symbol is
      * needed: the Go HTTP API is loopback, so plain HttpURLConnection is the cheapest seam.
@@ -867,7 +939,7 @@ public class MainActivity extends Activity {
                 toast(msg);
                 runOnUiThread(new Runnable() {
                     public void run() {
-                        if (web != null) web.evaluateJavascript("ST=null;refresh();statsNow();", null);
+                        if (web != null) web.evaluateJavascript("window.enoteRefreshAfterRestore?.()", null);
                     }
                 });
             }
@@ -939,7 +1011,11 @@ public class MainActivity extends Activity {
     }
 
     private File copyContentIntoInbox(Uri uri, String suffix) throws Exception {
-        File out = File.createTempFile("picked-", suffix, OcrHelper.inboxDir(this));
+        return copyContentIntoInbox(uri, "picked-", suffix);
+    }
+
+    private File copyContentIntoInbox(Uri uri, String prefix, String suffix) throws Exception {
+        File out = File.createTempFile(prefix, suffix, OcrHelper.inboxDir(this));
         try {
             try (InputStream input = getContentResolver().openInputStream(uri);
                  FileOutputStream output = new FileOutputStream(out)) {

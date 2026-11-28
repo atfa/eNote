@@ -84,13 +84,11 @@ function strip(){
     + '<div class="m' + (i.overdue ? ' hot' : '') + '"><b>' + (i.overdue || 0) + '</b><span>'
       + ic('alert', 's') + '逾期</span></div>'
     + '<div class="m"><b>' + (i.notes || 0) + '</b><span>' + ic('note', 's') + '笔记</span></div>'
-    + '<div class="m wide' + (i.ocrReady ? ' ok' : '') + '">' + ic(i.ocrReady ? 'mic' : 'mic-slash', 's')
-      + (i.ocrReady ? '本机 OCR 就绪' : 'OCR 引擎启动中…') + '</div>'
     + '</div>';
 }
 function paintStatus(){
   var i = S.info;
-  shell.dot = (i.server && i.ocrReady) ? '' : 'bad';
+  shell.dot = i.server ? '' : 'bad';
 }
 /* 首屏记号的两侧：markReady() 在本模块里打记号，app.js 模块末尾的 __ready Promise 存 resolve。
    app.js 写不了本模块的 var（ESM 导入是只读活绑定），所以留一对显式入口。 */

@@ -40,15 +40,19 @@ function settingsRefresh(){
   sheetPaint();
   requestAnimationFrame(function(){ if(el) el.scrollTop = top });
 }
-/* 导出 JSON：遗留写法是把赋值直接写进 handler（我的页那一行是单引号套双引号属性的
-   字符串，设置页是内联属性），抽成函数后两条路径共用一份，handler 字符串里也只剩
-   一个名字。 */
-function exportJSON(){ location.href = '/api/export' }
-function importJSON(){
-  if(!window.Android){ toast('导入只在 app 内可用'); return }
-  toast('选择之前导出的 JSON 文件…');
-  Android.pickJSON();
+function backupSheet(mode, title){
+  const back = shell.sheet.on && shell.sheet.kind === 'settings' ? settingsSheet : null;
+  return pageSheetVue('backup', title, mode, back);
 }
+function exportJSON(){ return backupSheet('backup-export', '导出 JSON') }
+function importJSON(){ return backupSheet('backup-import', '导入 JSON') }
+
+async function refreshAfterRestore(){
+  ST.v = null;
+  await refresh();
+  statsNow();
+}
+window.enoteRefreshAfterRestore = refreshAfterRestore;
 function clearAllNotes(){
   var n = ST.v ? ST.v.notes.total : (S.info.notes||0);
   askDel('清空全部 '+n+' 条笔记？附件文件一并删除，设置与 API Key 保留。', function(){
@@ -88,4 +92,4 @@ async function saveSettings(){
 /* 步骤 32：app.js 把下面这些名字挂进 HOST / HOST_KEYS / window.__enoteActions，
    views/settings.js 与 views/sheets.js 通过 H.xxx 读它们。 */
 export { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
-  clearAllNotes, sortSheet, setPref, resetPrefs, saveSettings }
+  clearAllNotes, sortSheet, setPref, resetPrefs, saveSettings, refreshAfterRestore }

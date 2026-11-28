@@ -15,7 +15,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
 /* 关掉 Chromium 的“文字自动放大”：它按整块文字宽度放大字号，
    结果「重要」这种两字标签比旁边的时间标签大一圈，行高全乱 */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
-body{padding-bottom:calc(var(--clear-bottom) + env(safe-area-inset-bottom));overscroll-behavior:none}
+body{padding-bottom:env(safe-area-inset-bottom);overscroll-behavior:none}
 /* 页面内容左右留白：卡片不贴屏幕边（顶栏/底栏是通栏条，不归它们管）*/
 main#view{padding:0 var(--s3) var(--clear-bottom)}
 a{color:var(--acc)}

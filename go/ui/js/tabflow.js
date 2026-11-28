@@ -11,6 +11,7 @@ import { shell } from './shell.js'
 import { P } from './prefsflow.js'
 import { pickFile } from './filesflow.js'
 import { addSheet } from './addflow.js'
+import { voiceClick, voiceHold } from './voiceflow.js'
 import { statsNow } from './statsflow.js'
 import { searchNow } from './searchflow.js'
 import { tab, setTabTo, setQ, ST, render, showPane, paneBuilt, paneDirty,
@@ -28,7 +29,7 @@ function setTab(reset){
   document.body.dataset.tab = tab;
   shell.tab = tab;
   var f = FABS[tab] || FABS.notes;
-  shell.fab = { icon: f.icon, label: f.label, hidden: false };
+  shell.fab = { icon: f.icon, label: f.label };
   shell.placeholder = tab==='todos' ? '搜索待办' : tab==='files' ? '搜索附件' : '搜索笔记与待办';
   setQ(P().q || '');
   var fresh = !paneBuilt[tab] || paneDirty[tab];
@@ -58,10 +59,10 @@ function moveInd(){
 /* 步骤 16d：ico 存的是 ic('plus','l') 那串 SVG 字符串（shell.fab 的 v-html 直插），
    现在只存图标名，SVG 由 shell.js 的 <ico> 组件渲染 —— v-html 全项目归零。 */
 var FABS = {
-  notes:{icon:'plus', label:'记一笔', fn:function(){ addSheet() }},
+  notes:{icon:'mic', label:'记一笔', fn:addSheet},
   todos:{icon:'plus', label:'记待办', fn:function(){ addSheet() }},
   files:{icon:'clip', label:'加附件', fn:function(){ pickFile() }},
-  mine:{icon:'plus', label:'记一笔', fn:function(){ addSheet() }}
+  mine:{icon:'mic', label:'记一笔', fn:addSheet}
 };
 /* 涟漪（R10）：只给“真按钮”——它们自带 position:relative + overflow:hidden。
    列表行 .li 不参与：它不是定位容器，水波会跑到 viewport 上，铺满全屏 = 闪屏 */
@@ -87,8 +88,18 @@ function tabPick(t){
   setTabTo(t); setTab();
 }
 function brandGo(){ setTabTo('mine'); setTab(true) }
-function fabAct(){ (FABS[tab] || FABS.notes).fn() }
+function fabAct(event){
+  if (shell.sheet.mounted) return;
+  const action = (FABS[tab] || FABS.notes).fn;
+  if (event && action === addSheet) return voiceClick(event, action);
+  return action();
+}
+function fabHold(event){
+  const startTab = tab;
+  if (shell.sheet.mounted || (FABS[startTab] || FABS.notes).fn !== addSheet) return;
+  voiceHold(event, () => startTab === tab && fabAct());
+}
 window.addEventListener('resize', moveInd);
 /* app.js 把 setTab 再导出给 dlgflow / missedflow / openflow / shotflow（它们切页签用），
    tabPick / brandGo / fabAct / moveInd 挂进 HOST（shell.js 的顶栏与底栏模板）。 */
-export { setTab, moveInd, FABS, tabPick, brandGo, fabAct }
+export { setTab, moveInd, tabPick, brandGo, fabAct, fabHold }

@@ -15,7 +15,6 @@
 .hero .hlogo{flex:0 0 46px;height:46px;border-radius:var(--r2);background:rgba(255,255,255,.2);border:var(--hair) solid rgba(255,255,255,.34);overflow:hidden}
 .hero .hlogo img{width:100%;height:100%;display:block;object-fit:cover}
 .hero h1{margin:0;font-size:var(--fs-xl);font-weight:800;letter-spacing:.5px}
-.hero .hver{font-size:var(--fs-xs);opacity:.8;letter-spacing:.6px;margin-top:var(--s0)}
 .hero p{margin:var(--s1) 0 0;font-size:var(--fs-sm);opacity:.85}
 .hero .hstats{display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s3);position:relative;z-index:1}
 .hero .hstats span{display:inline-flex;align-items:center;gap:var(--s1);padding:var(--s1) var(--s2);border-radius:var(--r-pill);
@@ -46,3 +45,21 @@
 .legend{display:flex;gap:var(--s3);font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--s2)}
 .legend i{display:inline-block;width:9px;height:9px;border-radius:var(--r1);margin-right:var(--s1);vertical-align:-1px}
 .tagrow{display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s2)}
+
+.mine-heading{margin:var(--s4) var(--s1) var(--s1);font-size:var(--fs-sm);color:var(--dim)}
+.mine-actions{padding:0 var(--s3)}
+.mine-action{width:100%;border:0;border-top:var(--hair) solid var(--line);background:transparent;
+  color:var(--fg);font:inherit;text-align:start;cursor:pointer}
+.mine-action-copy{flex:1;min-width:0}
+.mine-action-copy b,.mine-action-copy span{display:block}
+.mine-action-copy b{font-size:var(--fs-base)}
+.mine-action-copy span{font-size:var(--fs-xs);color:var(--dim);margin-top:var(--hair)}
+.mine-action.danger b,.mine-action.danger .lico{color:var(--bad)}
+.mine-action.danger .lico{background:var(--bad-s)}
+.mine-chevron{color:var(--dim2);font-size:var(--fs-lg)}
+.mine-status{padding:var(--s1) 0 var(--s2)}
+.mine-status summary{padding:var(--s1) 0;color:var(--dim);font-size:var(--fs-sm);cursor:pointer}
+.mine-usage{margin:var(--s4) 0}
+.mine-usage > summary{display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+.mine-usage > summary::-webkit-details-marker{display:none}
+.mine-usage[open] > summary .mine-chevron{transform:rotate(90deg)}

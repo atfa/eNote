@@ -21,29 +21,43 @@
   border:0;border-radius:var(--r-pill);background:var(--card2);color:var(--dim);cursor:pointer}
 .vmini:active{background:var(--acc-s);color:var(--acc)}
 
-/* 实时部分结果（还没定稿，所以是提示色）与错误 */
-.vpart{min-height:var(--s4);color:var(--acc);font-size:var(--fs-md)}
 .verr{color:var(--bad);font-size:var(--fs-sm)}
 
 /* 左撤销、中录音、右整理。对称的两列让录音按钮居中。 */
 .vbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
-  align-items:center;gap:var(--s1);padding:var(--s2) 0}
+  align-items:center;gap:var(--s1)}
 .vside{display:inline-flex;justify-self:start;align-items:center;gap:var(--s1);padding:var(--s2);
   border:var(--hair) solid var(--line);border-radius:var(--r-pill);background:var(--card);
   color:var(--fg);font-size:var(--fs-md);cursor:pointer;white-space:nowrap}
 .vside:disabled{opacity:.45}
 .vside.vai{justify-self:end;color:var(--acc)}
 .vrec{display:flex;align-items:center;justify-content:center;
-  width:calc(var(--s6) + var(--s5));height:calc(var(--s6) + var(--s5));
-  border:0;border-radius:var(--r-pill);background:var(--grad);color:var(--on-grad);
+  width:var(--compose-button-size);height:var(--compose-button-size);
+  box-sizing:border-box;border:var(--s1) solid var(--card);border-radius:var(--r-pill);
+  background:var(--grad);color:var(--on-grad);
   box-shadow:var(--sh2);touch-action:none;cursor:pointer;
-  transition:transform var(--d1) var(--ease)}
-.vrec:active{transform:scale(.94)}
-/* 录音中：红色脉冲（免手持时用户要能一眼看出「还在录、得再点一下」） */
+  transition:filter var(--d1) var(--ease)}
+.vrec>.ic{width:var(--s5);height:var(--s5)}
+.vrec:active{filter:brightness(.94)}
+/* 录音中：红色脉冲。 */
 .vrec.live{background:var(--bad);animation:vpulse 1.4s var(--ease) infinite}
 @keyframes vpulse{0%{box-shadow:0 0 0 0 var(--bad-s)}
   70%{box-shadow:0 0 0 var(--s4) var(--bad-s)}
   100%{box-shadow:0 0 0 0 var(--bad-s)}}
+
+.vrecord-overlay{position:fixed;inset:0;z-index:10000;pointer-events:none;
+  background:rgba(0,0,0,.68);color:white;text-align:center}
+.vrecord-meter{position:absolute;inset-inline:var(--s5);bottom:55%;display:flex;
+  flex-direction:column;align-items:center;gap:var(--s3)}
+.vrecord-status{font-size:var(--fs-md);font-weight:700}
+.vrecord-text{position:absolute;inset-inline:var(--s5);top:49%;max-height:25%;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:flex-end;
+  font-size:var(--fs-xl);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.vwave{display:flex;align-items:center;gap:var(--s1);height:calc(var(--s6) * 2);
+  width:100%;max-width:calc(var(--s6) * 8)}
+.vwave>span{flex:1;height:100%;background:currentColor;border-radius:var(--r-pill)}
+.vrecord-overlay.cancel .vrecord-meter{color:var(--bad)}
+@media (prefers-reduced-motion:reduce){.vrec.live{animation:none}}
 
 .vhint{color:var(--dim2);font-size:var(--fs-xs);text-align:center}
 .vresult{padding:var(--s2);border-radius:var(--r1);background:var(--card)}
@@ -54,25 +68,13 @@
 .add-text-field textarea{display:block;padding-bottom:var(--s5)}
 .add-text-field .cnt{position:absolute;right:var(--s4);bottom:var(--s2);pointer-events:none}
 .add-attachments .btn{flex:none;padding-inline:var(--s4);border-radius:var(--r-pill)}
-.add-submit{width:100%;margin-top:var(--s5);padding:var(--s3) var(--s4);
-  border-radius:var(--r-pill);justify-content:space-between;box-shadow:var(--sh2)}
-.add-submit>.ic{width:var(--s5);height:var(--s5)}
-.add-submit>span{display:flex;flex:1;flex-direction:column;align-items:flex-start;
-  margin-left:var(--s2);padding-left:var(--s3);border-left:var(--hair) solid currentColor;text-align:left}
-.add-submit strong{font-size:var(--fs-lg)}
-.add-submit small{font-size:var(--fs-sm);font-weight:400}
-
-/* 固定底栏：面板从「一整块滚动」改成 flex 列 —— 文字 / 附件 / 语音放进 .add-scroll
-   自己滚，「解析并记录」留在 .add-foot 里贴着面板底部。这样段数一多、整理结果一长，
-   提交按钮也不会被顶到可视区外（键盘弹起时同样成立：--kb 缩的是 .panel 的 max-height，
-   flex 列跟着缩，底栏不动）。
-   面板原来的 overflow:auto 必须关掉，否则滚动会落在 .panel 上、底栏跟着一起滚走；
-   真正滚的是 .add-scroll（min-height:0 是 flex 子项能小于内容高度的前提）。 */
-.panel[data-kind="add"]{display:flex;flex-direction:column;overflow:hidden}
+/* 编辑内容单独滚动。固定的圆钮与首页使用相同的底部偏移。 */
+.sheet .panel[data-kind="add"]{display:flex;flex-direction:column;overflow:hidden;
+  padding-bottom:calc(var(--compose-bottom) + env(safe-area-inset-bottom))}
+.sheet.on .panel[data-kind="add"]{animation:none}
 .panel[data-kind="add"]>.grip{flex:none}
 .panel[data-kind="add"]>#sheetBody{display:flex;flex:1;flex-direction:column;min-height:0;overflow:hidden}
 .panel[data-kind="add"]>#sheetBody>h2{flex:none}
 /* h2 仍是 #sheetBody 的直接子节点，components.css 的「给右上角 ✕ 让位」照旧命中。 */
 .add-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-.add-foot{flex:none;padding-top:var(--s2);border-top:var(--hair) solid var(--line);background:var(--card)}
-.add-foot .add-submit{margin-top:0}
+.add-foot{flex:none;display:grid;gap:var(--s2);padding-top:var(--s2);border-top:var(--hair) solid var(--line);background:var(--card)}

@@ -85,22 +85,20 @@ export const StatsChart = {
   </div>`
 };
 
-/* 一行可点的列表项。遗留 liHTML(icn,t,sub,fn) 的第 4 个参数是 handler 字符串，
-   Vue 侧换成 @click + $emit，DOM 里没有 onclick 属性 —— VDIFF 的序列化器跳过 on*
-   属性（它们是绑定机制不是 DOM 形状），所以比得过。sub 为空时两边都不渲染那行小字。 */
+/* 我的页功能入口。 */
 export const StatsLi = {
   name: 'StatsLi',
   components: { Ico },
-  props: ['icon', 'title', 'sub'],
+  props: { icon: String, title: String, sub: String, danger: Boolean },
   emits: ['go'],
   // 末尾逗号不是风格：闸门⑮ 认的是 setup() 返回里的 `H,`，写成 return { H } 它认不出。
   setup(){ const H = inject('H'); return { H, } },
   template: `
-  <div class="li" @click="$emit('go')">
+  <button class="li mine-action" :class="{danger}" type="button" @click="$emit('go')">
     <span class="lico"><ico :n="icon"/></span>
-    <div style="flex:1"><b style="font-size:var(--fs-base)">{{ title }}</b><div v-if="sub" style="font-size:var(--fs-xs);color:var(--dim2);margin-top:var(--hair)">{{ sub }}</div></div>
-    <span style="color:var(--dim2)">›</span>
-  </div>`
+    <span class="mine-action-copy"><b>{{ title }}</b><span v-if="sub">{{ sub }}</span></span>
+    <span class="mine-chevron" aria-hidden="true">›</span>
+  </button>`
 };
 
 export const StatsView = {
@@ -115,7 +113,6 @@ export const StatsView = {
       i: computed(() => ({ ...H.S.info })),
       st: computed(() => H.ST),
       stErr: computed(() => H.stErr),
-      sf: computed(() => H.SHOTFLAGS || {}),
       // 六格：值/图标/热态都从 ST 现算，顺序与遗留 renderMine() 逐字一致
       tiles: computed(function(){
         var s = H.ST;
@@ -142,39 +139,58 @@ export const StatsView = {
     }
   },
   template: `
-<stats-hero :i="i" :st="st"/>
-<template v-if="!st">
-  <div class="card"><van-skeleton class="skel" :row="2" :row-width="['100%','45%']" :title="false" :animate="false"/></div>
-  <div class="card" v-if="stErr"><div class="errbox">{{ stErr }} ·
-    <button class="btn sm gh" @click="H.statsNow()">立即重试</button></div></div>
-</template>
-<template v-else>
-<div class="statgrid">
-  <stats-stat v-for="t in tiles" :key="t.label" :i="t.i" :v="t.v" :label="t.label" :icon="t.icon" :hot="t.hot"/>
-</div>
-<div class="card"><h2>近 7 天</h2>
-  <stats-chart :days="st.days"/>
-  <div class="legend"><span><i style="background:var(--acc)"></i>新增笔记</span><span><i style="background:var(--acc2)"></i>完成待办</span></div>
-</div>
-<div class="card"><stats-notes-card :st="st"/></div>
-<div class="card" v-if="tags.length"><h2>常见标签</h2><div class="tagrow"><span class="chip tag" v-for="t in tags" :key="t.tag">#{{ t.tag }} · {{ t.n }}</span></div></div>
-<div class="card"><h2>截图捕获</h2><div style="padding:0 var(--s3) var(--s1)">
-  <stats-li icon="folder" title="监控文件夹" :sub="shotSubs.folders" @go="H.folderSheet()"/>
-  <stats-li icon="image" title="截图暂存" :sub="shotSubs.staged" @go="H.shotSheet()"/>
-  <stats-li icon="refresh" title="现在扫描一次" :sub="shotSubs.scan" @go="H.scanShotsNow()"/>
-  <stats-li icon="calendar" title="回捞最近 7 天" sub="把最近 7 天的截图都收一遍（不会重复）" @go="H.rescanShots(7)"/>
-  <stats-li icon="trash" title="清空截图暂存" sub="只删副本，不动系统相册" @go="H.clearShots()"/>
-</div></div>
-<div class="card" style="padding:var(--s0) var(--s3)">
-  <stats-li icon="settings" title="设置" sub="AI 模型 / 外观 / 采集 / OCR / 数据" @go="H.settingsSheet()"/>
-  <stats-li icon="file-text" title="运行日志" sub="Go 服务、解析队列、OCR 状态" @go="H.showLog()"/>
-  <stats-li icon="sparkle" title="AI 调用记录" sub="本次运行的请求与返回" @go="H.showDebug()"/>
-  <stats-li icon="download" title="导出 JSON" sub="全量备份笔记与待办" @go="H.exportJSON()"/>
-  <stats-li icon="inbox" title="导入 JSON" sub="按笔记 ID 合并，不覆盖本地" @go="H.importJSON()"/>
-  <stats-li icon="trash" title="清空全部" sub="删除所有笔记与附件" @go="H.clearAllNotes()"/>
-</div>
-<div class="card"><stats-run-card :i="i"/></div>
-</template>`
+<stats-hero :st="st"/>
+<section>
+  <h2 class="mine-heading">应用设置</h2>
+  <div class="card mine-actions">
+    <stats-li icon="settings" title="设置" sub="AI 模型、外观、提醒和后台" @go="H.settingsSheet()"/>
+  </div>
+</section>
+<section>
+  <h2 class="mine-heading">截图捕获</h2>
+  <div class="card mine-actions">
+    <stats-li icon="folder" title="监控文件夹" :sub="shotSubs.folders" @go="H.folderSheet()"/>
+    <stats-li icon="image" title="截图暂存" :sub="shotSubs.staged" @go="H.shotSheet()"/>
+    <stats-li icon="refresh" title="扫描新截图" :sub="shotSubs.scan" @go="H.scanShotsNow()"/>
+    <stats-li icon="calendar" title="扫描最近 7 天" sub="自动跳过已收集的截图" @go="H.rescanShots(7)"/>
+    <stats-li icon="trash" title="清空截图暂存" sub="保留系统相册里的原图" danger @go="H.clearShots()"/>
+  </div>
+</section>
+<section>
+  <h2 class="mine-heading">备份与数据</h2>
+  <div class="card mine-actions">
+    <stats-li icon="download" title="导出 JSON" sub="备份笔记、待办与附件信息" @go="H.exportJSON()"/>
+    <stats-li icon="inbox" title="导入 JSON" sub="从下载目录选择备份，保留已有笔记" @go="H.importJSON()"/>
+    <stats-li icon="trash" title="清空笔记与附件" sub="同时删除笔记内的待办" danger @go="H.clearAllNotes()"/>
+  </div>
+</section>
+<section>
+  <h2 class="mine-heading">运行与诊断</h2>
+  <div class="card mine-actions">
+    <stats-run-card :i="i"/>
+    <stats-li icon="file-text" title="运行日志" @go="H.showLog()"/>
+    <stats-li icon="sparkle" title="AI 调用记录" @go="H.showDebug()"/>
+  </div>
+</section>
+<details class="mine-usage">
+  <summary class="card"><b>数据统计</b><span class="mine-chevron" aria-hidden="true">›</span></summary>
+  <template v-if="!st">
+    <div class="card" v-if="stErr"><div class="errbox">{{ stErr }} ·
+      <button class="btn sm gh" @click="H.statsNow()">立即重试</button></div></div>
+    <div class="card" v-else><van-skeleton class="skel" :row="2" :row-width="['100%','45%']" :title="false" :animate="false"/></div>
+  </template>
+  <template v-else>
+    <div class="statgrid">
+      <stats-stat v-for="t in tiles" :key="t.label" :i="t.i" :v="t.v" :label="t.label" :icon="t.icon" :hot="t.hot"/>
+    </div>
+    <div class="card"><h2>近 7 天</h2>
+      <stats-chart :days="st.days"/>
+      <div class="legend"><span><i style="background:var(--acc)"></i>新增笔记</span><span><i style="background:var(--acc2)"></i>完成待办</span></div>
+    </div>
+    <div class="card"><stats-notes-card :st="st"/></div>
+    <div class="card" v-if="tags.length"><h2>常见标签</h2><div class="tagrow"><span class="chip tag" v-for="t in tags" :key="t.tag">#{{ t.tag }} · {{ t.n }}</span></div></div>
+  </template>
+</details>`
 };
 
 export default StatsView;

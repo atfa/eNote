@@ -2,10 +2,8 @@
 //
 // 交互心智（与方案一致）：「记一笔」面板一打开就摆着这块暂存区（不再要先点「录音」
 // 才展开 —— 语音和文字、图片、文件一样都是原料，多一次点击只是多一道墙），底部大圆钮。
-//   - 按住说话：按下开始本段，松手结束本段。
-//   - 点按 = 免手持开关：点一下开始本段，再点一下结束本段（静音再长也不自动切段，
-//     VAD 断句会把思考的停顿切断，所以断句权只在圆钮上）。
-//     免手持时圆钮呈红色脉冲 + 计时秒数 + 「点击结束」文案。
+//   - 长按开始本段，松手结束本段，上滑松手取消。
+//   - 点按留给面板的提交操作。
 // 每段转写可单独删除或回放，实时部分结果显示在录音按钮上方。
 // 「AI 整理」把所有语音转写合成一份可编辑草稿。「解析并记录」提交手输文字和语音文字，
 // 每段原音频各自挂成附件。提交逻辑在 js/addflow.js 的 addNote()。
@@ -29,7 +27,9 @@ var STT = reactive({
   v: {
     segs: [],       // 已定稿的段（每段 = 一次圆钮起停）
     listening: false,
-    handsFree: false,
+    started: false,
+    cancelArmed: false,
+    levels: [],
     secs: 0,
     partial: '',
     error: '',
@@ -43,11 +43,23 @@ var STT = reactive({
 
 /* 每段上限 2 分钟：到点自动结束本段（再长用户体验与引擎内存都不合适）。 */
 var MAX_SECS = 120;
-/* 短于这个毫秒数的按下算「点按」= 转免手持；长按松手才算一段。 */
-var TAP_MS = 300;
+var HOLD_MS = 300;
+var WAVE_BARS = 24;
+/* 波形以常见的语音电平为满幅，留出轻声和底噪之间的高度差。 */
+var WAVE_NOISE_FLOOR = 24;
+var WAVE_SOFT_KNEE = 32;
+var WAVE_FULL_SCALE = 1800;
+var WAVE_LOG_RANGE = Math.log1p(WAVE_FULL_SCALE / WAVE_SOFT_KNEE);
+var CANCEL_SWIPE_PX = 64;
+var HOLD_SLOP_PX = 16;
 
 var timer = 0;     // 计时器（不进 reactive：Interval id 不是渲染依赖）
-var pressAt = 0;   // 本次按下的时刻，用来分辨点按 / 按住
+var pressPointer = null;
+var pressButton = null;
+var pressX = 0;
+var pressY = 0;
+var holdTimer = 0;
+const suppressedClicks = new WeakSet();
 
 /* 「这段定稿」的等待者：Java 的 onSttEnd 是异步的（引擎最后一句要等 awaitFinal），
    而「保存并解析」必须等最后一段定稿再提交，否则刚说完的那段会被丢掉。上限 SETTLE_MS：
@@ -74,7 +86,7 @@ function voiceAskMic(){
 window.micResult = function(ok){
   if (!ok) { STT.v.error = '需要录音权限才能说话'; return }
   STT.v.error = '';
-  toast('权限已授予，点圆钮开始说话');
+  toast('权限已授予，按住圆钮开始说话');
 };
 
 /* ---------------- 录音会话（Java 侧引擎） ---------------- */
@@ -83,7 +95,7 @@ function startTimer(){
   stopTimer();
   timer = setInterval(function(){
     STT.v.secs++;
-    if (STT.v.secs >= MAX_SECS) { voiceStop() }   // 到点自动收段
+    if (STT.v.secs >= MAX_SECS) { finishVoice(STT.v.cancelArmed) }   // 到点自动收段
   }, 1000);
 }
 function stopTimer(){
@@ -97,19 +109,21 @@ function voiceStart(){
   if (!Android.micGranted()) { voiceAskMic(); return false }
   STT.v.error = '';
   STT.v.listening = true;
+  STT.v.started = false;
+  STT.v.levels = Array(WAVE_BARS).fill(0);
   STT.v.partial = '';
   STT.v.secs = 0;
   try { Android.startVoice() }
   catch (e) { STT.v.error = '启动录音失败'; STT.v.listening = false; return false }
-  startTimer();
   return true;
 }
 
 /* 结束本段：真正的收尾在 Java 的 onSttEnd（它带回该段文本 + 原音频路径）。
    返回 promise = 「本段定稿」（没在录时立刻 resolve），提交方 await 它。 */
-function voiceStop(){
-  detachUp();
-  pressAt = 0;
+function voiceStop(){ return finishVoice(false) }
+
+function finishVoice(discard){
+  detachPress();
   stopTimer();
   if (!STT.v.listening) {
     if (!settleDone) return Promise.resolve();
@@ -119,15 +133,16 @@ function voiceStop(){
     });
   }
   STT.v.listening = false;
-  STT.v.handsFree = false;
+  STT.v.started = false;
   STT.v.settling = true;
   var p = new Promise(function(res){
     settleDone = res;
     settleTimer = setTimeout(settleNow, SETTLE_MS);
   });
-  if (window.Android && Android.stopVoice) {
-    try { Android.stopVoice() } catch (e) { /* 已经停了 */ }
-  }
+  try {
+    if (discard) Android.cancelVoice();
+    else Android.stopVoice();
+  } catch (e) { settleNow() }
   return p;
 }
 
@@ -139,40 +154,107 @@ function blurEditing(){
   if (a && a !== document.body && typeof a.blur === 'function') a.blur();
 }
 
-/* 圆钮按下：正在录 = 结束本段；否则开始录（先按「按住」算，松手时再判点按） */
-function voiceDown(){
-  blurEditing();
-  if (STT.v.listening) { voiceStop(); return }
-  STT.v.handsFree = false;
-  if (!voiceStart()) return;
-  pressAt = Date.now();
-  /* 手指滑出按钮 / 在面板外松手时 pointerup 不会回到按钮上，所以挂窗口一次性监听 */
-  window.addEventListener('pointerup', voiceUp);
-  window.addEventListener('pointercancel', voiceUp);
-}
-function detachUp(){
-  window.removeEventListener('pointerup', voiceUp);
-  window.removeEventListener('pointercancel', voiceUp);
+function voiceDown(event){
+  voiceHold(event);
 }
 
-/* 松手：短按 = 转免手持继续录（这就是「点一下开始」），长按 = 本段结束 */
-function voiceUp(){
-  detachUp();
-  if (!STT.v.listening) { pressAt = 0; return }
-  var held = pressAt ? Date.now() - pressAt : TAP_MS;
-  pressAt = 0;
-  if (held < TAP_MS) { STT.v.handsFree = true; return }
-  voiceStop();
+/* 首页和面板都在达到长按阈值后才启动录音。 */
+function voiceHold(event, openSheet){
+  if (!event.isPrimary || event.button !== 0 || pressPointer !== null ||
+      STT.v.listening || STT.v.busy || STT.v.organizing || STT.v.settling) return;
+  suppressedClicks.delete(event.currentTarget);
+  trackPress(event);
+  holdTimer = setTimeout(function(){
+    holdTimer = 0;
+    suppressedClicks.add(pressButton);
+    try { pressButton.setPointerCapture(event.pointerId) } catch (_) { /* pointer already gone */ }
+    blurEditing();
+    if (openSheet && !openSheet()) { detachPress(); return }
+    if (!voiceStart()) detachPress();
+  }, HOLD_MS);
 }
+
+/* pointerup 之后浏览器可能还发 click。收段或取消时把这次 click 吃掉，
+   避免用户刚松手就提交草稿；下一次独立按下仍能点按。键盘激活不受影响。 */
+function voiceClick(event, action){
+  if (event.detail !== 0 && suppressedClicks.delete(event.currentTarget)) return;
+  if (STT.v.listening || STT.v.settling || STT.v.busy || STT.v.organizing) return;
+  if (action) action();
+  else toast('按住圆钮说话');
+}
+
+function trackPress(event){
+  pressPointer = event.pointerId;
+  pressButton = event.currentTarget;
+  pressX = event.clientX;
+  pressY = event.clientY;
+  window.addEventListener('pointermove', voiceMove, true);
+  window.addEventListener('pointerup', voiceUp, true);
+  window.addEventListener('pointercancel', voiceCancel, true);
+  window.addEventListener('blur', interruptPress);
+}
+function detachPress(){
+  clearTimeout(holdTimer);
+  holdTimer = 0;
+  window.removeEventListener('pointermove', voiceMove, true);
+  window.removeEventListener('pointerup', voiceUp, true);
+  window.removeEventListener('pointercancel', voiceCancel, true);
+  window.removeEventListener('blur', interruptPress);
+  pressPointer = null;
+  pressButton = null;
+  STT.v.cancelArmed = false;
+}
+function voiceMove(event){
+  if (event.pointerId !== pressPointer) return;
+  if (holdTimer) {
+    if (Math.hypot(pressX - event.clientX, pressY - event.clientY) >= HOLD_SLOP_PX) {
+      suppressedClicks.add(pressButton);
+      detachPress();
+    }
+    return;
+  }
+  STT.v.cancelArmed = pressY - event.clientY >= CANCEL_SWIPE_PX;
+}
+function voiceCancel(event){
+  if (event.pointerId === pressPointer) interruptPress();
+}
+function interruptPress(){
+  suppressedClicks.add(pressButton);
+  if (holdTimer) detachPress();
+  else finishVoice(true);
+}
+
+/* 上滑到阈值后松手取消，滑回可继续录。 */
+function voiceUp(event){
+  if (event.pointerId !== pressPointer) return;
+  if (holdTimer) { detachPress(); return }
+  voiceMove(event);
+  finishVoice(STT.v.cancelArmed);
+}
+
+/* Android 确认麦克风已启动后才显示录音状态，音量取自实际录到的 PCM。 */
+window.onSttStarted = function(){
+  if (!STT.v.listening || STT.v.started) return;
+  STT.v.started = true;
+  startTimer();
+};
+window.onSttLevel = function(peak){
+  if (!STT.v.started) return;
+  var signal = Math.max(0, peak - WAVE_NOISE_FLOOR);
+  var level = Math.min(1, Math.log1p(signal / WAVE_SOFT_KNEE) / WAVE_LOG_RANGE);
+  STT.v.levels = STT.v.levels.slice(1).concat(level);
+};
 
 /* Java -> window.onSttPartial：实时部分结果上屏（不进暂存区） */
 window.onSttPartial = function(text){
+  if (!STT.v.listening) return;
   STT.v.partial = String(text || '');
 };
 
 /* Java -> window.onSttEnd：本段定稿。text = 段内文本，error = 错误，path = 原音频文件
    （inbox 下的 voice_*.wav，发送时给 Go 挂成附件，保留「重新识别语音」的能力）。 */
 window.onSttEnd = function(text, error, path){
+  detachPress();
   var txt = String(text || '').trim();
   if (txt) {
     STT.v.segs.push({ text: txt, path: path || '', name: path ? String(path).split('/').pop() : '' });
@@ -181,7 +263,7 @@ window.onSttEnd = function(text, error, path){
     STT.v.error = String(error);
   }
   STT.v.listening = false;
-  STT.v.handsFree = false;
+  STT.v.started = false;
   STT.v.partial = '';
   stopTimer();
   settleNow();          // 让等待录音定稿的提交继续
@@ -269,6 +351,6 @@ function voiceClear(){
   voiceReset();
 }
 
-export { STT, voiceDown, voiceUp, voiceStop, voiceUndo,
+export { STT, voiceDown, voiceHold, voiceClick, voiceStop, voiceUndo,
   voicePlay, voiceDelSeg, voiceClear, voiceOrganize,
   voiceOrganizedEdit, voiceUseOriginal }

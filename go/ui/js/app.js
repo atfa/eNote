@@ -55,8 +55,8 @@ import { shell, mountShell } from './shell.js'
 import { ST, statsNow, statCls } from './statsflow.js'
 import { MISSED, loadMissed, missedSheet, missedDone, missedGoTodos, missedDismiss }
          from './missedflow.js'
-import { LLMTEST, testLLM, LOGDATA, DEBUGDATA, showLog, showDebug } from './logflow.js'
-import { setTab, moveInd, tabPick, brandGo, fabAct } from './tabflow.js'
+import { LLMTEST, testLLM, LOGDATA, DEBUGDATA, showLog, showDebug, refreshDebug } from './logflow.js'
+import { setTab, moveInd, tabPick, brandGo, fabAct, fabHold } from './tabflow.js'
 import { expand, toggle, todoEnterCls, clearEnter, enterCls, clearSeen, delTodo,
          reparse, delNote, reocr, revoice, toggleAI, ANIMLOCK } from './noteflow.js'
 import { todoRowCls, notesFiltered, groupTodos, rank, hit } from './listflow.js'
@@ -77,7 +77,8 @@ import './selfcheck.js'
    轮询降级为 30s 心跳（见下方 setInterval）+ onAppResume 兜底。 */
 import './bus.js'
 import { SR, SRK, searchNow, searchInput, searchClear } from './searchflow.js'
-import { FORMS, formSet, addSheet, addNote, pickImage, addTodoSheet, addTodo } from './addflow.js'
+import { FORMS, formSet, addSheet, addNote, addTodoSheet, addTodo, DRAFTMEDIA,
+         draftHasContent, pickDraftImage, pickDraftFile, removeDraftFile } from './addflow.js'
 import { dialog, closeDlg, askDel, uiDialog, uiBackKey } from './dlgflow.js'
 import { pageSheetVue, sheetVue, closeSheet, sheetLeft } from './sheetflow.js'
 import { openNote, openTodo, openTodoFocus, jump, dueMs, toCalendar, toAlarm }
@@ -89,13 +90,13 @@ import { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, as
 import { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
          clearAllNotes, sortSheet, setPref, resetPrefs, saveSettings } from './settingsflow.js'
 import { FA, fmtSize, filesNow, attachCardCls, attachGlyphName, openAttach, delAttach,
-         pickFile, pickNoteAttachments, openNoteAttachments, noteAttachmentsSaved } from './filesflow.js'
+         pickNoteAttachments, openNoteAttachments, noteAttachmentsSaved } from './filesflow.js'
 import { editNoteDescription } from './views/note-description.js'
 /* P18：「记一笔」里的语音暂存区（多段识别 → 一次发送成一条 kind=voice 的笔记）。
    STT 是 {v:} 容器，进宿主走 getter；那八个 voiceXxx 都被 views/sheets.js 的
    AddSheetView 模板直接调（H.voiceXxx），所以必须进 HOST_KEYS['sheet:add']。
    面板一打开就是展开态（不再先点「录音」），所以没有 voiceOpen / voiceClose 了。 */
-import { STT, voiceDown, voiceUp, voiceStop, voiceUndo,
+import { STT, voiceDown, voiceClick, voiceStop, voiceUndo,
          voicePlay, voiceDelSeg, voiceOrganize,
          voiceOrganizedEdit, voiceUseOriginal } from './voiceflow.js'
 import { CLIP, openClip, importClip, clipItemCls, clipPrevText, clipThumbText, clipMetaText,
@@ -153,7 +154,7 @@ window.onAppResume = function(){
 window.uiDialog = function(title, msg, id){ uiDialog(title, msg, id) };
 
 window.uiBack = function(){ return uiBackKey() };
-/* 「记一笔」与「添加待办」那一簇（FORMS / formSet / addSheet / addNote / pickImage /
+/* 「记一笔」与「添加待办」那一簇（FORMS / formSet / addSheet / addNote /
    addTodoSheet / addTodo）搬进 js/addflow.js（P14 S6 步骤 40，循环依赖，同上）。
    SHEETARGB 这个盒子留在本文件的盒子区（声明顺序是硬要求），那边写它走 syncBox。 */
 // 安静轮询：数据没变就只刷状态点，不重建 DOM
@@ -187,7 +188,7 @@ var HOST = setHost({
   strip: strip, P: P, groupTodos: groupTodos, todoRowCls: todoRowCls,
   /* 步骤 15：外壳（顶栏 / 底栏+fab / 弹层宿主 / 对话框）的事件入口。模板里写的是
      @click="H.xxx(...)"，走的就是这张表（闸门⑮ 逐个查名字在不在）。 */
-  brandGo: brandGo, tabPick: tabPick, fabAct: fabAct,
+  brandGo: brandGo, tabPick: tabPick, fabAct: fabAct, fabHold: fabHold,
   searchInput: searchInput, searchClear: searchClear,
   closeSheet: closeSheet, sortSheet: sortSheet, sheetLeft: sheetLeft,
   dlgOk: function(){ closeDlg(true) }, dlgCancel: function(){ closeDlg(false) },
@@ -235,20 +236,18 @@ var HOST = setHost({
      （同 FA / q 的教训）；clipText 是 AI 调用记录里的 200 字截断。 */
   setPref: setPref, resetPrefs: resetPrefs,
   missedDone: missedDone, missedGoTodos: missedGoTodos, missedDismiss: missedDismiss,
-  addNote: addNote, pickImage: pickImage, addTodo: addTodo, clipText: clip,
+  addNote: addNote, addTodo: addTodo, clipText: clip,
   get logData(){ return LOGDATA.v }, get debugData(){ return DEBUGDATA.v },
   get llmTest(){ return LLMTEST.v },
   /* 步骤 20：设置页表单（SFORM.v 整包赋值 + 逐键改，读的是 getter）与输入回写。 */
   get SFORM(){ return SFORM.v }, formInput: formInput,
   /* 步骤 21：记一笔 / 添加待办两个弹层的表单盒子与写回。 */
   get FORMS(){ return FORMS.v }, formSet: formSet,
-  /* P18：「记一笔」的第四种原料（本地文件，走系统的文件选择器）与语音暂存区。
-     STT.v 是 {segs, hidden, listening, …}，整包不换引用但 segs 会被整体赋值（发送后清空），
-     所以走 getter（同 FA / q 的教训）。圆钮的按下/松手/结束必须分三个函数：模板上
-     @pointerdown / @pointerup / @pointercancel 各自到底（点按与按住的区别在 voiceDown/Up 里判）。 */
-  pickFile: pickFile,
+  get draftMedia(){ return DRAFTMEDIA },
+  get draftHasContent(){ return draftHasContent() },
+  pickDraftImage: pickDraftImage, pickDraftFile: pickDraftFile, removeDraftFile: removeDraftFile,
   get STT(){ return STT.v },
-  voiceDown: voiceDown, voiceUp: voiceUp,
+  voiceDown: voiceDown, voiceClick: voiceClick,
   voiceStop: voiceStop, voiceUndo: voiceUndo,
   voicePlay: voicePlay, voiceDelSeg: voiceDelSeg,
   voiceOrganize: voiceOrganize, voiceOrganizedEdit: voiceOrganizedEdit,
@@ -258,7 +257,7 @@ var HOST = setHost({
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
   askNotify: askNotify, askExact: askExact, askBattery: askBattery, testNotify: testNotify, testNotifyDelayed: testNotifyDelayed, openNotifySettings: openNotifySettings,
   toggleKeepAlive: toggleKeepAlive, toggleAI: toggleAI, setTheme: setTheme,
-  saveSettings: saveSettings, testLLM: testLLM, showLog: showLog, showDebug: showDebug,
+  saveSettings: saveSettings, testLLM: testLLM, showLog: showLog, showDebug: showDebug, refreshDebug: refreshDebug,
   exportJSON: exportJSON, importJSON: importJSON, clearAllNotes: clearAllNotes,
   settingsSheet: settingsSheet, scanShotsNow: scanShotsNow, rescanShots: rescanShots,
   clearShots: clearShots
@@ -298,12 +297,11 @@ var HOST_KEYS = {
   'sheet:clip': ['clipDel', 'clipDelSel', 'clipError', 'clipItemCls', 'clipList', 'clipLoading',
     'clipMetaText', 'clipParse', 'clipParseText', 'clipPick', 'clipPrevText', 'clipSel',
     'clipSelAll', 'clipThumbText'],
-  /* sheet:settings 组件根 SettingsSheetView，24 个 key（步骤 19 加 llmTest，
-     步骤 20 加 SFORM / formInput） */
-  'sheet:settings': ['S', 'ST', 'askBattery', 'askExact', 'askNotify', 'batteryIgnoring', 'testNotify', 'testNotifyDelayed', 'openNotifySettings',
-    'clearAllNotes', 'exactGranted', 'exportJSON', 'fmtSize', 'formInput', 'importJSON',
+  /* sheet:settings 组件根 SettingsSheetView */
+  'sheet:settings': ['S', 'askBattery', 'askExact', 'askNotify', 'batteryIgnoring', 'testNotify', 'testNotifyDelayed', 'openNotifySettings',
+    'exactGranted', 'formInput',
     'keepAliveOn', 'llmTest', 'notifyGranted', 'remindPending', 'SFORM', 'saveSettings',
-    'setTheme', 'showDebug', 'showLog', 'testLLM', 'toggleAI', 'toggleKeepAlive'],
+    'setTheme', 'testLLM', 'toggleAI', 'toggleKeepAlive'],
   /* sheet:sort     组件根 SortSheetView，5 个 key */
   'sheet:sort': ['P', 'closeSheet', 'resetPrefs', 'setPref', 'tab'],
   /* sheet:missed   组件根 MissedSheetView，10 个 key */
@@ -312,10 +310,12 @@ var HOST_KEYS = {
   /* sheet:add      组件根 AddSheetView，2 个 key */
   /* sheet:add      组件根 AddSheetView，4 个 key（步骤 21 加 FORMS / formSet） */
   /* sheet:add      组件根 AddSheetView。 */
-  'sheet:add': ['addNote', 'formSet', 'FORMS', 'pickFile', 'pickImage', 'STT',
-    'voiceDelSeg', 'voiceDown', 'voicePlay', 'voiceStop',
-    'voiceUndo', 'voiceUp', 'voiceOrganize', 'voiceOrganizedEdit', 'voiceUseOriginal'],
+  'sheet:add': ['addNote', 'formSet', 'FORMS', 'draftHasContent', 'draftMedia',
+    'pickDraftFile', 'pickDraftImage', 'removeDraftFile', 'STT',
+    'voiceClick', 'voiceDelSeg', 'voiceDown', 'voicePlay', 'voiceStop',
+    'voiceUndo', 'voiceOrganize', 'voiceOrganizedEdit', 'voiceUseOriginal'],
   'sheet:attachmentPreview': [],
+  'sheet:backup': [],
   'sheet:noteAttachments': ['pickNoteAttachments'],
   'sheet:noteDescription': [],
   /* sheet:addtodo  组件根 AddTodoSheetView，2 个 key */
@@ -323,12 +323,13 @@ var HOST_KEYS = {
   'sheet:addtodo': ['addTodo', 'formSet', 'FORMS', 'sheetArg'],
   /* sheet:log      组件根 LogSheetView，1 个 key */
   'sheet:log': ['logData'],
-  /* sheet:debug    组件根 DebugSheetView，2 个 key */
-  'sheet:debug': ['clipText', 'debugData'],
+  /* sheet:debug    组件根 DebugSheetView，3 个 key */
+  'sheet:debug': ['clipText', 'debugData', 'refreshDebug'],
   /* shell:topbar   组件根 TopBar，5 个 key */
   'shell:topbar': ['brandGo', 'importClip', 'searchClear', 'searchInput', 'sortSheet'],
   /* shell:tabbar   组件根 TabBar，2 个 key */
-  'shell:tabbar': ['fabAct', 'tabPick'],
+  'shell:tabbar': ['tabPick'],
+  'shell:fabRoot': ['fabAct', 'fabHold'],
   /* shell:sheetRoot 组件根 SheetHost，3 个 key */
   'shell:sheetRoot': ['SHOTPROG', 'closeSheet', 'sheetLeft'],
   /* shell:dlgRoot  组件根 DialogHost，2 个 key */
@@ -392,7 +393,7 @@ window.__enoteActions = {
   clipPick, clipSelAll, clipSheet, closeSheet, delAttach, delNote, sheetLeft,
   delTodo, doImportShots, expand, exportJSON, folderFilter, folderPick, folderPickShots,
   folderSave, folderSelAll, folderSheet, importClip, importJSON, jump,
-  missedDismiss, missedDone, missedGoTodos, missedSheet, openAttach, pickImage,
+  missedDismiss, missedDone, missedGoTodos, missedSheet, openAttach,
   refresh, render, reocr, reparse, revoice, resetPrefs, rescanShots, saveSettings,
   scanShotsNow, settingsRefresh, settingsSheet, showDebug, showLog, sortSheet, statsNow,
   clearShots,

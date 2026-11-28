@@ -11,3 +11,13 @@
 .pbody{padding:var(--s3) var(--s3) var(--s6)}
 .pgroup{font-size:var(--fs-sm);font-weight:700;color:var(--dim2);margin:var(--s4) var(--s0) var(--s2);letter-spacing:.5px}
 .pgroup:first-child{margin-top:var(--s0)}
+
+.backup-page p{font-size:var(--fs-sm);line-height:1.6;color:var(--dim2)}
+.backup-page .acts{margin-block:var(--s3)}
+.backup-page .btn{text-decoration:none}
+.backup-page .backup-status,.backup-page .backup-error{overflow-wrap:anywhere}
+.backup-page .backup-status{color:var(--ok)}
+.backup-page .backup-error{color:var(--bad)}
+.backup-files{display:grid;gap:var(--s2);list-style:none;padding:0;margin:var(--s3) 0}
+.backup-files .backup-file{width:100%;display:grid;gap:var(--s1);text-align:left;overflow-wrap:anywhere;white-space:normal}
+.backup-file small{color:var(--dim2);font-size:var(--fs-xs)}

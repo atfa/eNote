@@ -1629,16 +1629,18 @@ if (SPLIT) {
   const noPageEnter = !/enterT = setTimeout/.test(src) && !/main\.enter/.test(src);
   sig('不再有整页切页入场动画', noPageEnter);
 
-  // ---------- 底部 5 按钮 / 自绘对话框 / 返回键 ----------
+  // ---------- 底部导航与浮动按钮 / 自绘对话框 / 返回键 ----------
   const java = read('src/dev/xduo/enote/MainActivity.java');
   const keepalive = read('src/dev/xduo/enote/KeepAlive.java');
 
-  // “记一笔”在导航栏第三格，形成 5 个按钮。
-  // 步骤 15：底栏不再是 index.html 里的静态标记，是 js/shell.js 的 TabBar 模板 —— 契约不变
-  // （fab 夹在 todos 与 files 之间），只是真相换了个地方，扫描源跟着搬。
-  const bar = read('go/ui/js/shell.js').match(/export const TabBar[\s\S]*?template: `([\s\S]*?)`\n/);
-  const inBar = bar && /class="tab"[^>]*todos[\s\S]*?<button class="fab" id="fab"[\s\S]*?data-tab="files"/.test(bar[1]);
-  sig('“记一笔”在底栏第三格（5 个按钮）', inBar);
+  const shellView = read('go/ui/js/shell.js');
+  const bar = shellView.match(/export const TabBar[\s\S]*?template: `([\s\S]*?)`\n/);
+  const floating = shellView.match(/export const FloatingAction[\s\S]*?template: `([\s\S]*?)`\n/);
+  const tabs = [...(bar?.[1].matchAll(/data-tab="(\w+)"/g) || [])].map(m => m[1]);
+  sig('底栏四个页签，记一笔独立浮动并支持长按',
+    tabs.join() === 'notes,todos,files,mine' && !bar[1].includes('id="fab"')
+      && /id="fab"[\s\S]*@pointerdown="H.fabHold/.test(floating?.[1] || '')
+      && /\.fab\{position:fixed[^}]+--compose-bottom/.test(src));
 
   // 指示条必须 left:0，否则它和按钮差一个 padding，看起来左对齐
   const indLeft = /\.tabbar \.ind\{position:absolute;left:0/.test(src);
@@ -1685,7 +1687,7 @@ if (SPLIT) {
   // 涟漪只能在被裁剪的按钮里：选择器带上 .li 时，水波会画到 viewport 上，铺满全屏 = 闪屏
   const ripSel = (src.match(/closest\('([^']*)'\)/) || [])[1] || '';
   const ripOk = ripSel.length > 0 && !/\.li\b/.test(ripSel)
-    && /\.tabbar \.fab\{[^}]*position:relative/.test(src) && /\.seg button\{[^}]*overflow:hidden/.test(src);
+    && /\.fab\{[^}]*position:fixed[^}]*overflow:hidden/.test(src) && /\.seg button\{[^}]*overflow:hidden/.test(src);
   sig('涟漪不会溢出按钮（不闪屏）', ripOk);
 
   // ---------- R11 到期倒计时 ----------
@@ -1729,18 +1731,25 @@ if (SPLIT) {
   const goRoutes = /m\.HandleFunc\("\/api\/stats", handleStats\)/.test(read('go/web.go'))
     && /func stats\(\) statsRes/.test(go) && /func handleImport/.test(read('go/backup.go'));
   sig('Go 侧 /api/stats + /api/import + /api/clear 已注册', goRoutes);
-  // 步骤 10：settingsSheet() 变成分发器（注册表里有 settings 就走 pageSheetVue），所以
-  // 签名不再钉「函数体第一句就是 pageSheet」，只钉「这个函数里真的调了 pageSheet('设置'」。
-  // 步骤 16c：字符串卡片形态的 pageSheet/sheet 双路径收敛成 sheetVue 一条，钉它存在。
-  const panel = /function sheetVue\(name, full\)/.test(src) && /\.panel\.page\{/.test(src)
+  const panel = /function pageSheetVue\(name, title, kind, onBack\)/.test(src) && /\.panel\.page\{/.test(src)
     && /settingsSheet\(\)\{[\s\S]{0,400}?pageSheetVue\('settings', '设置'/.test(src);
   sig('设置是全屏面板（顶栏固定 + 分组）', panel);
-  const secs = ['外观', 'AI 模型', '采集', '本地 OCR', '数据', '运行状态']
-    .every(function (t) { return src.indexOf(t) > 0 });
-  sig('设置面板分组齐全（外观/AI/采集/OCR/数据/状态）', secs);
-  const data = /function importJSON\(\)/.test(src) && /function clearAllNotes\(\)/.test(src)
-    && /Android\.pickJSON\(\)/.test(src) && /REQ_IMPORT/.test(java) && /api\/import/.test(java);
-  sig('导出 / 导入（选文件→POST /api/import）/ 清空 全通', data);
+  const settingsView = read('go/ui/js/views/settings.js');
+  const mineView = read('go/ui/js/views/stats.js');
+  const secs = ['提醒', '后台', '外观', 'AI 模型', '采集', '本地 OCR', '离线语音']
+    .every(t => settingsView.includes('<div class="pgroup">' + t + '</div>'))
+    && ['应用设置', '截图捕获', '备份与数据', '运行与诊断']
+      .every(t => mineView.includes('<h2 class="mine-heading">' + t + '</h2>'));
+  sig('设置与我的页面按功能分组', secs);
+  const backupView = read('go/ui/js/views/backup.js');
+  const backupFiles = read('src/dev/xduo/enote/BackupFiles.java');
+  const data = /function exportJSON\(\)/.test(src) && /function importJSON\(\)/.test(src)
+    && /function clearAllNotes\(\)/.test(src) && /backup: BackupSheetView/.test(src)
+    && ['export', 'list', 'import'].every(action => backupView.includes(`request('${action}'`))
+    && /Android\.backupRequest\(/.test(backupView) && !/Android\.pickJSON\(/.test(src)
+    && /MediaStore\.Downloads/.test(backupFiles) && /enote-backup-/.test(backupFiles)
+    && /api\/export/.test(backupFiles) && /api\/import/.test(backupFiles);
+  sig('应用内导出、扫描 Download、导入备份和清空笔记', data);
 
   // ---------- 时区：Go 用 UTC 会算错「逾期」 ----------
   const tz = /nativeInit\(String filesDir, int tzOffsetSec, String tzId\)/.test(
@@ -2472,7 +2481,7 @@ if (SPLIT) {
         if (!declared.has(tag)) {
           // 豁免 van-*：Vant 是 app.use(Vant) 全局注册（闸门⑮ 同源，那边钉着 withHost 里
           // 确实 app.use(Vant)），不是组件局部声明；van-switch / van-skeleton 都是这条路。
-          if (tag.indexOf('van-') === 0) continue;
+          if (tag === 'teleport' || tag.indexOf('van-') === 0) continue;
           miss24.push(rel + ' 的 ' + name + ' 模板用了 <' + tag + '> 但自己没声明');
         }
     }
@@ -2511,36 +2520,36 @@ if (SPLIT) {
   else ok('闸门㉕ 调试基建齐全：' + rows.map(m => m[1]).join(' + ') + ' + ?vue=dev 开关 + WebView 可调试');
 }
 
-/* ---------- 闸门㉖：「解析并记录」统一提交，语音行可整理 ----------
-   语音与手输正文走同一个提交入口。AI 整理仅生成可编辑草稿，
-   提交时保留手输正文和语音附件，并等待录音定稿。 */
+/* ---------- 闸门㉖：「记一笔」圆钮与统一草稿 ----------
+   短按提交草稿，长按录音。文字、语音、图片与文件由同一个入口提交。 */
 {
   const d26 = [];
   const sh26 = read('go/ui/js/views/sheets.js');
   const af26 = read('go/ui/js/addflow.js');
   const vf26 = read('go/ui/js/voiceflow.js');
-  const api26 = read('go/api.go');
+  const web26 = read('go/web.go');
   const add = sh26.slice(sh26.indexOf('export const AddSheetView'), sh26.indexOf('export const AddTodoSheetView'));
-  const vbar = (add.match(/<div class="vbar">[\s\S]*?(?=<div class="vhint">)/) || [''])[0];
+  const vbar = (add.match(/<div class="vbar">[\s\S]*?<\/div>/) || [''])[0];
   if (!/voiceUndo[\s\S]*voiceDown[\s\S]*voiceOrganize/.test(vbar))
     d26.push('录音行应依次显示撤销、麦克风和 AI 整理');
-  if (/voiceSend|addNote|发送/.test(vbar)) d26.push('录音行出现了提交入口');
-  if ((add.match(/H\.addNote\(\)/g) || []).length !== 1 || !/解析并记录/.test(add))
-    d26.push('缺少唯一的「解析并记录」提交按钮');
+  if (!/voiceClick/.test(vbar) || !/draftHasContent/.test(add) || !/H\.addNote\b/.test(add)
+      || /add-submit/.test(add))
+    d26.push('圆钮应独自处理草稿短按提交');
+  if (/\bhandsFree\b/.test(vf26) || /\b免手持\b/.test(add))
+    d26.push('圆钮仍可进入点按免手持录音');
   if (!/segs\.length\s*\}\}\s*段/.test(add)) d26.push('语音区缺少段数');
   if (/voiceEdit\(/.test(add) || !/voiceOrganizedEdit\(/.test(add) || !/\/api\/voice\/organize/.test(vf26))
     d26.push('整理流程应支持整体编辑草稿');
   if (!/maxlength="2000"/.test(add) || !/class="cnt"/.test(add)) d26.push('输入框的 2000 字上限 / 字数计数没了');
-  if (!/\/api\/voice/.test(af26) || !/text: t, audios:/.test(af26))
-    d26.push('addNote 不再把打字内容随语音段一起交（/api/voice 的 text 丢了）');
-  if (!/\/api\/add/.test(af26)) d26.push('addNote 丢了纯文字路径（/api/add）');
-  if (!/await voiceStop\(\)/.test(af26)) d26.push('提交前不等本段定稿（录音中点提交会丢最后一段）');
+  if (!/\/api\/draft/.test(af26) || !/\/api\/draft/.test(web26)
+      || !['pickDraftImage', 'pickDraftFile', 'removeDraftFile'].every(action => add.includes(action)))
+    d26.push('统一草稿缺少附件暂存、删除或提交');
+  if (!/st\.settling/.test(add) || !/\bsettling\b/.test(af26))
+    d26.push('提交前需等待录音定稿');
   if (!/return Promise\.resolve\(\)/.test(vf26) || !/settleNow\(\)/.test(vf26))
     d26.push('voiceStop 不再返回「本段定稿」的 promise（onSttEnd 是异步的，提交会抢跑）');
-  if (!/req\.Text = body\.Text/.test(api26))
-    d26.push('go/api.go 又把有 audios 时的 text 丢了（打字内容进不了正文）');
   if (d26.length) bad('闸门㉖ 「记一笔」语音整理和统一提交', d26.join('；'));
-  else ok('闸门㉖ 语音可整理为整体草稿，提交保留手输文字并等录音定稿');
+  else ok('闸门㉖ 草稿统一提交，圆钮长按录音并等待定稿');
 }
 
 // ---------- 输出 ----------

@@ -21,11 +21,12 @@
 .iconbtn .ic{width:17px;height:17px}
 .search{flex:1;display:flex;align-items:center;gap:var(--s2);height:38px;padding:0 var(--s2);
   background:var(--card);border:var(--hair) solid var(--line);border-radius:var(--r3);box-shadow:var(--sh);
-  transition:border-color var(--d1) var(--ease),box-shadow var(--d1) var(--ease)}
-.search:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-s)}
+  transition:border-color var(--d1) var(--ease)}
+.search:focus-within{border-color:var(--acc)}
 .search .sico{display:flex;align-items:center;color:var(--dim2);flex:0 0 auto}
 .search .sico .ic{width:16px;height:16px}
 .search input{flex:1;min-width:0;border:0;background:none;color:var(--fg);font-size:var(--fs-base);padding:0;outline:none}
+.search input:focus-visible{box-shadow:none}
 .search .sclr{border:0;background:var(--card2);color:var(--dim);width:20px;height:20px;border-radius:50%;
   display:none;align-items:center;justify-content:center;flex:0 0 auto}
 .search.has .sclr{display:flex}
@@ -47,8 +48,6 @@
 .metrics .m span{display:flex;align-items:center;gap:var(--s1);font-size:var(--fs-xs);color:var(--dim)}
 .metrics .m.hot{border-color:var(--bad)}
 .metrics .m.hot b{background:var(--grad-hot);-webkit-background-clip:text;color:transparent}
-.metrics .m.wide{grid-column:span 3;flex-direction:row;justify-content:center;gap:var(--s2);padding:var(--s2);font-size:var(--fs-xs);color:var(--dim2)}
-.metrics .m.wide.ok{color:var(--ok)}
 
 /* --- 剪贴板暂存（R7/P6）--- */
 .clipbanner{display:flex;align-items:center;gap:var(--s2);margin:var(--s2) var(--s0) 0;padding:var(--s3) var(--s3);border-radius:var(--r2);
@@ -176,11 +175,12 @@
 .clipdel:active{color:var(--acc)}
 .clipload{color:var(--dim);padding:var(--s4) 0}
 
-/* --- 底部导航（4 页 + 中间动作按钮 = 5 个，滑动指示条，R2a）--- */
+/* --- 底部导航（四个页签与滑动指示条）--- */
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;align-items:flex-end;padding:var(--s2) var(--s2) calc(var(--s2) + env(safe-area-inset-bottom));
   background:var(--nav-bg);backdrop-filter:blur(16px);border-top:var(--hair) solid var(--line)}
 .tabbar .tab{flex:1;position:relative;background:none;border:0;color:var(--dim);font-size:var(--fs-xs);padding:var(--s2) 0 var(--s1);display:flex;flex-direction:column;align-items:center;gap:var(--s0);font-weight:600;
   overflow:hidden;border-radius:var(--r2);transition:color var(--d2) var(--ease)}
+.tabbar .tab[data-tab="files"]{margin-inline-start:var(--compose-button-size)}
 .tabbar .tab::before{content:"";position:absolute;top:5px;left:50%;width:50px;height:28px;border-radius:var(--r-pill);
   background:var(--acc-s);transform:translateX(-50%) scale(.4);opacity:0;
   transition:transform var(--d2) var(--spring),opacity var(--d2) var(--ease)}
@@ -196,17 +196,10 @@
 .tabbar .ind{position:absolute;left:0;top:0;height:3px;border-radius:0 0 var(--r1) var(--r1);background:var(--grad);
   transition:transform var(--d2) var(--ease),width var(--d2) var(--ease);will-change:transform,width}
 
-/* --- 中间动作按钮：从右下角的悬浮 FAB 搬进导航栏第三格（R2b）--- */
-.tabbar .fab{flex:0 0 auto;width:96px;height:46px;margin:0 auto var(--s0);padding:0 var(--s2);gap:var(--s1);position:relative;
-  display:flex;align-items:center;justify-content:center;border:0;border-radius:var(--r2);
-  background:var(--grad);color:var(--on-grad);font-size:var(--fs-md);font-weight:700;overflow:hidden;
-  box-shadow:0 4px 14px var(--acc-s);transition:transform var(--d1) var(--ease)}
-.tabbar .fab .fico{font-size:var(--fs-lg);line-height:1;transition:transform var(--d2) var(--ease)}
-.tabbar .fab:active{transform:scale(.93)}
-.tabbar .fab:active .fico{transform:rotate(90deg)}
-.tabbar .fab.hide{visibility:hidden}
-/* 步骤 27 删掉 @keyframes fabin：底部主按钮的入场动画，后来定成「切页不做整页动画」，
-   关键帧就没人引用了。 */
+.fab{position:fixed;left:calc(50% - var(--compose-button-size) / 2);z-index:31;overflow:hidden;
+  bottom:calc(var(--compose-bottom) + env(safe-area-inset-bottom) + var(--kb))}
+.fab.vrec{border-color:var(--bg)}
+.fab.hide{opacity:0;pointer-events:none}
 
 /* 切页不再用整页浮现动画：干净利落，避免每次切换闪烁 */
 

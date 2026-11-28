@@ -6,7 +6,7 @@
 // 读它们的 .v（整包赋值，所以读的是 getter，同 SFORM 那条规矩）。
 import { Vue } from './vue.js'
 import { sheetVue } from './sheetflow.js'
-import { api } from './netflow.js'
+import { api, apiTimeout, errText } from './netflow.js'
 
 /* 步骤 19：这是全项目最后一处「拼字符串 + esc() 写 innerHTML」。换成一个 {v:} 盒子，
    #llmOut 里的 DOM 由 settings.js 的模板画 —— 转义交给 Vue 的插值（textContent），
@@ -21,21 +21,29 @@ async function testLLM(){
     LLMTEST.v = {busy:false, ok:false, error:'测试请求失败：' + e.message};
   }
 }
-/* 运行日志 / AI 调用记录：步骤 16c 之前是「取完数据才弹」（await api 然内拼字符串），
-   组件里自己 fetch 会变成「先弹出一个空的再填」，那是行为改动不是重构，所以数据依旧
-   在这里取好，经 HOST 的 logData / debugData 递给组件（弹层每次打开都是新实例）。 */
 var LOGDATA = Vue.reactive({ v: null }), DEBUGDATA = Vue.reactive({ v: null });
+var debugRequest = 0;
 async function showLog(){
   var r = await api('/api/log?n=150');
   LOGDATA.v = r;
   return sheetVue('log');
 }
-async function showDebug(){
-  var r = await api('/api/llmlog');
-  DEBUGDATA.v = r;
+async function refreshDebug(){
+  const request = ++debugRequest;
+  DEBUGDATA.v = {loading:true};
+  try {
+    const result = await apiTimeout('/api/llmlog');
+    if (!result?.ok || !Array.isArray(result.calls)) throw new Error('invalid AI history');
+    if (request === debugRequest) DEBUGDATA.v = {calls:result.calls};
+  } catch (e) {
+    if (request === debugRequest) DEBUGDATA.v = {error:errText(e)};
+  }
+}
+function showDebug(){
+  refreshDebug();
   return sheetVue('debug');
 }
 /* app.js 把 testLLM / showLog / showDebug 挂进 HOST（设置页的「测试连接」、我的页与
    设置页的「运行日志」「AI 调用记录」），三个盒子经 HOST 的 llmTest / logData / debugData
    递给组件。 */
-export { LLMTEST, testLLM, LOGDATA, DEBUGDATA, showLog, showDebug }
+export { LLMTEST, testLLM, LOGDATA, DEBUGDATA, showLog, showDebug, refreshDebug }

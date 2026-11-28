@@ -3,6 +3,7 @@ package dev.xduo.enote;
 import android.content.Context;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
+import android.os.SystemClock;
 import android.media.MediaRecorder;
 import android.media.audiofx.AutomaticGainControl;
 import android.media.audiofx.NoiseSuppressor;
@@ -41,8 +42,7 @@ public class SttHelper {
     static final String TAG = "enote-stt";
     public static final int SAMPLE_RATE = 16000;
     static final int CHUNK = 3200; // 100 ms at 16k/16-bit/mono
-    /* 低于这个峰值（≈ -45 dBFS）就当作没说话：引擎在纯静音上也会「认出」字
-       （实测 2.9 s 静音得到「是液。」）。正常说话峰值在 -6～-20 dBFS，门限留得很低。 */
+    /* 约 -45 dBFS：用于离线静音检测，以及实时无转写时选择提示语。 */
     static final int SILENCE_PEAK = 184;
     public interface SessionListener {
         /** Recognizer is working; text is the current (partial) hypothesis. */
@@ -74,6 +74,7 @@ public class SttHelper {
     private SessionListener ses;
     private volatile int peak;      // max |sample| seen during the live session
     private final StringBuilder seg = new StringBuilder();
+    private String livePartial = ""; // guarded by seg
     private RandomAccessFile raf;   // WAV being written during the session
     private String audioPath = "";
     /* 引擎的最终句是**异步**回调（decode 线程上），engine.stop() 返回时它可能还没到：
@@ -162,10 +163,6 @@ public class SttHelper {
     void onResult(String text, boolean isFinal) {
         String t = text == null ? "" : text.trim();
         if (t.isEmpty()) return;
-        if (isFinal) {
-            CountDownLatch l0 = finalLatch;
-            if (l0 != null) l0.countDown();
-        }
         SessionListener l;
         synchronized (seg) {
             l = ses;
@@ -174,8 +171,11 @@ public class SttHelper {
                     if (seg.length() > 0 && !seg.toString().endsWith("\n")) seg.append("\n");
                     seg.append(t);
                 }
+                CountDownLatch latch = finalLatch;
+                if (latch != null) latch.countDown();
                 if (!offlinePass) pushPartial(seg.toString());
             } else if (!offlinePass) {
+                livePartial = t;
                 pushPartial(t);
             }
         }
@@ -196,20 +196,18 @@ public class SttHelper {
      * engine and to a WAV file (voice_<ts>.wav in the inbox), so the audio stays reusable.
      */
     void startSession(final SessionListener l) {
+        final long requestedAt = SystemClock.elapsedRealtime();
         startRequested = true;
         ex.submit(new Runnable() {
             public void run() {
-                doStart(l);
+                doStart(l, requestedAt);
             }
         });
     }
 
-    private void doStart(final SessionListener l) {
+    private void doStart(final SessionListener l, long requestedAt) {
         startRequested = false;
-        if (!ensure()) {
-            if (l != null) l.onEnd("", "语音引擎未就绪：" + info, "");
-            return;
-        }
+        if (recording) return;
         final int min = AudioRecord.getMinBufferSize(SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
         final int bufSize = Math.max(min, SAMPLE_RATE * 2);
@@ -218,17 +216,36 @@ public class SttHelper {
         if (r == null) r = openRecord(AudioFormat.CHANNEL_IN_MONO,
                 MediaRecorder.AudioSource.MIC, bufSize * 2);
         if (r == null) {
-            if (l != null) l.onEnd("", "麦克风初始化失败", "");
+            startFailed(l, "麦克风初始化失败");
+            return;
+        }
+        try {
+            r.startRecording();
+            if (r.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+                throw new IllegalStateException("AudioRecord did not start");
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "cannot start capture", e);
+            r.release();
+            startFailed(l, "麦克风启动失败");
+            return;
+        }
+        Log.i(TAG, "capture started in " + (SystemClock.elapsedRealtime() - requestedAt) + "ms");
+        Bridge.pushJs("window.onSttStarted && onSttStarted()");
+
+        // AudioRecord buffers the first samples while the recognizer and effects start.
+        if (!ensure()) {
+            r.release();
+            startFailed(l, "语音引擎未就绪：" + info);
             return;
         }
         int rc = engine.start();
         if (rc != 0) {
             r.release();
-            if (l != null) l.onEnd("", "识别启动失败 rc=" + rc, "");
+            startFailed(l, "识别启动失败 rc=" + rc);
             return;
         }
         enableCaptureEffects(r.getAudioSessionId());
-        Log.i(TAG, "capture: mono");
         RandomAccessFile out = null;
         File af = new File(OcrHelper.inboxDir(ctx),
                 "voice_" + System.currentTimeMillis() + ".wav");
@@ -244,6 +261,7 @@ public class SttHelper {
         finalLatch = new CountDownLatch(1);
         synchronized (seg) {
             seg.setLength(0);
+            livePartial = "";
             audioPath = out == null ? "" : af.getAbsolutePath();
             raf = out;
             ses = l;
@@ -251,12 +269,16 @@ public class SttHelper {
         recording = true;
         peak = 0;
         rec = r;
-        r.startRecording();
         final AudioRecord fr = r;
         recThread = new Thread(new Runnable() {
             public void run() { runMono(fr, rafOut); }
         }, "stt-mic");
         recThread.start();
+    }
+
+    private static void startFailed(SessionListener l, String error) {
+        if (l != null) l.onEnd("", error, "");
+        pushEnd("", error, "");
     }
 
     private static AudioRecord openRecord(int channelMask, int source, int bufSize) {
@@ -277,22 +299,14 @@ public class SttHelper {
         while (recording) {
             int n = r.read(buf, 0, buf.length);
             if (n <= 0) continue;
-            updatePeak(buf, n);
+            int level = peakOf(buf, n);
+            peak = Math.max(peak, level);
+            Bridge.pushJs("window.onSttLevel && onSttLevel(" + level + ")");
             engine.writeData(buf, n);
             if (out != null) {
                 try { out.write(buf, 0, n); } catch (IOException ignored) { }
             }
         }
-    }
-
-    private void updatePeak(byte[] buf, int n) {
-        int p = peak;
-        for (int i = 0; i + 1 < n; i += 2) {
-            int v = (short) ((buf[i] & 0xFF) | (buf[i + 1] << 8));
-            int a = v < 0 ? -v : v;
-            if (a > p) p = a;
-        }
-        peak = p;
     }
 
     /** Platform noise suppression / AGC, when the device offers them. Best-effort. */
@@ -320,12 +334,21 @@ public class SttHelper {
     void stopSession(final SessionListener l) {
         ex.submit(new Runnable() {
             public void run() {
-                doStop(l);
+                doStop(l, false);
             }
         });
     }
 
-    private void doStop(final SessionListener l) {
+    void cancelSession() {
+        ex.submit(new Runnable() {
+            public void run() {
+                doStop(null, true);
+            }
+        });
+    }
+
+    private void doStop(final SessionListener l, boolean discard) {
+        if (rec == null) return;
         recording = false;
         if (recThread != null) {
             try {
@@ -340,6 +363,24 @@ public class SttHelper {
             rec = null;
         }
         releaseCaptureEffects();
+        if (discard) {
+            engine.cancel();
+            if (raf != null) {
+                try { raf.close(); } catch (IOException e) { Log.w(TAG, "close canceled WAV", e); }
+                raf = null;
+            }
+            if (!audioPath.isEmpty() && !new File(audioPath).delete()) {
+                Log.w(TAG, "cannot delete canceled WAV");
+            }
+            synchronized (seg) {
+                seg.setLength(0);
+                livePartial = "";
+                audioPath = "";
+                ses = null;
+            }
+            pushEnd("", "", "");
+            return;
+        }
         String txt, err = "", path = "";
         int rc = 0;
         if (engine != null && ready) {
@@ -347,12 +388,11 @@ public class SttHelper {
         }
         awaitFinal();
         synchronized (seg) {
-            txt = seg.toString().trim();
+            txt = seg.length() == 0 ? livePartial : seg.toString().trim();
             path = audioPath;
         }
-        if (peak < SILENCE_PEAK) {
-            txt = "";
-            if (err.isEmpty()) err = "没有听到声音，请再说一次";
+        if (txt.isEmpty()) {
+            err = peak < SILENCE_PEAK ? "没有听到声音，请再说一次" : "未识别到文字，请再说一次";
         }
         if (raf != null) {
             try {
@@ -387,7 +427,7 @@ public class SttHelper {
             public void run() {
                 if (startRequested || recording) return;
                 try {
-                    String off = doFile(path);
+                    String off = doFile(path, true);
                     if (off.isEmpty()) return;
                     if (prefer(off, live)) {
                         Log.i(TAG, "refined: " + live + " -> " + off);
@@ -433,7 +473,7 @@ public class SttHelper {
         try {
             Future<String> f = ex.submit(new Callable<String>() {
                 public String call() {
-                    return doFile(path);
+                    return doFile(path, false);
                 }
             });
             return f.get();
@@ -443,7 +483,7 @@ public class SttHelper {
         }
     }
 
-    private String doFile(String path) {
+    private String doFile(String path, boolean preemptible) {
         if (!ensure()) return "";
         offlinePass = true;
         try {
@@ -458,6 +498,10 @@ public class SttHelper {
             if (rc != 0) return "";
             int off = 0;
             while (off < pcm.length) {
+                if (preemptible && startRequested) {
+                    engine.cancel();
+                    return "";
+                }
                 int n = Math.min(CHUNK, pcm.length - off);
                 byte[] chunk = new byte[n];
                 System.arraycopy(pcm, off, chunk, 0, n);
@@ -465,7 +509,13 @@ public class SttHelper {
                 off += n;
                 try { Thread.sleep(20); } catch (InterruptedException ignored) { }
             }
-            try { Thread.sleep(400); } catch (InterruptedException ignored) { }
+            for (int waited = 0; waited < 400; waited += 20) {
+                if (preemptible && startRequested) {
+                    engine.cancel();
+                    return "";
+                }
+                try { Thread.sleep(20); } catch (InterruptedException ignored) { }
+            }
             engine.stop();
             awaitFinal();
             synchronized (seg) {
@@ -491,8 +541,12 @@ public class SttHelper {
     }
 
     static int peakOf(byte[] pcm) {
+        return peakOf(pcm, pcm.length);
+    }
+
+    private static int peakOf(byte[] pcm, int len) {
         int p = 0;
-        for (int i = 0; i + 1 < pcm.length; i += 2) {
+        for (int i = 0; i + 1 < len; i += 2) {
             int v = (short) ((pcm[i] & 0xFF) | (pcm[i + 1] << 8));
             int a = v < 0 ? -v : v;
             if (a > p) p = a;

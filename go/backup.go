@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -11,9 +15,8 @@ import (
 // /api/import + /api/clear - the 数据 section of the settings panel.
 //
 // Import merges by note id: a note that already exists locally is left alone, so
-// restoring an old backup never overwrites newer edits. Files referenced by an
-// imported note are kept as-is (they live in the same app-private dir), which is
-// what makes export -> reinstall -> import work for images.
+// restoring an old backup never overwrites newer edits. JSON preserves
+// attachment metadata. The attachment files live separately in the app inbox.
 // ---------------------------------------------------------------------------
 
 type importRes struct {
@@ -26,7 +29,6 @@ type importRes struct {
 }
 
 func importNotes(b []byte) importRes {
-	res := importRes{OK: true}
 	b = trimJSON(b)
 	if len(b) == 0 {
 		return importRes{OK: false, Error: "文件是空的"}
@@ -52,12 +54,29 @@ func importNotes(b []byte) importRes {
 		}
 		list = []*Note{&one}
 	}
+	if len(list) == 0 {
+		return importRes{OK: false, Error: "此备份没有笔记"}
+	}
+	return store.restoreNotes(list)
+}
+
+func (s *Store) restoreNotes(list []*Note) importRes {
+	res := importRes{OK: true, Total: len(list)}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	seen := make(map[string]bool, len(s.Notes))
+	for _, n := range s.Notes {
+		seen[n.ID] = true
+	}
+	inbox := filepath.Join(filepath.Dir(s.path), "inbox")
+	var additions []*Note
 	for _, n := range list {
-		if n == nil || n.ID == "" || (n.Content == "" && n.RawText == "" && n.Title == "" && n.Description == "" && len(n.Attachments) == 0) {
+		if n == nil || n.ID == "" || (n.Content == "" && n.RawText == "" && n.Title == "" &&
+			n.Description == "" && len(n.Attachments) == 0 && len(n.Todos) == 0 && n.ImagePath == "") {
 			res.Invalid++
 			continue
 		}
-		if store.get(n.ID) != nil {
+		if seen[n.ID] {
 			res.Skipped++
 			continue
 		}
@@ -70,36 +89,94 @@ func importNotes(b []byte) importRes {
 		if n.Status == "" {
 			n.Status = stDone
 		}
-		migrateNoteMetadata(n)
+		restoreAttachmentMetadata(n, inbox)
 		sortTodos(n.Todos)
-		store.add(n)
-		res.Imported++
+		seen[n.ID] = true
+		additions = append(additions, n)
 	}
-	res.Total = len(list)
-	if res.Imported == 0 && res.Skipped == 0 && res.Invalid == 0 {
-		res.OK = false
-		res.Error = "文件里没有笔记"
+	if len(additions) == 0 {
+		return res
 	}
+	previous := s.Notes
+	s.Notes = append(s.Notes, additions...)
+	if err := s.save(); err != nil {
+		s.Notes = previous
+		logf("store restore: %v", err)
+		return importRes{OK: false, Error: "无法保存导入的笔记"}
+	}
+	res.Imported = len(additions)
 	return res
+}
+
+func restoreAttachmentMetadata(n *Note, inbox string) {
+	image := n.ImagePath
+	n.ImagePath = restoredAttachmentPath(image, inbox)
+	if image != "" && n.ImagePath == "" {
+		found := false
+		for _, a := range n.Attachments {
+			if a.Path == image {
+				found = true
+				break
+			}
+		}
+		if !found {
+			name := firstNonEmpty(n.ImageName, filepath.Base(image))
+			attachTo(n, Attachment{ID: newID(), NoteID: n.ID, Name: name, MIME: mimeForName(name),
+				Source: n.Source, Role: attachmentOriginal, CreatedAt: n.CreatedAt})
+		}
+	}
+	for i := range n.Attachments {
+		a := &n.Attachments[i]
+		a.Path = restoredAttachmentPath(a.Path, inbox)
+	}
+	migrateNoteMetadata(n)
+}
+
+func restoredAttachmentPath(path, inbox string) string {
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) || filepath.Dir(clean) != inbox {
+		return ""
+	}
+	if info, err := os.Lstat(clean); err == nil && info.Mode().IsRegular() {
+		return clean
+	}
+	return ""
 }
 
 // trimJSON strips a UTF-8 BOM and surrounding whitespace, which is what a file saved
 // from a Windows text editor looks like.
 func trimJSON(b []byte) []byte {
-	i, j := 0, len(b)
-	for i < j && (b[i] == ' ' || b[i] == '\n' || b[i] == '\r' || b[i] == '\t' || b[i] == 0xef) {
-		i++
+	return bytes.TrimSpace(bytes.TrimPrefix(bytes.TrimSpace(b), []byte("\xef\xbb\xbf")))
+}
+
+func handleExport(w http.ResponseWriter, r *http.Request) {
+	var suffix [4]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		http.Error(w, "无法生成备份文件名", http.StatusInternalServerError)
+		return
 	}
-	for j > i && (b[j-1] == ' ' || b[j-1] == '\n' || b[j-1] == '\r' || b[j-1] == '\t') {
-		j--
+	data, err := json.MarshalIndent(store.snapshot(), "", "  ")
+	if err != nil {
+		http.Error(w, "无法生成备份", http.StatusInternalServerError)
+		return
 	}
-	return b[i:j]
+	now := time.Now()
+	name := fmt.Sprintf("enote-backup-%s-%03d-%x.json", now.Format("20060102-150405"), now.Nanosecond()/1e6, suffix)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(data)
 }
 
 func handleImport(w http.ResponseWriter, r *http.Request) {
-	b, err := readAll(r, 64<<20)
+	const max = 64 << 20
+	b, err := readAll(r, max+1)
 	if err != nil {
 		jsonOut(w, importRes{OK: false, Error: err.Error()})
+		return
+	}
+	if len(b) > max {
+		jsonOut(w, importRes{OK: false, Error: "备份文件超过 64 MB"})
 		return
 	}
 	jsonOut(w, importNotes(b))

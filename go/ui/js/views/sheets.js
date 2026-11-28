@@ -104,22 +104,20 @@ export const MissedSheetView = {
 `
 };
 
-/* 记一笔：手输文字和语音通过「解析并记录」提交。语音原文可回放，整理后的草稿可整体编辑。 */
+/* 记一笔：圆钮点按提交草稿，长按追加语音。 */
 export const AddSheetView = {
   name: 'AddSheetView',
   components: { Ico },
   setup(){
     const H = inject('H');
-    /* 面板被关掉（返回键 / 点遮罩 / 切页）时把还在录的那一段收掉：AudioRecord 留在
-       后台会被系统杀掉，而且用户看不到还在录。 */
-    if (Vue.onBeforeUnmount) {
-      Vue.onBeforeUnmount(function(){ if (H.STT && H.STT.listening) H.voiceStop() });
-    }
+    /* 关闭面板时同时结束正在录音和等待长按阈值的手势。 */
+    Vue.onBeforeUnmount(() => H.voiceStop());
     return { H,
       f: computed(() => (H.FORMS && H.FORMS.add) || { text: '' }),
+      draft: computed(() => H.draftMedia || { files: [], picking: false }),
       /* STT 是 {v:} 容器（js/voiceflow.js），宿主给的是盒子里的 v；没装配上时给一份
          同形状的空值，面板渲染成空的而不是抛错（闸门⑮ 负责把漏装配报红）。 */
-      st: computed(() => H.STT || { segs: [], listening: false, handsFree: false,
+      st: computed(() => H.STT || { segs: [], listening: false,
         secs: 0, partial: '', error: '', busy: false, organized: null }),
       segs: computed(() => (H.STT && H.STT.segs) || [])
     }
@@ -132,20 +130,46 @@ export const AddSheetView = {
 <textarea id="addText" maxlength="2000" :disabled="st.busy" :value="f.text" @input="H.formSet('add','text',$event.target.value)" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea>
 <div class="cnt">{{ (f.text || '').length }} / 2000</div>
 </div>
-<div class="acts add-attachments"><button class="btn" :disabled="st.busy || st.organizing" @click="H.pickImage()"><ico n="camera"/>选图片</button><button class="btn" :disabled="st.busy || st.organizing" @click="H.pickFile()"><ico n="clipfile"/>选文件</button></div>
+<div class="acts add-attachments">
+  <button class="btn" :disabled="draft.picking || st.busy || st.organizing || st.listening" @click="H.pickDraftImage()"><ico n="camera"/>选图片</button>
+  <button class="btn" :disabled="draft.picking || st.busy || st.organizing || st.listening" @click="H.pickDraftFile()"><ico n="clipfile"/>选文件</button>
+</div>
+<div class="vseg draft-file" v-for="file in draft.files" :key="file.path">
+  <ico :n="(file.mime || '').startsWith('image/') ? 'image' : 'clipfile'"/>
+  <div class="vtx">{{ file.name }}</div>
+  <button class="vmini" :disabled="st.busy" :aria-label="'移除 ' + file.name" @click="H.removeDraftFile(file.path)"><ico n="trash"/></button>
+</div>
 <div class="vpane">
   <div class="vhead"><ico n="mic"/><span>语音暂存</span><small>{{ segs.length }} 段 · 说完一段再录下一段</small></div>
   <div class="vseg" v-for="(s,i) in segs" :key="i"><div class="vtx">{{ s.text }}</div><button class="vmini" aria-label="播放语音" @click="H.voicePlay(i)"><ico n="play"/></button><button class="vmini" aria-label="删除语音" :disabled="st.organizing || st.busy" @click="H.voiceDelSeg(i)"><ico n="trash"/></button></div>
   <div v-if="st.organized !== null" class="vresult"><div class="vresult-head"><strong>整理结果</strong><button class="vresult-original" :disabled="st.organizing || st.busy" @click="H.voiceUseOriginal()">使用原文</button></div><textarea aria-label="编辑整理结果" :disabled="st.organizing || st.busy" :value="st.organized" @input="H.voiceOrganizedEdit($event.target.value)"></textarea><div class="verr" v-if="st.organizedStale">语音已变化，请重新整理或使用原文</div></div>
-  <div class="vpart" v-if="st.partial">{{ st.partial }}</div><div class="verr" v-if="st.error">{{ st.error }}</div>
-  <div class="vbar"><button class="vside" :disabled="!segs.length || st.organizing || st.busy" @click="H.voiceUndo()"><ico n="refresh"/>撤销</button><button class="vrec" :class="{live: st.listening}" :disabled="st.organizing || st.busy || st.settling" aria-label="录音" @pointerdown.prevent="H.voiceDown()" @pointerup="H.voiceUp()" @pointercancel="H.voiceStop()"><ico :n="st.listening ? 'stop' : 'mic'"/></button><button class="vside vai" :disabled="!segs.length || st.organizing || st.busy || st.listening || st.settling" @click="H.voiceOrganize()"><ico n="sparkle"/>{{ st.organizing ? '整理中…' : (st.organizedStale ? '重新整理' : 'AI 整理') }}</button></div>
-  <div class="vhint">{{ st.listening ? (st.handsFree ? '免手持录音中 ' + st.secs + 's · 点一下圆钮结束本段' : '松手结束本段') : '按住说话；点一下录音 · 免手持（静音不自动断句）' }}</div>
+  <div class="verr" v-if="st.error">{{ st.error }}</div>
 </div>
 </div>
 <div class="add-foot">
-<button class="btn pri add-submit" :disabled="st.busy || st.organizing" @click="H.addNote()"><ico n="sparkle"/><span><strong>解析并记录</strong><small>文字 / 语音 / 图片 / 文件</small></span><ico n="send"/></button>
+<div class="vhint" role="status">{{ st.started ? '松手结束 · 上滑取消' : st.listening ? '正在打开麦克风…' : st.settling ? '正在整理这段录音…' : st.busy ? '正在提交…' : H.draftMedia?.picking ? '正在添加附件…' : H.draftHasContent ? '点按发送 · 长按继续说' : '按住说话' }}</div>
+<div class="vbar">
+  <button class="vside" :disabled="!segs.length || st.organizing || st.busy || st.listening || st.settling" @click="H.voiceUndo()"><ico n="refresh"/>撤销</button>
+  <button type="button" class="vrec" :class="{live: st.started}" :disabled="st.organizing || st.busy || st.settling || H.draftMedia?.picking"
+          :aria-label="st.listening ? '录音中，松手结束' : st.settling ? '正在整理这段录音' : st.busy ? '正在提交' : H.draftHasContent ? '发送并解析，或长按继续录音' : '按住录音'"
+          @pointerdown.prevent="H.voiceDown($event)" @click="H.voiceClick($event, H.draftHasContent ? H.addNote : undefined)" @contextmenu.prevent>
+    <ico :n="st.settling || st.busy || H.draftMedia?.picking ? 'clock' : H.draftHasContent && !st.listening ? 'send' : 'mic'"/>
+  </button>
+  <button class="vside vai" :disabled="!segs.length || st.organizing || st.busy || st.listening || st.settling" @click="H.voiceOrganize()"><ico n="sparkle"/>{{ st.organizing ? '整理中…' : (st.organizedStale ? '重新整理' : 'AI 整理') }}</button>
+</div>
 </div>
 <audio id="stt-audio" preload="none"></audio>
+<teleport to="body">
+  <div v-if="st.started" class="vrecord-overlay" :class="{cancel: st.cancelArmed}">
+    <div class="vrecord-meter">
+      <div class="vwave" aria-hidden="true">
+        <span v-for="(level,i) in st.levels" :key="i" :style="{ transform: 'scaleY(' + (0.08 + 0.92 * level) + ')' }"></span>
+      </div>
+      <div class="vrecord-status" role="status">{{ st.cancelArmed ? '松手取消' : '录音中 · 上滑取消' }} <span aria-hidden="true">{{ st.secs }}s</span></div>
+    </div>
+    <div class="vrecord-text">{{ st.partial }}</div>
+  </div>
+</teleport>
 `
 };
 
@@ -182,20 +206,42 @@ export const LogSheetView = {
 `
 };
 
-/* AI 调用记录：同上，数据由 showDebug() 取好。calls 的截断（前 10 条）与 clip 的 200
-   字截断都留在原处，模板只负责画。 */
 export const DebugSheetView = {
   name: 'DebugSheetView',
   setup(){
     const H = inject('H');
+    const data = computed(() => H.debugData || {});
     return {
       H,
-      calls: computed(() => (H.debugData && H.debugData.calls) ? H.debugData.calls.slice(0, 10) : [])
+      data,
+      calls: computed(() => data.value.calls?.slice(0, 10) || []),
+      callTime: ts => new Date(ts).toLocaleString()
     }
   },
   template: `
 <h2>AI 调用记录</h2>
-<div class="empty" v-if="!calls.length">还没有调用记录</div>
-<div class="card" v-for="(c,i) in calls" :key="i"><div class="meta"><span class="chip">{{ c.model }}</span><span class="chip">{{ c.ms }}ms</span><span class="chip">HTTP {{ c.httpCode }}</span></div><div class="body" style="font-size:var(--fs-sm)">输入：{{ H.clipText(c.user,200) }}</div><pre>{{ c.err ? ('错误：' + c.err) : c.raw }}</pre></div>
+<div class="empty" v-if="data.loading" role="status">正在加载调用记录…</div>
+<div class="empty" v-else-if="data.error" role="alert">{{ data.error }}，请重试。</div>
+<div class="empty" v-else-if="!calls.length" role="status">
+  本次运行还没有调用记录
+  <div class="esub">在 AI 设置中测试连接，或使用需要 AI 的功能后，记录会显示在这里。</div>
+</div>
+<div v-else>
+  <div class="meta" v-if="data.calls.length > calls.length">显示最近 {{ calls.length }} 条</div>
+  <div class="card" v-for="(c,i) in calls" :key="i">
+    <div class="meta">
+      <span v-if="c.ts">{{ callTime(c.ts) }}</span>
+      <span class="chip">{{ c.err ? '失败' : '成功' }}</span>
+      <span v-if="c.model" class="chip">{{ c.model }}</span>
+      <span class="chip">{{ c.ms }} ms</span>
+      <span v-if="c.httpCode" class="chip">HTTP {{ c.httpCode }}</span>
+    </div>
+    <div v-if="c.user" class="body">输入：{{ H.clipText(c.user,200) }}</div>
+    <pre>{{ H.clipText(c.err || c.raw || '响应内容为空', 4000) }}</pre>
+  </div>
+</div>
+<div class="acts" v-if="!data.loading">
+  <button class="btn gh" @click="H.refreshDebug()">{{ data.error ? '重试' : '刷新记录' }}</button>
+</div>
 `
 };
