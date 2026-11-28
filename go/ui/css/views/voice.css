@@ -35,9 +35,9 @@
   width:var(--compose-button-size);height:var(--compose-button-size);
   box-sizing:border-box;border:var(--s1) solid var(--card);border-radius:var(--r-pill);
   background:var(--grad);color:var(--on-grad);
-  box-shadow:var(--sh2);touch-action:none;cursor:pointer;
-  transition:filter var(--d1) var(--ease)}
-.vrec>.ic{width:var(--s5);height:var(--s5)}
+  box-shadow:none;touch-action:none;cursor:pointer;
+  transition:filter var(--d1) var(--ease),opacity var(--d1) var(--ease)}
+.vrec>.ic{width:var(--s6);height:var(--s6)}
 .vrec:active{filter:brightness(.94)}
 /* 录音中：红色脉冲。 */
 .vrec.live{background:var(--bad);animation:vpulse 1.4s var(--ease) infinite}

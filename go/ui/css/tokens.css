@@ -60,8 +60,8 @@
   /* ---- S2 新增：间距刻度。基准 4，半档 2 只用于图标与文字的视觉对齐 ---- */
   --s0:2px; --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;;
   /* 首页浮动按钮和面板圆钮共享尺寸及底部偏移。 */
-  --compose-button-size:calc(var(--s6) * 2 + var(--s2));
-  --compose-bottom:var(--s5);
+  --compose-button-size:calc(var(--s6) * 2 + var(--s5));
+  --compose-bottom:var(--s6);
   --clear-bottom:calc(var(--compose-bottom) + var(--compose-button-size) + var(--s3));
   /* 附件列表的缩略图和文件图标共用方块尺寸。 */
   --tile-h:64px;
