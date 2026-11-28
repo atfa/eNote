@@ -24,6 +24,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- 重启 / 应用升级 / 改时间 / 改时区后重排本地提醒 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- targetSdk 33 上 SCHEDULE_EXACT_ALARM 默认不授予；USE_EXACT_ALARM 是 33+ 给
          闹钟/提醒类应用的自动授予版本，canScheduleExactAlarms() 直接为 true -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
@@ -125,11 +127,23 @@
                 <data android:mimeType="audio/*" />
             </intent-filter>
         </activity>
-        <!-- 到期闹钟的落点：只发通知，不启动界面（后台唤起 Activity 会被系统拦） -->        <receiver
+        <!-- 到期闹钟的落点：只发通知，不启动界面（后台唤起 Activity 会被系统拦） -->
+        <receiver
             android:name=".Reminders$AlarmReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="dev.xduo.enote.REMIND" />
+            </intent-filter>
+        </receiver>
+        <!-- 重启 / 升级 / 改时间 / 改时区：按缓存载荷重排（AlarmManager 重启后清空） -->
+        <receiver
+            android:name=".Reminders$BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
 

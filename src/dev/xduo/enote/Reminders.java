@@ -56,6 +56,8 @@ public final class Reminders {
      */
     private static final String PREFS = "reminders";
     private static final String KEY_SET = "scheduled";
+    /** 最后一次推送的提醒载荷：重启时 Go 还没加载也能按它重排。 */
+    private static final String KEY_PAYLOAD = "payload";
 
     private static Set<String> load(Context c) {
         Set<String> out = new LinkedHashSet<>();
@@ -104,6 +106,10 @@ public final class Reminders {
 
     static int sync(Context c, String json) {
         ensureChannel(c);
+        try {
+            c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString(KEY_PAYLOAD, json == null ? "[]" : json).apply();
+        } catch (Throwable ignored) { }
         AlarmManager am = c.getSystemService(AlarmManager.class);
         if (am == null) return 0;
         migrateScheme(c, am);
@@ -254,6 +260,46 @@ public final class Reminders {
     }
 
     /** True when we may use setExactAndAllowWhileIdle (all systems before 31 always can). */
+    /** 清掉所有旧 alarm（重启/改时间后系统里的登记已不可信）。 */
+    static void reset(Context c) {
+        Set<String> keys = load(c);
+        AlarmManager am = c.getSystemService(AlarmManager.class);
+        if (am != null) {
+            for (String key : keys) {
+                try { am.cancel(pending(c, key, null, null, null, null, 0L)); } catch (Throwable ignored) { }
+            }
+        }
+        save(c, new LinkedHashSet<String>());
+    }
+
+    /** 重建：优先用 Go store（权威），没有就回退到最后一轮页面推的 payload。 */
+    static void resync(Context c) {
+        String json = null;
+        try { json = Bridge.remindersFromStore(); } catch (Throwable ignored) { }
+        if (json == null || json.isEmpty() || "[]".equals(json)) {
+            json = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_PAYLOAD, "[]");
+        }
+        sync(c, json);
+    }
+
+    /** 开机 / 应用升级 / 改时间 / 改时区：系统里的闹钟会丢或落在旧绝对时刻。 */
+    public static class BootReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context c, Intent intent) {
+            if (intent == null) return;
+            String a = intent.getAction();
+            if (!Intent.ACTION_BOOT_COMPLETED.equals(a)
+                    && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)
+                    && !Intent.ACTION_TIME_CHANGED.equals(a)
+                    && !Intent.ACTION_TIMEZONE_CHANGED.equals(a)) return;
+            Log.i(TAG, "reminder resync: " + a);
+            ensureChannel(c);
+            reset(c);
+            resync(c);
+        }
+    }
+
     static boolean exactGranted(Context c) {
         AlarmManager am = c.getSystemService(AlarmManager.class);
         return am != null && canExact(am);
