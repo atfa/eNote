@@ -27,6 +27,9 @@ async function api(path, body){
     throw new Error('injected failure: ' + path);
   var o = body ? {method:'POST',headers:{'Content-Type':'application/json'},
                   body:JSON.stringify(body)} : {};
+  if (String(path).startsWith('/api/') && window.Android?.openAISession) {
+    o.headers = {...o.headers, 'X-eNote-Session': window.Android.openAISession()};
+  }
   var r = await fetch(path, o);
   if(!r.ok) throw new Error('HTTP '+r.status);
   return r.json();

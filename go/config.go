@@ -11,15 +11,17 @@ import (
 
 // Settings stores model configuration and UI preferences, editable in 我的 → 设置.
 type Settings struct {
-	BaseURL  string               `json:"baseUrl"`
-	APIKey   string               `json:"apiKey"`
-	Model    string               `json:"model"`
-	TimeoutS int                  `json:"timeoutS"`
-	MaxTok   int                  `json:"maxTokens"`
-	Temp     float64              `json:"temperature"`
-	UseAI    bool                 `json:"useAI"` // off = save shared content as-is, no LLM call
-	Theme    string               `json:"theme"` // light | dark | auto, default light
-	UI       map[string]ViewPrefs `json:"ui"`    // per-page remembered search/sort/filter
+	Provider     string               `json:"provider"`
+	ChatGPTModel string               `json:"chatGPTModel"`
+	BaseURL      string               `json:"baseUrl"`
+	APIKey       string               `json:"apiKey"`
+	Model        string               `json:"model"`
+	TimeoutS     int                  `json:"timeoutS"`
+	MaxTok       int                  `json:"maxTokens"`
+	Temp         float64              `json:"temperature"`
+	UseAI        bool                 `json:"useAI"` // off = save shared content as-is, no LLM call
+	Theme        string               `json:"theme"` // light | dark | auto, default light
+	UI           map[string]ViewPrefs `json:"ui"`    // per-page remembered search/sort/filter
 }
 
 // ViewPrefs is one page's remembered query state (notes / todos / files).
@@ -32,6 +34,7 @@ type ViewPrefs struct {
 }
 
 var defaultSettings = Settings{
+	Provider: "api",
 	BaseURL:  "",
 	APIKey:   "",
 	Model:    "gpt-4o-mini",
@@ -74,6 +77,9 @@ func openConfig(dir string) (*Config, error) {
 }
 
 func (s *Settings) normalize() {
+	if s.Provider != "chatgpt" {
+		s.Provider = "api"
+	}
 	s.BaseURL = trimSlash(strings.TrimSpace(s.BaseURL))
 	if s.Theme != "dark" && s.Theme != "auto" {
 		s.Theme = "light"

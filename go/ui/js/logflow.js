@@ -14,8 +14,12 @@ import { api } from './netflow.js'
 var LLMTEST = Vue.reactive({ v: null });
 async function testLLM(){
   LLMTEST.v = {busy:true};
-  var r = await api('/api/llm/test',{});
-  LLMTEST.v = {busy:false, ok:!!r.ok, ms:r.ms, httpCode:r.httpCode, reply:r.reply, error:r.error};
+  try {
+    var r = await api('/api/llm/test', {});
+    LLMTEST.v = {busy:false, ok:!!r.ok, ms:r.ms, httpCode:r.httpCode, reply:r.reply, error:r.error};
+  } catch(e) {
+    LLMTEST.v = {busy:false, ok:false, error:'测试请求失败：' + e.message};
+  }
 }
 /* 运行日志 / AI 调用记录：步骤 16c 之前是「取完数据才弹」（await api 然内拼字符串），
    组件里自己 fetch 会变成「先弹出一个空的再填」，那是行为改动不是重构，所以数据依旧

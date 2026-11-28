@@ -30,14 +30,102 @@ import { V, Vue } from '../vue.js'
 import { Ico, KvRow } from '../components/leaf.js'
 import { SettingsDataCard, SettingsRunCard, SettingsOcrCard, SettingsSttCard }
   from '../components/blocks.js'
+import { api } from '../netflow.js'
 
-const { computed, inject } = Vue
+const { computed, inject, reactive, onMounted, onUnmounted } = Vue
 
 export const SettingsSheetView = {
   name: 'SettingsSheetView',
   components: { Ico, KvRow, SettingsDataCard, SettingsRunCard, SettingsOcrCard, SettingsSttCard },
   setup(){
     const H = inject('H');
+    const oa = reactive({status:null, models:[], error:'', callbackURL:'', busy:false, modelBusy:false, saving:false});
+    let mounted = false;
+    let timer;
+    let checkingStatus = false;
+    async function loadOpenAI(){
+      if (checkingStatus) return;
+      checkingStatus = true;
+      try {
+        oa.status = await api('/api/openai/status');
+        if (mounted && oa.status.authorized && !oa.status.pending && !oa.models.length) await loadModels();
+      } catch(e){ oa.error = '状态读取失败：' + e.message }
+      finally { checkingStatus = false }
+    }
+    async function loadModels(){
+      if (oa.modelBusy || !oa.status?.authorized || oa.status.pending) return;
+      oa.modelBusy = true;
+      oa.error = '';
+      try {
+        const r = await api('/api/openai/models');
+        if(!r.ok) throw new Error(r.error || '模型列表读取失败');
+        oa.models = r.models;
+      } catch(e){ oa.error = e.message }
+      finally { oa.modelBusy = false }
+    }
+    async function openAILogin(){
+      oa.error = '';
+      oa.busy = true;
+      try {
+        if (!window.Android?.openOpenAILogin) throw new Error('请在 eNote Android 应用中连接 ChatGPT');
+        const r = await api('/api/openai/login', {});
+        if (!r.ok || !r.url) throw new Error(r.error || '无法开始 ChatGPT 登录');
+        if (!window.Android.openOpenAILogin(r.url)) throw new Error('无法打开登录页面');
+        oa.models = [];
+        oa.status = {...oa.status, pending:true};
+      } catch(e){ oa.error = e.message }
+      finally { oa.busy = false }
+    }
+    async function pasteOpenAI(){
+      const url = oa.callbackURL.trim();
+      if (!url || oa.busy) return;
+      oa.callbackURL = '';
+      oa.error = '';
+      oa.busy = true;
+      try {
+        const result = await api('/api/openai/callback', {url});
+        if (!result.ok) throw new Error(result.error || '无法完成 ChatGPT 登录');
+        await loadOpenAI();
+      } catch(e){ oa.error = e.message }
+      finally { oa.busy = false }
+    }
+    async function openAILogout(){
+      oa.error = '';
+      oa.busy = true;
+      try {
+        const r = await api('/api/openai/logout', {});
+        if(!r.ok) throw new Error(r.error || '退出失败');
+        oa.models = [];
+        await loadOpenAI();
+        oa.error = r.warning || '';
+      } catch(e){ oa.error = e.message }
+      finally { oa.busy = false }
+    }
+    async function saveProvider(patch){
+      if (oa.saving) return;
+      oa.error = '';
+      oa.saving = true;
+      try {
+        const r = await api('/api/settings', patch);
+        if(!r.ok) throw new Error(r.error || '保存失败');
+        H.S.settings = r.settings;
+      } catch(e){ oa.error = e.message }
+      finally { oa.saving = false }
+    }
+    async function setProvider(provider){
+      if (H.S.settings.provider === provider) return;
+      await saveProvider({provider});
+      if (H.S.settings.provider === 'chatgpt') await loadOpenAI();
+    }
+    function setChatGPTModel(chatGPTModel){
+      return saveProvider({chatGPTModel});
+    }
+    onMounted(()=>{
+      mounted = true;
+      if (H.S.settings.provider === 'chatgpt') loadOpenAI();
+      timer = setInterval(()=>{ if (oa.status?.pending) loadOpenAI() }, 1500);
+    });
+    onUnmounted(()=>{ mounted = false; clearInterval(timer) });
     /* 通知权限 / 常驻后台 / 电池优化这三样是 Android 桥的「拉」式接口，本身不可观察。
        V.tick 现在是「原生状态可能变了」的纪元号：onAppResume / notifyResult 里的
        settingsRefresh() bump 一次，下面这几个 computed 显式读它才会重算。
@@ -50,6 +138,7 @@ export const SettingsSheetView = {
          单向 :value.attr + @input 回写，不用 v-model —— 我们要的是 DOM 上真的那个
          value 属性（test.sh 断言 #sUrl 有 value 属性），v-model 写的是 property。 */
       f: computed(() => H.SFORM || { baseUrl:'', apiKey:'', model:'', timeoutS:90, maxTokens:2048, temperature:0.2 }),
+      oa, openAILogin, openAILogout, pasteOpenAI, loadModels, setProvider, setChatGPTModel,
       i: computed(() => ({ ...H.S.info })),
       // 提醒卡：副标题的插值切分必须与遗留拼接一一对应（三个文本节点）
       notifyGranted: computed(() => { nat.value; return H.notifyGranted() }),
@@ -81,7 +170,9 @@ export const SettingsSheetView = {
           };
         });
       }),
-      aiSwCls: computed(() => 'sw' + (H.S.settings.useAI ? ' on' : ''))
+      aiSwCls: computed(() => 'sw' + (H.S.settings.useAI ? ' on' : '')),
+      provider: computed(() => H.S.settings.provider || 'api'),
+      chatGPTModel: computed(() => oa.models.find(m => m.slug === H.S.settings.chatGPTModel)?.slug || '')
     }
   },
   template: `
@@ -107,10 +198,37 @@ export const SettingsSheetView = {
 </div>
 <div class="pgroup">外观</div>
 <div class="card"><div class="seg" style="margin-top:var(--s0)"><button v-for="t in themes" :key="t.m" :class="t.cls" @click="H.setTheme(t.m)"><ico :n="t.icon"/>{{ t.label }}</button></div><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">默认亮色；选「跟随系统」时随手机夜间模式切换，状态栏与导航栏同步变色</div></div>
-<div class="pgroup">AI 模型（BYOK）</div>
+<div class="pgroup">AI 模型</div>
 <div class="card">
-  <div class="row between" style="margin-top:var(--s0)"><div><b>启用 AI 解析</b><div style="font-size:var(--fs-xs);color:var(--dim)">关闭后只保存原文，不调用模型</div></div>
+  <div class="row between" style="margin-top:var(--s0)"><div><b>启用 AI 解析</b><div class="fhint">关闭后只保存原文</div></div>
   <van-switch :class="aiSwCls" :model-value="s.useAI" @update:model-value="H.toggleAI"/></div>
+  <div class="seg" aria-label="模型提供方"><button :class="provider==='chatgpt'?'on':''" :disabled="oa.saving" @click="setProvider('chatgpt')">ChatGPT 套餐</button><button :class="provider==='api'?'on':''" :disabled="oa.saving" @click="setProvider('api')">API Key</button></div>
+  <template v-if="provider==='chatgpt'">
+    <div class="fhint">在浏览器授权后，eNote 会将模型请求发送给 OpenAI，并计入你的 ChatGPT 套餐用量。</div>
+    <div class="kv" role="status"><span>连接状态</span><span>{{ oa.status?.pending ? '等待浏览器授权…' : oa.status?.authorized ? '已授权使用套餐' : oa.status?.connected ? '已登录，套餐未授权' : '未连接' }}</span></div>
+    <div class="kv" v-if="oa.status?.account"><span>账号</span><span>{{ oa.status.account }}</span></div>
+    <div class="acts">
+      <button class="btn pri" @click="openAILogin" :disabled="oa.busy || oa.modelBusy">{{ oa.status?.connected || oa.status?.pending ? '重新连接 ChatGPT' : '使用 ChatGPT 登录' }}</button>
+      <button class="btn" v-if="oa.status?.connected || oa.status?.pending" @click="openAILogout" :disabled="oa.busy">{{ oa.status.connected ? '断开连接' : '取消登录' }}</button>
+      <button class="btn gh" v-if="oa.status?.authorized && !oa.status.pending" @click="loadModels" :disabled="oa.modelBusy">{{ oa.modelBusy ? '正在读取…' : '刷新模型' }}</button>
+    </div>
+    <details v-if="oa.status?.pending">
+      <summary>浏览器无法返回 eNote？</summary>
+      <div class="fhint">授权后，如果浏览器无法打开 127.0.0.1，请复制地址栏中的完整地址，返回这里粘贴。地址含一次性授权码，请只粘贴到这里。</div>
+      <form @submit.prevent="pasteOpenAI()" autocomplete="off">
+        <input v-model="oa.callbackURL" type="password" maxlength="8192" aria-label="本机回调地址" placeholder="http://127.0.0.1:…/auth/callback" spellcheck="false" :disabled="oa.busy">
+        <div class="acts"><button type="submit" class="btn" :disabled="oa.busy || !oa.callbackURL.trim()">完成登录</button></div>
+      </form>
+    </details>
+    <div v-if="oa.status?.error" class="body" role="status">{{ oa.status.error }}</div>
+    <label for="sChatGPTModel" v-if="oa.status?.authorized">ChatGPT 模型</label>
+    <select v-if="oa.status?.authorized" id="sChatGPTModel" :value="chatGPTModel" :disabled="oa.saving || oa.modelBusy || !oa.models.length" @change="setChatGPTModel($event.target.value)">
+      <option value="">{{ oa.models.length ? '选择模型' : '没有可用模型' }}</option>
+      <option v-for="m in oa.models" :key="m.slug" :value="m.slug">{{ m.display_name }}</option>
+    </select>
+    <div class="acts"><button class="btn" @click="H.testLLM()" :disabled="!oa.status?.authorized || !chatGPTModel || oa.saving || llmBusy">测试连接</button></div>
+  </template>
+  <template v-else>
   <label>API Base URL（OpenAI 兼容）</label><input id="sUrl" :value.attr="f.baseUrl" @input="H.formInput('baseUrl', $event.target.value)" placeholder="https://your-server:8080/v1">
   <label>API Key</label><input id="sKey" :value.attr="f.apiKey" @input="H.formInput('apiKey', $event.target.value)" placeholder="sk-...">
   <div class="fhint">明文存在本机 app 私有目录（别的 app 读不到），这里显示的就是已保存的 key，换 key 直接改这一栏</div>
@@ -118,6 +236,8 @@ export const SettingsSheetView = {
   <div class="grid2"><div><label>超时（秒）</label><input id="sTimeout" :value.attr="f.timeoutS" @input="H.formInput('timeoutS', $event.target.value)"></div><div><label>最大 tokens</label><input id="sMax" :value.attr="f.maxTokens" @input="H.formInput('maxTokens', $event.target.value)"></div></div>
   <label>温度 temperature</label><input id="sTemp" :value.attr="f.temperature" @input="H.formInput('temperature', $event.target.value)">
   <div class="acts"><button class="btn pri" @click="H.saveSettings()">保存</button><button class="btn" @click="H.testLLM()">测试连接</button></div>
+  </template>
+  <div v-if="oa.error" class="body" role="status">{{ oa.error }}</div>
   <div id="llmOut"><div class="body" v-if="llmBusy"><span class="spin"></span> 连接中…</div><div class="body" v-else-if="llmLine" style="margin-top:var(--s2)">{{ llmLine }}<br>{{ llmBody }}</div></div>
 </div>
 <div class="pgroup">采集</div><div class="card"><kv-row k="剪贴板暂存" v="前台自动 + 顶栏按钮手动" vstyle="color:var(--acc2)"/><div style="font-size:var(--fs-xs);color:var(--dim);margin-top:var(--s2)">打开 app 时自动暂存剪贴板里的文字；在别的 app 复制后切回「懒得记」即可看到，顶栏剪贴板按钮也可以随时手动收一条。Android 10+ 只允许有焦点的窗口读剪贴板，刚点通知进来时系统会拒读，app 会等拿到焦点重试。点「解析」才发到大模型，之前内容不会离开本机。</div></div>

@@ -113,6 +113,9 @@ func (in *clipIn) normalize() string {
 	}
 	if in.kind == "text" {
 		in.text = strings.TrimSpace(in.text)
+		if isSIWCCallbackAddress(in.text) {
+			return `{"ok":false,"error":"登录地址不加入剪贴板暂存"}`
+		}
 		in.text = clip(in.text, maxClipText)
 		if in.text == "" {
 			return `{"ok":false,"error":"内容为空"}`

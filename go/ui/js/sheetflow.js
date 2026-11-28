@@ -20,7 +20,8 @@ function sheetVersion(){ return sheetGen }
 /* 弹层开合（步骤 15 之后只有一条路径）：状态写进 shell.sheet，SheetHost 渲染外壳，
    内容交给 VUE_SHEETS 里的组件挂载。两种形态：
    - pageSheetVue(name, title, kind)：全屏页（.phead + .pbody#sheetBody）
-   - sheetVue(name, full)：底部卡片（.grip + .pclose + #sheetBody）
+   - sheetVue(name, full, kind)：底部卡片（.grip + .pclose + #sheetBody）；kind 写进
+     #panel 的 data-kind，给 CSS 当钩子（「记一笔」靠它把面板改成 flex 列）。
    两者都返回 nextTick 的 Promise（D13：调用方 await 完才能断到新 DOM），并在挂载后把
    面板滚回顶部。步骤 16c：字符串内容那条路（pageSheet / sheet + mode:'html'）删掉了，
    六个字符串弹层全成了组件，内联 onclick 也一起没了（app.js 里从 21 处降到 0）。 */
@@ -51,13 +52,13 @@ function pageSheetVue(name, title, kind, onBack){
 /* 卡片形态（底部弹出）：外壳（.grip + .pclose）由 SheetHost 渲染，内容挂在 #sheetBody。
    迁移前是 `p.innerHTML = '<div class="grip"></div><button class="pclose" …>' + html`，
    现在 html 那一层包在 #sheetBody 里（唯一的结构差别，CSS 已跟上）。 */
-function sheetVue(name, full){
+function sheetVue(name, full, kind){
   sheetBack = null;
   sheetGen++;
   var gen = sheetGen;
   unmountAllSheets();
   shell.sheet.page = false;
-  shell.sheet.kind = '';
+  shell.sheet.kind = kind || '';
   shell.sheet.full = !!full;
   shell.sheet.title = '';
   shell.sheet.mounted = true;

@@ -187,6 +187,21 @@ window.onSttEnd = function(text, error, path){
   settleNow();          // 让等待录音定稿的提交继续
 };
 
+/* Java -> window.onSttRefined：第二遍离线重识别的结果（通常比 onSttEnd 晚几秒）。
+   只按音频路径替换同一段；已经整理过的草稿标成过期，提示重新整理。 */
+window.onSttRefined = function(path, text){
+  var t = String(text || '').trim();
+  if (!t) return;
+  for (var i = 0; i < STT.v.segs.length; i++) {
+    var s = STT.v.segs[i];
+    if (s.path === path && s.text !== t) {
+      s.text = t;
+      voiceChanged();
+      return;
+    }
+  }
+};
+
 /* ---------------- 暂存区操作 ---------------- */
 
 var voiceRevision = 0;

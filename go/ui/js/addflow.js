@@ -16,7 +16,9 @@ var FORMS = Vue.reactive({ v: { add: null, todo: null } });
 function formSet(name, k, v){ var f = FORMS.v[name]; if(f) f[k] = v }
 function addSheet(){
   if (!FORMS.v.add) FORMS.v.add = { text: '' };
-  return sheetVue('add');
+  /* kind='add' 是 CSS 钩子：面板改成 flex 列，内容滚动、提交按钮固定在底栏
+     （见 css/views/voice.css 的 .panel[data-kind="add"]）。 */
+  return sheetVue('add', false, 'add');
 }
 /* 「解析并记录」先等待当前录音定稿。整理结果占用第一个语音段的文字位，
    所有段仍各自携带音频附件。手输文字单独随请求提交。 */

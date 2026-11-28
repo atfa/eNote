@@ -378,6 +378,8 @@ func handleFile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", attachmentMIME(it.Attachment))
 	w.Header().Set("Content-Disposition", "inline; filename*=UTF-8''"+url.PathEscape(it.Name))
+	w.Header().Set("Content-Security-Policy", "sandbox")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	http.ServeFile(w, r, it.Path)
 }

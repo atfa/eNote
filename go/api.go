@@ -236,15 +236,17 @@ func maskedSettings() Settings {
 // 这个坑真踩过：一个只带 {"theme":"light"} 的请求把 temperature 变成 0、useAI 变成 false，
 // 用户的下限值就这么被悄悄改掉了（而且是在他自己没动过设置的情况下）。
 type settingsPatch struct {
-	BaseURL  *string              `json:"baseUrl"`
-	APIKey   *string              `json:"apiKey"`
-	Model    *string              `json:"model"`
-	TimeoutS *int                 `json:"timeoutS"`
-	MaxTok   *int                 `json:"maxTokens"`
-	Temp     *float64             `json:"temperature"`
-	UseAI    *bool                `json:"useAI"`
-	Theme    *string              `json:"theme"`
-	UI       map[string]ViewPrefs `json:"ui"`
+	Provider     *string              `json:"provider"`
+	ChatGPTModel *string              `json:"chatGPTModel"`
+	BaseURL      *string              `json:"baseUrl"`
+	APIKey       *string              `json:"apiKey"`
+	Model        *string              `json:"model"`
+	TimeoutS     *int                 `json:"timeoutS"`
+	MaxTok       *int                 `json:"maxTokens"`
+	Temp         *float64             `json:"temperature"`
+	UseAI        *bool                `json:"useAI"`
+	Theme        *string              `json:"theme"`
+	UI           map[string]ViewPrefs `json:"ui"`
 }
 
 /* 步骤 60：handleSettings 原来 52 行，九行「patch 里有这项就盖上去」加四行「空值退回旧配置」
@@ -255,6 +257,14 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 	var p settingsPatch
 	if err := readBody(r, &p); err != nil {
 		jsonOut(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	if (p.Provider != nil || p.ChatGPTModel != nil) && !validOpenAISession(r) {
+		http.Error(w, "Open this setting in eNote", http.StatusForbidden)
+		return
+	}
+	if p.Provider != nil && *p.Provider != "api" && *p.Provider != "chatgpt" {
+		jsonOut(w, map[string]any{"ok": false, "error": "无效的模型提供方"})
 		return
 	}
 	s := config.get()
@@ -270,6 +280,12 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 // applyTo 把 patch 里出现过的字段盖到 s 上（指针非空 = 界面这一项提交了）。
 // 没提交的字段保持 s 里的原值。
 func (p settingsPatch) applyTo(s *Settings) {
+	if p.Provider != nil {
+		s.Provider = *p.Provider
+	}
+	if p.ChatGPTModel != nil {
+		s.ChatGPTModel = strings.TrimSpace(*p.ChatGPTModel)
+	}
 	if p.BaseURL != nil {
 		s.BaseURL = *p.BaseURL
 	}

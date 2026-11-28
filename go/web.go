@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -52,6 +54,34 @@ func startWebServer() string {
 	return srvURL
 }
 
+// The WebView gets its per-process secret directly from the Android bridge.
+var openAISessionToken = sync.OnceValue(rand.Text)
+
+func validOpenAISession(r *http.Request) bool {
+	return subtle.ConstantTimeCompare([]byte(r.Header.Get("X-eNote-Session")), []byte(openAISessionToken())) == 1
+}
+
+func requireOpenAISession(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if !validOpenAISession(r) {
+			http.Error(w, "Open this page in eNote", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func requireInferenceSession(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if config != nil && config.get().Provider == "chatgpt" && !validOpenAISession(r) {
+			http.Error(w, "Open this page in eNote", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
+}
+
 func apiMux() *http.ServeMux {
 	m := http.NewServeMux()
 	m.HandleFunc("/", handleUI)
@@ -61,10 +91,10 @@ func apiMux() *http.ServeMux {
 	})
 	m.HandleFunc("/api/note", handleNote)
 	m.HandleFunc("POST /api/note/description", handleNoteDescription)
-	m.HandleFunc("/api/add", handleAdd)
-	m.HandleFunc("/api/voice", handleVoice)
-	m.HandleFunc("POST /api/voice/organize", handleVoiceOrganize)
-	m.HandleFunc("/api/reparse", handleReparse)
+	m.HandleFunc("/api/add", requireInferenceSession(handleAdd))
+	m.HandleFunc("/api/voice", requireInferenceSession(handleVoice))
+	m.HandleFunc("POST /api/voice/organize", requireInferenceSession(handleVoiceOrganize))
+	m.HandleFunc("/api/reparse", requireInferenceSession(handleReparse))
 	m.HandleFunc("/api/delete", handleDelete)
 	m.HandleFunc("/api/todo", handleTodo)
 	m.HandleFunc("/api/settings", handleSettings)
@@ -72,7 +102,7 @@ func apiMux() *http.ServeMux {
 	m.HandleFunc("/api/search", handleSearch)
 	m.HandleFunc("/api/clip/list", handleClipList)
 	m.HandleFunc("/api/clip/remove", handleClipRemove)
-	m.HandleFunc("/api/clip/parse", handleClipParse)
+	m.HandleFunc("/api/clip/parse", requireInferenceSession(handleClipParse))
 	m.HandleFunc("/api/clip/clear", handleClipClear)
 	m.HandleFunc("/api/prefs", handlePrefs)
 	m.HandleFunc("/api/events", handleEvents)
@@ -88,7 +118,13 @@ func apiMux() *http.ServeMux {
 	})
 	m.HandleFunc("/api/import", handleImport)
 	m.HandleFunc("/api/clear", handleClear)
-	m.HandleFunc("/api/llm/test", handleLLMTest)
+	m.HandleFunc("/api/llm/test", requireInferenceSession(handleLLMTest))
+	m.HandleFunc("GET /api/openai/status", requireOpenAISession(handleOpenAIAuthStatus))
+	m.HandleFunc("POST /api/openai/login", requireOpenAISession(handleOpenAIAuthStart))
+	m.HandleFunc("POST /api/openai/callback", requireOpenAISession(handleOpenAIAuthPaste))
+	m.HandleFunc("POST /api/openai/logout", requireOpenAISession(handleOpenAIAuthDisconnect))
+	m.HandleFunc("GET /api/openai/models", requireOpenAISession(handleChatGPTModels))
+	m.HandleFunc("GET /auth/callback", handleOpenAIAuthCallback)
 	m.HandleFunc("/api/llmlog", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, map[string]any{"ok": true, "calls": llmHistory()})
 	})
@@ -128,6 +164,7 @@ func handleUI(w http.ResponseWriter, r *http.Request) {
 	// WebView caches aggressively; the UI is embedded in the binary so it only
 	// changes on install - never let a stale page survive an update.
 	// 拆成多文件后这条规则必须覆盖每一个文件，不然升级后是「新页面配旧脚本」这种难查的混合态。
+	w.Header().Set("Content-Security-Policy", "frame-src 'none'; object-src 'none'; base-uri 'none'")
 	w.Header().Set("Cache-Control", "no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")

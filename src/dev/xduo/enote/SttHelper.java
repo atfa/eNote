@@ -4,7 +4,10 @@ import android.content.Context;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.media.audiofx.AutomaticGainControl;
+import android.media.audiofx.NoiseSuppressor;
 import android.util.Log;
+
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -38,7 +41,9 @@ public class SttHelper {
     static final String TAG = "enote-stt";
     public static final int SAMPLE_RATE = 16000;
     static final int CHUNK = 3200; // 100 ms at 16k/16-bit/mono
-
+    /* 低于这个峰值（≈ -45 dBFS）就当作没说话：引擎在纯静音上也会「认出」字
+       （实测 2.9 s 静音得到「是液。」）。正常说话峰值在 -6～-20 dBFS，门限留得很低。 */
+    static final int SILENCE_PEAK = 184;
     public interface SessionListener {
         /** Recognizer is working; text is the current (partial) hypothesis. */
         void onPartial(String text);
@@ -59,9 +64,15 @@ public class SttHelper {
 
     // ---- live session state (guarded by seg's lock) ----
     private AudioRecord rec;
+    private NoiseSuppressor ns;
+    private AutomaticGainControl agc;
     private volatile boolean recording;
+    /* 第二遍离线重识别排在 ex 上；用户按了下一次录音时它必须立刻让路，
+       否则一个长句的重识别会把「再录一段」拖住好几秒。 */
+    private volatile boolean startRequested;
     private Thread recThread;
     private SessionListener ses;
+    private volatile int peak;      // max |sample| seen during the live session
     private final StringBuilder seg = new StringBuilder();
     private RandomAccessFile raf;   // WAV being written during the session
     private String audioPath = "";
@@ -71,6 +82,9 @@ public class SttHelper {
        收到 is_final 就 countDown，读文本前最多等 1.5s。 */
     private volatile CountDownLatch finalLatch;
     private String engineVersion = "";
+    /* True while doFile feeds a saved WAV (second pass / re-recognize): the engine's partial
+       callbacks must not be painted into the live partial line. */
+    private volatile boolean offlinePass;
 
     static synchronized SttHelper get(Context c) {
         if (one == null) one = new SttHelper(c.getApplicationContext());
@@ -160,8 +174,8 @@ public class SttHelper {
                     if (seg.length() > 0 && !seg.toString().endsWith("\n")) seg.append("\n");
                     seg.append(t);
                 }
-                pushPartial(seg.toString());
-            } else {
+                if (!offlinePass) pushPartial(seg.toString());
+            } else if (!offlinePass) {
                 pushPartial(t);
             }
         }
@@ -182,6 +196,7 @@ public class SttHelper {
      * engine and to a WAV file (voice_<ts>.wav in the inbox), so the audio stays reusable.
      */
     void startSession(final SessionListener l) {
+        startRequested = true;
         ex.submit(new Runnable() {
             public void run() {
                 doStart(l);
@@ -190,6 +205,7 @@ public class SttHelper {
     }
 
     private void doStart(final SessionListener l) {
+        startRequested = false;
         if (!ensure()) {
             if (l != null) l.onEnd("", "语音引擎未就绪：" + info, "");
             return;
@@ -197,9 +213,11 @@ public class SttHelper {
         final int min = AudioRecord.getMinBufferSize(SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
         final int bufSize = Math.max(min, SAMPLE_RATE * 2);
-        AudioRecord r = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize * 2);
-        if (r.getState() != AudioRecord.STATE_INITIALIZED) {
+        AudioRecord r = openRecord(AudioFormat.CHANNEL_IN_MONO,
+                MediaRecorder.AudioSource.VOICE_RECOGNITION, bufSize * 2);
+        if (r == null) r = openRecord(AudioFormat.CHANNEL_IN_MONO,
+                MediaRecorder.AudioSource.MIC, bufSize * 2);
+        if (r == null) {
             if (l != null) l.onEnd("", "麦克风初始化失败", "");
             return;
         }
@@ -209,6 +227,8 @@ public class SttHelper {
             if (l != null) l.onEnd("", "识别启动失败 rc=" + rc, "");
             return;
         }
+        enableCaptureEffects(r.getAudioSessionId());
+        Log.i(TAG, "capture: mono");
         RandomAccessFile out = null;
         File af = new File(OcrHelper.inboxDir(ctx),
                 "voice_" + System.currentTimeMillis() + ".wav");
@@ -225,27 +245,75 @@ public class SttHelper {
         synchronized (seg) {
             seg.setLength(0);
             audioPath = out == null ? "" : af.getAbsolutePath();
-            raf = out; // 字段版：doStop 封 WAV 尾用
+            raf = out;
             ses = l;
         }
         recording = true;
+        peak = 0;
         rec = r;
         r.startRecording();
+        final AudioRecord fr = r;
         recThread = new Thread(new Runnable() {
-            public void run() {
-                byte[] buf = new byte[CHUNK];
-                while (recording) {
-                    int n = r.read(buf, 0, buf.length);
-                    if (n > 0) {
-                        engine.writeData(buf, n);
-                        if (rafOut != null) {
-                            try { rafOut.write(buf, 0, n); } catch (IOException ignored) { }
-                        }
-                    }
-                }
-            }
+            public void run() { runMono(fr, rafOut); }
         }, "stt-mic");
         recThread.start();
+    }
+
+    private static AudioRecord openRecord(int channelMask, int source, int bufSize) {
+        try {
+            AudioRecord a = new AudioRecord(source, SAMPLE_RATE, channelMask,
+                    AudioFormat.ENCODING_PCM_16BIT, bufSize);
+            if (a.getState() == AudioRecord.STATE_INITIALIZED) return a;
+            try { a.release(); } catch (Throwable ignored) { }
+        } catch (Throwable t) {
+            Log.w(TAG, "AudioRecord(" + source + "," + channelMask + "): " + t);
+        }
+        return null;
+    }
+
+    /** Mono capture (fallback): straight to the engine and the WAV. */
+    private void runMono(AudioRecord r, RandomAccessFile out) {
+        byte[] buf = new byte[CHUNK];
+        while (recording) {
+            int n = r.read(buf, 0, buf.length);
+            if (n <= 0) continue;
+            updatePeak(buf, n);
+            engine.writeData(buf, n);
+            if (out != null) {
+                try { out.write(buf, 0, n); } catch (IOException ignored) { }
+            }
+        }
+    }
+
+    private void updatePeak(byte[] buf, int n) {
+        int p = peak;
+        for (int i = 0; i + 1 < n; i += 2) {
+            int v = (short) ((buf[i] & 0xFF) | (buf[i + 1] << 8));
+            int a = v < 0 ? -v : v;
+            if (a > p) p = a;
+        }
+        peak = p;
+    }
+
+    /** Platform noise suppression / AGC, when the device offers them. Best-effort. */
+    private void enableCaptureEffects(int session) {
+        try {
+            if (NoiseSuppressor.isAvailable()) {
+                ns = NoiseSuppressor.create(session);
+                if (ns != null) ns.setEnabled(true);
+            }
+        } catch (Throwable t) { Log.w(TAG, "NoiseSuppressor: " + t); }
+        try {
+            if (AutomaticGainControl.isAvailable()) {
+                agc = AutomaticGainControl.create(session);
+                if (agc != null) agc.setEnabled(true);
+            }
+        } catch (Throwable t) { Log.w(TAG, "AGC: " + t); }
+    }
+
+    private void releaseCaptureEffects() {
+        if (ns != null) { try { ns.release(); } catch (Throwable ignored) { } ns = null; }
+        if (agc != null) { try { agc.release(); } catch (Throwable ignored) { } agc = null; }
     }
 
     /** Stop the current session (tap end / long-press release). */
@@ -271,6 +339,7 @@ public class SttHelper {
             rec.release();
             rec = null;
         }
+        releaseCaptureEffects();
         String txt, err = "", path = "";
         int rc = 0;
         if (engine != null && ready) {
@@ -280,6 +349,10 @@ public class SttHelper {
         synchronized (seg) {
             txt = seg.toString().trim();
             path = audioPath;
+        }
+        if (peak < SILENCE_PEAK) {
+            txt = "";
+            if (err.isEmpty()) err = "没有听到声音，请再说一次";
         }
         if (raf != null) {
             try {
@@ -296,6 +369,61 @@ public class SttHelper {
         if (rc != 0 && err.isEmpty()) err = "识别停止异常 rc=" + rc;
         if (l != null) l.onEnd(txt, err, path);
         pushEnd(txt, err, path);
+        maybeRefine(path, txt);
+    }
+
+    /* 第二遍：拿刚落盘的 WAV 做一次离线重识别（裁掉长前导静音），只在**能证明更好**时
+       替换本段文字：两段文本把相邻重复字压掉后完全相同、而第二遍重复更少。
+       这样「下下午陪娃娃娃打打羽毛球」会变成「下午陪娃娃打羽毛球」，而
+       「今天天气怎么样」不会被裁得过头的「今天天气怎怎么样」顶掉。
+       不阻塞提交：onEnd 已经带着流式结果先回去了，这里只在 ex 上排队，
+       用户按下一次录音（startRequested）时立刻放弃。 */
+    private void maybeRefine(final String path, final String live) {
+        if (path == null || path.isEmpty() || live == null || live.isEmpty() || !ready) return;
+        long bytes = new File(path).length() - 44;
+        if (bytes < SAMPLE_RATE * 2 / 2) return;                 // < 0.5 s
+        if (bytes > 15L * SAMPLE_RATE * 2) return;               // > 15 s: too slow to redo
+        ex.submit(new Runnable() {
+            public void run() {
+                if (startRequested || recording) return;
+                try {
+                    String off = doFile(path);
+                    if (off.isEmpty()) return;
+                    if (prefer(off, live)) {
+                        Log.i(TAG, "refined: " + live + " -> " + off);
+                        Bridge.pushJs("window.onSttRefined && onSttRefined("
+                                + jsStr(path) + "," + jsStr(off) + ")");
+                    }
+                } catch (Throwable t) {
+                    Log.w(TAG, "refine failed", t);
+                }
+            }
+        });
+    }
+
+    /** True when off is the same sentence with fewer adjacent duplicates than live. */
+    static boolean prefer(String off, String live) {
+        if (off == null || off.isEmpty()) return false;
+        if (live == null || live.isEmpty()) return true;
+        if (off.length() < live.length() - 3) return false;   // don't accept a heavily shortened pass
+        if (!collapse(off).equals(collapse(live))) return false;
+        return dupRuns(off) < dupRuns(live);
+    }
+
+    /** Collapse runs of the same character — only for comparing two engine outputs. */
+    static String collapse(String s) {
+        StringBuilder b = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (i == 0 || c != s.charAt(i - 1)) b.append(c);
+        }
+        return b.toString();
+    }
+
+    static int dupRuns(String s) {
+        int n = 0;
+        for (int i = 1; i < s.length(); i++) if (s.charAt(i) == s.charAt(i - 1)) n++;
+        return n;
     }
 
     // -------------------------------------------------------- WAV file feed
@@ -317,8 +445,10 @@ public class SttHelper {
 
     private String doFile(String path) {
         if (!ensure()) return "";
+        offlinePass = true;
         try {
-            byte[] pcm = readWav(new File(path));
+            byte[] pcm = trimLeadingSilence(readWav(new File(path)));
+            if (peakOf(pcm) < SILENCE_PEAK) return "";
             finalLatch = new CountDownLatch(1);
             synchronized (seg) {
                 seg.setLength(0);
@@ -344,6 +474,8 @@ public class SttHelper {
         } catch (Throwable t) {
             Log.e(TAG, "wav failed", t);
             return "";
+        } finally {
+            offlinePass = false;
         }
     }
 
@@ -356,6 +488,62 @@ public class SttHelper {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    static int peakOf(byte[] pcm) {
+        int p = 0;
+        for (int i = 0; i + 1 < pcm.length; i += 2) {
+            int v = (short) ((pcm[i] & 0xFF) | (pcm[i + 1] << 8));
+            int a = v < 0 ? -v : v;
+            if (a > p) p = a;
+        }
+        return p;
+    }
+
+    /**
+     * Drop the leading non-speech part of an utterance when it is long (>0.4s).
+     * The engine's streaming decoder otherwise turns a leading noise burst into a phantom
+     * syllable (the extra 「下」 in 「下下午」, the 「V ok」 in the dad clip). Speech onset is
+     * detected with a 20 ms RMS envelope, a threshold 12 dB above the clip's 25th percentile
+     * (floor >= -42 dB), and 160 ms of sustained energy so a 60 ms click does not count.
+     * Trailing audio is never cut: cutting the tail is what produced 「羽毛球球」/「陪爸」.
+     */
+    static byte[] trimLeadingSilence(byte[] pcm) {
+        final int winBytes = 640;         // 20 ms at 16k/16-bit/mono
+        final int winSamples = winBytes / 2;
+        int nwin = pcm.length / winBytes;
+        if (nwin < 40) return pcm;        // < 0.8 s: nothing to trim
+        double[] db = new double[nwin];
+        for (int i = 0; i < nwin; i++) {
+            long sum = 0;
+            int off = i * winBytes;
+            for (int j = 0; j < winSamples; j++) {
+                int v = (short) ((pcm[off + j * 2] & 0xFF) | (pcm[off + j * 2 + 1] << 8));
+                sum += (long) v * v;
+            }
+            double rms = Math.sqrt((double) sum / winSamples) / 32768.0;
+            db[i] = rms > 0 ? 20 * Math.log10(rms) : -99;
+        }
+        double[] sorted = db.clone();
+        java.util.Arrays.sort(sorted);
+        double floor = sorted[Math.max(0, sorted.length / 4 - 1)];  // 25th percentile
+        double thr = Math.max(-42.0, floor + 12.0);
+        final int need = 8;               // 160 ms
+        int onset = -1;
+        for (int i = 0; i + need <= nwin; i++) {
+            int ok = 0;
+            for (int j = 0; j < need; j++) if (db[i + j] >= thr) ok++;
+            if (ok >= need - 1) { onset = i; break; }
+        }
+        if (onset <= 0) return pcm;
+        double t = onset * 0.02;
+        if (t <= 0.40) return pcm;        // short leading silence: trimming hurt these
+        int start = onset * winBytes;
+        if (start >= pcm.length - 3200) return pcm;
+        byte[] out = new byte[pcm.length - start];
+        System.arraycopy(pcm, start, out, 0, out.length);
+        Log.i(TAG, String.format(Locale.US, "trim leading silence: %.2fs", t));
+        return out;
     }
 
     static byte[] readWav(File f) throws IOException {

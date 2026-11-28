@@ -115,6 +115,21 @@ func Java_dev_xduo_enote_Bridge_nativeStartServer(env *C.JNIEnv, cls C.jclass) C
 	})
 }
 
+//export Java_dev_xduo_enote_Bridge_nativeOpenAISession
+func Java_dev_xduo_enote_Bridge_nativeOpenAISession(env *C.JNIEnv, cls C.jclass) C.jstring {
+	return guard(env, "nativeOpenAISession", func() C.jstring {
+		return s2j(env, openAISessionToken())
+	})
+}
+
+//export Java_dev_xduo_enote_Bridge_nativeOpenAILoginPending
+func Java_dev_xduo_enote_Bridge_nativeOpenAILoginPending(env *C.JNIEnv, cls C.jclass) C.jboolean {
+	if openAILoginPending() {
+		return 1
+	}
+	return 0
+}
+
 // nativeEnqueue(payloadJSON) - Java hands over shared text or an image (+ its OCR text).
 // Returns the created note id so the UI can scroll to it.
 //

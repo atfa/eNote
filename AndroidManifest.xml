@@ -140,5 +140,7 @@
             android:exported="false"
             android:stopWithTask="false" />
 
+        <service android:name=".OpenAILoginService" android:exported="false" android:stopWithTask="true" />
+
     </application>
 </manifest>

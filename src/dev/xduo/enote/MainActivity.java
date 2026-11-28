@@ -127,6 +127,14 @@ public class MainActivity extends Activity {
     private WebViewClient pageClient() {
         return new WebViewClient() {
             @Override
+            public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest request) {
+                Uri target = request.getUrl();
+                Uri local = Uri.parse(Bridge.serverUrl);
+                return !"http".equals(target.getScheme()) || !"127.0.0.1".equals(target.getHost())
+                        || target.getPort() != local.getPort();
+            }
+
+            @Override
             public void onPageFinished(WebView view, String u) {
                 note("web: page finished " + u);
                 pageReady = true;

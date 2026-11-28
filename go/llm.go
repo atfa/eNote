@@ -92,6 +92,9 @@ type chatResp struct {
 func callLLM(system, user string) (*LLMCall, error) {
 	s := config.get()
 	c := &LLMCall{TS: time.Now(), Model: s.Model, System: system, User: user}
+	if s.Provider == "chatgpt" {
+		return callChatGPT(c, s)
+	}
 	if strings.TrimSpace(s.BaseURL) == "" {
 		return c.fail("未配置大模型地址：在设置里填 OpenAI 兼容的 API Base URL")
 	}

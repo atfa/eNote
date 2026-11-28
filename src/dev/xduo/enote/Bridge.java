@@ -2,6 +2,7 @@ package dev.xduo.enote;
 
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsResult;
@@ -32,6 +33,8 @@ public class Bridge {
 
     static native String nativeInit(String filesDir, int tzOffsetSec, String tzId);
     static native String nativeStartServer();
+    static native String nativeOpenAISession();
+    static native boolean nativeOpenAILoginPending();
     static native String nativeClipAdd(String payloadJson);
     static native String nativeShotAdd(String payloadJson);
     static native int nativeClipCount();
@@ -409,6 +412,33 @@ public class Bridge {
             a.runOnUiThread(new Runnable() {
                 @Override public void run() { a.pickNoteAttachments(noteId); }
             });
+        }
+    }
+
+    @JavascriptInterface
+    public String openAISession() {
+        return loaded ? nativeOpenAISession() : "";
+    }
+
+    @JavascriptInterface
+    public boolean openOpenAILogin(String url) {
+        MainActivity activity = current.get();
+        if (activity == null || url == null) return false;
+        Uri uri = Uri.parse(url);
+        if (!"https".equals(uri.getScheme()) || !"auth.openai.com".equals(uri.getHost())
+                || uri.getUserInfo() != null || (uri.getPort() != -1 && uri.getPort() != 443)
+                || !"/api/accounts/authorize".equals(uri.getPath())) return false;
+        Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+        intent.addCategory(Intent.CATEGORY_BROWSABLE);
+        Intent callback = new Intent(activity, OpenAILoginService.class);
+        try {
+            activity.startForegroundService(callback);
+            activity.startActivity(intent);
+            return true;
+        } catch (RuntimeException e) {
+            activity.stopService(callback);
+            Log.w(TAG, "Unable to start ChatGPT sign-in");
+            return false;
         }
     }
 

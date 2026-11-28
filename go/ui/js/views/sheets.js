@@ -126,6 +126,7 @@ export const AddSheetView = {
   },
   template: `
 <h2>记一笔</h2>
+<div class="add-scroll">
 <label for="addText">文字</label>
 <div class="add-text-field">
 <textarea id="addText" maxlength="2000" :disabled="st.busy" :value="f.text" @input="H.formSet('add','text',$event.target.value)" placeholder="随手记，或粘贴一段内容。含时间/任务的句子会被自动提取成待办"></textarea>
@@ -140,7 +141,10 @@ export const AddSheetView = {
   <div class="vbar"><button class="vside" :disabled="!segs.length || st.organizing || st.busy" @click="H.voiceUndo()"><ico n="refresh"/>撤销</button><button class="vrec" :class="{live: st.listening}" :disabled="st.organizing || st.busy || st.settling" aria-label="录音" @pointerdown.prevent="H.voiceDown()" @pointerup="H.voiceUp()" @pointercancel="H.voiceStop()"><ico :n="st.listening ? 'stop' : 'mic'"/></button><button class="vside vai" :disabled="!segs.length || st.organizing || st.busy || st.listening || st.settling" @click="H.voiceOrganize()"><ico n="sparkle"/>{{ st.organizing ? '整理中…' : (st.organizedStale ? '重新整理' : 'AI 整理') }}</button></div>
   <div class="vhint">{{ st.listening ? (st.handsFree ? '免手持录音中 ' + st.secs + 's · 点一下圆钮结束本段' : '松手结束本段') : '按住说话；点一下录音 · 免手持（静音不自动断句）' }}</div>
 </div>
+</div>
+<div class="add-foot">
 <button class="btn pri add-submit" :disabled="st.busy || st.organizing" @click="H.addNote()"><ico n="sparkle"/><span><strong>解析并记录</strong><small>文字 / 语音 / 图片 / 文件</small></span><ico n="send"/></button>
+</div>
 <audio id="stt-audio" preload="none"></audio>
 `
 };
