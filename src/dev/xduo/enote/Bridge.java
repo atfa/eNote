@@ -538,9 +538,20 @@ public class Bridge {
      * json = [{"id":"noteId|todoId","text":"...","note":"笔记标题","dueMs":1795...}]
      * Returns the number of alarms now pending, so the UI can show 已提醒 N 条.
      */
+    private static boolean askedNotify;
+
     @JavascriptInterface
     public int syncReminders(final String json) {
-        return Reminders.sync(EnoteApp.app, json);
+        int n = Reminders.sync(EnoteApp.app, json);
+        // 有提醒要排但通知权限还没给：自动问一次（Android 13+），否则排了也弹不出来。
+        if (n > 0 && !MainActivity.notifyGranted(EnoteApp.app) && !askedNotify) {
+            askedNotify = true;
+            final MainActivity a = current.get();
+            if (a != null) a.runOnUiThread(new Runnable() {
+                public void run() { a.askNotifyPermission(); }
+            });
+        }
+        return n;
     }
 
     /**

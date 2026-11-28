@@ -83,7 +83,7 @@ function askNotify(){
   Android.askNotify();
 }
 function notifyResult(ok){
-  toast(ok ? '系统通知已开启，到点会弹提醒' : '没有通知权限；可在系统设置里打开「懒得记」的通知');
+  toast(ok ? '系统通知已开启，到期前 15 分钟会弹提醒' : '没有通知权限；可在系统设置里打开「懒得记」的通知');
   syncReminders();
   if(document.querySelector('#sheet.on')) settingsRefresh();
 }

@@ -46,6 +46,9 @@ public final class Reminders {
     /** Real ids, so tapping the notification opens that note *and* that todo. */
     static final String EXTRA_NOTE_ID = "reminderNoteId";
     static final String EXTRA_TODO_ID = "reminderTodoId";
+    static final String EXTRA_DUE = "reminderDueMs";
+    /** 提前量：到期前 15 分钟弹通知。 */
+    static final long LEAD_MS = 15 * 60 * 1000L;
     /**
      * Keys ("noteId|todoId@dueMs") we have an alarm for. Persisted, because the process
      * dies often and a fresh in-memory set would leave orphaned alarms in AlarmManager
@@ -76,8 +79,8 @@ public final class Reminders {
         NotificationManager nm = c.getSystemService(NotificationManager.class);
         if (nm == null || nm.getNotificationChannel(CHANNEL) != null) return;
         NotificationChannel ch = new NotificationChannel(
-                CHANNEL, "待办到期提醒", NotificationManager.IMPORTANCE_HIGH);
-        ch.setDescription("待办到期时提醒你");
+                CHANNEL, "待办提醒", NotificationManager.IMPORTANCE_HIGH);
+        ch.setDescription("待办到期前 15 分钟提醒你");
         ch.enableVibration(true);
         ch.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
                 new AudioAttributes.Builder()
@@ -121,7 +124,7 @@ public final class Reminders {
             if (sp.getInt(KEY_SCHEME, 0) != SCHEME) {
                 // drop alarms armed by the previous scheme so they cannot fire as duplicates
                 for (String old : load(c)) {
-                    try { am.cancel(pending(c, old, null, null, null, null)); } catch (Throwable ignored) {}
+                    try { am.cancel(pending(c, old, null, null, null, null, 0L)); } catch (Throwable ignored) {}
                 }
                 save(c, new LinkedHashSet<String>());
                 sp.edit().putInt(KEY_SCHEME, SCHEME).apply();
@@ -158,7 +161,7 @@ public final class Reminders {
                 for (JSONObject o : want) wantKeys.add(keyOf(o));
                 for (String key : new ArrayList<>(scheduled)) {
                     if (wantKeys.contains(key)) continue;
-                    am.cancel(pending(c, key, null, null, null, null));
+                    am.cancel(pending(c, key, null, null, null, null, 0L));
                     scheduled.remove(key);
                 }
     }
@@ -169,9 +172,12 @@ public final class Reminders {
                 String key = keyOf(o);
                 if (scheduled.contains(key)) return;
                 String[] ids = resolveIds(o);
+                long due = o.optLong("dueMs");
+                // 提前 15 分钟；如果建得太晚（剩余不足 15 分钟），立刻提醒一次。
+                long trigger = Math.max(System.currentTimeMillis() + 5000L, due - LEAD_MS);
                 PendingIntent pi = pending(c, key, o.optString("text"), o.optString("note"),
-                        ids[0], ids[1]);
-                scheduleAlarm(c, am, pi, o.optLong("dueMs"), exact, scheduled,
+                        ids[0], ids[1], due);
+                scheduleAlarm(c, am, pi, trigger, exact, scheduled,
                         key, ids[0], ids[1]);
     }
 
@@ -192,7 +198,7 @@ public final class Reminders {
     }
 
     /** 排进去（setAlarmClock 优先）；厂商拒了退回 setAndAllowWhileIdle；排成记进 scheduled。 */
-    private static void scheduleAlarm(Context c, AlarmManager am, PendingIntent pi, long due,
+    private static void scheduleAlarm(Context c, AlarmManager am, PendingIntent pi, long trigger,
                                       boolean exact, Set<String> scheduled,
                                       String key, String noteId, String todoId) {
                 try {
@@ -200,17 +206,17 @@ public final class Reminders {
                     // Doze / 应用待机 / 厂商冻结都不会静默丢弃它，到点还会唤醒进程。
                     // setExactAndAllowWhileIdle 在厂商冻结策略下会被无声吞掉（实测）。
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        am.setAlarmClock(new AlarmManager.AlarmClockInfo(due, showIntent(c, noteId, todoId)), pi);
+                        am.setAlarmClock(new AlarmManager.AlarmClockInfo(trigger, showIntent(c, noteId, todoId)), pi);
                     } else if (exact) {
-                        am.setExact(AlarmManager.RTC_WAKEUP, due, pi);
+                        am.setExact(AlarmManager.RTC_WAKEUP, trigger, pi);
                     } else {
-                        am.set(AlarmManager.RTC_WAKEUP, due, pi);
+                        am.set(AlarmManager.RTC_WAKEUP, trigger, pi);
                     }
                     scheduled.add(key);
                 } catch (SecurityException se) {
                     Log.w(TAG, "setAlarmClock denied, retry idle-safe: " + se);
                     try {
-                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, pi);
+                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, pi);
                         scheduled.add(key);
                     } catch (Throwable t2) {
                         Log.w(TAG, "alarm not scheduled: " + t2);
@@ -234,13 +240,14 @@ public final class Reminders {
     }
 
     private static PendingIntent pending(Context c, String key, String text, String note,
-                                         String noteId, String todoId) {
+                                         String noteId, String todoId, long due) {
         Intent i = new Intent(c, AlarmReceiver.class).setAction(ACTION_FIRE)
                 .putExtra(EXTRA_ID, key)
                 .putExtra(EXTRA_TEXT, text == null ? "" : text)
                 .putExtra(EXTRA_NOTE, note == null ? "" : note)
                 .putExtra(EXTRA_NOTE_ID, noteId == null ? "" : noteId)
-                .putExtra(EXTRA_TODO_ID, todoId == null ? "" : todoId);
+                .putExtra(EXTRA_TODO_ID, todoId == null ? "" : todoId)
+                .putExtra(EXTRA_DUE, due);
         // Stable per-key request code: cancel() needs the same PendingIntent back.
         return PendingIntent.getBroadcast(c, key.hashCode(), i,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -281,22 +288,16 @@ public final class Reminders {
             String noteId = intent.getStringExtra(EXTRA_NOTE_ID);
             String todoId = intent.getStringExtra(EXTRA_TODO_ID);
             String key = intent.getStringExtra(EXTRA_ID);
-            // 响过就不再排：把它从持久化的集合里摘掉，否则集合只增不减
-            dropFired(c, key);
+            long due = intent.getLongExtra(EXTRA_DUE, 0L);
+            // 提前 15 分钟响过之后，这条 todo 还没到期；key 继续留在 scheduled 里，
+            // 下一次 sync 就不会再排（否则每次刷新都会立刻重复弹）。
             if (text == null || text.isEmpty()) return;
-            fireNotification(c, text, note, noteId, todoId);
-        }
-
-        /** 从持久化的已排集合里摘掉这条（下次不再响）。 */
-        private static void dropFired(Context c, String key) {
-            if (key == null || key.isEmpty()) return;
-            Set<String> left = load(c);
-            if (left.remove(key)) save(c, left);
+            fireNotification(c, text, note, noteId, todoId, due);
         }
 
         /** 建通知并弹出来：点通知打开对应笔记（待办高亮）。 */
         private static void fireNotification(Context c, String text, String note,
-                                             String noteId, String todoId) {
+                                             String noteId, String todoId, long due) {
             ensureChannel(c);
             NotificationManager nm = c.getSystemService(NotificationManager.class);
             if (nm == null) return;
@@ -309,8 +310,11 @@ public final class Reminders {
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                     ? new Notification.Builder(c, CHANNEL) : new Notification.Builder(c);
+            long left = due > 0 ? due - System.currentTimeMillis() : 0;
+            long mins = Math.max(1, Math.round(left / 60000.0));
+            String lead = due > 0 && left > 60000 ? "还有 " + mins + " 分钟：" : "即将到期：";
             b.setSmallIcon(android.R.drawable.ic_popup_reminder)
-                    .setContentTitle("待办到期：" + text)
+                    .setContentTitle(lead + text)
                     .setContentText(note == null || note.isEmpty() ? "点按查看" : note)
                     .setAutoCancel(true)
                     .setContentIntent(pi)

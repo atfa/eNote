@@ -178,7 +178,7 @@ export const SettingsSheetView = {
   template: `
 <div class="pgroup">提醒</div>
 <div class="card">
-  <div class="row between" style="margin-top:var(--s0)"><div><b>到期待办提醒</b><div style="font-size:var(--fs-xs);color:var(--dim)" v-if="notifyGranted">已排定 {{ H.remindPending }} 条 · 按系统闹钟登记，尽量不被后台清理</div><div style="font-size:var(--fs-xs);color:var(--dim)" v-else>需要通知权限 · 开启后到点用系统通知提醒</div></div>
+  <div class="row between" style="margin-top:var(--s0)"><div><b>到期待办提醒</b><div style="font-size:var(--fs-xs);color:var(--dim)" v-if="notifyGranted">已排定 {{ H.remindPending }} 条 · 按系统闹钟登记，尽量不被后台清理</div><div style="font-size:var(--fs-xs);color:var(--dim)" v-else>需要通知权限 · 开启后到期前 15 分钟用系统通知提醒</div></div>
   <button :class="notifyBtnCls" @click="H.askNotify()">{{ notifyBtnText }}</button></div>
   <div class="row between" style="margin-top:var(--s2)" v-if="!H.exactGranted()"><div><b>精确提醒</b><div style="font-size:var(--fs-xs);color:var(--dim)">允许「闹钟和提醒」后不再被系统延迟</div></div>
   <button class="btn sm" @click="H.askExact()">去开启</button></div>
