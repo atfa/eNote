@@ -100,7 +100,8 @@ function closeSheet(){
      进度层不在这里收，也不在这张表里：它是外壳树里的 <teleport> 子组件（步骤 17j），
      shotsImported 先 closeSheet 再等 AI 解析完，进度层自己管自己的生死（SHOTPROG.on）。 */
   shell.sheet.on = false;
-  var ms = cssMs('--d1');
+  // 「记一笔」已跳过入场动画。关闭时也在同一次渲染中交接面板和首页圆钮。
+  var ms = shell.sheet.kind === 'add' ? 0 : cssMs('--d1');
   if(!ms){ shell.sheet.mounted = false; return }
   setTimeout(function(){ if(!shell.sheet.on) shell.sheet.mounted = false }, ms + 20);
 }
