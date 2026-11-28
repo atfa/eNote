@@ -47,6 +47,7 @@ public final class Reminders {
     static final String EXTRA_NOTE_ID = "reminderNoteId";
     static final String EXTRA_TODO_ID = "reminderTodoId";
     static final String EXTRA_DUE = "reminderDueMs";
+    static final String EXTRA_KIND = "reminderKind";   // lead | due
     /** 提前量：到期前 15 分钟弹通知。 */
     static final long LEAD_MS = 15 * 60 * 1000L;
     /**
@@ -121,7 +122,7 @@ public final class Reminders {
         save(c, scheduled);
         int n = scheduled.size();
         Log.i(TAG, "syncReminders: want=" + want.size() + " pending=" + n + " exact=" + exact);
-        return n;
+        return want.size();
     }
 
     /** 闹钟登记方式换版：旧方式排的键要清掉，否则升级后同一条提醒会响两遍。 */
@@ -130,7 +131,7 @@ public final class Reminders {
             if (sp.getInt(KEY_SCHEME, 0) != SCHEME) {
                 // drop alarms armed by the previous scheme so they cannot fire as duplicates
                 for (String old : load(c)) {
-                    try { am.cancel(pending(c, old, null, null, null, null, 0L)); } catch (Throwable ignored) {}
+                    try { am.cancel(pending(c, old, null, null, null, null, 0L, null)); } catch (Throwable ignored) {}
                 }
                 save(c, new LinkedHashSet<String>());
                 sp.edit().putInt(KEY_SCHEME, SCHEME).apply();
@@ -164,10 +165,13 @@ public final class Reminders {
                 // Cancel what disappeared (完成/删除/改了时间 → 由 want 重新覆盖)。
                 // key 里带上 dueMs，时间一改就是新 key，旧的自动取消。
                 Set<String> wantKeys = new LinkedHashSet<>();
-                for (JSONObject o : want) wantKeys.add(keyOf(o));
+                for (JSONObject o : want) {
+                    wantKeys.add(keyOf(o, "lead"));
+                    wantKeys.add(keyOf(o, "due"));
+                }
                 for (String key : new ArrayList<>(scheduled)) {
                     if (wantKeys.contains(key)) continue;
-                    am.cancel(pending(c, key, null, null, null, null, 0L));
+                    am.cancel(pending(c, key, null, null, null, null, 0L, null));
                     scheduled.remove(key);
                 }
     }
@@ -175,14 +179,22 @@ public final class Reminders {
     /** 排一条闹钟；setAlarmClock 被厂商策略拒了就退回 setAndAllowWhileIdle。 */
     private static void arm(Context c, AlarmManager am, JSONObject o, boolean exact,
                             Set<String> scheduled) {
-                String key = keyOf(o);
-                if (scheduled.contains(key)) return;
                 String[] ids = resolveIds(o);
                 long due = o.optLong("dueMs");
-                // 提前 15 分钟；如果建得太晚（剩余不足 15 分钟），立刻提醒一次。
-                long trigger = Math.max(System.currentTimeMillis() + 5000L, due - LEAD_MS);
+                long now = System.currentTimeMillis();
+                // 两条：提前 15 分钟一次，到点再一次。
+                armOne(c, am, o, ids, due - LEAD_MS, "lead", exact, scheduled, now);
+                armOne(c, am, o, ids, due, "due", exact, scheduled, now);
+    }
+
+    private static void armOne(Context c, AlarmManager am, JSONObject o, String[] ids,
+                               long when, String kind, boolean exact,
+                               Set<String> scheduled, long now) {
+                String key = keyOf(o, kind);
+                if (scheduled.contains(key)) return;
+                long trigger = Math.max(now + 5000L, when);
                 PendingIntent pi = pending(c, key, o.optString("text"), o.optString("note"),
-                        ids[0], ids[1], due);
+                        ids[0], ids[1], o.optLong("dueMs"), kind);
                 scheduleAlarm(c, am, pi, trigger, exact, scheduled,
                         key, ids[0], ids[1]);
     }
@@ -230,8 +242,8 @@ public final class Reminders {
                 }
     }
 
-    private static String keyOf(JSONObject o) {
-        return o.optString("id") + "@" + o.optLong("dueMs");
+    private static String keyOf(JSONObject o, String kind) {
+        return o.optString("id") + "@" + o.optLong("dueMs") + "#" + kind;
     }
 
     /** What opens when the user taps the alarm icon the system shows for setAlarmClock. */
@@ -246,14 +258,15 @@ public final class Reminders {
     }
 
     private static PendingIntent pending(Context c, String key, String text, String note,
-                                         String noteId, String todoId, long due) {
+                                         String noteId, String todoId, long due, String kind) {
         Intent i = new Intent(c, AlarmReceiver.class).setAction(ACTION_FIRE)
                 .putExtra(EXTRA_ID, key)
                 .putExtra(EXTRA_TEXT, text == null ? "" : text)
                 .putExtra(EXTRA_NOTE, note == null ? "" : note)
                 .putExtra(EXTRA_NOTE_ID, noteId == null ? "" : noteId)
                 .putExtra(EXTRA_TODO_ID, todoId == null ? "" : todoId)
-                .putExtra(EXTRA_DUE, due);
+                .putExtra(EXTRA_DUE, due)
+                .putExtra(EXTRA_KIND, kind);
         // Stable per-key request code: cancel() needs the same PendingIntent back.
         return PendingIntent.getBroadcast(c, key.hashCode(), i,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -266,7 +279,7 @@ public final class Reminders {
         AlarmManager am = c.getSystemService(AlarmManager.class);
         if (am != null) {
             for (String key : keys) {
-                try { am.cancel(pending(c, key, null, null, null, null, 0L)); } catch (Throwable ignored) { }
+                try { am.cancel(pending(c, key, null, null, null, null, 0L, null)); } catch (Throwable ignored) { }
             }
         }
         save(c, new LinkedHashSet<String>());
@@ -305,6 +318,61 @@ public final class Reminders {
         return am != null && canExact(am);
     }
 
+    /** Settings button: post one notification now (delayMs=0) or after a delay. */
+    static String testNotification(Context c) { return testNotification(c, 0); }
+
+    static String testNotification(Context c, long delayMs) {
+        ensureChannel(c);
+        if (delayMs > 0) {
+            final Context app = c.getApplicationContext();
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+                public void run() { postTest(app); }
+            }, delayMs);
+            return "{\"posted\":true,\"delayed\":" + delayMs + "}";
+        }
+        return postTest(c);
+    }
+
+    private static String postTest(Context c) {
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        if (nm == null) return "{\"posted\":false,\"error\":\"no manager\"}";
+        boolean enabled = Build.VERSION.SDK_INT < 24 || nm.areNotificationsEnabled();
+        int imp = -1;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel ch = nm.getNotificationChannel(CHANNEL);
+            if (ch != null) imp = ch.getImportance();
+        }
+        Intent open = new Intent(c, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pi = PendingIntent.getActivity(c, 0x7E57, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new Notification.Builder(c, CHANNEL) : new Notification.Builder(c);
+        b.setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setContentTitle("测试通知")
+                .setContentText("能看到这条，说明本地通知是通的")
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .setCategory(Notification.CATEGORY_REMINDER)
+                .setDefaults(Notification.DEFAULT_ALL);
+        try {
+            nm.notify(0x7E57, b.build());
+        } catch (Throwable t) {
+            return "{\"posted\":false,\"error\":\"" + t.getClass().getSimpleName() + "\"}";
+        }
+        return "{\"posted\":true,\"enabled\":" + enabled + ",\"importance\":" + imp + "}";
+    }
+
+    /** Open the system page for this app's notifications (banner / importance toggles). */
+    static void openNotificationSettings(Context c) {
+        try {
+            Intent i = new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, c.getPackageName())
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            c.startActivity(i);
+        } catch (Throwable t) { Log.w(TAG, "openNotificationSettings: " + t); }
+    }
+
     /** Sends the user to the system page where exact alarms are allowed (API 31+). */
     static void askExact(Context c) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return;
@@ -335,15 +403,17 @@ public final class Reminders {
             String todoId = intent.getStringExtra(EXTRA_TODO_ID);
             String key = intent.getStringExtra(EXTRA_ID);
             long due = intent.getLongExtra(EXTRA_DUE, 0L);
-            // 提前 15 分钟响过之后，这条 todo 还没到期；key 继续留在 scheduled 里，
-            // 下一次 sync 就不会再排（否则每次刷新都会立刻重复弹）。
+            String kind = intent.getStringExtra(EXTRA_KIND);
+            // 每条 todo 有 lead/due 两个 key，各自响一次；响过的 key 留在 scheduled 里，
+            // 下一次 sync 不会重复排。
             if (text == null || text.isEmpty()) return;
-            fireNotification(c, text, note, noteId, todoId, due);
+            fireNotification(c, text, note, noteId, todoId, due, kind, key);
         }
 
         /** 建通知并弹出来：点通知打开对应笔记（待办高亮）。 */
         private static void fireNotification(Context c, String text, String note,
-                                             String noteId, String todoId, long due) {
+                                             String noteId, String todoId, long due,
+                                             String kind, String key) {
             ensureChannel(c);
             NotificationManager nm = c.getSystemService(NotificationManager.class);
             if (nm == null) return;
@@ -357,16 +427,22 @@ public final class Reminders {
             Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                     ? new Notification.Builder(c, CHANNEL) : new Notification.Builder(c);
             long left = due > 0 ? due - System.currentTimeMillis() : 0;
-            long mins = Math.max(1, Math.round(left / 60000.0));
-            String lead = due > 0 && left > 60000 ? "还有 " + mins + " 分钟：" : "即将到期：";
+            String title;
+            if ("due".equals(kind)) {
+                title = "已到期：" + text;
+            } else if (due > 0 && left > 60000) {
+                title = "还有 " + Math.max(1, Math.round(left / 60000.0)) + " 分钟：" + text;
+            } else {
+                title = "即将到期：" + text;
+            }
             b.setSmallIcon(android.R.drawable.ic_popup_reminder)
-                    .setContentTitle(lead + text)
+                    .setContentTitle(title)
                     .setContentText(note == null || note.isEmpty() ? "点按查看" : note)
                     .setAutoCancel(true)
                     .setContentIntent(pi)
                     .setCategory(Notification.CATEGORY_REMINDER)
                     .setDefaults(Notification.DEFAULT_ALL);
-            nm.notify(text.hashCode(), b.build());
+            nm.notify((key != null && !key.isEmpty() ? key : text).hashCode(), b.build());
             Log.i(TAG, "reminder fired: " + text);
         }
     }

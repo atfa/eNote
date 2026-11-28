@@ -84,7 +84,7 @@ import { openNote, openTodo, openTodoFocus, jump, dueMs, toCalendar, toAlarm }
          from './openflow.js'
 import { prefs, P, prefQS, flattenPrefs, savePrefs, CUR, themeOf, applyTheme, setTheme }
          from './prefsflow.js'
-import { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, askNotify,
+import { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, askNotify, testNotify, testNotifyDelayed, openNotifySettings,
          notifyResult, keepAliveOn, batteryIgnoring, toggleKeepAlive, askBattery } from './remindflow.js'
 import { SFORM, formFill, formInput, settingsSheet, settingsRefresh, exportJSON, importJSON,
          clearAllNotes, sortSheet, setPref, resetPrefs, saveSettings } from './settingsflow.js'
@@ -256,7 +256,7 @@ var HOST = setHost({
   get sheetArg(){ return SHEETARGB.v },
   fmtSize: fmtSize, notifyGranted: notifyGranted, exactGranted: exactGranted,
   keepAliveOn: keepAliveOn, batteryIgnoring: batteryIgnoring,
-  askNotify: askNotify, askExact: askExact, askBattery: askBattery,
+  askNotify: askNotify, askExact: askExact, askBattery: askBattery, testNotify: testNotify, testNotifyDelayed: testNotifyDelayed, openNotifySettings: openNotifySettings,
   toggleKeepAlive: toggleKeepAlive, toggleAI: toggleAI, setTheme: setTheme,
   saveSettings: saveSettings, testLLM: testLLM, showLog: showLog, showDebug: showDebug,
   exportJSON: exportJSON, importJSON: importJSON, clearAllNotes: clearAllNotes,
@@ -300,7 +300,7 @@ var HOST_KEYS = {
     'clipSelAll', 'clipThumbText'],
   /* sheet:settings 组件根 SettingsSheetView，24 个 key（步骤 19 加 llmTest，
      步骤 20 加 SFORM / formInput） */
-  'sheet:settings': ['S', 'ST', 'askBattery', 'askExact', 'askNotify', 'batteryIgnoring',
+  'sheet:settings': ['S', 'ST', 'askBattery', 'askExact', 'askNotify', 'batteryIgnoring', 'testNotify', 'testNotifyDelayed', 'openNotifySettings',
     'clearAllNotes', 'exactGranted', 'exportJSON', 'fmtSize', 'formInput', 'importJSON',
     'keepAliveOn', 'llmTest', 'notifyGranted', 'remindPending', 'SFORM', 'saveSettings',
     'setTheme', 'showDebug', 'showLog', 'testLLM', 'toggleAI', 'toggleKeepAlive'],

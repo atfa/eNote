@@ -82,6 +82,26 @@ function askNotify(){
   if(notifyGranted()){ toast('系统通知已授权'); return }
   Android.askNotify();
 }
+function testNotifyDelayed(){
+  if(!window.Android || !Android.testNotifyDelayed){ toast('测试通知只在 app 内可用'); return }
+  try { Android.testNotifyDelayed(5000); } catch(e){ toast('发送失败'); return }
+  toast('5 秒后发通知，请马上回到桌面看横幅');
+}
+function openNotifySettings(){
+  if(!window.Android || !Android.openNotifySettings){ toast('通知设置只在 app 内可用'); return }
+  Android.openNotifySettings();
+}
+function testNotify(){
+  if(!window.Android || !Android.testNotify){ toast('测试通知只在 app 内可用'); return }
+  var raw = '';
+  try { raw = Android.testNotify(); } catch(e){ toast('发送失败'); return }
+  var r = {}; try { r = JSON.parse(raw) } catch(e){}
+  if(r.posted){
+    toast('已发测试通知 · 系统通知' + (r.enabled ? '开' : '关') + ' · 通道 ' + r.importance);
+  } else {
+    toast('测试通知没发出去');
+  }
+}
 function notifyResult(ok){
   toast(ok ? '系统通知已开启，到期前 15 分钟会弹提醒' : '没有通知权限；可在系统设置里打开「懒得记」的通知');
   syncReminders();
@@ -127,5 +147,5 @@ function askBattery(){
 
 /* 步骤 34：app.js 把下面这些名字挂进 HOST / HOST_KEYS / window.__enoteActions，
    views/settings.js 与 components/leaf.js 通过 H.xxx 读它们。 */
-export { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, askNotify,
+export { cdText, cdCls, syncReminders, exactGranted, askExact, notifyGranted, askNotify, testNotify, testNotifyDelayed, openNotifySettings,
   notifyResult, keepAliveOn, batteryIgnoring, toggleKeepAlive, askBattery }

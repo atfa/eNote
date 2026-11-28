@@ -625,6 +625,27 @@ public class Bridge {
         });
     }
 
+    /** window.Android.testNotify(): post one notification immediately (settings test button). */
+    @JavascriptInterface
+    public String testNotify() {
+        try { return Reminders.testNotification(EnoteApp.app); }
+        catch (Throwable t) { Log.w(TAG, "testNotify: " + t); return "{\"posted\":false}"; }
+    }
+
+    /** window.Android.testNotifyDelayed(ms): post after a delay (go home to see the banner). */
+    @JavascriptInterface
+    public String testNotifyDelayed(int delayMs) {
+        try { return Reminders.testNotification(EnoteApp.app, Math.max(1000, delayMs)); }
+        catch (Throwable t) { Log.w(TAG, "testNotifyDelayed: " + t); return "{\"posted\":false}"; }
+    }
+
+    /** window.Android.openNotifySettings(): vivo/Android app notification settings. */
+    @JavascriptInterface
+    public void openNotifySettings() {
+        try { Reminders.openNotificationSettings(EnoteApp.app); }
+        catch (Throwable t) { Log.w(TAG, "openNotifySettings: " + t); }
+    }
+
     /** window.Android.notifyGranted(): true when notifications can be posted. */
     @JavascriptInterface
     public boolean notifyGranted() {
